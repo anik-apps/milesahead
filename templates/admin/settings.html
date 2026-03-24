@@ -1,0 +1,23 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="admin-settings">
+    <h1>Settings</h1>
+    <p>Read-only display of current configuration. Sensitive values are masked.</p>
+
+    {{$config := .Config}}
+    {{range .Sections}}
+    <h2>{{.}}</h2>
+    {{$section := index $config .}}
+    <table class="admin-table settings-table">
+        <tbody>
+            {{range $key, $value := $section}}
+            <tr>
+                <td class="setting-key">{{$key}}</td>
+                <td class="setting-value">{{$value}}</td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{end}}
+</div>
+{{end}}

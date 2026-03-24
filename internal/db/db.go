@@ -572,3 +572,56 @@ func (d *Database) DeleteSession(token string) error {
 	_, err := d.db.Exec(`DELETE FROM admin_sessions WHERE token = ?`, token)
 	return err
 }
+
+// ListAllSources returns all sources regardless of active status.
+func (d *Database) ListAllSources() ([]Source, error) {
+	rows, err := d.db.Query(`SELECT id, name, url, rss_url, scrape_selector, scan_interval, active, created_at, updated_at FROM sources ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sources []Source
+	for rows.Next() {
+		var s Source
+		if err := rows.Scan(&s.ID, &s.Name, &s.URL, &s.RSSURL, &s.ScrapeSelector, &s.ScanInterval, &s.Active, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		sources = append(sources, s)
+	}
+	return sources, rows.Err()
+}
+
+// ToggleSourceActive flips the active status of a source.
+func (d *Database) ToggleSourceActive(id int64) error {
+	_, err := d.db.Exec(`UPDATE sources SET active = NOT active, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+	return err
+}
+
+// ListAllSubscribers returns all subscribers regardless of confirmation status.
+func (d *Database) ListAllSubscribers() ([]Subscriber, error) {
+	rows, err := d.db.Query(
+		`SELECT id, email, confirmed, token, subscribed_at, confirmed_at FROM subscribers ORDER BY subscribed_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subscribers []Subscriber
+	for rows.Next() {
+		var s Subscriber
+		if err := rows.Scan(&s.ID, &s.Email, &s.Confirmed, &s.Token, &s.SubscribedAt, &s.ConfirmedAt); err != nil {
+			return nil, err
+		}
+		subscribers = append(subscribers, s)
+	}
+	return subscribers, rows.Err()
+}
+
+// CountArticleSources returns the number of raw article sources linked to a generated article.
+func (d *Database) CountArticleSources(articleID int64) (int, error) {
+	var count int
+	err := d.db.QueryRow(`SELECT COUNT(*) FROM article_sources WHERE generated_article_id = ?`, articleID).Scan(&count)
+	return count, err
+}

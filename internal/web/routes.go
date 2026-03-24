@@ -31,8 +31,22 @@ func (app *App) setupRoutes() {
 	adminMux.HandleFunc("GET /admin/published", app.handleAdminPublished)
 	adminMux.HandleFunc("GET /admin/sources", app.handleAdminSources)
 	adminMux.HandleFunc("GET /admin/subscribers", app.handleAdminSubscribers)
+	adminMux.HandleFunc("GET /admin/subscribers/export", app.handleExportSubscribers)
 	adminMux.HandleFunc("GET /admin/newsletter", app.handleAdminNewsletter)
 	adminMux.HandleFunc("GET /admin/settings", app.handleAdminSettings)
+
+	// Article action routes.
+	adminMux.HandleFunc("POST /admin/articles/{id}/approve", app.handleApproveArticle)
+	adminMux.HandleFunc("POST /admin/articles/{id}/reject", app.handleRejectArticle)
+	adminMux.HandleFunc("POST /admin/articles/{id}/revise", app.handleRequestRevision)
+	adminMux.HandleFunc("POST /admin/articles/{id}/unpublish", app.handleUnpublishArticle)
+	adminMux.HandleFunc("POST /admin/articles/{id}/unpublish-revise", app.handleUnpublishAndRevise)
+
+	// Source action routes.
+	adminMux.HandleFunc("POST /admin/sources/add", app.handleAddSource)
+	adminMux.HandleFunc("POST /admin/sources/{id}/edit", app.handleEditSource)
+	adminMux.HandleFunc("POST /admin/sources/{id}/toggle", app.handleToggleSource)
+
 	app.mux.Handle("/admin/", csrfMiddleware(app.adminAuthMiddleware(adminMux)))
 
 	// API routes.
@@ -63,28 +77,8 @@ func (app *App) handleSubscribeConfirm(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Confirmed")
 }
 
-func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Admin Dashboard")
-}
-
-func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Admin Published")
-}
-
-func (app *App) handleAdminSources(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Admin Sources")
-}
-
-func (app *App) handleAdminSubscribers(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Admin Subscribers")
-}
-
 func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Admin Newsletter")
-}
-
-func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Admin Settings")
 }
 
 func (app *App) handleVote(w http.ResponseWriter, r *http.Request) {

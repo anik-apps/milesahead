@@ -1,0 +1,42 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="admin-published">
+    <h1>Published Articles</h1>
+    {{if .Articles}}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Published</th>
+                <th>Upvotes</th>
+                <th>Downvotes</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Articles}}
+            <tr{{if .Flagged}} class="flagged"{{end}}>
+                <td>{{.Title}}</td>
+                <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
+                <td>{{.PublishedAt}}</td>
+                <td>{{.Upvotes}}</td>
+                <td>{{.Downvotes}}</td>
+                <td>{{if .Flagged}}<span class="flag-icon" title="High downvotes">&#9873;</span>{{end}}</td>
+                <td class="actions">
+                    <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <textarea name="feedback" placeholder="Optional feedback..."></textarea>
+                        <button type="submit" class="btn btn-unpublish">Unpublish</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p>No published articles.</p>
+    {{end}}
+</div>
+{{end}}

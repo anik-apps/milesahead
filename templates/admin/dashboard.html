@@ -1,0 +1,55 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="admin-dashboard">
+    <h1>Pending Articles</h1>
+    {{if .Articles}}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Verification Score</th>
+                <th>Sources</th>
+                <th>Revision</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Articles}}
+            <tr>
+                <td>
+                    <details>
+                        <summary>{{.Title}}</summary>
+                        <div class="article-detail">
+                            <div class="article-content">{{.Content}}</div>
+                        </div>
+                    </details>
+                </td>
+                <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
+                <td>{{.VerificationScore}}</td>
+                <td>{{.SourceCount}}</td>
+                <td>{{.RevisionNumber}}</td>
+                <td class="actions">
+                    <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <button type="submit" class="btn btn-approve">Approve</button>
+                    </form>
+                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <button type="submit" class="btn btn-reject">Reject</button>
+                    </form>
+                    <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form revision-form">
+                        {{template "csrf_field" $}}
+                        <textarea name="feedback" placeholder="Revision feedback..." required></textarea>
+                        <button type="submit" class="btn btn-revise">Request Revision</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p>No pending articles.</p>
+    {{end}}
+</div>
+{{end}}

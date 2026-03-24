@@ -1,29 +1,56 @@
 package web
 
 import (
+	"fmt"
 	"html/template"
 	"net/http"
 	"os"
 	"path/filepath"
 
+	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
+// templateFuncs provides custom template functions.
+var templateFuncs = template.FuncMap{
+	"deref": func(v interface{}) string {
+		if v == nil {
+			return ""
+		}
+		switch p := v.(type) {
+		case *string:
+			if p == nil {
+				return ""
+			}
+			return *p
+		case *int:
+			if p == nil {
+				return ""
+			}
+			return fmt.Sprintf("%d", *p)
+		default:
+			return fmt.Sprintf("%v", v)
+		}
+	},
+}
+
 // App is the main web application struct that holds dependencies and serves HTTP.
 type App struct {
-	db        *db.Database
-	cfg       *config.Config
-	templates *template.Template
-	mux       *http.ServeMux
+	db             *db.Database
+	cfg            *config.Config
+	articleManager *article.Manager
+	templates      map[string]*template.Template
+	mux            *http.ServeMux
 }
 
 // NewApp creates a new App, loads templates, and sets up routes.
-func NewApp(cfg *config.Config, database *db.Database) (*App, error) {
+func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager) (*App, error) {
 	app := &App{
-		db:  database,
-		cfg: cfg,
-		mux: http.NewServeMux(),
+		db:             database,
+		cfg:            cfg,
+		articleManager: mgr,
+		mux:            http.NewServeMux(),
 	}
 
 	if err := app.loadTemplates("templates"); err != nil {
@@ -35,11 +62,12 @@ func NewApp(cfg *config.Config, database *db.Database) (*App, error) {
 }
 
 // newAppWithTemplateDir creates a new App loading templates from the specified directory.
-func newAppWithTemplateDir(cfg *config.Config, database *db.Database, templateDir string) (*App, error) {
+func newAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *article.Manager, templateDir string) (*App, error) {
 	app := &App{
-		db:  database,
-		cfg: cfg,
-		mux: http.NewServeMux(),
+		db:             database,
+		cfg:            cfg,
+		articleManager: mgr,
+		mux:            http.NewServeMux(),
 	}
 
 	if err := app.loadTemplates(templateDir); err != nil {
@@ -51,14 +79,16 @@ func newAppWithTemplateDir(cfg *config.Config, database *db.Database, templateDi
 }
 
 func (app *App) loadTemplates(dir string) error {
-	// Collect all template files.
-	var files []string
+	layoutFile := filepath.Join(dir, "layout.html")
+
+	// Collect all page template files (excluding layout.html itself).
+	var pageFiles []string
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && filepath.Ext(path) == ".html" {
-			files = append(files, path)
+		if !info.IsDir() && filepath.Ext(path) == ".html" && filepath.Base(path) != "layout.html" {
+			pageFiles = append(pageFiles, path)
 		}
 		return nil
 	})
@@ -66,18 +96,35 @@ func (app *App) loadTemplates(dir string) error {
 		return err
 	}
 
-	if len(files) == 0 {
-		// No templates found; create an empty template set.
-		app.templates = template.New("")
+	app.templates = make(map[string]*template.Template)
+
+	if len(pageFiles) == 0 {
 		return nil
 	}
 
-	t, err := template.ParseFiles(files...)
-	if err != nil {
-		return err
+	// Parse each page template separately with the layout so that each gets
+	// its own "content" block definition without conflicts.
+	for _, pf := range pageFiles {
+		name := filepath.Base(pf)
+		t, err := template.New(name).Funcs(templateFuncs).ParseFiles(layoutFile, pf)
+		if err != nil {
+			return fmt.Errorf("parsing template %s: %w", name, err)
+		}
+		app.templates[name] = t
 	}
-	app.templates = t
 	return nil
+}
+
+// renderTemplate executes a named template with the given data.
+func (app *App) renderTemplate(w http.ResponseWriter, name string, data interface{}) {
+	t, ok := app.templates[name]
+	if !ok {
+		http.Error(w, "Template not found: "+name, http.StatusInternalServerError)
+		return
+	}
+	if err := t.ExecuteTemplate(w, name, data); err != nil {
+		http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // ServeHTTP delegates to the internal mux.

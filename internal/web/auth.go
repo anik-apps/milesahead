@@ -14,7 +14,7 @@ func (app *App) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		"Title":     "Login",
 		"CSRFToken": getCSRFToken(w, r),
 	}
-	app.templates.ExecuteTemplate(w, "login.html", data)
+	app.renderTemplate(w, "login.html", data)
 }
 
 // handleLoginSubmit processes the admin login form submission.
@@ -29,7 +29,7 @@ func (app *App) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 			"Error":     "Invalid password",
 			"CSRFToken": getCSRFToken(w, r),
 		}
-		app.templates.ExecuteTemplate(w, "login.html", data)
+		app.renderTemplate(w, "login.html", data)
 		return
 	}
 
