@@ -566,3 +566,9 @@ func (d *Database) DeleteExpiredSessions() error {
 	_, err := d.db.Exec(`DELETE FROM admin_sessions WHERE expires_at <= ?`, time.Now().UTC())
 	return err
 }
+
+// DeleteSession removes a specific session by token.
+func (d *Database) DeleteSession(token string) error {
+	_, err := d.db.Exec(`DELETE FROM admin_sessions WHERE token = ?`, token)
+	return err
+}
