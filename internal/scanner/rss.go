@@ -48,6 +48,10 @@ func (f *RSSFetcher) Fetch(feedURL string) ([]FetchedArticle, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching feed %s: unexpected status code %d", feedURL, resp.StatusCode)
+	}
+
 	feed, err := f.parser.Parse(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("parsing feed %s: %w", feedURL, err)

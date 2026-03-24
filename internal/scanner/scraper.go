@@ -45,6 +45,10 @@ func (s *HTMLScraper) Scrape(pageURL string, selectors ScrapeSelectors) ([]Fetch
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetching page %s: unexpected status code %d", pageURL, resp.StatusCode)
+	}
+
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("parsing HTML from %s: %w", pageURL, err)
