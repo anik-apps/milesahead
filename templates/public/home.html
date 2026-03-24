@@ -1,0 +1,64 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="category-tabs">
+    <a href="/" class="tab{{if eq .TypeFilter ""}} active{{end}}">All</a>
+    <a href="/?type=deal" class="tab{{if eq .TypeFilter "deal"}} active{{end}}">Deals</a>
+    <a href="/?type=roundup" class="tab{{if eq .TypeFilter "roundup"}} active{{end}}">Roundups</a>
+    <a href="/?type=alert" class="tab{{if eq .TypeFilter "alert"}} active{{end}}">Alerts</a>
+    <a href="/?type=summary" class="tab{{if eq .TypeFilter "summary"}} active{{end}}">Summaries</a>
+</div>
+
+<div class="magazine-grid">
+    {{if .Featured}}
+    <div class="featured-card">
+        <a href="/article/{{.Featured.Slug}}">
+            <div class="featured-overlay">
+                <span class="type-badge badge-{{.Featured.Type}}">{{.Featured.Type}}</span>
+                <h2 class="featured-title">{{.Featured.Title}}</h2>
+                <p class="featured-excerpt">{{.Featured.Excerpt}}</p>
+            </div>
+        </a>
+    </div>
+    {{end}}
+
+    <div class="sidebar-stack">
+        {{range .Sidebar}}
+        <div class="article-card">
+            <a href="/article/{{.Slug}}">
+                <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+                <h3>{{.Title}}</h3>
+                <p class="excerpt">{{.Excerpt}}</p>
+                <div class="card-meta">
+                    <span class="date">{{.PublishedAt}}</span>
+                    {{if .SourceCount}}<span class="sources">{{.SourceCount}} sources</span>{{end}}
+                </div>
+            </a>
+        </div>
+        {{end}}
+    </div>
+</div>
+
+{{if .Grid}}
+<div class="bottom-grid">
+    {{range .Grid}}
+    <div class="article-card">
+        <a href="/article/{{.Slug}}">
+            <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+            <h3>{{.Title}}</h3>
+            <p class="excerpt">{{.Excerpt}}</p>
+            <div class="card-meta">
+                <span class="date">{{.PublishedAt}}</span>
+                {{if .SourceCount}}<span class="sources">{{.SourceCount}} sources</span>{{end}}
+            </div>
+        </a>
+    </div>
+    {{end}}
+</div>
+{{end}}
+
+{{if not .Articles}}
+<div class="empty-state">
+    <p>No articles published yet. Check back soon!</p>
+</div>
+{{end}}
+{{end}}

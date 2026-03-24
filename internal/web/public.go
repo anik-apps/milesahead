@@ -1,0 +1,376 @@
+package web
+
+import (
+	"crypto/sha256"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"html"
+	"net/http"
+	"strings"
+
+	"github.com/kumaranik/milesahead/internal/db"
+)
+
+// publicArticleRow holds data for rendering an article card on public pages.
+type publicArticleRow struct {
+	ID          int64
+	Title       string
+	Slug        string
+	Content     string
+	Excerpt     string
+	Type        string
+	Status      string
+	Featured    bool
+	PublishedAt string
+	SourceCount int
+}
+
+// sourceInfo holds source data for article detail pages.
+type sourceInfo struct {
+	Title string
+	URL   string
+}
+
+func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
+	typeFilter := r.URL.Query().Get("type")
+
+	var articles []db.GeneratedArticle
+	var err error
+
+	if typeFilter != "" {
+		articles, err = app.db.ListPublishedArticlesByType(typeFilter, 20, 0)
+	} else {
+		articles, err = app.db.ListPublishedArticles(20, 0)
+	}
+	if err != nil {
+		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
+		return
+	}
+
+	var rows []publicArticleRow
+	for _, a := range articles {
+		row := publicArticleRow{
+			ID:       a.ID,
+			Title:    a.Title,
+			Slug:     a.Slug,
+			Content:  a.Content,
+			Excerpt:  truncate(a.Content, 200),
+			Type:     a.Type,
+			Status:   a.Status,
+			Featured: a.Featured,
+		}
+		if a.PublishedAt != nil {
+			row.PublishedAt = a.PublishedAt.Format("Jan 2, 2006")
+		}
+		if count, cerr := app.db.CountArticleSources(a.ID); cerr == nil {
+			row.SourceCount = count
+		}
+		rows = append(rows, row)
+	}
+
+	// Determine featured article.
+	var featured *publicArticleRow
+	var sidebar []publicArticleRow
+	var grid []publicArticleRow
+
+	if len(rows) > 0 {
+		// Try to find a featured article.
+		featuredIdx := 0
+		for i, r := range rows {
+			if r.Featured {
+				featuredIdx = i
+				break
+			}
+		}
+		f := rows[featuredIdx]
+		featured = &f
+
+		// Remaining articles (skip the featured one).
+		remaining := make([]publicArticleRow, 0, len(rows)-1)
+		for i, r := range rows {
+			if i != featuredIdx {
+				remaining = append(remaining, r)
+			}
+		}
+
+		// Sidebar: up to 3.
+		if len(remaining) > 3 {
+			sidebar = remaining[:3]
+			grid = remaining[3:]
+		} else {
+			sidebar = remaining
+		}
+	}
+
+	data := map[string]interface{}{
+		"Title":      "Home",
+		"Featured":   featured,
+		"Sidebar":    sidebar,
+		"Grid":       grid,
+		"Articles":   rows,
+		"TypeFilter": typeFilter,
+		"Types":      []string{"deal", "roundup", "alert", "summary"},
+	}
+	app.renderTemplate(w, "home.html", data)
+}
+
+func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+
+	article, err := app.db.GetGeneratedArticleBySlug(slug)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "Failed to load article", http.StatusInternalServerError)
+		return
+	}
+
+	// If not approved, show "under review" message.
+	if article.Status != db.StatusApproved {
+		data := map[string]interface{}{
+			"Title":       article.Title,
+			"UnderReview": true,
+		}
+		app.renderTemplate(w, "article.html", data)
+		return
+	}
+
+	// Load linked sources.
+	rawArticles, err := app.db.GetLinkedRawArticles(article.ID)
+	if err != nil {
+		rawArticles = nil // non-fatal
+	}
+
+	var sources []sourceInfo
+	for _, ra := range rawArticles {
+		sources = append(sources, sourceInfo{
+			Title: ra.Title,
+			URL:   ra.URL,
+		})
+	}
+
+	// Load vote counts.
+	var upvotes, downvotes int
+	if vc, err := app.db.GetVoteCounts(article.ID); err == nil {
+		upvotes = vc.Upvotes
+		downvotes = vc.Downvotes
+	}
+
+	publishedAt := ""
+	if article.PublishedAt != nil {
+		publishedAt = article.PublishedAt.Format("Jan 2, 2006")
+	}
+
+	data := map[string]interface{}{
+		"Title":       article.Title,
+		"Article":     article,
+		"Sources":     sources,
+		"Upvotes":     upvotes,
+		"Downvotes":   downvotes,
+		"PublishedAt": publishedAt,
+		"UnderReview": false,
+	}
+	app.renderTemplate(w, "article.html", data)
+}
+
+func (app *App) handleSubscribe(w http.ResponseWriter, r *http.Request) {
+	email := strings.TrimSpace(r.FormValue("email"))
+	if email == "" || !strings.Contains(email, "@") {
+		data := map[string]interface{}{
+			"Title": "Subscribe",
+			"Error": "Please provide a valid email address.",
+		}
+		app.renderTemplate(w, "subscribe.html", data)
+		return
+	}
+
+	token := generateToken()
+	_, err := app.db.CreateSubscriber(&db.Subscriber{
+		Email: email,
+		Token: token,
+	})
+	if err != nil {
+		// Likely duplicate email.
+		data := map[string]interface{}{
+			"Title": "Subscribe",
+			"Error": "This email is already subscribed.",
+		}
+		app.renderTemplate(w, "subscribe.html", data)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Title":   "Subscribe",
+		"Success": "Please check your email to confirm your subscription.",
+	}
+	app.renderTemplate(w, "subscribe.html", data)
+}
+
+func (app *App) handleSubscribeConfirm(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		data := map[string]interface{}{
+			"Title": "Confirm Subscription",
+			"Error": "Invalid confirmation link.",
+		}
+		app.renderTemplate(w, "subscribe.html", data)
+		return
+	}
+
+	if err := app.db.ConfirmSubscriber(token); err != nil {
+		data := map[string]interface{}{
+			"Title": "Confirm Subscription",
+			"Error": "Invalid or expired confirmation link.",
+		}
+		app.renderTemplate(w, "subscribe.html", data)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Title":   "Subscription Confirmed",
+		"Success": "Your subscription has been confirmed!",
+	}
+	app.renderTemplate(w, "subscribe.html", data)
+}
+
+func (app *App) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		data := map[string]interface{}{
+			"Title": "Unsubscribe",
+			"Error": "Invalid unsubscribe link.",
+		}
+		app.renderTemplate(w, "subscribe.html", data)
+		return
+	}
+
+	if err := app.db.Unsubscribe(token); err != nil {
+		data := map[string]interface{}{
+			"Title": "Unsubscribe",
+			"Error": "Invalid or expired unsubscribe link.",
+		}
+		app.renderTemplate(w, "subscribe.html", data)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Title":   "Unsubscribed",
+		"Success": "You have been unsubscribed successfully.",
+	}
+	app.renderTemplate(w, "subscribe.html", data)
+}
+
+func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
+	articles, err := app.db.ListPublishedArticles(20, 0)
+	if err != nil {
+		http.Error(w, "Failed to generate feed", http.StatusInternalServerError)
+		return
+	}
+
+	domain := app.cfg.Server.Domain
+	if domain == "" {
+		domain = "localhost"
+	}
+
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
+	fmt.Fprint(w, `<rss version="2.0">`)
+	fmt.Fprint(w, `<channel>`)
+	fmt.Fprintf(w, `<title>%s</title>`, html.EscapeString("Miles Ahead"))
+	fmt.Fprintf(w, `<link>https://%s</link>`, html.EscapeString(domain))
+	fmt.Fprint(w, `<description>Curated news and analysis</description>`)
+
+	for _, a := range articles {
+		excerpt := truncate(a.Content, 200)
+		link := fmt.Sprintf("https://%s/article/%s", domain, a.Slug)
+		pubDate := ""
+		if a.PublishedAt != nil {
+			pubDate = a.PublishedAt.Format("Mon, 02 Jan 2006 15:04:05 -0700")
+		}
+
+		fmt.Fprint(w, `<item>`)
+		fmt.Fprintf(w, `<title>%s</title>`, html.EscapeString(a.Title))
+		fmt.Fprintf(w, `<link>%s</link>`, html.EscapeString(link))
+		fmt.Fprintf(w, `<description>%s</description>`, html.EscapeString(excerpt))
+		if pubDate != "" {
+			fmt.Fprintf(w, `<pubDate>%s</pubDate>`, pubDate)
+		}
+		fmt.Fprintf(w, `<guid>%s</guid>`, html.EscapeString(link))
+		fmt.Fprint(w, `</item>`)
+	}
+
+	fmt.Fprint(w, `</channel>`)
+	fmt.Fprint(w, `</rss>`)
+}
+
+func (app *App) handleVote(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ArticleID int64 `json:"article_id"`
+		Vote      int   `json:"vote"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":"invalid request"}`)
+		return
+	}
+
+	if req.Vote != 1 && req.Vote != -1 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":"vote must be 1 or -1"}`)
+		return
+	}
+
+	ip := extractIP(r)
+	ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip)))
+
+	// Check if already voted.
+	voted, err := app.db.HasVoted(req.ArticleID, ipHash)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":"internal error"}`)
+		return
+	}
+	if voted {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		fmt.Fprint(w, `{"error":"already voted"}`)
+		return
+	}
+
+	_, err = app.db.CreateVote(&db.ArticleVote{
+		ArticleID: req.ArticleID,
+		Vote:      req.Vote,
+		IPHash:    ipHash,
+	})
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":"failed to record vote"}`)
+		return
+	}
+
+	vc, err := app.db.GetVoteCounts(req.ArticleID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":"failed to get counts"}`)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"status":"ok","upvotes":%d,"downvotes":%d}`, vc.Upvotes, vc.Downvotes)
+}
+
+// truncate returns the first n characters of s, appending "..." if truncated.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}

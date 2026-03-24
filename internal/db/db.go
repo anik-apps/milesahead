@@ -625,3 +625,70 @@ func (d *Database) CountArticleSources(articleID int64) (int, error) {
 	err := d.db.QueryRow(`SELECT COUNT(*) FROM article_sources WHERE generated_article_id = ?`, articleID).Scan(&count)
 	return count, err
 }
+
+// GetGeneratedArticleBySlug fetches a generated article by its slug.
+func (d *Database) GetGeneratedArticleBySlug(slug string) (*GeneratedArticle, error) {
+	a := &GeneratedArticle{}
+	err := d.db.QueryRow(
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, created_at, updated_at, published_at FROM generated_articles WHERE slug = ?`, slug,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+// ListPublishedArticlesByType returns approved articles filtered by type.
+func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset int) ([]GeneratedArticle, error) {
+	rows, err := d.db.Query(
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND type = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		StatusApproved, articleType, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanGeneratedArticles(rows)
+}
+
+// GetFeaturedArticle returns the most recent featured approved article, or the most recent approved article if none is featured.
+func (d *Database) GetFeaturedArticle() (*GeneratedArticle, error) {
+	a := &GeneratedArticle{}
+	err := d.db.QueryRow(
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND featured = 1 ORDER BY published_at DESC LIMIT 1`, StatusApproved,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+	if err != nil {
+		// Fallback to most recent approved.
+		err = d.db.QueryRow(
+			`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT 1`, StatusApproved,
+		).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return a, nil
+}
+
+// GetLinkedRawArticles returns the raw articles linked to a generated article.
+func (d *Database) GetLinkedRawArticles(generatedArticleID int64) ([]RawArticle, error) {
+	rows, err := d.db.Query(
+		`SELECT r.id, r.source_id, r.title, r.url, r.content, r.published_at, r.hash, r.created_at
+		FROM raw_articles r
+		JOIN article_sources a ON r.id = a.raw_article_id
+		WHERE a.generated_article_id = ?`, generatedArticleID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var articles []RawArticle
+	for rows.Next() {
+		var a RawArticle
+		if err := rows.Scan(&a.ID, &a.SourceID, &a.Title, &a.URL, &a.Content, &a.PublishedAt, &a.Hash, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		articles = append(articles, a)
+	}
+	return articles, rows.Err()
+}

@@ -16,6 +16,7 @@ func (app *App) setupRoutes() {
 	app.mux.HandleFunc("GET /feed.xml", app.handleFeed)
 	app.mux.HandleFunc("POST /subscribe", app.handleSubscribe)
 	app.mux.HandleFunc("GET /subscribe/confirm", app.handleSubscribeConfirm)
+	app.mux.HandleFunc("GET /unsubscribe", app.handleUnsubscribe)
 
 	// Auth routes (with rate limiting on login POST).
 	app.mux.HandleFunc("GET /admin/login", app.handleLoginPage)
@@ -55,33 +56,6 @@ func (app *App) setupRoutes() {
 
 // --- Placeholder handlers ---
 
-func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Miles Ahead - Home")
-}
-
-func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("slug")
-	fmt.Fprintf(w, "Article: %s", slug)
-}
-
-func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/xml")
-	fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"></rss>`)
-}
-
-func (app *App) handleSubscribe(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Subscribed")
-}
-
-func (app *App) handleSubscribeConfirm(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Confirmed")
-}
-
 func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Admin Newsletter")
-}
-
-func (app *App) handleVote(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprint(w, `{"status":"ok"}`)
 }
