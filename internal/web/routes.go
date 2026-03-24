@@ -19,13 +19,13 @@ func (app *App) setupRoutes() {
 
 	// Auth routes (with rate limiting on login POST).
 	app.mux.HandleFunc("GET /admin/login", app.handleLoginPage)
-	loginHandler := rateLimitMiddleware(
+	loginHandler := csrfMiddleware(rateLimitMiddleware(
 		http.HandlerFunc(app.handleLoginSubmit), 10, 15*time.Minute,
-	)
+	))
 	app.mux.Handle("POST /admin/login", loginHandler)
 	app.mux.HandleFunc("POST /admin/logout", app.handleLogout)
 
-	// Admin routes (behind auth middleware).
+	// Admin routes (behind auth + CSRF middleware).
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("GET /admin/dashboard", app.handleAdminDashboard)
 	adminMux.HandleFunc("GET /admin/published", app.handleAdminPublished)
@@ -33,7 +33,7 @@ func (app *App) setupRoutes() {
 	adminMux.HandleFunc("GET /admin/subscribers", app.handleAdminSubscribers)
 	adminMux.HandleFunc("GET /admin/newsletter", app.handleAdminNewsletter)
 	adminMux.HandleFunc("GET /admin/settings", app.handleAdminSettings)
-	app.mux.Handle("/admin/", app.adminAuthMiddleware(adminMux))
+	app.mux.Handle("/admin/", csrfMiddleware(app.adminAuthMiddleware(adminMux)))
 
 	// API routes.
 	app.mux.HandleFunc("POST /api/vote", app.handleVote)
