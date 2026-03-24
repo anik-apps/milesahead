@@ -364,6 +364,15 @@ func (d *Database) ListFeedbackForArticle(articleID int64) ([]AdminFeedback, err
 	return feedback, rows.Err()
 }
 
+// UpdateArticleContent updates the content, title, and revision_number of a generated article.
+func (d *Database) UpdateArticleContent(id int64, title, content string, revisionNumber int) error {
+	_, err := d.db.Exec(
+		`UPDATE generated_articles SET title = ?, content = ?, revision_number = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		title, content, revisionNumber, id,
+	)
+	return err
+}
+
 // --- ArticleRevision CRUD ---
 
 func (d *Database) CreateArticleRevision(r *ArticleRevision) (int64, error) {
