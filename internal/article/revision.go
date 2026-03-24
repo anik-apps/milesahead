@@ -2,8 +2,8 @@ package article
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
@@ -81,7 +81,11 @@ func (m *Manager) ProcessRevision(articleID int64) error {
 	// Store new verification result.
 	issuesJSON := "[]"
 	if result.Verification != nil && len(result.Verification.Issues) > 0 {
-		issuesJSON = "[\"" + strings.Join(result.Verification.Issues, "\",\"") + "\"]"
+		b, err := json.Marshal(result.Verification.Issues)
+		if err != nil {
+			return fmt.Errorf("marshaling issues: %w", err)
+		}
+		issuesJSON = string(b)
 	}
 
 	_, err = m.db.CreateVerificationResult(&db.VerificationResult{

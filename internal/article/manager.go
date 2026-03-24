@@ -137,7 +137,8 @@ func (m *Manager) Unpublish(articleID int64) error {
 
 // UnpublishAndRevise unpublishes an approved article, stores feedback, and
 // sets it to revision_requested via a two-step status transition:
-// approved -> unpublished, then stores feedback for future revision processing.
+// UnpublishAndRevise transitions approved -> unpublished -> revision_requested,
+// then stores feedback for revision processing.
 func (m *Manager) UnpublishAndRevise(articleID int64, feedback string, source string) error {
 	article, err := m.db.GetGeneratedArticle(articleID)
 	if err != nil {
@@ -158,6 +159,10 @@ func (m *Manager) UnpublishAndRevise(articleID int64, feedback string, source st
 	})
 	if err != nil {
 		return fmt.Errorf("storing feedback: %w", err)
+	}
+
+	if err := m.db.UpdateArticleStatus(articleID, db.StatusRevisionRequested); err != nil {
+		return fmt.Errorf("setting revision_requested: %w", err)
 	}
 
 	return nil

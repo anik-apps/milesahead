@@ -218,7 +218,7 @@ var validTransitions = map[string][]string{
 	StatusApproved:          {StatusUnpublished},
 	StatusRejected:          {},
 	StatusRevisionRequested: {StatusDraft},
-	StatusUnpublished:       {},
+	StatusUnpublished:       {StatusRevisionRequested},
 }
 
 func (d *Database) UpdateArticleStatus(id int64, newStatus string) error {
