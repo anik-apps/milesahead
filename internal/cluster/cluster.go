@@ -60,10 +60,6 @@ func Cluster(articles []Article, threshold float64) []ArticleCluster {
 
 	// Greedy agglomerative clustering.
 	var clusters []ArticleCluster
-	assigned := make([]int, len(articles)) // cluster index for each article, -1 = unassigned
-	for i := range assigned {
-		assigned[i] = -1
-	}
 
 	for i := range articles {
 		bestCluster := -1
