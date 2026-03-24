@@ -12,11 +12,11 @@ import (
 
 // ScrapeSelectors holds CSS selectors used to extract article data from HTML pages.
 type ScrapeSelectors struct {
-	ArticleContainer string
-	Title            string
-	Link             string
-	Content          string
-	Time             string
+	ArticleContainer string `json:"article_container"`
+	Title            string `json:"title"`
+	Link             string `json:"link"`
+	Content          string `json:"content"`
+	Time             string `json:"time"`
 }
 
 // HTMLScraper fetches and parses HTML pages into FetchedArticle slices.
