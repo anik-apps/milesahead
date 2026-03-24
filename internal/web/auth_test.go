@@ -64,7 +64,7 @@ func setupTestApp(t *testing.T) *App {
 		t.Fatalf("failed to write login template: %v", err)
 	}
 
-	app, err := newAppWithTemplateDir(cfg, database, nil, filepath.Join(tmpDir, "templates"))
+	app, err := newAppWithTemplateDir(cfg, database, nil, nil, filepath.Join(tmpDir, "templates"))
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}

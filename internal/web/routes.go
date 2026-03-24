@@ -51,7 +51,7 @@ func (app *App) setupRoutes() {
 	app.mux.Handle("/admin/", csrfMiddleware(app.adminAuthMiddleware(adminMux)))
 
 	// API routes.
-	app.mux.HandleFunc("POST /api/vote", app.handleVote)
+	app.mux.HandleFunc("POST /api/vote", app.handleVoteAPI)
 }
 
 // --- Placeholder handlers ---

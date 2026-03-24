@@ -12,6 +12,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/vote"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -47,6 +48,7 @@ func setupPublicTestApp(t *testing.T) (*App, *db.Database) {
 	}
 
 	mgr := article.NewManager(database, nil)
+	voteSvc := vote.NewService(database, cfg.Votes, nil)
 
 	// Create template directories.
 	templateDir := filepath.Join(tmpDir, "templates")
@@ -94,7 +96,7 @@ func setupPublicTestApp(t *testing.T) (*App, *db.Database) {
 		t.Fatalf("failed to write subscribe template: %v", err)
 	}
 
-	app, err := newAppWithTemplateDir(cfg, database, mgr, templateDir)
+	app, err := newAppWithTemplateDir(cfg, database, mgr, voteSvc, templateDir)
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}
@@ -467,7 +469,7 @@ func TestVote_Success(t *testing.T) {
 
 	id, _ := createApprovedArticle(t, database, "Vote Article", "deal", false)
 
-	payload := `{"article_id":` + strings.TrimRight(strings.TrimLeft(jsonInt64(id), ""), "") + `,"vote":1}`
+	payload := `{"article_id":` + jsonInt64(id) + `,"vote":"up"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/vote", strings.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "192.168.1.1:12345"
@@ -492,8 +494,7 @@ func TestVote_Duplicate(t *testing.T) {
 
 	id, _ := createApprovedArticle(t, database, "Vote Dup Article", "deal", false)
 
-	payload := jsonInt64(id)
-	body := `{"article_id":` + payload + `,"vote":1}`
+	body := `{"article_id":` + jsonInt64(id) + `,"vote":"up"}`
 
 	// First vote.
 	req := httptest.NewRequest(http.MethodPost, "/api/vote", strings.NewReader(body))

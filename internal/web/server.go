@@ -10,6 +10,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/vote"
 )
 
 // templateFuncs provides custom template functions.
@@ -40,16 +41,18 @@ type App struct {
 	db             *db.Database
 	cfg            *config.Config
 	articleManager *article.Manager
+	voteSvc        *vote.Service
 	templates      map[string]*template.Template
 	mux            *http.ServeMux
 }
 
 // NewApp creates a new App, loads templates, and sets up routes.
-func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager) (*App, error) {
+func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, voteSvc *vote.Service) (*App, error) {
 	app := &App{
 		db:             database,
 		cfg:            cfg,
 		articleManager: mgr,
+		voteSvc:        voteSvc,
 		mux:            http.NewServeMux(),
 	}
 
@@ -62,11 +65,12 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager) (*A
 }
 
 // newAppWithTemplateDir creates a new App loading templates from the specified directory.
-func newAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *article.Manager, templateDir string) (*App, error) {
+func newAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *article.Manager, voteSvc *vote.Service, templateDir string) (*App, error) {
 	app := &App{
 		db:             database,
 		cfg:            cfg,
 		articleManager: mgr,
+		voteSvc:        voteSvc,
 		mux:            http.NewServeMux(),
 	}
 

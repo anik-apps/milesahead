@@ -1,9 +1,7 @@
 package web
 
 import (
-	"crypto/sha256"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"html"
 	"net/http"
@@ -304,67 +302,6 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprint(w, `</channel>`)
 	fmt.Fprint(w, `</rss>`)
-}
-
-func (app *App) handleVote(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		ArticleID int64 `json:"article_id"`
-		Vote      int   `json:"vote"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"invalid request"}`)
-		return
-	}
-
-	if req.Vote != 1 && req.Vote != -1 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"vote must be 1 or -1"}`)
-		return
-	}
-
-	ip := extractIP(r)
-	ipHash := fmt.Sprintf("%x", sha256.Sum256([]byte(ip)))
-
-	// Check if already voted.
-	voted, err := app.db.HasVoted(req.ArticleID, ipHash)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, `{"error":"internal error"}`)
-		return
-	}
-	if voted {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		fmt.Fprint(w, `{"error":"already voted"}`)
-		return
-	}
-
-	_, err = app.db.CreateVote(&db.ArticleVote{
-		ArticleID: req.ArticleID,
-		Vote:      req.Vote,
-		IPHash:    ipHash,
-	})
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, `{"error":"failed to record vote"}`)
-		return
-	}
-
-	vc, err := app.db.GetVoteCounts(req.ArticleID)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, `{"error":"failed to get counts"}`)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"status":"ok","upvotes":%d,"downvotes":%d}`, vc.Upvotes, vc.Downvotes)
 }
 
 // truncate returns the first n characters of s, appending "..." if truncated.

@@ -105,7 +105,7 @@ func setupAdminTestApp(t *testing.T) (*App, *db.Database) {
 		t.Fatalf("failed to write settings template: %v", err)
 	}
 
-	app, err := newAppWithTemplateDir(cfg, database, mgr, filepath.Join(tmpDir, "templates"))
+	app, err := newAppWithTemplateDir(cfg, database, mgr, nil, filepath.Join(tmpDir, "templates"))
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}
