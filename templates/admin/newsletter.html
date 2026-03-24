@@ -1,0 +1,58 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="admin-newsletter">
+    <h1>Newsletter</h1>
+
+    {{if .Success}}
+    <div class="alert alert-success">{{.Success}}</div>
+    {{end}}
+    {{if .Error}}
+    <div class="alert alert-error">{{.Error}}</div>
+    {{end}}
+
+    <section class="newsletter-preview">
+        <h2>Preview</h2>
+        {{if .NoContent}}
+        <p>No articles to include</p>
+        {{else}}
+        <div class="preview-panel">
+            <iframe srcdoc="{{.PreviewHTML}}" sandbox="" style="width:100%;min-height:500px;border:1px solid #ccc;"></iframe>
+        </div>
+        <form method="POST" action="/admin/newsletter/send" class="send-form">
+            {{template "csrf_field" $}}
+            <button type="submit" class="btn btn-primary">Send Now</button>
+        </form>
+        {{end}}
+    </section>
+
+    <section class="newsletter-history">
+        <h2>History</h2>
+        {{if .History}}
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Subject</th>
+                    <th>Articles</th>
+                    <th>Status</th>
+                    <th>Sent At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .History}}
+                <tr>
+                    <td>{{.Date}}</td>
+                    <td>{{.Subject}}</td>
+                    <td>{{.ArticleCount}}</td>
+                    <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
+                    <td>{{if .SentAt}}{{.SentAt.Format "2006-01-02 15:04"}}{{else}}&mdash;{{end}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p>No newsletters sent yet.</p>
+        {{end}}
+    </section>
+</div>
+{{end}}

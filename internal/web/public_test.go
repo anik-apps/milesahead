@@ -96,7 +96,7 @@ func setupPublicTestApp(t *testing.T) (*App, *db.Database) {
 		t.Fatalf("failed to write subscribe template: %v", err)
 	}
 
-	app, err := newAppWithTemplateDir(cfg, database, mgr, voteSvc, templateDir)
+	app, err := NewAppWithTemplateDir(cfg, database, mgr, voteSvc, nil, templateDir)
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}

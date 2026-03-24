@@ -476,6 +476,27 @@ func (d *Database) MarkNewsletterSent(id int64) error {
 	return err
 }
 
+// ListNewsletters returns all newsletters ordered by date descending.
+func (d *Database) ListNewsletters() ([]Newsletter, error) {
+	rows, err := d.db.Query(
+		`SELECT id, date, subject, html_content, status, article_count, sent_at FROM newsletters ORDER BY date DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var newsletters []Newsletter
+	for rows.Next() {
+		var n Newsletter
+		if err := rows.Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.SentAt); err != nil {
+			return nil, err
+		}
+		newsletters = append(newsletters, n)
+	}
+	return newsletters, rows.Err()
+}
+
 // --- Subscriber CRUD ---
 
 func (d *Database) CreateSubscriber(s *Subscriber) (int64, error) {

@@ -87,7 +87,7 @@ func main() {
 	defer sched.Stop()
 
 	// Web server
-	app, err := web.NewApp(cfg, database, articleMgr, voteSvc)
+	app, err := web.NewApp(cfg, database, articleMgr, voteSvc, newsletterSvc)
 	if err != nil {
 		log.Fatalf("failed to create web app: %v", err)
 	}

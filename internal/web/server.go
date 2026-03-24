@@ -36,23 +36,31 @@ var templateFuncs = template.FuncMap{
 	},
 }
 
+// NewsletterService defines the interface for newsletter operations used by admin handlers.
+type NewsletterService interface {
+	PreviewNext() (string, error)
+	SendDaily() error
+}
+
 // App is the main web application struct that holds dependencies and serves HTTP.
 type App struct {
 	db             *db.Database
 	cfg            *config.Config
 	articleManager *article.Manager
 	voteSvc        *vote.Service
+	newsletterSvc  NewsletterService
 	templates      map[string]*template.Template
 	mux            *http.ServeMux
 }
 
 // NewApp creates a new App, loads templates, and sets up routes.
-func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, voteSvc *vote.Service) (*App, error) {
+func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, voteSvc *vote.Service, newsletterSvc NewsletterService) (*App, error) {
 	app := &App{
 		db:             database,
 		cfg:            cfg,
 		articleManager: mgr,
 		voteSvc:        voteSvc,
+		newsletterSvc:  newsletterSvc,
 		mux:            http.NewServeMux(),
 	}
 
@@ -64,13 +72,14 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 	return app, nil
 }
 
-// newAppWithTemplateDir creates a new App loading templates from the specified directory.
-func newAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *article.Manager, voteSvc *vote.Service, templateDir string) (*App, error) {
+// NewAppWithTemplateDir creates a new App loading templates from the specified directory.
+func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *article.Manager, voteSvc *vote.Service, newsletterSvc NewsletterService, templateDir string) (*App, error) {
 	app := &App{
 		db:             database,
 		cfg:            cfg,
 		articleManager: mgr,
 		voteSvc:        voteSvc,
+		newsletterSvc:  newsletterSvc,
 		mux:            http.NewServeMux(),
 	}
 

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -14,6 +15,23 @@ import (
 	"github.com/kumaranik/milesahead/internal/db"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// mockNewsletterSvc implements NewsletterService for testing.
+type mockNewsletterSvc struct {
+	previewHTML string
+	previewErr  error
+	sendErr     error
+	sendCalled  bool
+}
+
+func (m *mockNewsletterSvc) PreviewNext() (string, error) {
+	return m.previewHTML, m.previewErr
+}
+
+func (m *mockNewsletterSvc) SendDaily() error {
+	m.sendCalled = true
+	return m.sendErr
+}
 
 // setupAdminTestApp creates a test App with article manager support and admin templates.
 func setupAdminTestApp(t *testing.T) (*App, *db.Database) {
@@ -105,7 +123,14 @@ func setupAdminTestApp(t *testing.T) (*App, *db.Database) {
 		t.Fatalf("failed to write settings template: %v", err)
 	}
 
-	app, err := newAppWithTemplateDir(cfg, database, mgr, nil, filepath.Join(tmpDir, "templates"))
+	// Write newsletter template.
+	newsletterContent := `{{template "layout" .}}
+{{define "content"}}<h1>Newsletter</h1>{{if .NoContent}}<p>No articles to include</p>{{else}}<div class="preview">{{.PreviewHTML}}</div>{{end}}{{if .Success}}<div class="success">{{.Success}}</div>{{end}}{{if .Error}}<div class="error">{{.Error}}</div>{{end}}{{if .History}}{{range .History}}<div class="newsletter-row">{{.Subject}} {{.ArticleCount}}</div>{{end}}{{end}}{{end}}`
+	if err := os.WriteFile(filepath.Join(templateDir, "newsletter.html"), []byte(newsletterContent), 0644); err != nil {
+		t.Fatalf("failed to write newsletter template: %v", err)
+	}
+
+	app, err := NewAppWithTemplateDir(cfg, database, mgr, nil, nil, filepath.Join(tmpDir, "templates"))
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}
@@ -591,6 +616,216 @@ func TestEditSource(t *testing.T) {
 	}
 	if source.URL != "https://new.com" {
 		t.Errorf("expected URL 'https://new.com', got %q", source.URL)
+	}
+}
+
+// setupNewsletterTestApp creates a test App with a mock newsletter service.
+func setupNewsletterTestApp(t *testing.T, mock *mockNewsletterSvc) (*App, *db.Database) {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open test db: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("testpassword123"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to generate bcrypt hash: %v", err)
+	}
+
+	cfg := &config.Config{
+		Admin: config.AdminConfig{
+			PasswordHash: string(hash),
+		},
+		Server: config.ServerConfig{
+			Port:   8080,
+			Domain: "localhost",
+		},
+		Votes: config.VotesConfig{
+			AlertThreshold: 5,
+		},
+		AI: config.AIConfig{
+			HFAPIToken: "hf_test_token_12345",
+		},
+	}
+
+	mgr := article.NewManager(database, nil)
+
+	templateDir := filepath.Join(tmpDir, "templates", "admin")
+	if err := os.MkdirAll(templateDir, 0755); err != nil {
+		t.Fatalf("failed to create template dir: %v", err)
+	}
+
+	layoutContent := `{{define "layout"}}<!DOCTYPE html><html><body>{{template "content" .}}</body></html>{{end}}
+{{define "csrf_field"}}<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">{{end}}`
+	if err := os.WriteFile(filepath.Join(tmpDir, "templates", "layout.html"), []byte(layoutContent), 0644); err != nil {
+		t.Fatalf("failed to write layout template: %v", err)
+	}
+
+	loginContent := `{{template "layout" .}}
+{{define "content"}}<form method="POST" action="/admin/login">{{template "csrf_field" .}}<input type="password" name="password"><button type="submit">Login</button></form>{{end}}`
+	if err := os.WriteFile(filepath.Join(templateDir, "login.html"), []byte(loginContent), 0644); err != nil {
+		t.Fatalf("failed to write login template: %v", err)
+	}
+
+	dashboardContent := `{{template "layout" .}}
+{{define "content"}}<h1>Dashboard</h1>{{range .Articles}}<div class="article">{{.Title}}</div>{{end}}{{end}}`
+	if err := os.WriteFile(filepath.Join(templateDir, "dashboard.html"), []byte(dashboardContent), 0644); err != nil {
+		t.Fatalf("failed to write dashboard template: %v", err)
+	}
+
+	newsletterContent := `{{template "layout" .}}
+{{define "content"}}<h1>Newsletter</h1>{{if .NoContent}}<p>No articles to include</p>{{else}}<div class="preview">{{.PreviewHTML}}</div>{{end}}{{if .Success}}<div class="success">{{.Success}}</div>{{end}}{{if .Error}}<div class="error">{{.Error}}</div>{{end}}{{if .History}}{{range .History}}<div class="newsletter-row">{{.Subject}} {{.ArticleCount}}</div>{{end}}{{end}}{{end}}`
+	if err := os.WriteFile(filepath.Join(templateDir, "newsletter.html"), []byte(newsletterContent), 0644); err != nil {
+		t.Fatalf("failed to write newsletter template: %v", err)
+	}
+
+	app, err := NewAppWithTemplateDir(cfg, database, mgr, nil, mock, filepath.Join(tmpDir, "templates"))
+	if err != nil {
+		t.Fatalf("failed to create test app: %v", err)
+	}
+
+	return app, database
+}
+
+func TestAdminNewsletter_Returns200WithPreview(t *testing.T) {
+	mock := &mockNewsletterSvc{
+		previewHTML: "<h1>Test Newsletter</h1><p>Hello world</p>",
+	}
+	app, _ := setupNewsletterTestApp(t, mock)
+
+	cookies := loginAndGetSession(t, app)
+	session, _ := getSessionAndCSRF(cookies)
+
+	rec := doAdminGET(t, app, "/admin/newsletter", session)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Newsletter") {
+		t.Error("expected body to contain 'Newsletter'")
+	}
+	if !strings.Contains(body, "Test Newsletter") {
+		t.Error("expected body to contain preview HTML")
+	}
+	if strings.Contains(body, "No articles to include") {
+		t.Error("should not show 'No articles to include' when preview available")
+	}
+}
+
+func TestAdminNewsletter_NoContent(t *testing.T) {
+	mock := &mockNewsletterSvc{
+		previewErr: fmt.Errorf("no approved articles in the last 24 hours"),
+	}
+	app, _ := setupNewsletterTestApp(t, mock)
+
+	cookies := loginAndGetSession(t, app)
+	session, _ := getSessionAndCSRF(cookies)
+
+	rec := doAdminGET(t, app, "/admin/newsletter", session)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "No articles to include") {
+		t.Error("expected body to contain 'No articles to include'")
+	}
+}
+
+func TestNewsletterSend_TriggersAndRedirects(t *testing.T) {
+	mock := &mockNewsletterSvc{
+		previewHTML: "<h1>Newsletter</h1>",
+	}
+	app, _ := setupNewsletterTestApp(t, mock)
+
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+
+	rec := doAdminPOST(t, app, "/admin/newsletter/send", session, csrf, nil)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("expected status 303, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	if !mock.sendCalled {
+		t.Error("expected SendDaily to be called")
+	}
+
+	loc := rec.Header().Get("Location")
+	if !strings.Contains(loc, "/admin/newsletter") {
+		t.Errorf("expected redirect to /admin/newsletter, got %q", loc)
+	}
+	if !strings.Contains(loc, "success=") {
+		t.Errorf("expected success parameter in redirect URL, got %q", loc)
+	}
+}
+
+func TestNewsletterSend_Error(t *testing.T) {
+	mock := &mockNewsletterSvc{
+		sendErr: fmt.Errorf("smtp connection failed"),
+	}
+	app, _ := setupNewsletterTestApp(t, mock)
+
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+
+	rec := doAdminPOST(t, app, "/admin/newsletter/send", session, csrf, nil)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("expected status 303, got %d", rec.Code)
+	}
+
+	loc := rec.Header().Get("Location")
+	if !strings.Contains(loc, "error=") {
+		t.Errorf("expected error parameter in redirect URL, got %q", loc)
+	}
+}
+
+func TestNewsletterHistory_ListsSentNewsletters(t *testing.T) {
+	mock := &mockNewsletterSvc{
+		previewErr: fmt.Errorf("no articles"),
+	}
+	app, database := setupNewsletterTestApp(t, mock)
+
+	// Insert some newsletter history.
+	database.CreateNewsletter(&db.Newsletter{
+		Date:         "2026-03-23",
+		Subject:      "Daily Digest March 23",
+		HTMLContent:  "<p>test</p>",
+		Status:       "sent",
+		ArticleCount: 3,
+	})
+	database.CreateNewsletter(&db.Newsletter{
+		Date:         "2026-03-24",
+		Subject:      "Daily Digest March 24",
+		HTMLContent:  "<p>test2</p>",
+		Status:       "draft",
+		ArticleCount: 2,
+	})
+
+	cookies := loginAndGetSession(t, app)
+	session, _ := getSessionAndCSRF(cookies)
+
+	rec := doAdminGET(t, app, "/admin/newsletter/history", session)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Daily Digest March 23") {
+		t.Error("expected body to contain 'Daily Digest March 23'")
+	}
+	if !strings.Contains(body, "Daily Digest March 24") {
+		t.Error("expected body to contain 'Daily Digest March 24'")
 	}
 }
 

@@ -1,7 +1,6 @@
 package web
 
 import (
-	"fmt"
 	"net/http"
 	"time"
 )
@@ -43,6 +42,10 @@ func (app *App) setupRoutes() {
 	adminMux.HandleFunc("POST /admin/articles/{id}/unpublish", app.handleUnpublishArticle)
 	adminMux.HandleFunc("POST /admin/articles/{id}/unpublish-revise", app.handleUnpublishAndRevise)
 
+	// Newsletter action routes.
+	adminMux.HandleFunc("POST /admin/newsletter/send", app.handleNewsletterSend)
+	adminMux.HandleFunc("GET /admin/newsletter/history", app.handleNewsletterHistory)
+
 	// Source action routes.
 	adminMux.HandleFunc("POST /admin/sources/add", app.handleAddSource)
 	adminMux.HandleFunc("POST /admin/sources/{id}/edit", app.handleEditSource)
@@ -54,8 +57,3 @@ func (app *App) setupRoutes() {
 	app.mux.HandleFunc("POST /api/vote", app.handleVoteAPI)
 }
 
-// --- Placeholder handlers ---
-
-func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "Admin Newsletter")
-}

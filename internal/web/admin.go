@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -421,6 +422,76 @@ func maskString(s string) string {
 		return "****"
 	}
 	return s[:4] + strings.Repeat("*", len(s)-4)
+}
+
+func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
+	var previewHTML string
+	var noContent bool
+	var successMsg, errorMsg string
+
+	if msg := r.URL.Query().Get("success"); msg != "" {
+		successMsg = msg
+	}
+	if msg := r.URL.Query().Get("error"); msg != "" {
+		errorMsg = msg
+	}
+
+	if app.newsletterSvc != nil {
+		html, err := app.newsletterSvc.PreviewNext()
+		if err != nil {
+			noContent = true
+		} else {
+			previewHTML = html
+		}
+	} else {
+		noContent = true
+	}
+
+	// Fetch newsletter history.
+	var history []db.Newsletter
+	if newsletters, err := app.db.ListNewsletters(); err == nil {
+		history = newsletters
+	}
+
+	data := map[string]interface{}{
+		"Title":       "Newsletter",
+		"PreviewHTML": previewHTML,
+		"NoContent":   noContent,
+		"History":     history,
+		"Success":     successMsg,
+		"Error":       errorMsg,
+		"CSRFToken":   getCSRFToken(w, r),
+	}
+	app.renderTemplate(w, "newsletter.html", data)
+}
+
+func (app *App) handleNewsletterSend(w http.ResponseWriter, r *http.Request) {
+	if app.newsletterSvc == nil {
+		http.Redirect(w, r, "/admin/newsletter?error=Newsletter+service+not+configured", http.StatusSeeOther)
+		return
+	}
+
+	if err := app.newsletterSvc.SendDaily(); err != nil {
+		http.Redirect(w, r, "/admin/newsletter?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/newsletter?success=Newsletter+sent+successfully", http.StatusSeeOther)
+}
+
+func (app *App) handleNewsletterHistory(w http.ResponseWriter, r *http.Request) {
+	newsletters, err := app.db.ListNewsletters()
+	if err != nil {
+		http.Error(w, "Failed to load newsletters", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Title":     "Newsletter History",
+		"History":   newsletters,
+		"CSRFToken": getCSRFToken(w, r),
+	}
+	app.renderTemplate(w, "newsletter.html", data)
 }
 
 // dbSource is a type alias to avoid import cycle in this file.
