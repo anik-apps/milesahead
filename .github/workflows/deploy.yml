@@ -1,7 +1,7 @@
 name: Deploy
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
     inputs:
       full_setup:
@@ -33,7 +33,7 @@ jobs:
   setup:
     needs: build
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.full_setup == 'true' || contains(github.ref, 'v0.1.0') }}
+    if: ${{ github.event.inputs.full_setup == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - name: Setup SSH
