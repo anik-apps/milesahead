@@ -146,35 +146,53 @@ func TestFullPipeline(t *testing.T) {
 		criticResponse(85),
 	)
 
-	// 2. Create source pointing to mock RSS.
+	// 2. Create two sources pointing to mock RSS (multi-source required).
 	rssURL := rssServer.URL + "/feed.xml"
-	sourceID, err := database.CreateSource(&db.Source{
+	sourceID1, err := database.CreateSource(&db.Source{
 		Name:   "TestFeed",
 		URL:    rssServer.URL,
 		RSSURL: &rssURL,
 		Active: true,
 	})
 	if err != nil {
-		t.Fatalf("creating source: %v", err)
+		t.Fatalf("creating source 1: %v", err)
+	}
+	sourceID2, err := database.CreateSource(&db.Source{
+		Name:   "TestFeed2",
+		URL:    rssServer.URL,
+		RSSURL: &rssURL,
+		Active: true,
+	})
+	if err != nil {
+		t.Fatalf("creating source 2: %v", err)
 	}
 
-	// 3. Run scanner -> verify raw_articles created (2 articles).
+	// 3. Run scanner on both sources.
 	sc := scanner.NewScanner(database, "test-agent")
-	result, err := sc.ScanSource(sourceID)
+	result, err := sc.ScanSource(sourceID1)
 	if err != nil {
-		t.Fatalf("scanning source: %v", err)
+		t.Fatalf("scanning source 1: %v", err)
 	}
 	if result.NewArticles != 2 {
-		t.Fatalf("expected 2 new articles, got %d", result.NewArticles)
+		t.Fatalf("expected 2 new articles from source 1, got %d", result.NewArticles)
 	}
+	// Source 2 gets same RSS but different source_id (different hash since title+url same → dedup).
+	// Manually insert a matching article for source 2 to ensure multi-source cluster.
+	rawArticles1, _ := database.GetRawArticlesBySourceID(sourceID1)
+	database.CreateRawArticle(&db.RawArticle{
+		SourceID:    sourceID2,
+		Title:       rawArticles1[0].Title,
+		URL:         rawArticles1[0].URL + "?src=2",
+		Content:     rawArticles1[0].Content,
+		PublishedAt: rawArticles1[0].PublishedAt,
+		Hash:        "alt-hash-source2",
+	})
 
-	rawArticles, err := database.GetRawArticlesBySourceID(sourceID)
-	if err != nil {
-		t.Fatalf("getting raw articles: %v", err)
-	}
-	if len(rawArticles) != 2 {
-		t.Fatalf("expected 2 raw articles in DB, got %d", len(rawArticles))
-	}
+	var rawArticles []db.RawArticle
+	r1, _ := database.GetRawArticlesBySourceID(sourceID1)
+	r2, _ := database.GetRawArticlesBySourceID(sourceID2)
+	rawArticles = append(rawArticles, r1...)
+	rawArticles = append(rawArticles, r2...)
 
 	// 4. Run cluster on new articles -> verify clusters formed.
 	clusterArticles := make([]cluster.Article, len(rawArticles))
@@ -217,8 +235,13 @@ func TestFullPipeline(t *testing.T) {
 	for _, ca := range bestCluster.Articles {
 		for _, ra := range rawArticles {
 			if ra.ID == ca.ID {
+				src, _ := database.GetSource(ra.SourceID)
+				name := "Unknown"
+				if src != nil {
+					name = src.Name
+				}
 				sourceArticles = append(sourceArticles, ai.SourceArticle{
-					Name:    "TestFeed",
+					Name:    name,
 					URL:     ra.URL,
 					Title:   ra.Title,
 					Content: ra.Content,

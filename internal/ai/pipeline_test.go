@@ -16,6 +16,7 @@ func TestPipeline_Process_AboveThreshold(t *testing.T) {
 
 	sources := []SourceArticle{
 		{Name: "TPG", URL: "https://tpg.com/1", Title: "Bonus", Content: "40% bonus to ANA"},
+		{Name: "OMAAT", URL: "https://omaat.com/1", Title: "ANA Bonus", Content: "40% transfer bonus"},
 	}
 
 	result, err := pipeline.Process("deal", sources)
@@ -53,6 +54,7 @@ func TestPipeline_Process_BelowThreshold(t *testing.T) {
 
 	sources := []SourceArticle{
 		{Name: "DofC", URL: "https://dofc.com/1", Title: "Deals", Content: "deals info"},
+		{Name: "VFTW", URL: "https://vftw.com/1", Title: "Deals", Content: "more deals"},
 	}
 
 	result, err := pipeline.Process("deal", sources)
@@ -65,6 +67,21 @@ func TestPipeline_Process_BelowThreshold(t *testing.T) {
 	// adjustScore penalizes failed checks: 40 - (4 * 15) = -20, capped to 0
 	if result.Verification.Score != 0 {
 		t.Errorf("expected adjusted score 0, got %d", result.Verification.Score)
+	}
+}
+
+func TestPipeline_Process_SingleSourceRejected(t *testing.T) {
+	gen := NewGenerator(&mockHFClient{response: "Title\nContent"}, "model", nil)
+	critic := NewCritic(&mockHFClient{response: `{"score":90,"issues":[],"factual_check":true,"attribution_check":true,"completeness_check":true,"hallucination_check":true}`}, "model")
+	pipeline := NewPipeline(gen, critic, 80)
+
+	sources := []SourceArticle{
+		{Name: "TPG", URL: "https://tpg.com/1", Title: "Deal", Content: "info"},
+	}
+
+	_, err := pipeline.Process("deal", sources)
+	if err != ErrNotEnoughSources {
+		t.Errorf("expected ErrNotEnoughSources, got: %v", err)
 	}
 }
 

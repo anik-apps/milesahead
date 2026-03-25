@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -26,9 +27,22 @@ func NewPipeline(generator *Generator, critic *Critic, threshold int) *Pipeline 
 	return &Pipeline{generator: generator, critic: critic, threshold: threshold}
 }
 
+// ErrNotEnoughSources is returned when a cluster has fewer than 2 unique sources.
+var ErrNotEnoughSources = fmt.Errorf("need at least 2 different sources to generate an article")
+
 // Process generates an article, verifies it, and if the critic finds issues
 // but the score is above threshold, auto-revises once before finalizing.
+// Requires at least 2 sources from different sites to reduce hallucination risk.
 func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*PipelineResult, error) {
+	// Require multiple sources from different sites
+	uniqueSources := make(map[string]bool)
+	for _, s := range sources {
+		uniqueSources[s.Name] = true
+	}
+	if len(uniqueSources) < 2 {
+		return nil, ErrNotEnoughSources
+	}
+
 	content, err := p.generator.Generate(articleType, sources)
 	if err != nil {
 		return nil, err
