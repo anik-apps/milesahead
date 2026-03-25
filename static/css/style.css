@@ -662,6 +662,85 @@ tr:hover {
     background: var(--card-bg);
 }
 
+/* Admin Sources & Critic Sections */
+.admin-sources-section,
+.admin-critic-section {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.admin-sources-section h4,
+.admin-critic-section h4 {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.admin-sources-section ul {
+    list-style: none;
+    padding: 0;
+}
+
+.admin-sources-section li {
+    padding: 0.35rem 0;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.admin-sources-section li:last-child {
+    border-bottom: none;
+}
+
+.critic-checks {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.critic-check {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.check-pass {
+    background: #dcfce7;
+    color: #16a34a;
+}
+
+.check-fail {
+    background: #fef2f2;
+    color: #dc2626;
+}
+
+[data-theme="dark"] .check-pass {
+    background: #052e16;
+    color: #4ade80;
+}
+
+[data-theme="dark"] .check-fail {
+    background: #3b1114;
+    color: #f87171;
+}
+
+.critic-issues {
+    padding-left: 1.2rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.critic-issues li {
+    padding: 0.25rem 0;
+}
+
 /* Admin Navigation */
 .admin-nav {
     display: flex;

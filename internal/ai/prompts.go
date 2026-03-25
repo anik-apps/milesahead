@@ -32,16 +32,35 @@ func formatSourceLinks(sources []SourceArticle) string {
 	return strings.Join(parts, "\n")
 }
 
-const htmlInstructions = `
-IMPORTANT OUTPUT FORMAT RULES:
-- Output HTML only. Do NOT use Markdown syntax (no **, no ##, no [] links).
-- Use <strong> for bold, <em> for italic, <h3> for subheadings, <ul>/<li> for lists, <p> for paragraphs.
-- For source citations, use HTML links: <a href="SOURCE_URL">[Source Name]</a>
-- The first line must be the article title as plain text (no HTML tags, no ** markers).
-- After the title line, write the full article body in HTML.`
+const writingStyle = `
+WRITING STYLE — THIS IS CRITICAL:
+- Write like a knowledgeable friend giving practical advice. Calm, informative, matter-of-fact.
+- DO NOT sound like a salesman. Never call things "incredible", "fantastic", "amazing", "exciting", or "deal of a lifetime."
+- Instead, be practical: "If you've been sitting on Amex points and planning a trip to Japan, now is a good time to transfer."
+  "This is worth considering if you're in the market for a new travel card." "Here's what changed and what it means for your points."
+- You CAN use the occasional witty aside, idiom, or light humor — but sparingly. One per article, max.
+  Example: "Rome wasn't built in a day, but your award ticket to Rome can be booked in about five minutes."
+- Vary sentence length. Be direct. Cut filler words.
+- Use "you" and "your" to speak directly to the reader.
+- Focus on practical implications: what should the reader DO with this information?
+- Avoid robotic phrases: "In this article", "It is worth noting", "According to sources", "Let's dive in".
+- NO source citations or links in the article body. Do not mention source names (TPG, OMAAT, etc.) UNLESS the article is about an unconfirmed report from a specific site.
+  WRONG: "American Express is offering a 40% bonus [TPG]."
+  WRONG: "According to The Points Guy, there is a 40% bonus."
+  RIGHT: "American Express is offering a 40% transfer bonus to ANA through March 31."
+  EXCEPTION (unconfirmed): "The Points Guy is reporting that Chase may change Sapphire Reserve benefits in April — take this with a grain of salt until there's official confirmation."
+`
 
-// DealAlertPrompt builds a prompt for a concise deal-alert post with HTML
-// source citations.
+const htmlFormat = `
+OUTPUT FORMAT:
+- Output HTML only. No Markdown (no **, no ##, no [text](url)).
+- Use <strong> for bold, <em> for italic, <h3> for subheadings, <ul>/<li> for lists, <p> for paragraphs.
+- The first line must be the article title as plain text (no HTML tags, no formatting).
+- After the title line, write the full article body in HTML.
+- Do NOT include any source links or citation markers in the output.`
+
+// DealAlertPrompt builds a prompt for a deal-alert post written in a natural,
+// engaging style with no source citations in the body.
 func DealAlertPrompt(sources []SourceArticle) string {
 	return fmt.Sprintf(`You are a miles-and-points deal alert writer.
 
@@ -51,65 +70,56 @@ Given the following source articles, extract the key details:
 - Start and end dates
 - Any restrictions or conditions
 
-Write a concise deal-alert post with inline source citations linking to the original articles.
-
-Source link mapping:
-%s
-
-Sources:
+Write an engaging deal-alert post that makes readers excited about this opportunity.
 %s
 %s
-Write the deal alert post now.`, formatSourceLinks(sources), formatSources(sources), htmlInstructions)
+Sources (for your reference only — do NOT cite these in the article):
+%s
+Write the deal alert post now.`, writingStyle, htmlFormat, formatSources(sources))
 }
 
-// RoundupPrompt builds a prompt for a roundup article that compares, ranks,
-// and cross-references multiple deals with HTML links.
+// RoundupPrompt builds a prompt for a roundup article with natural writing.
 func RoundupPrompt(sources []SourceArticle) string {
 	return fmt.Sprintf(`You are a miles-and-points roundup writer.
 
 Given the following source articles, compare and rank the deals discussed.
-Cross-reference information across sources with inline citations linking to the originals.
-
-Source link mapping:
-%s
-
-Sources:
+Synthesize the information into one cohesive, entertaining article.
 %s
 %s
-Write the roundup post now.`, formatSourceLinks(sources), formatSources(sources), htmlInstructions)
+Sources (for your reference only — do NOT cite these in the article):
+%s
+Write the roundup post now.`, writingStyle, htmlFormat, formatSources(sources))
 }
 
-// SummaryPrompt builds a prompt that synthesizes multiple perspectives into a
-// balanced summary article with HTML source links.
+// SummaryPrompt builds a prompt for a summary article with personality.
 func SummaryPrompt(sources []SourceArticle) string {
 	return fmt.Sprintf(`You are a miles-and-points summary writer.
 
-Given the following source articles, synthesize the different perspectives into a balanced summary.
-Present all viewpoints fairly with inline citations linking to the originals.
-
-Source link mapping:
-%s
-
-Sources:
+Given the following source articles, synthesize the information into a balanced, insightful summary.
+Add your own analysis and practical advice for readers.
 %s
 %s
-Write the summary post now.`, formatSourceLinks(sources), formatSources(sources), htmlInstructions)
+Sources (for your reference only — do NOT cite these in the article):
+%s
+Write the summary post now.`, writingStyle, htmlFormat, formatSources(sources))
 }
 
-// CriticPrompt builds a prompt that instructs the model to verify a generated
-// article against its sources, returning a JSON verdict.
+// CriticPrompt builds a comprehensive verification prompt. The critic checks
+// factual accuracy, content quality, readability, and HTML validity.
 func CriticPrompt(generatedArticle string, sources []SourceArticle) string {
-	return fmt.Sprintf(`You are a fact-checking critic for miles-and-points content.
+	return fmt.Sprintf(`You are a thorough editorial critic for a miles-and-points website.
 
-Verify the following generated article against the original source articles.
+Review the following generated article against the original source articles. You must verify EVERYTHING.
 
-Check for:
-1. Factual accuracy — do all numbers, dates, and claims match the sources?
-2. Attribution — is every factual claim cited with an HTML link <a href="...">[Source]</a>? Plain text [Source] without a link is a FAILURE.
-3. Completeness — are key details from the sources included?
-4. Hallucination — does the article contain information NOT in the sources?
-5. Orphan citations — are there citations to sources that were not provided?
-6. HTML format — is the content valid HTML (not Markdown)? Are there any ** markers or ## headings that should be HTML tags?
+VERIFICATION CHECKLIST:
+1. FACTUAL ACCURACY — Does every number, date, percentage, program name, and specific claim in the article match what the sources say? Flag ANY discrepancy, even small ones.
+2. COMPLETENESS — Are the most important details from the sources included? Did the article miss anything a reader would need to know?
+3. HALLUCINATION — Does the article contain ANY information, claims, or details that are NOT supported by the provided sources? This includes made-up dates, invented restrictions, or assumed conditions.
+4. READABILITY — Does the article read naturally? Does it flow well? Is it engaging and not robotic? Does the tone feel like a real person wrote it?
+5. HTML VALIDITY — Is the output clean HTML? No Markdown artifacts (**, ##, []() links)? Are tags properly opened and closed?
+6. SOURCE LEAKAGE — Does the article mention source names (TPG, OMAAT, Doctor of Credit, etc.) in the body? It should NOT, unless reporting an unconfirmed claim from a specific site.
+7. LINK CHECK — The article should NOT contain any <a href> links or citation markers in the body. The only exception is if reporting an unconfirmed claim attributed to a specific source.
+8. COHERENCE — Does the article make logical sense from start to finish? Are there any contradictions, non-sequiturs, or confusing passages?
 
 Generated Article:
 %s
@@ -117,32 +127,33 @@ Generated Article:
 Original Sources:
 %s
 
-Return ONLY a JSON object with this exact structure (no other text):
-{"score": <0-100>, "issues": [<array of issue strings>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}`, generatedArticle, formatSources(sources))
+Return ONLY a JSON object (no other text):
+{"score": <0-100>, "issues": [<array of specific issue strings>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
+
+Scoring guide:
+- 90-100: Publish-ready. All facts verified, reads great, no issues.
+- 70-89: Minor issues. Small factual gaps or style nits but fundamentally sound.
+- 50-69: Significant issues. Missing key facts, contains unverified claims, or reads poorly.
+- Below 50: Major problems. Hallucinations, factual errors, or incoherent writing.`, generatedArticle, formatSources(sources))
 }
 
-// RevisionPrompt builds a prompt that instructs the model to revise a
-// previously generated article based on critic feedback.
+// RevisionPrompt builds a prompt for revising an article based on feedback.
 func RevisionPrompt(sources []SourceArticle, previousOutput, feedback, criticIssues string) string {
-	return fmt.Sprintf(`You are a miles-and-points content editor.
+	return fmt.Sprintf(`You are a miles-and-points content editor revising an article.
 
-Revise the following article based on the feedback and issues listed below.
-Address every feedback point. Ensure all citations are HTML links.
-
+Fix every issue listed below. Keep the engaging, human tone.
+%s
+%s
 Previous Article:
 %s
 
-Feedback:
+Admin Feedback:
 %s
 
 Critic Issues:
 %s
 
-Source link mapping:
+Sources (for your reference only — do NOT cite these in the article):
 %s
-
-Original Sources:
-%s
-%s
-Write the revised article now.`, previousOutput, feedback, criticIssues, formatSourceLinks(sources), formatSources(sources), htmlInstructions)
+Write the revised article now.`, writingStyle, htmlFormat, previousOutput, feedback, criticIssues, formatSources(sources))
 }

@@ -33,6 +33,36 @@
                         <summary>{{.Title}}</summary>
                         <div class="article-detail">
                             <div class="article-content">{{.Content | safeHTML}}</div>
+
+                            {{if .Sources}}
+                            <div class="admin-sources-section">
+                                <h4>Sources</h4>
+                                <ul>
+                                    {{range .Sources}}
+                                    <li><strong>{{.Name}}</strong>: <a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}</a></li>
+                                    {{end}}
+                                </ul>
+                            </div>
+                            {{end}}
+
+                            {{if .CriticReport}}
+                            <div class="admin-critic-section">
+                                <h4>Critic Report (Score: {{.CriticReport.Score}}/100)</h4>
+                                <div class="critic-checks">
+                                    <span class="critic-check {{if eq .CriticReport.FactualCheck "pass"}}check-pass{{else}}check-fail{{end}}">Factual: {{.CriticReport.FactualCheck}}</span>
+                                    <span class="critic-check {{if eq .CriticReport.AttributionCheck "pass"}}check-pass{{else}}check-fail{{end}}">Attribution: {{.CriticReport.AttributionCheck}}</span>
+                                    <span class="critic-check {{if eq .CriticReport.CompletenessCheck "pass"}}check-pass{{else}}check-fail{{end}}">Completeness: {{.CriticReport.CompletenessCheck}}</span>
+                                    <span class="critic-check {{if eq .CriticReport.HallucinationCheck "pass"}}check-pass{{else}}check-fail{{end}}">Hallucination: {{.CriticReport.HallucinationCheck}}</span>
+                                </div>
+                                {{if .CriticReport.Issues}}
+                                <ul class="critic-issues">
+                                    {{range .CriticReport.Issues}}
+                                    <li>{{.}}</li>
+                                    {{end}}
+                                </ul>
+                                {{end}}
+                            </div>
+                            {{end}}
                         </div>
                     </details>
                 </td>

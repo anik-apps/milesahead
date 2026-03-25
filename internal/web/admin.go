@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -10,6 +11,23 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/db"
 )
+
+// adminSourceInfo holds source article info for admin display.
+type adminSourceInfo struct {
+	Name  string
+	Title string
+	URL   string
+}
+
+// adminCriticReport holds the critic's verification details.
+type adminCriticReport struct {
+	Score            int
+	Issues           []string
+	FactualCheck     string
+	AttributionCheck string
+	CompletenessCheck string
+	HallucinationCheck string
+}
 
 // adminArticleRow holds data for a single article row in admin views.
 type adminArticleRow struct {
@@ -26,6 +44,8 @@ type adminArticleRow struct {
 	Downvotes         int
 	Flagged           bool
 	PublishedAt       string
+	Sources           []adminSourceInfo
+	CriticReport      *adminCriticReport
 }
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
@@ -49,9 +69,35 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 
 		if v, err := app.db.GetLatestVerification(a.ID); err == nil {
 			row.VerificationScore = v.Score
+			var issues []string
+			if v.IssuesJSON != "" && v.IssuesJSON != "[]" {
+				json.Unmarshal([]byte(v.IssuesJSON), &issues)
+			}
+			row.CriticReport = &adminCriticReport{
+				Score:              v.Score,
+				Issues:             issues,
+				FactualCheck:       v.FactualCheck,
+				AttributionCheck:   v.AttributionCheck,
+				CompletenessCheck:  v.CompletenessCheck,
+				HallucinationCheck: v.HallucinationCheck,
+			}
 		}
 		if count, err := app.db.CountArticleSources(a.ID); err == nil {
 			row.SourceCount = count
+		}
+		if rawArticles, err := app.db.GetLinkedRawArticles(a.ID); err == nil {
+			for _, ra := range rawArticles {
+				src, _ := app.db.GetSource(ra.SourceID)
+				name := "Unknown"
+				if src != nil {
+					name = src.Name
+				}
+				row.Sources = append(row.Sources, adminSourceInfo{
+					Name:  name,
+					Title: ra.Title,
+					URL:   ra.URL,
+				})
+			}
 		}
 
 		rows = append(rows, row)

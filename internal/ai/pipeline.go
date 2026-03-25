@@ -47,6 +47,9 @@ func (p *Pipeline) ProcessWithFeedback(sources []SourceArticle, previousOutput, 
 }
 
 func (p *Pipeline) buildResult(content, articleType string, sources []SourceArticle) (*PipelineResult, error) {
+	// Clean up any remaining Markdown in the content
+	content = cleanMarkdown(content)
+
 	verification, err := p.critic.Verify(content, sources)
 	if err != nil {
 		return nil, err
@@ -61,6 +64,31 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
 	}, nil
+}
+
+// cleanMarkdown converts common Markdown remnants to HTML.
+func cleanMarkdown(s string) string {
+	// Convert **bold** to <strong>bold</strong>
+	for strings.Contains(s, "**") {
+		start := strings.Index(s, "**")
+		rest := s[start+2:]
+		end := strings.Index(rest, "**")
+		if end == -1 {
+			break
+		}
+		s = s[:start] + "<strong>" + rest[:end] + "</strong>" + rest[end+2:]
+	}
+	// Convert ## Heading to <h3>Heading</h3>
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## ") {
+			lines[i] = "<h3>" + strings.TrimPrefix(trimmed, "## ") + "</h3>"
+		} else if strings.HasPrefix(trimmed, "### ") {
+			lines[i] = "<h3>" + strings.TrimPrefix(trimmed, "### ") + "</h3>"
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // extractTitle returns the first line of the generated content as the title,
