@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -207,6 +208,13 @@ func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Failed to request revision: %v", err), http.StatusBadRequest)
 		return
 	}
+
+	// Trigger AI regeneration immediately in the background
+	go func() {
+		if err := app.articleManager.ProcessRevision(id); err != nil {
+			log.Printf("revision processing failed for article %d: %v", id, err)
+		}
+	}()
 
 	http.Redirect(w, r, "/admin/dashboard", http.StatusSeeOther)
 }
