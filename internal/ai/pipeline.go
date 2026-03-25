@@ -52,6 +52,11 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		return nil, ErrNotEnoughSources
 	}
 
+	// Auto-detect article type if not specified
+	if articleType == "" || articleType == "auto" {
+		articleType = detectArticleType(sources)
+	}
+
 	content, err := p.generator.Generate(articleType, sources)
 	if err != nil {
 		return nil, err
@@ -173,6 +178,33 @@ func adjustScore(v *VerificationResult) int {
 	}
 
 	return score
+}
+
+// detectArticleType determines the article type from source content.
+// Deal: time-limited offers (bonuses, sales, discounts, signup offers)
+// Summary: news, changes, analysis, reviews
+func detectArticleType(sources []SourceArticle) string {
+	dealKeywords := []string{"bonus", "sale", "discount", "offer", "deal", "save", "off", "promotion", "sign-up", "signup", "limited time", "flash", "promo"}
+	dealScore := 0
+	for _, s := range sources {
+		lower := strings.ToLower(s.Title + " " + s.Content[:min(200, len(s.Content))])
+		for _, kw := range dealKeywords {
+			if strings.Contains(lower, kw) {
+				dealScore++
+			}
+		}
+	}
+	if dealScore >= 2 {
+		return "deal"
+	}
+	return "summary"
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // combinedCritique runs both critics and merges their results.
