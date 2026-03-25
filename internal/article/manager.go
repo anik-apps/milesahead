@@ -78,8 +78,9 @@ func (m *Manager) Approve(articleID int64) error {
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
 	}
-	if article.Status != db.StatusPending && article.Status != db.StatusUnpublished {
-		return fmt.Errorf("cannot approve article with status %q, must be %q or %q", article.Status, db.StatusPending, db.StatusUnpublished)
+	allowed := map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true}
+	if !allowed[article.Status] {
+		return fmt.Errorf("cannot approve article with status %q", article.Status)
 	}
 	return m.db.UpdateArticleStatus(articleID, db.StatusApproved)
 }
@@ -90,8 +91,9 @@ func (m *Manager) Reject(articleID int64) error {
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
 	}
-	if article.Status != db.StatusPending && article.Status != db.StatusUnpublished {
-		return fmt.Errorf("cannot reject article with status %q, must be %q or %q", article.Status, db.StatusPending, db.StatusUnpublished)
+	allowed := map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true}
+	if !allowed[article.Status] {
+		return fmt.Errorf("cannot reject article with status %q", article.Status)
 	}
 	return m.db.UpdateArticleStatus(articleID, db.StatusRejected)
 }
@@ -103,8 +105,9 @@ func (m *Manager) RequestRevision(articleID int64, feedback string, source strin
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
 	}
-	if article.Status != db.StatusPending && article.Status != db.StatusUnpublished {
-		return fmt.Errorf("cannot request revision for article with status %q, must be %q or %q", article.Status, db.StatusPending, db.StatusUnpublished)
+	allowed := map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true}
+	if !allowed[article.Status] {
+		return fmt.Errorf("cannot request revision for article with status %q", article.Status)
 	}
 
 	if err := m.db.UpdateArticleStatus(articleID, db.StatusRevisionRequested); err != nil {
