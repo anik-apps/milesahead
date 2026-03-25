@@ -2,26 +2,165 @@ name: Deploy
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      full_setup:
+        description: 'Run full initial setup (nginx, systemd, certbot, config)'
+        type: boolean
+        default: false
+
+env:
+  APP_DIR: /opt/milesahead
+  APP_USER: milesahead
+  DOMAIN: milesahead.kumaranik.com
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-      - name: Build
+      - name: Build ARM64 binary
         run: GOOS=linux GOARCH=arm64 go build -o milesahead ./cmd/milesahead
-      - name: Deploy to OCI
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: milesahead-arm64
+          path: milesahead
+
+  setup:
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.full_setup == 'true' || contains(github.ref, 'v0.1.0') }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.OCI_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan ${{ secrets.OCI_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Initial server setup
         env:
-          SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
+        run: |
+          SSH="ssh $OCI_USER@$OCI_HOST"
+
+          # Install nginx and certbot if not present
+          $SSH "which nginx || (sudo apt-get update && sudo apt-get install -y nginx certbot python3-certbot-nginx)"
+
+          # Create app user and directories
+          $SSH "id -u ${{ env.APP_USER }} 2>/dev/null || sudo useradd -r -s /bin/false ${{ env.APP_USER }}"
+          $SSH "sudo mkdir -p ${{ env.APP_DIR }}/data && sudo chown -R ${{ env.APP_USER }}:${{ env.APP_USER }} ${{ env.APP_DIR }}"
+
+          # Deploy config file
+          cat > /tmp/config.yaml << 'CONFIGEOF'
+          server:
+            port: 9090
+            domain: ${{ env.DOMAIN }}
+
+          admin:
+            password_hash: "ADMIN_HASH_PLACEHOLDER"
+
+          db:
+            path: /opt/milesahead/data/milesahead.db
+
+          scanner:
+            default_interval: 180
+            user_agent: "MilesAhead/1.0"
+
+          ai:
+            generator_model: "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+            critic_model: "meta/llama-3.3-70b-instruct"
+            critic2_model: ""
+            hf_api_token: "NVIDIA_KEY_PLACEHOLDER"
+            hf_base_url: "https://integrate.api.nvidia.com/v1"
+            critic_threshold: 75
+            max_retries: 3
+            cache_ttl: 3600
+
+          mail:
+            smtp:
+              host: localhost
+              port: 587
+              user: "placeholder"
+              password: "placeholder"
+              from: "noreply@milesahead.kumaranik.com"
+            imap:
+              host: localhost
+              port: 993
+              user: "placeholder"
+              password: "placeholder"
+              poll_interval: 120
+
+          newsletter:
+            send_time: "08:00"
+            timezone: "America/New_York"
+
+          votes:
+            alert_threshold: 10
+            alert_ratio: 0.4
+            alert_window: 24
+          CONFIGEOF
+
+          # Replace placeholders with actual secrets
+          sed -i "s|ADMIN_HASH_PLACEHOLDER|${ADMIN_PASSWORD_HASH}|g" /tmp/config.yaml
+          sed -i "s|NVIDIA_KEY_PLACEHOLDER|${NVIDIA_API_KEY}|g" /tmp/config.yaml
+          scp /tmp/config.yaml $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/config.yaml
+          $SSH "sudo chown ${{ env.APP_USER }}:${{ env.APP_USER }} ${{ env.APP_DIR }}/config.yaml && sudo chmod 600 ${{ env.APP_DIR }}/config.yaml"
+
+          # Deploy systemd service
+          scp deploy/milesahead.service $OCI_USER@$OCI_HOST:/tmp/milesahead.service
+          $SSH "sudo mv /tmp/milesahead.service /etc/systemd/system/milesahead.service && sudo systemctl daemon-reload && sudo systemctl enable milesahead"
+
+          # Deploy nginx config
+          scp deploy/nginx.conf $OCI_USER@$OCI_HOST:/tmp/milesahead-nginx.conf
+          $SSH "sudo mv /tmp/milesahead-nginx.conf /etc/nginx/sites-available/milesahead && sudo ln -sf /etc/nginx/sites-available/milesahead /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx"
+
+          # Setup SSL with certbot (will fail gracefully if DNS not ready)
+          $SSH "sudo certbot --nginx -d ${{ env.DOMAIN }} --non-interactive --agree-tos --email ${{ secrets.CERTBOT_EMAIL }} || echo 'Certbot failed - DNS may not be ready yet. Run manually later.'"
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: milesahead-arm64
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.OCI_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan ${{ secrets.OCI_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy binary and assets
+        env:
           OCI_HOST: ${{ secrets.OCI_HOST }}
           OCI_USER: ${{ secrets.OCI_USER }}
         run: |
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan $OCI_HOST >> ~/.ssh/known_hosts
-          scp milesahead $OCI_USER@$OCI_HOST:/opt/milesahead/milesahead.new
-          ssh $OCI_USER@$OCI_HOST "sudo mv /opt/milesahead/milesahead.new /opt/milesahead/milesahead && sudo systemctl restart milesahead"
+          SSH="ssh $OCI_USER@$OCI_HOST"
+
+          # Copy binary
+          chmod +x milesahead
+          scp milesahead $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/milesahead.new
+
+          # Copy templates and static files
+          scp -r templates $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/
+          scp -r static $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/
+
+          # Atomic swap and restart
+          $SSH "sudo mv ${{ env.APP_DIR }}/milesahead.new ${{ env.APP_DIR }}/milesahead && sudo chown ${{ env.APP_USER }}:${{ env.APP_USER }} ${{ env.APP_DIR }}/milesahead && sudo systemctl restart milesahead"
+
+          # Verify it started
+          sleep 3
+          $SSH "sudo systemctl is-active milesahead" || ($SSH "sudo journalctl -u milesahead -n 20 --no-pager" && exit 1)
+          echo "Deployment successful!"
