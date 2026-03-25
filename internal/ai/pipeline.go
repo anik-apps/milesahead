@@ -63,10 +63,28 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 	}, nil
 }
 
-// extractTitle returns the first line of the generated content as the title.
+// extractTitle returns the first line of the generated content as the title,
+// stripping any Markdown or HTML artifacts.
 func extractTitle(content string) string {
+	title := content
 	if idx := strings.Index(content, "\n"); idx != -1 {
-		return content[:idx]
+		title = content[:idx]
 	}
-	return content
+	// Strip Markdown bold markers
+	title = strings.ReplaceAll(title, "**", "")
+	// Strip Markdown heading markers
+	title = strings.TrimLeft(title, "# ")
+	// Strip HTML tags
+	for {
+		start := strings.Index(title, "<")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(title[start:], ">")
+		if end == -1 {
+			break
+		}
+		title = title[:start] + title[start+end+1:]
+	}
+	return strings.TrimSpace(title)
 }
