@@ -39,7 +39,11 @@
                     <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="inline-form">
                         {{template "csrf_field" $}}
                         <textarea name="feedback" placeholder="Optional feedback..."></textarea>
-                        <button type="submit" class="btn btn-unpublish">Unpublish</button>
+                        <button type="submit" class="btn btn-warn">Unpublish</button>
+                    </form>
+                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this article?');">
+                        {{template "csrf_field" $}}
+                        <button type="submit" class="btn btn-danger">Delete</button>
                     </form>
                 </td>
             </tr>

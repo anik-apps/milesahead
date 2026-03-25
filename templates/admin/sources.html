@@ -17,11 +17,25 @@
     <h2>Add Source</h2>
     <form method="POST" action="/admin/sources/add" class="source-form">
         {{template "csrf_field" .}}
-        <label>Name: <input type="text" name="name" required></label>
-        <label>URL: <input type="url" name="url" required></label>
-        <label>RSS URL: <input type="url" name="rss_url"></label>
-        <label>Scan Interval (min): <input type="number" name="scan_interval"></label>
-        <button type="submit" class="btn btn-add">Add Source</button>
+        <div class="source-form-grid">
+            <div class="form-group">
+                <label for="add-name">Name</label>
+                <input type="text" id="add-name" name="name" required placeholder="Source name">
+            </div>
+            <div class="form-group">
+                <label for="add-url">URL</label>
+                <input type="url" id="add-url" name="url" required placeholder="https://example.com">
+            </div>
+            <div class="form-group">
+                <label for="add-rss">RSS URL</label>
+                <input type="url" id="add-rss" name="rss_url" placeholder="https://example.com/feed.xml">
+            </div>
+            <div class="form-group">
+                <label for="add-interval">Scan Interval (min)</label>
+                <input type="number" id="add-interval" name="scan_interval" placeholder="60">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Source</button>
     </form>
 
     {{if .Sources}}
@@ -41,8 +55,8 @@
             <tr>
                 <td>{{.Name}}</td>
                 <td><a href="{{.URL}}">{{.URL}}</a></td>
-                <td>{{if .RSSURL}}{{deref .RSSURL}}{{else}}-{{end}}</td>
-                <td>{{if .ScanInterval}}{{deref .ScanInterval}}{{else}}-{{end}}</td>
+                <td>{{if .RSSURL}}{{deref .RSSURL}}{{else}}<span class="text-muted" style="font-style:italic;">Not set</span>{{end}}</td>
+                <td>{{if .ScanInterval}}{{deref .ScanInterval}}{{else}}<span class="text-muted" style="font-style:italic;">Not set</span>{{end}}</td>
                 <td>{{if .Active}}Yes{{else}}No{{end}}</td>
                 <td class="actions">
                     <form method="POST" action="/admin/sources/{{.ID}}/toggle" class="inline-form">

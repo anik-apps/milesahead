@@ -416,12 +416,12 @@ func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 	app.renderTemplate(w,"settings.html", data)
 }
 
-// maskString masks a sensitive string, showing only the first 4 characters.
+// maskString fully masks a sensitive string, revealing no content.
 func maskString(s string) string {
-	if len(s) <= 4 {
-		return "****"
+	if s == "" {
+		return ""
 	}
-	return s[:4] + strings.Repeat("*", len(s)-4)
+	return "********"
 }
 
 func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {

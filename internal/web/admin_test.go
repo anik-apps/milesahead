@@ -567,11 +567,11 @@ func TestMaskString(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"", "****"},
-		{"ab", "****"},
-		{"abcd", "****"},
-		{"abcde", "abcd*"},
-		{"hf_test_token_12345", "hf_t***************"},
+		{"", ""},
+		{"ab", "********"},
+		{"abcd", "********"},
+		{"abcde", "********"},
+		{"hf_test_token_12345", "********"},
 	}
 
 	for _, tt := range tests {
