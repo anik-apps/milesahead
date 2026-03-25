@@ -1,13 +1,6 @@
 milesahead.kumaranik.com {
     reverse_proxy host.docker.internal:9090
 
-    # Static files with caching
-    handle /static/* {
-        root * /opt/milesahead
-        file_server
-        header Cache-Control "public, max-age=604800, immutable"
-    }
-
     # Security headers
     header {
         X-Content-Type-Options nosniff
