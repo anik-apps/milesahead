@@ -15,16 +15,25 @@ type PipelineResult struct {
 	PassedThreshold bool
 }
 
-// Pipeline orchestrates the generator and critic to produce verified articles.
+// Pipeline orchestrates the generator and two critics to produce verified articles.
+// Critic1 checks factual accuracy and source compliance.
+// Critic2 checks logical consistency and common sense.
 type Pipeline struct {
 	generator *Generator
 	critic    *Critic
+	critic2   *Critic
 	threshold int
 }
 
 // NewPipeline creates a new Pipeline with the given quality threshold (0-100).
+// critic2 can be nil for single-critic mode (backwards compatible).
 func NewPipeline(generator *Generator, critic *Critic, threshold int) *Pipeline {
 	return &Pipeline{generator: generator, critic: critic, threshold: threshold}
+}
+
+// SetCritic2 adds a second critic for reasoning/consistency checks.
+func (p *Pipeline) SetCritic2(critic2 *Critic) {
+	p.critic2 = critic2
 }
 
 // ErrNotEnoughSources is returned when a cluster has fewer than 2 unique sources.
@@ -65,16 +74,40 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		revised, err := p.generator.GenerateWithFeedback(sources, content, "Fix the following issues found by the critic", issuesStr)
 		if err == nil && revised != "" {
 			revised = cleanMarkdown(revised)
-			// Re-verify the revision
 			v2, err := p.critic.Verify(revised, sources)
 			if err == nil {
 				v2.Score = adjustScore(v2)
-				// Use the revision if it's at least as good
 				if v2.Score >= verification.Score {
 					content = revised
 					verification = v2
 				}
 			}
+		}
+	}
+
+	// Second critic: reasoning and consistency check (different model family)
+	if p.critic2 != nil && verification.Score >= p.threshold {
+		v2, err := p.critic2.Verify2(content, sources)
+		if err == nil {
+			v2.Score = adjustScore(v2)
+			// Merge: take the lower score, combine issues
+			if v2.Score < verification.Score {
+				verification.Score = v2.Score
+			}
+			verification.Issues = append(verification.Issues, v2.Issues...)
+			if !v2.FactualCheck {
+				verification.FactualCheck = false
+			}
+			if !v2.HallucinationCheck {
+				verification.HallucinationCheck = false
+			}
+			if !v2.CompletenessCheck {
+				verification.CompletenessCheck = false
+			}
+			if !v2.AttributionCheck {
+				verification.AttributionCheck = false
+			}
+			verification.Score = adjustScore(verification)
 		}
 	}
 

@@ -29,6 +29,7 @@ type ScannerConfig struct {
 type AIConfig struct {
 	GeneratorModel string `yaml:"generator_model"`
 	CriticModel    string `yaml:"critic_model"`
+	Critic2Model   string `yaml:"critic2_model"`
 	HFAPIToken     string `yaml:"hf_api_token"`
 	CriticThreshold int   `yaml:"critic_threshold"`
 	MaxRetries     int    `yaml:"max_retries"`

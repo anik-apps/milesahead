@@ -49,6 +49,10 @@ func main() {
 	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cache)
 	critic := ai.NewCritic(hfClient, cfg.AI.CriticModel)
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
+	if cfg.AI.Critic2Model != "" {
+		critic2 := ai.NewCritic(hfClient, cfg.AI.Critic2Model)
+		pipeline.SetCritic2(critic2)
+	}
 
 	// Services
 	scnr := scanner.NewScanner(database, cfg.Scanner.UserAgent)

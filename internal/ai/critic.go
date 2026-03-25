@@ -50,6 +50,29 @@ func (c *Critic) Verify(generatedArticle string, sources []SourceArticle) (*Veri
 	return &result, nil
 }
 
+// Verify2 runs the second critic prompt (reasoning/consistency focused).
+func (c *Critic) Verify2(generatedArticle string, sources []SourceArticle) (*VerificationResult, error) {
+	prompt := Critic2Prompt(generatedArticle, sources)
+
+	// Reasoning models need more tokens for thinking chains
+	resp, err := c.client.Generate(c.model, prompt, 2048)
+	if err != nil {
+		return nil, fmt.Errorf("critic2: %w", err)
+	}
+
+	jsonStr := extractJSON(resp)
+	if jsonStr == "" {
+		return nil, fmt.Errorf("critic2: no JSON object found in response: %s", resp)
+	}
+
+	var result VerificationResult
+	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+		return nil, fmt.Errorf("critic2: parse response: %w", err)
+	}
+
+	return &result, nil
+}
+
 // extractJSON finds the first JSON object ({...}) in the given string.
 func extractJSON(s string) string {
 	start := strings.Index(s, "{")

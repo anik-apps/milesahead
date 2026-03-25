@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -58,6 +59,25 @@ type chatResponse struct {
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
+}
+
+// stripThinkingTags removes <think>...</think> blocks from model responses.
+// Some reasoning models (DeepSeek R1, QwQ) include thinking chains in their output.
+func stripThinkingTags(s string) string {
+	for {
+		start := strings.Index(s, "<think>")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(s, "</think>")
+		if end == -1 {
+			// Unclosed think tag — remove everything from <think> onward
+			s = strings.TrimSpace(s[:start])
+			break
+		}
+		s = s[:start] + s[end+len("</think>"):]
+	}
+	return strings.TrimSpace(s)
 }
 
 // Generate sends a text generation request using the chat completions API.
@@ -124,7 +144,10 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 			return "", fmt.Errorf("empty response from HF API")
 		}
 
-		return chatResp.Choices[0].Message.Content, nil
+		content := chatResp.Choices[0].Message.Content
+		// Strip <think>...</think> blocks from reasoning models (DeepSeek R1, etc.)
+		content = stripThinkingTags(content)
+		return content, nil
 	}
 
 	return "", fmt.Errorf("max retries exceeded")

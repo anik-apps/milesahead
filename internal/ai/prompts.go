@@ -161,6 +161,55 @@ CRITICAL RULES:
 - An article that invents deals, programs, or facts not in the sources is NEVER above 50.`, generatedArticle, formatSources(sources))
 }
 
+// Critic2Prompt is a reasoning-focused second critic that checks logical
+// consistency, common sense, and coherence. It runs after the first critic
+// and catches issues that require deeper reasoning.
+func Critic2Prompt(generatedArticle string, sources []SourceArticle) string {
+	return fmt.Sprintf(`You are a reasoning-focused editor reviewing a miles-and-points article.
+
+Your job is to find LOGICAL INCONSISTENCIES and COMMON SENSE ERRORS that a surface-level review would miss.
+
+Read the article carefully and check:
+
+1. LOGICAL CONSISTENCY — Does every statement logically follow? Examples of failures:
+   - Saying a regional jet (CRJ, ERJ) can fly transatlantic routes (it can't — range is ~1500 miles)
+   - Saying a domestic-only program works for international bookings
+   - Contradicting earlier statements in the same article
+   - Claiming a card has benefits that don't match its known tier
+
+2. GEOGRAPHIC/AVIATION COMMON SENSE — Are routes, aircraft, and destinations plausible?
+   - Can the mentioned aircraft actually fly the mentioned routes?
+   - Are the cities paired with the right airports/airlines?
+   - Do the distances make sense for the aircraft type?
+
+3. NUMERICAL CONSISTENCY — Do the numbers add up?
+   - If 40%% bonus is applied to 100K points, the result should be 140K not something else
+   - Are "starting at" prices consistent with "up to" claims?
+
+4. TEMPORAL CONSISTENCY — Do dates and timeframes make sense?
+   - Are sale dates in the future (not past)?
+   - Do "limited time" claims have reasonable durations?
+
+5. TONE AND CLAIMS — Does the article make promises or claims beyond what's reasonable?
+   - Does it overstate the value of a deal?
+   - Does it recommend specific actions without enough information?
+
+Article to review:
+%s
+
+Original sources for reference:
+%s
+
+Return ONLY a JSON object (no other text):
+{"score": <0-100>, "issues": [<array of specific issue strings>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
+
+Scoring:
+- 90-100: Logically sound, no inconsistencies.
+- 70-89: Minor nits but no logical errors.
+- Below 70: Contains logical contradictions or common sense failures.
+- Below 50: Major logical errors that would embarrass the publication.`, generatedArticle, formatSources(sources))
+}
+
 // RevisionPrompt builds a prompt for revising an article based on feedback.
 func RevisionPrompt(sources []SourceArticle, previousOutput, feedback, criticIssues string) string {
 	return fmt.Sprintf(`You are a miles-and-points content editor revising an article.
