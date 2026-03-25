@@ -4,15 +4,19 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // ProcessRevision loads an article with revision_requested status, retrieves
 // feedback and source articles, re-generates via the AI pipeline with feedback,
 // and stores the new content with an incremented revision number.
 func (m *Manager) ProcessRevision(articleID int64) error {
+	slog.Info("revision processing", "article_id", articleID)
+
 	// Load the article.
 	article, err := m.db.GetGeneratedArticle(articleID)
 	if err != nil {
@@ -52,6 +56,7 @@ func (m *Manager) ProcessRevision(articleID int64) error {
 	// Call pipeline with feedback.
 	result, err := m.pipeline.ProcessWithFeedback(sources, article.Content, latestFeedback.FeedbackText, criticIssues)
 	if err != nil {
+		metrics.RevisionsTotal.WithLabelValues("failed").Inc()
 		return fmt.Errorf("processing revision: %w", err)
 	}
 
@@ -103,11 +108,18 @@ func (m *Manager) ProcessRevision(articleID int64) error {
 	}
 
 	// If result passes threshold, transition draft -> pending.
+	newStatus := "draft"
 	if result.PassedThreshold {
+		newStatus = "pending"
+		metrics.RevisionsTotal.WithLabelValues("improved").Inc()
 		if err := m.db.UpdateArticleStatus(articleID, db.StatusPending); err != nil {
 			return fmt.Errorf("transitioning to pending: %w", err)
 		}
+	} else {
+		metrics.RevisionsTotal.WithLabelValues("unchanged").Inc()
 	}
+
+	slog.Info("revision completed", "article_id", articleID, "new_score", result.Verification.Score, "status", newStatus)
 
 	return nil
 }

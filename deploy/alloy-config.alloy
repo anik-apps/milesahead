@@ -1,0 +1,55 @@
+// Grafana Alloy configuration for Miles Ahead
+
+// Scrape Prometheus metrics from the app
+prometheus.scrape "milesahead" {
+  targets = [{
+    __address__ = "localhost:9090",
+  }]
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+  scrape_interval = "30s"
+  metrics_path = "/metrics"
+}
+
+// Ship metrics to Grafana Cloud
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url = env("GRAFANA_PROM_URL")
+    basic_auth {
+      username = env("GRAFANA_PROM_USER")
+      password = env("GRAFANA_API_KEY")
+    }
+  }
+}
+
+// Collect logs from journald (milesahead service)
+loki.source.journal "milesahead" {
+  forward_to = [loki.write.grafana_cloud.receiver]
+  relabel_rules = loki.relabel.journal.rules
+  labels = {
+    job = "milesahead",
+  }
+}
+
+loki.relabel "journal" {
+  forward_to = []
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    regex         = "milesahead.service"
+    action        = "keep"
+  }
+}
+
+// Ship logs to Grafana Cloud
+loki.write "grafana_cloud" {
+  endpoint {
+    url = env("GRAFANA_LOKI_URL")
+    basic_auth {
+      username = env("GRAFANA_LOKI_USER")
+      password = env("GRAFANA_API_KEY")
+    }
+  }
+}

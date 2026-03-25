@@ -2,10 +2,12 @@ package vote
 
 import (
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // ErrAlreadyVoted is returned when the same IP tries to vote on the same article twice.
@@ -64,9 +66,18 @@ func (s *Service) CastVote(articleID int64, vote string, ipHash string) error {
 		return err
 	}
 
+	slog.Info("vote cast", "article_id", articleID, "vote", vote)
+
+	if vote == "up" {
+		metrics.VotesTotal.WithLabelValues("up").Inc()
+	} else {
+		metrics.VotesTotal.WithLabelValues("down").Inc()
+	}
+
 	// Check threshold for downvote alerts.
 	if voteVal == -1 {
 		if triggered, _ := s.CheckThreshold(articleID); triggered {
+			slog.Warn("vote threshold exceeded", "article_id", articleID)
 			if s.OnAlert != nil {
 				s.OnAlert(articleID)
 			}

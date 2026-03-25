@@ -3,8 +3,10 @@ package scanner
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // ScanResult holds the outcome of scanning a single source.
@@ -38,6 +40,8 @@ func (s *Scanner) ScanSource(sourceID int64) (*ScanResult, error) {
 		return nil, fmt.Errorf("getting source %d: %w", sourceID, err)
 	}
 
+	slog.Info("scan started", "source", source.Name, "source_id", source.ID)
+
 	result := &ScanResult{
 		SourceID:   source.ID,
 		SourceName: source.Name,
@@ -63,7 +67,9 @@ func (s *Scanner) ScanSource(sourceID int64) (*ScanResult, error) {
 	}
 
 	if fetchErr != nil {
+		slog.Error("scan failed", "source", source.Name, "error", fetchErr)
 		result.Errors = append(result.Errors, fetchErr)
+		metrics.ScansTotal.WithLabelValues(source.Name, "error").Inc()
 		return result, nil
 	}
 
@@ -85,6 +91,10 @@ func (s *Scanner) ScanSource(sourceID int64) (*ScanResult, error) {
 			result.NewArticles++
 		}
 	}
+
+	metrics.ScansTotal.WithLabelValues(source.Name, "success").Inc()
+
+	slog.Info("scan completed", "source", source.Name, "new_articles", result.NewArticles)
 
 	return result, nil
 }

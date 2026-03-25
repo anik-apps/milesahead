@@ -2,8 +2,11 @@ package ai
 
 import (
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
+
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // PipelineResult holds the output of a full generate-then-verify cycle.
@@ -57,6 +60,8 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		articleType = detectArticleType(sources)
 	}
 
+	slog.Info("article generated", "type", articleType, "sources", len(sources))
+
 	content, err := p.generator.Generate(articleType, sources)
 	if err != nil {
 		return nil, err
@@ -70,9 +75,13 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		return nil, err
 	}
 	verification.Score = adjustScore(verification)
+	metrics.CriticScore.Observe(float64(verification.Score))
+
+	slog.Info("critic scored", "score", verification.Score, "passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
 	// If issues found, generator revises, then critic reviews again
 	if len(verification.Issues) > 0 {
+		slog.Info("auto-revision triggered", "issues_count", len(verification.Issues))
 		issuesStr := strings.Join(verification.Issues, "\n- ")
 		revised, err := p.generator.GenerateWithFeedback(sources, content,
 			"Fix ALL of the following issues. Do not add any information not in the original sources. Only state facts that are directly in the sources.",
@@ -121,6 +130,7 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 		return nil, err
 	}
 	verification.Score = adjustScore(verification)
+	metrics.CriticScore.Observe(float64(verification.Score))
 
 	title := extractTitle(content)
 	content = formatContent(content)
