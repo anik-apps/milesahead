@@ -156,6 +156,46 @@ func adjustScore(v *VerificationResult) int {
 
 // cleanMarkdown converts common Markdown remnants to HTML.
 func cleanMarkdown(s string) string {
+	// Convert lines of dashes/equals (section dividers) to <hr>
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Lines that are mostly dashes or equals (e.g. "---", "====", "----------")
+		if len(trimmed) >= 3 {
+			allDashes := true
+			for _, c := range trimmed {
+				if c != '-' && c != '=' && c != ' ' {
+					allDashes = false
+					break
+				}
+			}
+			if allDashes {
+				lines[i] = `<hr class="topic-break">`
+			}
+		}
+		// Also catch inline dashes like "Topic -------------------------------- Content"
+		if strings.Contains(lines[i], "--------") {
+			parts := strings.SplitN(lines[i], "--------", 2)
+			before := strings.TrimSpace(parts[0])
+			after := ""
+			if len(parts) > 1 {
+				// Remove any remaining dashes from the second part
+				cleaned := strings.TrimLeft(parts[1], "-")
+				after = strings.TrimSpace(cleaned)
+			}
+			result := ""
+			if before != "" {
+				result += before + "\n"
+			}
+			result += `<hr class="topic-break">`
+			if after != "" {
+				result += "\n" + after
+			}
+			lines[i] = result
+		}
+	}
+	s = strings.Join(lines, "\n")
+
 	// Convert **bold** to <strong>bold</strong>
 	for strings.Contains(s, "**") {
 		start := strings.Index(s, "**")
@@ -168,7 +208,7 @@ func cleanMarkdown(s string) string {
 	}
 	// Convert ## Heading to <h3>Heading</h3>
 	// Convert * bullet and - bullet to <li>bullet</li>
-	lines := strings.Split(s, "\n")
+	lines = strings.Split(s, "\n")
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "## ") {
