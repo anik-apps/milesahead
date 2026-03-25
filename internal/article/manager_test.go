@@ -141,8 +141,8 @@ func TestManager_Reject(t *testing.T) {
 		SourcesJSON:    "[]",
 		RevisionNumber: 1,
 	})
-	if err := mgr.Reject(draftID); err == nil {
-		t.Error("expected error when rejecting draft article")
+	if err := mgr.Reject(draftID); err != nil {
+		t.Errorf("unexpected error when rejecting draft article: %v", err)
 	}
 }
 

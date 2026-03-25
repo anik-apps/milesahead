@@ -41,6 +41,7 @@
                     <a href="#" class="preview-link" onclick="openPreview('preview-{{.ID}}'); return false;">{{.Title}}</a>
                     {{if eq .Status "revision_requested"}}<span class="status-badge revising">Revising...</span>{{end}}
                     {{if eq .Status "unpublished"}}<span class="status-badge unpublished">Unpublished</span>{{end}}
+                    {{if eq .Status "draft"}}<span class="status-badge draft">Draft (below threshold)</span>{{end}}
                 </td>
                 <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
                 <td>{{.VerificationScore}}</td>

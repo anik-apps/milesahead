@@ -869,6 +869,16 @@ tr:hover {
     color: #991b1b;
 }
 
+.status-badge.draft {
+    background: #e5e7eb;
+    color: #6b7280;
+}
+
+[data-theme="dark"] .status-badge.draft {
+    background: #374151;
+    color: #9ca3af;
+}
+
 .row-revising {
     background: #fffbeb !important;
 }

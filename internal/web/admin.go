@@ -52,7 +52,7 @@ type adminArticleRow struct {
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	// Show all articles needing admin attention: pending, unpublished, and revision_requested
 	var articles []db.GeneratedArticle
-	for _, status := range []string{"pending", "unpublished", "revision_requested"} {
+	for _, status := range []string{"pending", "unpublished", "revision_requested", "draft"} {
 		batch, err := app.db.ListArticlesByStatus(status)
 		if err != nil {
 			continue

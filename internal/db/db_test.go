@@ -314,11 +314,11 @@ func TestArticleStatusTransitions(t *testing.T) {
 		t.Fatalf("pending->revision_requested: %v", err)
 	}
 
-	// Invalid transition: draft -> approved
+	// Valid transition: draft -> approved
 	id4 := createTestArticleWithSlug(t, d, "test-invalid")
 	err := d.UpdateArticleStatus(id4, StatusApproved)
-	if err == nil {
-		t.Error("expected error for draft->approved")
+	if err != nil {
+		t.Errorf("unexpected error for draft->approved: %v", err)
 	}
 }
 

@@ -213,7 +213,7 @@ func (d *Database) GetGeneratedArticle(id int64) (*GeneratedArticle, error) {
 
 // validTransitions defines allowed status transitions.
 var validTransitions = map[string][]string{
-	StatusDraft:             {StatusPending},
+	StatusDraft:             {StatusPending, StatusApproved, StatusRejected, StatusRevisionRequested},
 	StatusPending:           {StatusApproved, StatusRejected, StatusRevisionRequested},
 	StatusApproved:          {StatusUnpublished},
 	StatusRejected:          {},

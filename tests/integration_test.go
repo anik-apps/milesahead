@@ -651,12 +651,6 @@ func TestArticleStatusTransitions(t *testing.T) {
 		t.Fatalf("creating article: %v", err)
 	}
 
-	// Draft cannot go directly to approved.
-	err = database.UpdateArticleStatus(articleID, db.StatusApproved)
-	if err == nil {
-		t.Fatal("expected error transitioning draft -> approved")
-	}
-
 	// Draft -> pending is valid.
 	err = database.UpdateArticleStatus(articleID, db.StatusPending)
 	if err != nil {
