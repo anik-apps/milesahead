@@ -96,9 +96,9 @@ func TestManager_StateTransitions(t *testing.T) {
 		t.Errorf("expected status %q, got %q", db.StatusUnpublished, article.Status)
 	}
 
-	// Invalid: unpublished -> approved (should fail)
-	if err := mgr.Approve(articleID); err == nil {
-		t.Error("expected error when approving unpublished article")
+	// Valid: unpublished -> approved (re-publish)
+	if err := mgr.Approve(articleID); err != nil {
+		t.Errorf("expected unpublished article to be re-approvable, got: %v", err)
 	}
 }
 

@@ -15,6 +15,9 @@ import (
 
 // templateFuncs provides custom template functions.
 var templateFuncs = template.FuncMap{
+	"safeHTML": func(s string) template.HTML {
+		return template.HTML(s)
+	},
 	"deref": func(v interface{}) string {
 		if v == nil {
 			return ""

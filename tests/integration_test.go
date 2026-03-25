@@ -652,10 +652,10 @@ func TestArticleStatusTransitions(t *testing.T) {
 		t.Fatalf("approved -> unpublished: %v", err)
 	}
 
-	// Unpublished -> approved is invalid.
+	// Unpublished -> approved is valid (re-publish).
 	err = database.UpdateArticleStatus(articleID, db.StatusApproved)
-	if err == nil {
-		t.Fatal("expected error transitioning unpublished -> approved")
+	if err != nil {
+		t.Fatalf("expected unpublished -> approved to succeed, got: %v", err)
 	}
 }
 

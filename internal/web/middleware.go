@@ -14,15 +14,17 @@ import (
 func csrfMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
-			// Generate a new CSRF token and set it as a cookie.
-			token := generateToken()
-			http.SetCookie(w, &http.Cookie{
-				Name:     "csrf_token",
-				Value:    token,
-				Path:     "/",
-				HttpOnly: false, // JavaScript may need to read this
-				SameSite: http.SameSiteStrictMode,
-			})
+			// Only set a CSRF cookie if one doesn't already exist.
+			if _, err := r.Cookie("csrf_token"); err != nil {
+				token := generateToken()
+				http.SetCookie(w, &http.Cookie{
+					Name:     "csrf_token",
+					Value:    token,
+					Path:     "/",
+					HttpOnly: false,
+					SameSite: http.SameSiteStrictMode,
+				})
+			}
 			next.ServeHTTP(w, r)
 			return
 		}

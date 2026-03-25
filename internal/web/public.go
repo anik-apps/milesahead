@@ -304,10 +304,28 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `</rss>`)
 }
 
-// truncate returns the first n characters of s, appending "..." if truncated.
+// truncate strips HTML tags and returns the first n characters, appending "..." if truncated.
 func truncate(s string, n int) string {
+	s = stripHTML(s)
 	if len(s) <= n {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// stripHTML removes HTML tags from a string.
+func stripHTML(s string) string {
+	var result []byte
+	inTag := false
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '<':
+			inTag = true
+		case s[i] == '>':
+			inTag = false
+		case !inTag:
+			result = append(result, s[i])
+		}
+	}
+	return strings.TrimSpace(string(result))
 }

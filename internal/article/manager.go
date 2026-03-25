@@ -78,8 +78,8 @@ func (m *Manager) Approve(articleID int64) error {
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
 	}
-	if article.Status != db.StatusPending {
-		return fmt.Errorf("cannot approve article with status %q, must be %q", article.Status, db.StatusPending)
+	if article.Status != db.StatusPending && article.Status != db.StatusUnpublished {
+		return fmt.Errorf("cannot approve article with status %q, must be %q or %q", article.Status, db.StatusPending, db.StatusUnpublished)
 	}
 	return m.db.UpdateArticleStatus(articleID, db.StatusApproved)
 }
