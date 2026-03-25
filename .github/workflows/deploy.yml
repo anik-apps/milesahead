@@ -1,18 +1,18 @@
 name: Deploy
 on:
   push:
-    tags: ['v*']
+    branches: [main]
   workflow_dispatch:
     inputs:
       full_setup:
-        description: 'Run full initial setup (nginx, systemd, certbot, config)'
+        description: 'Run full initial setup (systemd, config, caddy)'
         type: boolean
         default: false
 
 env:
   APP_DIR: /opt/milesahead
   APP_USER: milesahead
-  DOMAIN: milesahead.kumaranik.com
+  CADDY_SITES_DIR: /home/ubuntu/actions-runner/_work/fyNaNs/fyNaNs/caddy-sites
 
 jobs:
   build:
@@ -33,7 +33,7 @@ jobs:
   setup:
     needs: build
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.full_setup == 'true' || contains(github.ref, 'v0.1.0') }}
+    if: ${{ github.event.inputs.full_setup == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - name: Setup SSH
@@ -52,21 +52,18 @@ jobs:
         run: |
           SSH="ssh $OCI_USER@$OCI_HOST"
 
-          # Install nginx and certbot if not present
-          $SSH "which nginx || (sudo apt-get update && sudo apt-get install -y nginx certbot python3-certbot-nginx)"
-
           # Create app user and directories
           $SSH "id -u ${{ env.APP_USER }} 2>/dev/null || sudo useradd -r -s /bin/false ${{ env.APP_USER }}"
           $SSH "sudo mkdir -p ${{ env.APP_DIR }}/data && sudo chown -R ${{ env.APP_USER }}:${{ env.APP_USER }} ${{ env.APP_DIR }}"
 
           # Deploy config file
-          cat > /tmp/config.yaml << 'CONFIGEOF'
+          cat > /tmp/config.yaml << CONFIGEOF
           server:
             port: 9090
-            domain: ${{ env.DOMAIN }}
+            domain: milesahead.kumaranik.com
 
           admin:
-            password_hash: "ADMIN_HASH_PLACEHOLDER"
+            password_hash: "${ADMIN_PASSWORD_HASH}"
 
           db:
             path: /opt/milesahead/data/milesahead.db
@@ -79,7 +76,7 @@ jobs:
             generator_model: "nvidia/llama-3.3-nemotron-super-49b-v1.5"
             critic_model: "meta/llama-3.3-70b-instruct"
             critic2_model: ""
-            hf_api_token: "NVIDIA_KEY_PLACEHOLDER"
+            hf_api_token: "${NVIDIA_API_KEY}"
             hf_base_url: "https://integrate.api.nvidia.com/v1"
             critic_threshold: 75
             max_retries: 3
@@ -109,9 +106,6 @@ jobs:
             alert_window: 24
           CONFIGEOF
 
-          # Replace placeholders with actual secrets
-          sed -i "s|ADMIN_HASH_PLACEHOLDER|${ADMIN_PASSWORD_HASH}|g" /tmp/config.yaml
-          sed -i "s|NVIDIA_KEY_PLACEHOLDER|${NVIDIA_API_KEY}|g" /tmp/config.yaml
           scp /tmp/config.yaml $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/config.yaml
           $SSH "sudo chown ${{ env.APP_USER }}:${{ env.APP_USER }} ${{ env.APP_DIR }}/config.yaml && sudo chmod 600 ${{ env.APP_DIR }}/config.yaml"
 
@@ -119,12 +113,12 @@ jobs:
           scp deploy/milesahead.service $OCI_USER@$OCI_HOST:/tmp/milesahead.service
           $SSH "sudo mv /tmp/milesahead.service /etc/systemd/system/milesahead.service && sudo systemctl daemon-reload && sudo systemctl enable milesahead"
 
-          # Deploy nginx config
-          scp deploy/nginx.conf $OCI_USER@$OCI_HOST:/tmp/milesahead-nginx.conf
-          $SSH "sudo mv /tmp/milesahead-nginx.conf /etc/nginx/sites-available/milesahead && sudo ln -sf /etc/nginx/sites-available/milesahead /etc/nginx/sites-enabled/ && sudo nginx -t && sudo systemctl reload nginx"
+          # Deploy Caddy config to shared sites directory
+          $SSH "mkdir -p ${{ env.CADDY_SITES_DIR }}"
+          scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:${{ env.CADDY_SITES_DIR }}/milesahead.caddy
 
-          # Setup SSL with certbot (will fail gracefully if DNS not ready)
-          $SSH "sudo certbot --nginx -d ${{ env.DOMAIN }} --non-interactive --agree-tos --email ${{ secrets.CERTBOT_EMAIL }} || echo 'Certbot failed - DNS may not be ready yet. Run manually later.'"
+          # Reload Caddy to pick up the new site
+          $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || echo 'Caddy reload skipped - restart the fynans stack to pick up the new site'"
 
   deploy:
     needs: build
@@ -156,6 +150,10 @@ jobs:
           # Copy templates and static files
           scp -r templates $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/
           scp -r static $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/
+
+          # Update Caddy config if changed
+          scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:${{ env.CADDY_SITES_DIR }}/milesahead.caddy
+          $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
 
           # Atomic swap and restart
           $SSH "sudo mv ${{ env.APP_DIR }}/milesahead.new ${{ env.APP_DIR }}/milesahead && sudo chown ${{ env.APP_USER }}:${{ env.APP_USER }} ${{ env.APP_DIR }}/milesahead && sudo systemctl restart milesahead"
