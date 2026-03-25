@@ -31,6 +31,7 @@ type AIConfig struct {
 	CriticModel    string `yaml:"critic_model"`
 	Critic2Model   string `yaml:"critic2_model"`
 	HFAPIToken     string `yaml:"hf_api_token"`
+	HFBaseURL      string `yaml:"hf_base_url"`
 	CriticThreshold int   `yaml:"critic_threshold"`
 	MaxRetries     int    `yaml:"max_retries"`
 	CacheTTL       int    `yaml:"cache_ttl"`

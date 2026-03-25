@@ -32,7 +32,7 @@ func NewCritic(client HFClientInterface, model string) *Critic {
 func (c *Critic) Verify(generatedArticle string, sources []SourceArticle) (*VerificationResult, error) {
 	prompt := CriticPrompt(generatedArticle, sources)
 
-	resp, err := c.client.Generate(c.model, prompt, 512)
+	resp, err := c.client.Generate(c.model, prompt, 4096)
 	if err != nil {
 		return nil, fmt.Errorf("critic: %w", err)
 	}
@@ -54,8 +54,7 @@ func (c *Critic) Verify(generatedArticle string, sources []SourceArticle) (*Veri
 func (c *Critic) Verify2(generatedArticle string, sources []SourceArticle) (*VerificationResult, error) {
 	prompt := Critic2Prompt(generatedArticle, sources)
 
-	// Reasoning models need more tokens for thinking chains
-	resp, err := c.client.Generate(c.model, prompt, 2048)
+	resp, err := c.client.Generate(c.model, prompt, 4096)
 	if err != nil {
 		return nil, fmt.Errorf("critic2: %w", err)
 	}

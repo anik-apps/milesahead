@@ -33,7 +33,7 @@ func (g *Generator) Generate(articleType string, sources []SourceArticle) (strin
 		}
 	}
 
-	result, err := g.client.Generate(g.model, prompt, 1024)
+	result, err := g.client.Generate(g.model, prompt, 4096)
 	if err != nil {
 		return "", fmt.Errorf("generator: %w", err)
 	}
@@ -50,7 +50,7 @@ func (g *Generator) Generate(articleType string, sources []SourceArticle) (strin
 func (g *Generator) GenerateWithFeedback(sources []SourceArticle, previousOutput, feedback, criticIssues string) (string, error) {
 	prompt := RevisionPrompt(sources, previousOutput, feedback, criticIssues)
 
-	result, err := g.client.Generate(g.model, prompt, 1024)
+	result, err := g.client.Generate(g.model, prompt, 4096)
 	if err != nil {
 		return "", fmt.Errorf("generator revision: %w", err)
 	}

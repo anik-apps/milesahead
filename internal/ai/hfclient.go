@@ -32,7 +32,7 @@ func NewHFClient(token string, maxRetries int) *HFClient {
 		token:      token,
 		maxRetries: maxRetries,
 		BaseURL:    defaultBaseURL,
-		httpClient: &http.Client{Timeout: 120 * time.Second},
+		httpClient: &http.Client{Timeout: 300 * time.Second},
 	}
 }
 

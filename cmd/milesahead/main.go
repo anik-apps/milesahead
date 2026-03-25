@@ -45,6 +45,9 @@ func main() {
 
 	// AI
 	hfClient := ai.NewHFClient(cfg.AI.HFAPIToken, cfg.AI.MaxRetries)
+	if cfg.AI.HFBaseURL != "" {
+		hfClient.BaseURL = cfg.AI.HFBaseURL
+	}
 	cache := ai.NewCache(time.Duration(cfg.AI.CacheTTL) * time.Second)
 	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cache)
 	critic := ai.NewCritic(hfClient, cfg.AI.CriticModel)
