@@ -1,0 +1,544 @@
+package web
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/kumaranik/milesahead/internal/article"
+	"github.com/kumaranik/milesahead/internal/config"
+	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/vote"
+	"golang.org/x/crypto/bcrypt"
+)
+
+// setupPublicTestApp creates a test App with public + admin templates for public handler tests.
+func setupPublicTestApp(t *testing.T) (*App, *db.Database) {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	database, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open test db: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("testpassword123"), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to generate bcrypt hash: %v", err)
+	}
+
+	cfg := &config.Config{
+		Admin: config.AdminConfig{
+			PasswordHash: string(hash),
+		},
+		Server: config.ServerConfig{
+			Port:   8080,
+			Domain: "localhost",
+		},
+		Votes: config.VotesConfig{
+			AlertThreshold: 5,
+		},
+	}
+
+	mgr := article.NewManager(database, nil)
+	voteSvc := vote.NewService(database, cfg.Votes, nil)
+
+	// Create template directories.
+	templateDir := filepath.Join(tmpDir, "templates")
+	adminDir := filepath.Join(templateDir, "admin")
+	publicDir := filepath.Join(templateDir, "public")
+	if err := os.MkdirAll(adminDir, 0755); err != nil {
+		t.Fatalf("failed to create admin template dir: %v", err)
+	}
+	if err := os.MkdirAll(publicDir, 0755); err != nil {
+		t.Fatalf("failed to create public template dir: %v", err)
+	}
+
+	// Write layout template.
+	layoutContent := `{{define "layout"}}<!DOCTYPE html><html><body>{{template "content" .}}</body></html>{{end}}
+{{define "csrf_field"}}<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">{{end}}`
+	if err := os.WriteFile(filepath.Join(templateDir, "layout.html"), []byte(layoutContent), 0644); err != nil {
+		t.Fatalf("failed to write layout template: %v", err)
+	}
+
+	// Write minimal admin templates to satisfy route setup.
+	for _, name := range []string{"login.html", "dashboard.html", "published.html", "sources.html", "subscribers.html", "settings.html"} {
+		content := `{{template "layout" .}}
+{{define "content"}}<h1>` + name + `</h1>{{end}}`
+		if err := os.WriteFile(filepath.Join(adminDir, name), []byte(content), 0644); err != nil {
+			t.Fatalf("failed to write %s: %v", name, err)
+		}
+	}
+
+	// Write public templates.
+	homeContent := `{{template "layout" .}}
+{{define "content"}}<h1>Home</h1>{{if .Featured}}<div class="featured">{{.Featured.Title}}</div>{{end}}{{range .Articles}}<div class="article-card" data-type="{{.Type}}">{{.Title}}</div>{{end}}{{end}}`
+	if err := os.WriteFile(filepath.Join(publicDir, "home.html"), []byte(homeContent), 0644); err != nil {
+		t.Fatalf("failed to write home template: %v", err)
+	}
+
+	articleContent := `{{template "layout" .}}
+{{define "content"}}{{if .UnderReview}}<div class="under-review">This article is currently under review.</div>{{else}}<h1>{{.Article.Title}}</h1><div class="content">{{.Article.Content}}</div>{{range .Sources}}<a class="source" href="{{.URL}}">{{.Title}}</a>{{end}}<div class="votes"><span class="upvotes">{{.Upvotes}}</span><span class="downvotes">{{.Downvotes}}</span></div>{{end}}{{end}}`
+	if err := os.WriteFile(filepath.Join(publicDir, "article.html"), []byte(articleContent), 0644); err != nil {
+		t.Fatalf("failed to write article template: %v", err)
+	}
+
+	subscribeContent := `{{template "layout" .}}
+{{define "content"}}{{if .Error}}<div class="error">{{.Error}}</div>{{end}}{{if .Success}}<div class="success">{{.Success}}</div>{{end}}<form method="POST" action="/subscribe"><input name="email"><button type="submit">Subscribe</button></form>{{end}}`
+	if err := os.WriteFile(filepath.Join(publicDir, "subscribe.html"), []byte(subscribeContent), 0644); err != nil {
+		t.Fatalf("failed to write subscribe template: %v", err)
+	}
+
+	app, err := NewAppWithTemplateDir(cfg, database, mgr, voteSvc, nil, templateDir)
+	if err != nil {
+		t.Fatalf("failed to create test app: %v", err)
+	}
+
+	return app, database
+}
+
+// createApprovedArticle creates an approved article and returns its ID and slug.
+func createApprovedArticle(t *testing.T, database *db.Database, title, articleType string, featured bool) (int64, string) {
+	t.Helper()
+	slug := article.GenerateSlug(title)
+	id, err := database.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title:          title,
+		Slug:           slug,
+		Content:        "Content for " + title + ". This is a longer piece of content that should be enough to test excerpts and truncation.",
+		Type:           articleType,
+		Status:         db.StatusPending,
+		SourcesJSON:    "[]",
+		RevisionNumber: 1,
+		Featured:       featured,
+	})
+	if err != nil {
+		t.Fatalf("failed to create article: %v", err)
+	}
+	// Transition to approved.
+	if err := database.UpdateArticleStatus(id, db.StatusApproved); err != nil {
+		t.Fatalf("failed to approve article: %v", err)
+	}
+	return id, slug
+}
+
+func TestHome_Returns200WithApprovedArticles(t *testing.T) {
+	app, database := setupPublicTestApp(t)
+
+	// Create approved articles.
+	createApprovedArticle(t, database, "Approved Article One", "deal", false)
+	createApprovedArticle(t, database, "Approved Article Two", "roundup", true)
+
+	// Create a draft article (should NOT appear).
+	_, err := database.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title:          "Draft Article",
+		Slug:           "draft-article-xyz123",
+		Content:        "Draft content",
+		Type:           "deal",
+		Status:         db.StatusDraft,
+		SourcesJSON:    "[]",
+		RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatalf("failed to create draft article: %v", err)
+	}
+
+	// Create a pending article (should NOT appear).
+	_, err = database.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title:          "Pending Article",
+		Slug:           "pending-article-xyz123",
+		Content:        "Pending content",
+		Type:           "alert",
+		Status:         db.StatusPending,
+		SourcesJSON:    "[]",
+		RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatalf("failed to create pending article: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Approved Article One") {
+		t.Error("expected body to contain 'Approved Article One'")
+	}
+	if !strings.Contains(body, "Approved Article Two") {
+		t.Error("expected body to contain 'Approved Article Two'")
+	}
+	if strings.Contains(body, "Draft Article") {
+		t.Error("body should NOT contain 'Draft Article'")
+	}
+	if strings.Contains(body, "Pending Article") {
+		t.Error("body should NOT contain 'Pending Article'")
+	}
+}
+
+func TestHome_CategoryFilter(t *testing.T) {
+	app, database := setupPublicTestApp(t)
+
+	createApprovedArticle(t, database, "Deal Article", "deal", false)
+	createApprovedArticle(t, database, "Roundup Article", "roundup", false)
+
+	req := httptest.NewRequest(http.MethodGet, "/?type=deal", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Deal Article") {
+		t.Error("expected body to contain 'Deal Article'")
+	}
+	if strings.Contains(body, "Roundup Article") {
+		t.Error("body should NOT contain 'Roundup Article' when filtering by deal")
+	}
+}
+
+func TestArticle_Returns200WithContent(t *testing.T) {
+	app, database := setupPublicTestApp(t)
+
+	id, slug := createApprovedArticle(t, database, "Test Article Detail", "deal", false)
+
+	// Link a raw article source.
+	srcID, err := database.CreateSource(&db.Source{
+		Name:   "Test Source",
+		URL:    "https://source.example.com",
+		Active: true,
+	})
+	if err != nil {
+		t.Fatalf("failed to create source: %v", err)
+	}
+	rawID, err := database.CreateRawArticle(&db.RawArticle{
+		SourceID: srcID,
+		Title:    "Original Source Article",
+		URL:      "https://source.example.com/article",
+		Content:  "Source content",
+		Hash:     "abc123hash",
+	})
+	if err != nil {
+		t.Fatalf("failed to create raw article: %v", err)
+	}
+	if err := database.LinkArticleSources(id, []int64{rawID}); err != nil {
+		t.Fatalf("failed to link sources: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/article/"+slug, nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Test Article Detail") {
+		t.Error("expected body to contain article title")
+	}
+	if !strings.Contains(body, "Content for Test Article Detail") {
+		t.Error("expected body to contain article content")
+	}
+	if !strings.Contains(body, "Original Source Article") {
+		t.Error("expected body to contain source citation")
+	}
+	if !strings.Contains(body, "https://source.example.com/article") {
+		t.Error("expected body to contain source URL")
+	}
+}
+
+func TestArticle_UnpublishedShowsUnderReview(t *testing.T) {
+	app, database := setupPublicTestApp(t)
+
+	slug := "pending-test-article-abc123"
+	_, err := database.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title:          "Pending Test Article",
+		Slug:           slug,
+		Content:        "Some pending content",
+		Type:           "deal",
+		Status:         db.StatusPending,
+		SourcesJSON:    "[]",
+		RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatalf("failed to create article: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/article/"+slug, nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "under review") {
+		t.Error("expected body to contain 'under review' message")
+	}
+	if strings.Contains(body, "Some pending content") {
+		t.Error("body should NOT contain article content for unpublished article")
+	}
+}
+
+func TestArticle_NotFound(t *testing.T) {
+	app, _ := setupPublicTestApp(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/article/nonexistent-slug", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rec.Code)
+	}
+}
+
+func TestFeed_ReturnsValidRSS(t *testing.T) {
+	app, database := setupPublicTestApp(t)
+
+	createApprovedArticle(t, database, "Feed Article One", "deal", false)
+	createApprovedArticle(t, database, "Feed Article Two", "roundup", false)
+
+	// Draft article should not appear.
+	database.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title:          "Draft Feed Article",
+		Slug:           "draft-feed-xyz123",
+		Content:        "Draft feed content",
+		Type:           "deal",
+		Status:         db.StatusDraft,
+		SourcesJSON:    "[]",
+		RevisionNumber: 1,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/feed.xml", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	contentType := rec.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "application/xml") {
+		t.Errorf("expected Content-Type to contain application/xml, got %q", contentType)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "<?xml") {
+		t.Error("expected XML declaration")
+	}
+	if !strings.Contains(body, "<rss") {
+		t.Error("expected RSS tag")
+	}
+	if !strings.Contains(body, "Feed Article One") {
+		t.Error("expected feed to contain 'Feed Article One'")
+	}
+	if !strings.Contains(body, "Feed Article Two") {
+		t.Error("expected feed to contain 'Feed Article Two'")
+	}
+	if strings.Contains(body, "Draft Feed Article") {
+		t.Error("feed should NOT contain draft articles")
+	}
+	if !strings.Contains(body, "<item>") {
+		t.Error("expected RSS items")
+	}
+	if !strings.Contains(body, "<title>") {
+		t.Error("expected title elements in RSS")
+	}
+}
+
+func TestSubscribe_Success(t *testing.T) {
+	app, database := setupPublicTestApp(t)
+
+	form := strings.NewReader("email=test@example.com")
+	req := httptest.NewRequest(http.MethodPost, "/subscribe", form)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "check your email") {
+		t.Error("expected success message about checking email")
+	}
+
+	// Verify subscriber was created.
+	subs, err := database.ListAllSubscribers()
+	if err != nil {
+		t.Fatalf("failed to list subscribers: %v", err)
+	}
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscriber, got %d", len(subs))
+	}
+	if subs[0].Email != "test@example.com" {
+		t.Errorf("expected email 'test@example.com', got %q", subs[0].Email)
+	}
+	if subs[0].Token == "" {
+		t.Error("expected subscriber to have a token")
+	}
+}
+
+func TestSubscribe_InvalidEmail(t *testing.T) {
+	app, _ := setupPublicTestApp(t)
+
+	form := strings.NewReader("email=invalid")
+	req := httptest.NewRequest(http.MethodPost, "/subscribe", form)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "valid email") {
+		t.Error("expected error message about valid email")
+	}
+}
+
+func TestSubscribeConfirm_Success(t *testing.T) {
+	app, database := setupPublicTestApp(t)
+
+	// Create unconfirmed subscriber.
+	database.CreateSubscriber(&db.Subscriber{
+		Email: "confirm@example.com",
+		Token: "confirm-token-123",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/subscribe/confirm?token=confirm-token-123", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "confirmed") {
+		t.Error("expected confirmation success message")
+	}
+}
+
+func TestUnsubscribe_Success(t *testing.T) {
+	app, database := setupPublicTestApp(t)
+
+	database.CreateSubscriber(&db.Subscriber{
+		Email: "unsub@example.com",
+		Token: "unsub-token-456",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/unsubscribe?token=unsub-token-456", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "unsubscribed") {
+		t.Error("expected unsubscribe success message")
+	}
+
+	// Verify subscriber was removed.
+	subs, _ := database.ListAllSubscribers()
+	if len(subs) != 0 {
+		t.Errorf("expected 0 subscribers after unsubscribe, got %d", len(subs))
+	}
+}
+
+func TestVote_Success(t *testing.T) {
+	app, database := setupPublicTestApp(t)
+
+	id, _ := createApprovedArticle(t, database, "Vote Article", "deal", false)
+
+	payload := `{"article_id":` + jsonInt64(id) + `,"vote":"up"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/vote", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "192.168.1.1:12345"
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d; body: %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"status":"ok"`) {
+		t.Error("expected ok status in response")
+	}
+	if !strings.Contains(body, `"upvotes":1`) {
+		t.Error("expected upvotes to be 1")
+	}
+}
+
+func TestVote_Duplicate(t *testing.T) {
+	app, database := setupPublicTestApp(t)
+
+	id, _ := createApprovedArticle(t, database, "Vote Dup Article", "deal", false)
+
+	body := `{"article_id":` + jsonInt64(id) + `,"vote":"up"}`
+
+	// First vote.
+	req := httptest.NewRequest(http.MethodPost, "/api/vote", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "192.168.1.1:12345"
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first vote failed: %d", rec.Code)
+	}
+
+	// Second vote (duplicate).
+	req = httptest.NewRequest(http.MethodPost, "/api/vote", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "192.168.1.1:12345"
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("expected status 409 for duplicate vote, got %d", rec.Code)
+	}
+}
+
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		input    string
+		n        int
+		expected string
+	}{
+		{"short", 10, "short"},
+		{"exactly ten", 11, "exactly ten"},
+		{"this is a longer string", 10, "this is a ..."},
+		{"", 10, ""},
+	}
+	for _, tt := range tests {
+		got := truncate(tt.input, tt.n)
+		if got != tt.expected {
+			t.Errorf("truncate(%q, %d) = %q, want %q", tt.input, tt.n, got, tt.expected)
+		}
+	}
+}
+
+func jsonInt64(id int64) string {
+	b, _ := json.Marshal(id)
+	return string(b)
+}

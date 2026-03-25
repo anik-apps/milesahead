@@ -1,0 +1,19 @@
+[Unit]
+Description=Miles Ahead - Points & Miles Aggregator
+After=network.target
+
+[Service]
+Type=simple
+User=milesahead
+WorkingDirectory=/opt/milesahead
+ExecStart=/opt/milesahead/milesahead -config /opt/milesahead/config.yaml
+Restart=on-failure
+RestartSec=5
+Environment=HF_API_TOKEN=
+Environment=SMTP_USER=
+Environment=SMTP_PASSWORD=
+Environment=IMAP_USER=
+Environment=IMAP_APP_PASSWORD=
+
+[Install]
+WantedBy=multi-user.target

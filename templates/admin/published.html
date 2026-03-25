@@ -1,0 +1,57 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="admin-nav">
+    <a href="/admin/dashboard">Pending</a>
+    <a href="/admin/published" class="active">Published</a>
+    <a href="/admin/sources">Sources</a>
+    <a href="/admin/subscribers">Subscribers</a>
+    <a href="/admin/newsletter">Newsletter</a>
+    <a href="/admin/settings">Settings</a>
+    <form method="POST" action="/admin/logout" class="logout-btn">
+        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
+    </form>
+</div>
+<div class="admin-published">
+    <h1>Published Articles</h1>
+    {{if .Articles}}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Published</th>
+                <th>Upvotes</th>
+                <th>Downvotes</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Articles}}
+            <tr{{if .Flagged}} class="flagged"{{end}}>
+                <td>{{.Title}}</td>
+                <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
+                <td>{{.PublishedAt}}</td>
+                <td>{{.Upvotes}}</td>
+                <td>{{.Downvotes}}</td>
+                <td>{{if .Flagged}}<span class="flag-icon" title="High downvotes">&#9873;</span>{{end}}</td>
+                <td class="actions">
+                    <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <textarea name="feedback" placeholder="Optional feedback..."></textarea>
+                        <button type="submit" class="btn btn-warn">Unpublish</button>
+                    </form>
+                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this article?');">
+                        {{template "csrf_field" $}}
+                        <button type="submit" class="btn btn-danger">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p>No published articles.</p>
+    {{end}}
+</div>
+{{end}}

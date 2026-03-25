@@ -1,0 +1,28 @@
+{{define "layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .Title}}{{.Title}} - {{end}}Miles Ahead</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="/static/img/logo.svg" type="image/svg+xml">
+</head>
+<body>
+    <nav>
+        <a href="/" class="logo">Miles Ahead</a>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/feed.xml">RSS</a>
+            <button id="theme-toggle" type="button">Toggle Theme</button>
+        </div>
+    </nav>
+    <main>
+        {{template "content" .}}
+    </main>
+    <footer>
+        <p>&copy; 2026 Miles Ahead</p>
+    </footer>
+    <script src="/static/js/main.js"></script>
+</body>
+</html>{{end}}
+{{define "csrf_field"}}<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">{{end}}

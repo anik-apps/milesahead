@@ -1,0 +1,27 @@
+name: Deploy
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build
+        run: GOOS=linux GOARCH=arm64 go build -o milesahead ./cmd/milesahead
+      - name: Deploy to OCI
+        env:
+          SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan $OCI_HOST >> ~/.ssh/known_hosts
+          scp milesahead $OCI_USER@$OCI_HOST:/opt/milesahead/milesahead.new
+          ssh $OCI_USER@$OCI_HOST "sudo mv /opt/milesahead/milesahead.new /opt/milesahead/milesahead && sudo systemctl restart milesahead"

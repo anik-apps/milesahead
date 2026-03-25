@@ -1,0 +1,22 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="subscribe-page">
+    <h1>Subscribe to Miles Ahead</h1>
+    <p>Get curated news delivered to your inbox.</p>
+
+    {{if .Error}}
+    <div class="message error">{{.Error}}</div>
+    {{end}}
+
+    {{if .Success}}
+    <div class="message success">{{.Success}}</div>
+    {{end}}
+
+    {{if not .Success}}
+    <form method="POST" action="/subscribe" class="subscribe-form">
+        <input type="email" name="email" placeholder="you@example.com" required>
+        <button type="submit">Subscribe</button>
+    </form>
+    {{end}}
+</div>
+{{end}}

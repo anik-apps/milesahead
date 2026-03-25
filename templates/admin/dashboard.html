@@ -1,0 +1,152 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="admin-nav">
+    <a href="/admin/dashboard" class="active">Pending</a>
+    <a href="/admin/published">Published</a>
+    <a href="/admin/sources">Sources</a>
+    <a href="/admin/subscribers">Subscribers</a>
+    <a href="/admin/newsletter">Newsletter</a>
+    <a href="/admin/settings">Settings</a>
+    <form method="POST" action="/admin/logout" class="logout-btn">
+        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
+    </form>
+</div>
+<div class="admin-dashboard">
+    {{if eq .Message "revision_submitted"}}
+    <div class="message success">Revision feedback submitted. The AI is regenerating the article — refresh in about 30 seconds to see the updated version.</div>
+    {{end}}
+    {{if eq .Message "approved"}}
+    <div class="message success">Article approved and published.</div>
+    {{end}}
+    {{if eq .Message "rejected"}}
+    <div class="message success">Article rejected.</div>
+    {{end}}
+    <h1>Pending Articles</h1>
+    {{if .Articles}}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Score</th>
+                <th>Sources</th>
+                <th title="Revision number">Rev</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Articles}}
+            <tr{{if eq .Status "revision_requested"}} class="row-revising"{{end}}>
+                <td>
+                    <a href="#" class="preview-link" onclick="openPreview('preview-{{.ID}}'); return false;">{{.Title}}</a>
+                    {{if eq .Status "revision_requested"}}<span class="status-badge revising">Revising...</span>{{end}}
+                    {{if eq .Status "unpublished"}}<span class="status-badge unpublished">Unpublished</span>{{end}}
+                    {{if eq .Status "draft"}}<span class="status-badge draft">Draft (below threshold)</span>{{end}}
+                </td>
+                <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
+                <td>{{.VerificationScore}}</td>
+                <td>{{.SourceCount}}</td>
+                <td>{{.RevisionNumber}}</td>
+                <td class="actions">
+                    <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <button type="submit" class="btn btn-approve" onclick="return confirm('Are you sure you want to approve this article for publishing?')">Approve</button>
+                    </form>
+                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <button type="submit" class="btn btn-reject" onclick="return confirm('Are you sure you want to reject this article?')">Reject</button>
+                    </form>
+                    <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form revision-form">
+                        {{template "csrf_field" $}}
+                        <textarea name="feedback" placeholder="Revision feedback..." required></textarea>
+                        <button type="submit" class="btn btn-primary">Request Revision</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+
+    <!-- Preview modals -->
+    {{range .Articles}}
+    <div id="preview-{{.ID}}" class="preview-overlay" onclick="if(event.target===this)closePreview(this)">
+        <div class="preview-modal">
+            <div class="preview-header">
+                <span class="preview-label">Article Preview</span>
+                <button class="preview-close" onclick="closePreview(document.getElementById('preview-{{.ID}}'))">&times;</button>
+            </div>
+            <div class="preview-body">
+                <!-- Article preview in published style -->
+                <article class="article-detail">
+                    <header class="article-header">
+                        <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+                        <h1>{{.Title}}</h1>
+                    </header>
+                    <div class="article-content">
+                        {{.Content | safeHTML}}
+                    </div>
+                </article>
+            </div>
+
+            <!-- Admin-only sections below the preview -->
+            <div class="preview-admin-info">
+                {{if .Sources}}
+                <div class="admin-sources-section">
+                    <h4>Sources</h4>
+                    <ul>
+                        {{range .Sources}}
+                        <li><strong>{{.Name}}</strong>: <a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}</a></li>
+                        {{end}}
+                    </ul>
+                </div>
+                {{end}}
+
+                {{if .CriticReport}}
+                <div class="admin-critic-section">
+                    <h4>Critic Report (Score: {{.CriticReport.Score}}/100)</h4>
+                    <div class="critic-checks">
+                        <span class="critic-check {{if eq .CriticReport.FactualCheck "pass"}}check-pass{{else}}check-fail{{end}}">Factual: {{.CriticReport.FactualCheck}}</span>
+                        <span class="critic-check {{if eq .CriticReport.AttributionCheck "pass"}}check-pass{{else}}check-fail{{end}}">Attribution: {{.CriticReport.AttributionCheck}}</span>
+                        <span class="critic-check {{if eq .CriticReport.CompletenessCheck "pass"}}check-pass{{else}}check-fail{{end}}">Completeness: {{.CriticReport.CompletenessCheck}}</span>
+                        <span class="critic-check {{if eq .CriticReport.HallucinationCheck "pass"}}check-pass{{else}}check-fail{{end}}">Hallucination: {{.CriticReport.HallucinationCheck}}</span>
+                    </div>
+                    {{if .CriticReport.Issues}}
+                    <ul class="critic-issues">
+                        {{range .CriticReport.Issues}}
+                        <li>{{.}}</li>
+                        {{end}}
+                    </ul>
+                    {{end}}
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+    {{end}}
+
+    {{else}}
+    <div class="empty-state">
+        <p>No pending articles to review.</p>
+        <p style="margin-top: 0.5rem;"><a href="/admin/published">View published articles</a> &middot; <a href="/admin/sources">Manage sources</a></p>
+    </div>
+    {{end}}
+</div>
+
+<script>
+function openPreview(id) {
+    document.getElementById(id).classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+function closePreview(el) {
+    el.classList.remove('active');
+    document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.preview-overlay.active').forEach(function(el) {
+            closePreview(el);
+        });
+    }
+});
+</script>
+{{end}}
