@@ -19,9 +19,9 @@
             <tr>
                 <th>Title</th>
                 <th>Type</th>
-                <th>Verification Score</th>
+                <th>Score</th>
                 <th>Sources</th>
-                <th>Revision</th>
+                <th>Rev</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -29,42 +29,7 @@
             {{range .Articles}}
             <tr>
                 <td>
-                    <details>
-                        <summary>{{.Title}}</summary>
-                        <div class="article-detail">
-                            <div class="article-content">{{.Content | safeHTML}}</div>
-
-                            {{if .Sources}}
-                            <div class="admin-sources-section">
-                                <h4>Sources</h4>
-                                <ul>
-                                    {{range .Sources}}
-                                    <li><strong>{{.Name}}</strong>: <a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}</a></li>
-                                    {{end}}
-                                </ul>
-                            </div>
-                            {{end}}
-
-                            {{if .CriticReport}}
-                            <div class="admin-critic-section">
-                                <h4>Critic Report (Score: {{.CriticReport.Score}}/100)</h4>
-                                <div class="critic-checks">
-                                    <span class="critic-check {{if eq .CriticReport.FactualCheck "pass"}}check-pass{{else}}check-fail{{end}}">Factual: {{.CriticReport.FactualCheck}}</span>
-                                    <span class="critic-check {{if eq .CriticReport.AttributionCheck "pass"}}check-pass{{else}}check-fail{{end}}">Attribution: {{.CriticReport.AttributionCheck}}</span>
-                                    <span class="critic-check {{if eq .CriticReport.CompletenessCheck "pass"}}check-pass{{else}}check-fail{{end}}">Completeness: {{.CriticReport.CompletenessCheck}}</span>
-                                    <span class="critic-check {{if eq .CriticReport.HallucinationCheck "pass"}}check-pass{{else}}check-fail{{end}}">Hallucination: {{.CriticReport.HallucinationCheck}}</span>
-                                </div>
-                                {{if .CriticReport.Issues}}
-                                <ul class="critic-issues">
-                                    {{range .CriticReport.Issues}}
-                                    <li>{{.}}</li>
-                                    {{end}}
-                                </ul>
-                                {{end}}
-                            </div>
-                            {{end}}
-                        </div>
-                    </details>
+                    <a href="#" class="preview-link" onclick="openPreview('preview-{{.ID}}'); return false;">{{.Title}}</a>
                 </td>
                 <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
                 <td>{{.VerificationScore}}</td>
@@ -89,6 +54,64 @@
             {{end}}
         </tbody>
     </table>
+
+    <!-- Preview modals -->
+    {{range .Articles}}
+    <div id="preview-{{.ID}}" class="preview-overlay" onclick="if(event.target===this)closePreview(this)">
+        <div class="preview-modal">
+            <div class="preview-header">
+                <span class="preview-label">Article Preview</span>
+                <button class="preview-close" onclick="closePreview(document.getElementById('preview-{{.ID}}'))">&times;</button>
+            </div>
+            <div class="preview-body">
+                <!-- Article preview in published style -->
+                <article class="article-detail">
+                    <header class="article-header">
+                        <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+                        <h1>{{.Title}}</h1>
+                    </header>
+                    <div class="article-content">
+                        {{.Content | safeHTML}}
+                    </div>
+                </article>
+            </div>
+
+            <!-- Admin-only sections below the preview -->
+            <div class="preview-admin-info">
+                {{if .Sources}}
+                <div class="admin-sources-section">
+                    <h4>Sources</h4>
+                    <ul>
+                        {{range .Sources}}
+                        <li><strong>{{.Name}}</strong>: <a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}</a></li>
+                        {{end}}
+                    </ul>
+                </div>
+                {{end}}
+
+                {{if .CriticReport}}
+                <div class="admin-critic-section">
+                    <h4>Critic Report (Score: {{.CriticReport.Score}}/100)</h4>
+                    <div class="critic-checks">
+                        <span class="critic-check {{if eq .CriticReport.FactualCheck "pass"}}check-pass{{else}}check-fail{{end}}">Factual: {{.CriticReport.FactualCheck}}</span>
+                        <span class="critic-check {{if eq .CriticReport.AttributionCheck "pass"}}check-pass{{else}}check-fail{{end}}">Attribution: {{.CriticReport.AttributionCheck}}</span>
+                        <span class="critic-check {{if eq .CriticReport.CompletenessCheck "pass"}}check-pass{{else}}check-fail{{end}}">Completeness: {{.CriticReport.CompletenessCheck}}</span>
+                        <span class="critic-check {{if eq .CriticReport.HallucinationCheck "pass"}}check-pass{{else}}check-fail{{end}}">Hallucination: {{.CriticReport.HallucinationCheck}}</span>
+                    </div>
+                    {{if .CriticReport.Issues}}
+                    <ul class="critic-issues">
+                        {{range .CriticReport.Issues}}
+                        <li>{{.}}</li>
+                        {{end}}
+                    </ul>
+                    {{end}}
+                </div>
+                {{end}}
+            </div>
+        </div>
+    </div>
+    {{end}}
+
     {{else}}
     <div class="empty-state">
         <p>No pending articles to review.</p>
@@ -96,4 +119,22 @@
     </div>
     {{end}}
 </div>
+
+<script>
+function openPreview(id) {
+    document.getElementById(id).classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+function closePreview(el) {
+    el.classList.remove('active');
+    document.body.style.overflow = '';
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.preview-overlay.active').forEach(function(el) {
+            closePreview(el);
+        });
+    }
+});
+</script>
 {{end}}

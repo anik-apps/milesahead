@@ -34,8 +34,10 @@ func TestPipeline_Process_AboveThreshold(t *testing.T) {
 	if result.Title != "Deal Alert: 40% Bonus" {
 		t.Errorf("expected title 'Deal Alert: 40%% Bonus', got %q", result.Title)
 	}
-	if result.Content != genMock.response {
-		t.Errorf("content mismatch")
+	// formatContent strips the title line and wraps body in HTML
+	expected := "<p>Transfer bonus to ANA [TPG]</p>"
+	if result.Content != expected {
+		t.Errorf("content mismatch: expected %q, got %q", expected, result.Content)
 	}
 }
 
