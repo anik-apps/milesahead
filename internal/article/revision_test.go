@@ -118,7 +118,9 @@ func TestProcessRevision(t *testing.T) {
 	if article.Title != "Revised Title" {
 		t.Errorf("expected title 'Revised Title', got %q", article.Title)
 	}
-	if article.Content != "Revised Title\nRevised content with better details [Source]" {
+	// formatContent strips the title line and wraps body in <p> tags
+	expectedContent := "<p>Revised content with better details [Source]</p>"
+	if article.Content != expectedContent {
 		t.Errorf("unexpected content: %q", article.Content)
 	}
 	if article.RevisionNumber != 2 {
@@ -143,7 +145,8 @@ func TestProcessRevision(t *testing.T) {
 	if revisions[0].PreviousContent != "Original content." {
 		t.Errorf("unexpected previous content: %q", revisions[0].PreviousContent)
 	}
-	if revisions[0].NewContent != "Revised Title\nRevised content with better details [Source]" {
+	expectedNewContent := "<p>Revised content with better details [Source]</p>"
+	if revisions[0].NewContent != expectedNewContent {
 		t.Errorf("unexpected new content: %q", revisions[0].NewContent)
 	}
 

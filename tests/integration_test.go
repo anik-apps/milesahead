@@ -46,9 +46,13 @@ func mockRSSFeed() string {
 </rss>`
 }
 
-// mockHFResponse returns a valid HF API JSON response wrapping the given text.
+// mockHFResponse returns a valid HF chat completions API response wrapping the given text.
 func mockHFResponse(text string) string {
-	resp := []map[string]string{{"generated_text": text}}
+	resp := map[string]interface{}{
+		"choices": []map[string]interface{}{
+			{"message": map[string]string{"content": text}},
+		},
+	}
 	b, _ := json.Marshal(resp)
 	return string(b)
 }

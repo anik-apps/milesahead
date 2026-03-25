@@ -18,25 +18,16 @@
         {{.Article.Content | safeHTML}}
     </div>
 
-    {{if .Sources}}
-    <section class="article-sources">
-        <h3>Sources</h3>
-        <ul>
-            {{range .Sources}}
-            <li><a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}</a></li>
-            {{end}}
-        </ul>
-    </section>
-    {{end}}
-
-    <div class="vote-section" data-article-id="{{.Article.ID}}">
+    <div class="vote-card">
         <p class="vote-prompt">Was this article helpful?</p>
-        <button class="vote-btn vote-up" data-vote="1">
-            &#x1F44D; <span class="vote-count upvotes">{{.Upvotes}}</span>
-        </button>
-        <button class="vote-btn vote-down" data-vote="-1">
-            &#x1F44E; <span class="vote-count downvotes">{{.Downvotes}}</span>
-        </button>
+        <div class="vote-buttons" data-article-id="{{.Article.ID}}">
+            <button class="vote-btn vote-up" data-vote="1">
+                &#x1F44D; <span class="vote-count upvotes">{{.Upvotes}}</span>
+            </button>
+            <button class="vote-btn vote-down" data-vote="-1">
+                &#x1F44E; <span class="vote-count downvotes">{{.Downvotes}}</span>
+            </button>
+        </div>
     </div>
 </article>
 {{end}}

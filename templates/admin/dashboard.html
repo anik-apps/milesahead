@@ -21,7 +21,7 @@
                 <th>Type</th>
                 <th>Score</th>
                 <th>Sources</th>
-                <th>Rev</th>
+                <th title="Revision number">Rev</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -38,16 +38,16 @@
                 <td class="actions">
                     <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
                         {{template "csrf_field" $}}
-                        <button type="submit" class="btn btn-approve">Approve</button>
+                        <button type="submit" class="btn btn-approve" onclick="return confirm('Are you sure you want to approve this article for publishing?')">Approve</button>
                     </form>
                     <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form">
                         {{template "csrf_field" $}}
-                        <button type="submit" class="btn btn-reject">Reject</button>
+                        <button type="submit" class="btn btn-reject" onclick="return confirm('Are you sure you want to reject this article?')">Reject</button>
                     </form>
                     <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form revision-form">
                         {{template "csrf_field" $}}
                         <textarea name="feedback" placeholder="Revision feedback..." required></textarea>
-                        <button type="submit" class="btn btn-revise">Request Revision</button>
+                        <button type="submit" class="btn btn-primary">Request Revision</button>
                     </form>
                 </td>
             </tr>

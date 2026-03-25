@@ -1,5 +1,10 @@
 {{template "layout" .}}
 {{define "content"}}
+<div class="hero-banner">
+    <h1>Miles Ahead</h1>
+    <p>The latest miles, points, and credit card deals — curated daily.</p>
+</div>
+
 <div class="category-tabs">
     <a href="/" class="tab{{if eq .TypeFilter ""}} active{{end}}">All</a>
     <a href="/?type=deal" class="tab{{if eq .TypeFilter "deal"}} active{{end}}">Deals</a>
@@ -56,9 +61,14 @@
 </div>
 {{end}}
 
-{{if not .Articles}}
+{{if not .Featured}}
 <div class="empty-state">
+    {{if eq .TypeFilter ""}}
     <p>No articles published yet. Check back soon!</p>
+    {{else}}
+    <p>No {{.TypeFilter}} articles right now — check back soon!</p>
+    {{end}}
+    <p style="margin-top: 0.5rem;"><a href="/subscribe">Subscribe</a> to get notified when new articles are published.</p>
 </div>
 {{end}}
 {{end}}
