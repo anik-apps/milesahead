@@ -112,6 +112,7 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"Title":     "Dashboard",
 		"Articles":  rows,
 		"CSRFToken": getCSRFToken(w, r),
+		"Message":   r.URL.Query().Get("msg"),
 	}
 	app.renderTemplate(w,"dashboard.html", data)
 }
@@ -173,7 +174,7 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/admin/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/dashboard?msg=approved", http.StatusSeeOther)
 }
 
 func (app *App) handleRejectArticle(w http.ResponseWriter, r *http.Request) {
@@ -188,7 +189,7 @@ func (app *App) handleRejectArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/admin/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/dashboard?msg=rejected", http.StatusSeeOther)
 }
 
 func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
@@ -216,7 +217,7 @@ func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	http.Redirect(w, r, "/admin/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/dashboard?msg=revision_submitted", http.StatusSeeOther)
 }
 
 func (app *App) handleUnpublishArticle(w http.ResponseWriter, r *http.Request) {

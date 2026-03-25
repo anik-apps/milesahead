@@ -847,6 +847,51 @@ tr:hover {
     }
 }
 
+/* Status Badges */
+.status-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+}
+
+.status-badge.revising {
+    background: #fef3c7;
+    color: #92400e;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.status-badge.unpublished {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.row-revising {
+    background: #fffbeb !important;
+}
+
+[data-theme="dark"] .status-badge.revising {
+    background: #451a03;
+    color: #fbbf24;
+}
+
+[data-theme="dark"] .status-badge.unpublished {
+    background: #450a0a;
+    color: #fca5a5;
+}
+
+[data-theme="dark"] .row-revising {
+    background: #1c1917 !important;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
 /* Admin Sources & Critic Sections */
 .admin-sources-section,
 .admin-critic-section {

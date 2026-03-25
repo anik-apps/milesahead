@@ -12,6 +12,15 @@
     </form>
 </div>
 <div class="admin-dashboard">
+    {{if eq .Message "revision_submitted"}}
+    <div class="message success">Revision feedback submitted. The AI is regenerating the article — refresh in about 30 seconds to see the updated version.</div>
+    {{end}}
+    {{if eq .Message "approved"}}
+    <div class="message success">Article approved and published.</div>
+    {{end}}
+    {{if eq .Message "rejected"}}
+    <div class="message success">Article rejected.</div>
+    {{end}}
     <h1>Pending Articles</h1>
     {{if .Articles}}
     <table class="admin-table">
@@ -27,9 +36,11 @@
         </thead>
         <tbody>
             {{range .Articles}}
-            <tr>
+            <tr{{if eq .Status "revision_requested"}} class="row-revising"{{end}}>
                 <td>
                     <a href="#" class="preview-link" onclick="openPreview('preview-{{.ID}}'); return false;">{{.Title}}</a>
+                    {{if eq .Status "revision_requested"}}<span class="status-badge revising">Revising...</span>{{end}}
+                    {{if eq .Status "unpublished"}}<span class="status-badge unpublished">Unpublished</span>{{end}}
                 </td>
                 <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
                 <td>{{.VerificationScore}}</td>
