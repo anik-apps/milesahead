@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-User=milesahead
+User=ubuntu
 WorkingDirectory=/opt/milesahead
 ExecStart=/opt/milesahead/milesahead -config /opt/milesahead/config.yaml
 Restart=on-failure
