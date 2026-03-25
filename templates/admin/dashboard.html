@@ -1,5 +1,16 @@
 {{template "layout" .}}
 {{define "content"}}
+<div class="admin-nav">
+    <a href="/admin/dashboard" class="active">Pending</a>
+    <a href="/admin/published">Published</a>
+    <a href="/admin/sources">Sources</a>
+    <a href="/admin/subscribers">Subscribers</a>
+    <a href="/admin/newsletter">Newsletter</a>
+    <a href="/admin/settings">Settings</a>
+    <form method="POST" action="/admin/logout" class="logout-btn">
+        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
+    </form>
+</div>
 <div class="admin-dashboard">
     <h1>Pending Articles</h1>
     {{if .Articles}}
@@ -21,7 +32,7 @@
                     <details>
                         <summary>{{.Title}}</summary>
                         <div class="article-detail">
-                            <div class="article-content">{{.Content}}</div>
+                            <div class="article-content">{{.Content | safeHTML}}</div>
                         </div>
                     </details>
                 </td>
@@ -49,7 +60,10 @@
         </tbody>
     </table>
     {{else}}
-    <p>No pending articles.</p>
+    <div class="empty-state">
+        <p>No pending articles to review.</p>
+        <p style="margin-top: 0.5rem;"><a href="/admin/published">View published articles</a> &middot; <a href="/admin/sources">Manage sources</a></p>
+    </div>
     {{end}}
 </div>
 {{end}}
