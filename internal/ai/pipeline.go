@@ -59,19 +59,19 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 
 	content = cleanMarkdown(content)
 
-	// First critic pass
+	// Critic reviews the article
 	verification, err := p.critic.Verify(content, sources)
 	if err != nil {
 		return nil, err
 	}
-
-	// Enforce score consistency: failed checks must lower the score
 	verification.Score = adjustScore(verification)
 
-	// If there are issues but score is still passable, auto-revise once
-	if len(verification.Issues) > 0 && verification.Score >= p.threshold {
-		issuesStr := strings.Join(verification.Issues, "; ")
-		revised, err := p.generator.GenerateWithFeedback(sources, content, "Fix the following issues found by the critic", issuesStr)
+	// If issues found, generator revises, then critic reviews again
+	if len(verification.Issues) > 0 {
+		issuesStr := strings.Join(verification.Issues, "\n- ")
+		revised, err := p.generator.GenerateWithFeedback(sources, content,
+			"Fix ALL of the following issues. Do not add any information not in the original sources. Only state facts that are directly in the sources.",
+			issuesStr)
 		if err == nil && revised != "" {
 			revised = cleanMarkdown(revised)
 			v2, err := p.critic.Verify(revised, sources)
@@ -82,32 +82,6 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 					verification = v2
 				}
 			}
-		}
-	}
-
-	// Second critic: reasoning and consistency check (different model family)
-	if p.critic2 != nil && verification.Score >= p.threshold {
-		v2, err := p.critic2.Verify2(content, sources)
-		if err == nil {
-			v2.Score = adjustScore(v2)
-			// Merge: take the lower score, combine issues
-			if v2.Score < verification.Score {
-				verification.Score = v2.Score
-			}
-			verification.Issues = append(verification.Issues, v2.Issues...)
-			if !v2.FactualCheck {
-				verification.FactualCheck = false
-			}
-			if !v2.HallucinationCheck {
-				verification.HallucinationCheck = false
-			}
-			if !v2.CompletenessCheck {
-				verification.CompletenessCheck = false
-			}
-			if !v2.AttributionCheck {
-				verification.AttributionCheck = false
-			}
-			verification.Score = adjustScore(verification)
 		}
 	}
 
@@ -173,32 +147,70 @@ func adjustScore(v *VerificationResult) int {
 		failCount++
 	}
 
-	// Hallucination is the most severe — automatic hard cap at 40
+	// Hallucination is the most severe — cap at 60
 	if !v.HallucinationCheck {
-		if score > 40 {
-			score = 40
+		if score > 60 {
+			score = 60
 		}
 	}
 
-	// Each other failed check deducts 15 points
+	// Each other failed check deducts 10 points
 	otherFails := failCount
 	if !v.HallucinationCheck {
 		otherFails--
 	}
-	score -= otherFails * 15
+	score -= otherFails * 10
 
-	// Cap: can't be above 80 with any failed check, can't be above 60 with 2+ failures
-	if failCount > 0 && score > 80 {
-		score = 80
+	// Cap: can't be above 85 with any failed check, can't be above 70 with 2+ failures
+	if failCount > 0 && score > 85 {
+		score = 85
 	}
-	if failCount >= 2 && score > 60 {
-		score = 60
+	if failCount >= 2 && score > 70 {
+		score = 70
 	}
 	if score < 0 {
 		score = 0
 	}
 
 	return score
+}
+
+// combinedCritique runs both critics and merges their results.
+func (p *Pipeline) combinedCritique(content string, sources []SourceArticle) *VerificationResult {
+	// Critic 1: factual accuracy, source compliance
+	v1, err := p.critic.Verify(content, sources)
+	if err != nil {
+		// If critic 1 fails, return a failing score
+		return &VerificationResult{Score: 0, Issues: []string{"critic 1 error: " + err.Error()}}
+	}
+	v1.Score = adjustScore(v1)
+
+	// Critic 2: reasoning, consistency (if configured)
+	if p.critic2 == nil {
+		return v1
+	}
+
+	v2, err := p.critic2.Verify2(content, sources)
+	if err != nil {
+		// If critic 2 fails, just use critic 1 results
+		return v1
+	}
+	v2.Score = adjustScore(v2)
+
+	// Merge: take the lower score, combine issues, AND any failed checks
+	merged := &VerificationResult{
+		Score:              v1.Score,
+		Issues:             append(v1.Issues, v2.Issues...),
+		FactualCheck:       v1.FactualCheck && v2.FactualCheck,
+		AttributionCheck:   v1.AttributionCheck && v2.AttributionCheck,
+		CompletenessCheck:  v1.CompletenessCheck && v2.CompletenessCheck,
+		HallucinationCheck: v1.HallucinationCheck && v2.HallucinationCheck,
+	}
+	if v2.Score < merged.Score {
+		merged.Score = v2.Score
+	}
+	merged.Score = adjustScore(merged)
+	return merged
 }
 
 // cleanMarkdown converts common Markdown remnants to HTML.

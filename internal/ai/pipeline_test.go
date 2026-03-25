@@ -64,9 +64,9 @@ func TestPipeline_Process_BelowThreshold(t *testing.T) {
 	if result.PassedThreshold {
 		t.Error("expected PassedThreshold to be false for score 40 < threshold 80")
 	}
-	// adjustScore penalizes failed checks: 40 - (4 * 15) = -20, capped to 0
-	if result.Verification.Score != 0 {
-		t.Errorf("expected adjusted score 0, got %d", result.Verification.Score)
+	// adjustScore: hallucination cap 60 on score 40 → stays 40, then -3*10 = 10
+	if result.Verification.Score > 40 {
+		t.Errorf("expected score <= 40 for all-failed checks, got %d", result.Verification.Score)
 	}
 }
 

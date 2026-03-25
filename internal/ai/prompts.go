@@ -124,12 +124,14 @@ Review the following generated article against the original source articles. You
 VERIFICATION CHECKLIST:
 
 *** MOST IMPORTANT CHECK — DO THIS FIRST ***
-1. HALLUCINATION — Go through EVERY claim, fact, program name, product, deal, and detail in the article. For EACH one, find the specific source that supports it. If you cannot find a source for a claim, it is HALLUCINATED. Common hallucinations include:
-   - Mentioning deals, cards, or programs NOT discussed in any source
-   - Adding sections about topics NOT covered by any source
-   - Inventing specific numbers, dates, fees, or benefits not in the sources
-   - Creating "United summer sale" or "Chase card changes" when no source mentions these
-   If ANY hallucination is found, set hallucination_check to false and score MUST be below 50.
+1. HALLUCINATION — Check if the article contains MAJOR fabricated claims: entire topics, deals, or programs that no source discusses. Minor issues are NOT hallucinations:
+   - HALLUCINATION (fail): Inventing an entire section about "Chase card changes" when no source mentions Chase
+   - HALLUCINATION (fail): Adding specific numbers ($100 fee, 50K bonus) not found in any source
+   - NOT hallucination (pass): Creative writing phrases, idioms, or witty asides ("Rome wasn't built in a day")
+   - NOT hallucination (pass): A fact mentioned in at least ONE source, even if not in all sources
+   - NOT hallucination (pass): Saying "next year" when a source says "2027" (same meaning in context)
+   - NOT hallucination (pass): General practical advice ("check your account", "act quickly")
+   Only set hallucination_check to false for genuinely fabricated factual claims.
 
 2. FACTUAL ACCURACY — For claims that ARE supported by sources, do the specific numbers, dates, and details match exactly?
 3. COMPLETENESS — Are the most important details from the sources included?
