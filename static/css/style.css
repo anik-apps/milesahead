@@ -316,6 +316,24 @@ main {
     margin-bottom: 0.5rem;
 }
 
+.article-content hr.topic-break,
+.article-content hr {
+    border: none;
+    border-top: 2px solid var(--border);
+    margin: 2rem 0;
+    position: relative;
+}
+
+.article-content hr.topic-break::after {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 3px;
+    background: var(--accent);
+    margin: -2px auto 0;
+    border-radius: 2px;
+}
+
 /* Sources Section */
 .article-sources {
     border-top: 1px solid var(--border);
@@ -780,6 +798,23 @@ tr:hover {
 .preview-body .article-content li {
     margin-bottom: 0.5rem;
     line-height: 1.6;
+}
+
+.preview-body .article-content hr.topic-break,
+.preview-body .article-content hr {
+    border: none;
+    border-top: 2px solid var(--border);
+    margin: 1.5rem 0;
+}
+
+.preview-body .article-content hr.topic-break::after {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 3px;
+    background: var(--accent);
+    margin: -2px auto 0;
+    border-radius: 2px;
 }
 
 .preview-admin-info {

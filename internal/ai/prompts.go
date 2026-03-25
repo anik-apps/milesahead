@@ -44,11 +44,18 @@ WRITING STYLE — THIS IS CRITICAL:
 - Use "you" and "your" to speak directly to the reader.
 - Focus on practical implications: what should the reader DO with this information?
 - Avoid robotic phrases: "In this article", "It is worth noting", "According to sources", "Let's dive in".
-- NO source citations or links in the article body. Do not mention source names (TPG, OMAAT, etc.) UNLESS the article is about an unconfirmed report from a specific site.
+- NO source article links or citation markers. Do not link to TPG, OMAAT, Doctor of Credit, etc.
+  Do not mention source site names UNLESS reporting an unconfirmed claim from a specific site.
   WRONG: "American Express is offering a 40% bonus [TPG]."
   WRONG: "According to The Points Guy, there is a 40% bonus."
+  WRONG: <a href="https://thepointsguy.com/...">link</a>
   RIGHT: "American Express is offering a 40% transfer bonus to ANA through March 31."
   EXCEPTION (unconfirmed): "The Points Guy is reporting that Chase may change Sapphire Reserve benefits in April — take this with a grain of salt until there's official confirmation."
+- You SHOULD include links to the actual deal, product, or official page when helpful:
+  RIGHT: <a href="https://www.amazon.com/events/bigspringsale">Amazon Big Spring Sale</a>
+  RIGHT: <a href="https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred">Chase Sapphire Preferred</a>
+  RIGHT: <a href="https://www.united.com">book on United.com</a>
+  These are links to the actual content/product, NOT to the news article that reported on it.
 `
 
 const htmlFormat = `
@@ -57,7 +64,8 @@ OUTPUT FORMAT:
 - Use <strong> for bold, <em> for italic, <h3> for subheadings, <ul>/<li> for lists, <p> for paragraphs.
 - The first line must be the article title as plain text (no HTML tags, no formatting).
 - After the title line, write the full article body in HTML.
-- Do NOT include any source links or citation markers in the output.`
+- Do NOT link to source news articles (TPG, OMAAT, etc.). DO link to actual deals, products, and official pages.
+- For ROUNDUP articles covering multiple topics: use <hr class="topic-break"> between each topic section to create clear visual separation. Each topic should have its own <h3> heading.`
 
 // DealAlertPrompt builds a prompt for a deal-alert post written in a natural,
 // engaging style with no source citations in the body.
@@ -82,8 +90,9 @@ Write the deal alert post now.`, writingStyle, htmlFormat, formatSources(sources
 func RoundupPrompt(sources []SourceArticle) string {
 	return fmt.Sprintf(`You are a miles-and-points roundup writer.
 
-Given the following source articles, compare and rank the deals discussed.
-Synthesize the information into one cohesive, entertaining article.
+Given the following source articles, cover each major topic in its own clearly separated section.
+Each topic gets an <h3> heading followed by its content, then an <hr class="topic-break"> before the next topic.
+End with a brief wrap-up paragraph (no <hr> before the wrap-up).
 %s
 %s
 Sources (for your reference only — do NOT cite these in the article):
@@ -117,8 +126,8 @@ VERIFICATION CHECKLIST:
 3. HALLUCINATION — Does the article contain ANY information, claims, or details that are NOT supported by the provided sources? This includes made-up dates, invented restrictions, or assumed conditions.
 4. READABILITY — Does the article read naturally? Does it flow well? Is it engaging and not robotic? Does the tone feel like a real person wrote it?
 5. HTML VALIDITY — Is the output clean HTML? No Markdown artifacts (**, ##, []() links)? Are tags properly opened and closed?
-6. SOURCE LEAKAGE — Does the article mention source names (TPG, OMAAT, Doctor of Credit, etc.) in the body? It should NOT, unless reporting an unconfirmed claim from a specific site.
-7. LINK CHECK — The article should NOT contain any <a href> links or citation markers in the body. The only exception is if reporting an unconfirmed claim attributed to a specific source.
+6. SOURCE LEAKAGE — Does the article link to or mention source news sites (TPG, OMAAT, Doctor of Credit, View from the Wing, FlyerTalk, Frequent Miler) in the body? It should NOT, unless reporting an unconfirmed claim. Links to thepointsguy.com, onemileatatime.com, doctorofcredit.com, viewfromthewing.com are ALWAYS wrong.
+7. LINK CHECK — The article should NOT link to source news articles. It MAY link to actual deals, products, or official pages (amazon.com, chase.com, united.com, etc.). Check every <a href> tag: if it points to a source news site, that's a FAILURE.
 8. COHERENCE — Does the article make logical sense from start to finish? Are there any contradictions, non-sequiturs, or confusing passages?
 
 Generated Article:

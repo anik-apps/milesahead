@@ -267,7 +267,7 @@ func formatContent(content string) string {
 		text = strings.TrimSpace(text)
 		if text != "" {
 			// Don't wrap if it's already an HTML block element
-			if strings.HasPrefix(text, "<h3>") || strings.HasPrefix(text, "<ul>") || strings.HasPrefix(text, "<ol>") {
+			if strings.HasPrefix(text, "<h3>") || strings.HasPrefix(text, "<ul>") || strings.HasPrefix(text, "<ol>") || strings.HasPrefix(text, "<hr") {
 				result = append(result, text)
 			} else {
 				result = append(result, "<p>"+text+"</p>")
