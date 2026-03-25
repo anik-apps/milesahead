@@ -5,7 +5,7 @@ After=network.target milesahead.service
 [Service]
 Type=simple
 User=ubuntu
-ExecStart=/usr/local/bin/alloy run /opt/milesahead/alloy-config.alloy --storage.path=/tmp/alloy
+ExecStart=/usr/bin/alloy run /opt/milesahead/alloy-config.alloy --storage.path=/tmp/alloy
 Restart=on-failure
 RestartSec=10
 Environment=GRAFANA_API_KEY=
