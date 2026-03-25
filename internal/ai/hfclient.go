@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const defaultBaseURL = "https://api-inference.huggingface.co"
+const defaultBaseURL = "https://router.huggingface.co/v1"
 
 // HFClientInterface allows mocking the HF client in tests.
 type HFClientInterface interface {
@@ -17,6 +17,7 @@ type HFClientInterface interface {
 }
 
 // HFClient is an HTTP client for the Hugging Face Inference API.
+// Uses the OpenAI-compatible chat completions endpoint on router.huggingface.co.
 type HFClient struct {
 	token      string
 	maxRetries int
@@ -30,22 +31,46 @@ func NewHFClient(token string, maxRetries int) *HFClient {
 		token:      token,
 		maxRetries: maxRetries,
 		BaseURL:    defaultBaseURL,
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		httpClient: &http.Client{Timeout: 120 * time.Second},
 	}
 }
 
-type generateRequest struct {
-	Inputs     string            `json:"inputs"`
-	Parameters map[string]int    `json:"parameters"`
+// chatRequest is the OpenAI-compatible request format.
+type chatRequest struct {
+	Model       string        `json:"model"`
+	Messages    []chatMessage `json:"messages"`
+	MaxTokens   int           `json:"max_tokens"`
+	Temperature float64       `json:"temperature,omitempty"`
 }
 
-// Generate sends a text generation request to the HF Inference API.
-func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error) {
-	url := fmt.Sprintf("%s/models/%s", c.BaseURL, model)
+type chatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
 
-	reqBody := generateRequest{
-		Inputs:     prompt,
-		Parameters: map[string]int{"max_new_tokens": maxTokens},
+// chatResponse is the OpenAI-compatible response format.
+type chatResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
+}
+
+// Generate sends a text generation request using the chat completions API.
+func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error) {
+	url := fmt.Sprintf("%s/chat/completions", c.BaseURL)
+
+	reqBody := chatRequest{
+		Model: model,
+		Messages: []chatMessage{
+			{Role: "user", Content: prompt},
+		},
+		MaxTokens:   maxTokens,
+		Temperature: 0.7,
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
@@ -86,18 +111,20 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 			return "", fmt.Errorf("HF API error (status %d): %s", resp.StatusCode, string(respBody))
 		}
 
-		var results []map[string]string
-		if err := json.Unmarshal(respBody, &results); err != nil {
-			return "", fmt.Errorf("unmarshal response: %w", err)
+		var chatResp chatResponse
+		if err := json.Unmarshal(respBody, &chatResp); err != nil {
+			return "", fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
 		}
-		if len(results) == 0 {
+
+		if chatResp.Error != nil {
+			return "", fmt.Errorf("HF API error: %s", chatResp.Error.Message)
+		}
+
+		if len(chatResp.Choices) == 0 {
 			return "", fmt.Errorf("empty response from HF API")
 		}
-		text, ok := results[0]["generated_text"]
-		if !ok {
-			return "", fmt.Errorf("no generated_text in response")
-		}
-		return text, nil
+
+		return chatResp.Choices[0].Message.Content, nil
 	}
 
 	return "", fmt.Errorf("max retries exceeded")

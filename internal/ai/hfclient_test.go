@@ -7,12 +7,30 @@ import (
 	"testing"
 )
 
+func makeChatResponse(content string) chatResponse {
+	return chatResponse{
+		Choices: []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		}{
+			{Message: struct {
+				Content string `json:"content"`
+			}{Content: content}},
+		},
+	}
+}
+
 func TestHFClient_Generate(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Error("missing auth header")
 		}
-		resp := []map[string]string{{"generated_text": "This is a generated article."}}
+		// Verify it posts to /chat/completions
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		resp := makeChatResponse("This is a generated article.")
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer ts.Close()
@@ -38,7 +56,7 @@ func TestHFClient_RateLimit(t *testing.T) {
 			w.Write([]byte(`{"error":"rate limit"}`))
 			return
 		}
-		resp := []map[string]string{{"generated_text": "Success after retry."}}
+		resp := makeChatResponse("Success after retry.")
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer ts.Close()
