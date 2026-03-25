@@ -12,7 +12,7 @@ on:
 env:
   APP_DIR: /opt/milesahead
   APP_USER: milesahead
-  CADDY_SITES_DIR: /home/ubuntu/actions-runner/_work/fyNaNs/fyNaNs/caddy-sites
+  CADDY_SITES_DIR: /opt/fynans/caddy-sites
 
 jobs:
   build:
