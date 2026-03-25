@@ -116,7 +116,8 @@ jobs:
 
           # Deploy Caddy config to shared sites directory
           $SSH "mkdir -p ${{ env.CADDY_SITES_DIR }}"
-          scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:${{ env.CADDY_SITES_DIR }}/milesahead.caddy
+          scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:/tmp/milesahead.caddy
+          $SSH "sudo cp /tmp/milesahead.caddy ${{ env.CADDY_SITES_DIR }}/milesahead.caddy"
 
           # Reload Caddy
           $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || echo 'Caddy reload skipped — restart fynans stack to pick up new site'"
@@ -157,7 +158,8 @@ jobs:
 
           # Update Caddy config
           $SSH "mkdir -p ${{ env.CADDY_SITES_DIR }}"
-          scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:${{ env.CADDY_SITES_DIR }}/milesahead.caddy
+          scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:/tmp/milesahead.caddy
+          $SSH "sudo cp /tmp/milesahead.caddy ${{ env.CADDY_SITES_DIR }}/milesahead.caddy"
           $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
 
           # Atomic swap and restart
