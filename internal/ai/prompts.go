@@ -44,6 +44,7 @@ WRITING STYLE — THIS IS CRITICAL:
 - Use "you" and "your" to speak directly to the reader.
 - Focus on practical implications: what should the reader DO with this information?
 - Avoid robotic phrases: "In this article", "It is worth noting", "According to sources", "Let's dive in".
+- NEVER invent, fabricate, or add information not present in the provided sources. If the sources only discuss one deal, write about THAT deal only. Do not pad the article with other topics, programs, or deals you happen to know about. Stick strictly to what the sources say.
 - NO source article links or citation markers. Do not link to TPG, OMAAT, Doctor of Credit, etc.
   Do not mention source site names UNLESS reporting an unconfirmed claim from a specific site.
   WRONG: "American Express is offering a 40% bonus [TPG]."
@@ -121,9 +122,17 @@ func CriticPrompt(generatedArticle string, sources []SourceArticle) string {
 Review the following generated article against the original source articles. You must verify EVERYTHING.
 
 VERIFICATION CHECKLIST:
-1. FACTUAL ACCURACY — Does every number, date, percentage, program name, and specific claim in the article match what the sources say? Flag ANY discrepancy, even small ones.
-2. COMPLETENESS — Are the most important details from the sources included? Did the article miss anything a reader would need to know?
-3. HALLUCINATION — Does the article contain ANY information, claims, or details that are NOT supported by the provided sources? This includes made-up dates, invented restrictions, or assumed conditions.
+
+*** MOST IMPORTANT CHECK — DO THIS FIRST ***
+1. HALLUCINATION — Go through EVERY claim, fact, program name, product, deal, and detail in the article. For EACH one, find the specific source that supports it. If you cannot find a source for a claim, it is HALLUCINATED. Common hallucinations include:
+   - Mentioning deals, cards, or programs NOT discussed in any source
+   - Adding sections about topics NOT covered by any source
+   - Inventing specific numbers, dates, fees, or benefits not in the sources
+   - Creating "United summer sale" or "Chase card changes" when no source mentions these
+   If ANY hallucination is found, set hallucination_check to false and score MUST be below 50.
+
+2. FACTUAL ACCURACY — For claims that ARE supported by sources, do the specific numbers, dates, and details match exactly?
+3. COMPLETENESS — Are the most important details from the sources included?
 4. READABILITY — Does the article read naturally? Does it flow well? Is it engaging and not robotic? Does the tone feel like a real person wrote it?
 5. HTML VALIDITY — Is the output clean HTML? No Markdown artifacts (**, ##, []() links)? Are tags properly opened and closed?
 6. SOURCE LEAKAGE — Does the article link to or mention source news sites (TPG, OMAAT, Doctor of Credit, View from the Wing, FlyerTalk, Frequent Miler) in the body? It should NOT, unless reporting an unconfirmed claim. Links to thepointsguy.com, onemileatatime.com, doctorofcredit.com, viewfromthewing.com are ALWAYS wrong.
@@ -140,12 +149,16 @@ Return ONLY a JSON object (no other text):
 {"score": <0-100>, "issues": [<array of specific issue strings>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
 
 Scoring guide:
-- 90-100: Publish-ready. ALL four checks must be true. All facts verified, reads great, no issues.
-- 70-89: Minor issues. At most ONE check can be false. Small gaps but fundamentally sound.
-- 50-69: Significant issues. Two or more checks are false. Missing key facts or unverified claims.
-- Below 50: Major problems. Hallucinations, factual errors, or incoherent writing.
+- 90-100: Publish-ready. ALL four checks must be true. Every claim verified against sources. No extra content.
+- 75-89: Minor issues. At most ONE check false (not hallucination). Small factual gaps only.
+- 50-74: Significant issues. Missing key facts, unverified claims, or minor hallucinations.
+- Below 50: HALLUCINATION DETECTED or major factual errors. Article contains claims not in any source.
 
-CRITICAL: If any check is false, the score MUST be below 90. If two or more checks are false, the score MUST be below 70. Do NOT give a high score with failed checks.`, generatedArticle, formatSources(sources))
+CRITICAL RULES:
+- If hallucination_check is false, score MUST be below 50. Period. No exceptions.
+- If any other check is false, score MUST be below 90.
+- If two or more checks are false, score MUST be below 75.
+- An article that invents deals, programs, or facts not in the sources is NEVER above 50.`, generatedArticle, formatSources(sources))
 }
 
 // RevisionPrompt builds a prompt for revising an article based on feedback.

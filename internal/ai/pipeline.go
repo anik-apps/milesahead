@@ -126,11 +126,19 @@ func adjustScore(v *VerificationResult) int {
 		failCount++
 	}
 
-	// Each failed check deducts 15 points
-	penalty := failCount * 15
-	if score-penalty < score {
-		score -= penalty
+	// Hallucination is the most severe — automatic hard cap at 40
+	if !v.HallucinationCheck {
+		if score > 40 {
+			score = 40
+		}
 	}
+
+	// Each other failed check deducts 15 points
+	otherFails := failCount
+	if !v.HallucinationCheck {
+		otherFails--
+	}
+	score -= otherFails * 15
 
 	// Cap: can't be above 80 with any failed check, can't be above 60 with 2+ failures
 	if failCount > 0 && score > 80 {
