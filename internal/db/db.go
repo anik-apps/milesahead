@@ -217,7 +217,7 @@ var validTransitions = map[string][]string{
 	StatusPending:           {StatusApproved, StatusRejected, StatusRevisionRequested},
 	StatusApproved:          {StatusUnpublished},
 	StatusRejected:          {},
-	StatusRevisionRequested: {StatusDraft, StatusApproved, StatusRejected},
+	StatusRevisionRequested: {StatusDraft, StatusApproved, StatusRejected, StatusRevisionRequested},
 	StatusUnpublished:       {StatusRevisionRequested, StatusApproved, StatusRejected},
 }
 
