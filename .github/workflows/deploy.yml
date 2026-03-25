@@ -52,11 +52,12 @@ jobs:
         run: |
           SSH="ssh $OCI_USER@$OCI_HOST"
 
-          # Create app user and directories
+          # Create app user and directories (ubuntu needs write access for deploys)
           $SSH "id -u ${{ env.APP_USER }} 2>/dev/null || sudo useradd -r -s /bin/false ${{ env.APP_USER }}"
-          $SSH "sudo mkdir -p ${{ env.APP_DIR }}/data && sudo chown -R ${{ env.APP_USER }}:${{ env.APP_USER }} ${{ env.APP_DIR }}"
+          $SSH "sudo mkdir -p ${{ env.APP_DIR }}/data ${{ env.APP_DIR }}/templates ${{ env.APP_DIR }}/static"
+          $SSH "sudo chown -R ubuntu:ubuntu ${{ env.APP_DIR }}"
 
-          # Deploy config file
+          # Deploy config file (via /tmp to avoid permission issues)
           cat > /tmp/config.yaml << CONFIGEOF
           server:
             port: 9090
@@ -107,9 +108,9 @@ jobs:
           CONFIGEOF
 
           scp /tmp/config.yaml $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/config.yaml
-          $SSH "sudo chown ${{ env.APP_USER }}:${{ env.APP_USER }} ${{ env.APP_DIR }}/config.yaml && sudo chmod 600 ${{ env.APP_DIR }}/config.yaml"
+          $SSH "chmod 600 ${{ env.APP_DIR }}/config.yaml"
 
-          # Deploy systemd service
+          # Deploy systemd service (needs sudo for /etc/systemd)
           scp deploy/milesahead.service $OCI_USER@$OCI_HOST:/tmp/milesahead.service
           $SSH "sudo mv /tmp/milesahead.service /etc/systemd/system/milesahead.service && sudo systemctl daemon-reload && sudo systemctl enable milesahead"
 
@@ -117,8 +118,8 @@ jobs:
           $SSH "mkdir -p ${{ env.CADDY_SITES_DIR }}"
           scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:${{ env.CADDY_SITES_DIR }}/milesahead.caddy
 
-          # Reload Caddy to pick up the new site
-          $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || echo 'Caddy reload skipped - restart the fynans stack to pick up the new site'"
+          # Reload Caddy
+          $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || echo 'Caddy reload skipped — restart fynans stack to pick up new site'"
 
   deploy:
     needs: build
@@ -143,6 +144,9 @@ jobs:
         run: |
           SSH="ssh $OCI_USER@$OCI_HOST"
 
+          # Ensure app dir exists and is writable by ubuntu
+          $SSH "sudo mkdir -p ${{ env.APP_DIR }} && sudo chown ubuntu:ubuntu ${{ env.APP_DIR }}"
+
           # Copy binary
           chmod +x milesahead
           scp milesahead $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/milesahead.new
@@ -151,14 +155,15 @@ jobs:
           scp -r templates $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/
           scp -r static $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/
 
-          # Update Caddy config if changed
+          # Update Caddy config
+          $SSH "mkdir -p ${{ env.CADDY_SITES_DIR }}"
           scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:${{ env.CADDY_SITES_DIR }}/milesahead.caddy
           $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
 
           # Atomic swap and restart
-          $SSH "sudo mv ${{ env.APP_DIR }}/milesahead.new ${{ env.APP_DIR }}/milesahead && sudo chown ${{ env.APP_USER }}:${{ env.APP_USER }} ${{ env.APP_DIR }}/milesahead && sudo systemctl restart milesahead"
+          $SSH "mv ${{ env.APP_DIR }}/milesahead.new ${{ env.APP_DIR }}/milesahead && sudo systemctl restart milesahead"
 
-          # Verify it started
+          # Verify
           sleep 3
           $SSH "sudo systemctl is-active milesahead" || ($SSH "sudo journalctl -u milesahead -n 20 --no-pager" && exit 1)
           echo "Deployment successful!"
