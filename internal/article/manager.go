@@ -90,8 +90,8 @@ func (m *Manager) Reject(articleID int64) error {
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
 	}
-	if article.Status != db.StatusPending {
-		return fmt.Errorf("cannot reject article with status %q, must be %q", article.Status, db.StatusPending)
+	if article.Status != db.StatusPending && article.Status != db.StatusUnpublished {
+		return fmt.Errorf("cannot reject article with status %q, must be %q or %q", article.Status, db.StatusPending, db.StatusUnpublished)
 	}
 	return m.db.UpdateArticleStatus(articleID, db.StatusRejected)
 }
@@ -103,8 +103,8 @@ func (m *Manager) RequestRevision(articleID int64, feedback string, source strin
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
 	}
-	if article.Status != db.StatusPending {
-		return fmt.Errorf("cannot request revision for article with status %q, must be %q", article.Status, db.StatusPending)
+	if article.Status != db.StatusPending && article.Status != db.StatusUnpublished {
+		return fmt.Errorf("cannot request revision for article with status %q, must be %q or %q", article.Status, db.StatusPending, db.StatusUnpublished)
 	}
 
 	if err := m.db.UpdateArticleStatus(articleID, db.StatusRevisionRequested); err != nil {
