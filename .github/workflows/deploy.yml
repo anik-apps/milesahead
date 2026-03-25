@@ -122,6 +122,21 @@ jobs:
           # Reload Caddy
           $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || echo 'Caddy reload skipped — restart fynans stack to pick up new site'"
 
+          # Install Grafana Alloy if not present
+          $SSH "which alloy || (curl -fsSL https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg && echo 'deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main' | sudo tee /etc/apt/sources.list.d/grafana.list && sudo apt-get update && sudo apt-get install -y alloy)"
+
+          # Deploy Alloy config
+          scp deploy/alloy-config.alloy $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/alloy-config.alloy
+
+          # Deploy Alloy systemd service with Grafana credentials
+          scp deploy/alloy.service $OCI_USER@$OCI_HOST:/tmp/alloy.service
+          $SSH "sudo sed -i 's|Environment=GRAFANA_API_KEY=|Environment=GRAFANA_API_KEY=${{ secrets.GRAFANA_API_KEY }}|' /tmp/alloy.service"
+          $SSH "sudo sed -i 's|Environment=GRAFANA_PROM_URL=|Environment=GRAFANA_PROM_URL=${{ secrets.GRAFANA_PROM_URL }}|' /tmp/alloy.service"
+          $SSH "sudo sed -i 's|Environment=GRAFANA_PROM_USER=|Environment=GRAFANA_PROM_USER=${{ secrets.GRAFANA_PROM_USER }}|' /tmp/alloy.service"
+          $SSH "sudo sed -i 's|Environment=GRAFANA_LOKI_URL=|Environment=GRAFANA_LOKI_URL=${{ secrets.GRAFANA_LOKI_URL }}|' /tmp/alloy.service"
+          $SSH "sudo sed -i 's|Environment=GRAFANA_LOKI_USER=|Environment=GRAFANA_LOKI_USER=${{ secrets.GRAFANA_LOKI_USER }}|' /tmp/alloy.service"
+          $SSH "sudo mv /tmp/alloy.service /etc/systemd/system/alloy.service && sudo systemctl daemon-reload && sudo systemctl enable alloy && sudo systemctl restart alloy"
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -161,6 +176,10 @@ jobs:
           scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:/tmp/milesahead.caddy
           $SSH "sudo cp /tmp/milesahead.caddy ${{ env.CADDY_SITES_DIR }}/milesahead.caddy"
           $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
+
+          # Update Alloy config
+          scp deploy/alloy-config.alloy $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/alloy-config.alloy
+          $SSH "sudo systemctl restart alloy 2>/dev/null || true"
 
           # Atomic swap and restart
           $SSH "mv ${{ env.APP_DIR }}/milesahead.new ${{ env.APP_DIR }}/milesahead && sudo systemctl restart milesahead"

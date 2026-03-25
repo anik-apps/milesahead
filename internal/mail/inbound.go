@@ -3,7 +3,7 @@ package mail
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -184,10 +184,12 @@ func (p *Poller) Poll() error {
 
 	for _, msg := range messages {
 		if err := p.processMessage(msg); err != nil {
-			log.Printf("error processing message (seq=%d): %v", msg.SeqNum, err)
+			slog.Error("error processing message", "seq", msg.SeqNum, "error", err)
 			continue
 		}
 	}
+
+	slog.Info("mail poll completed", "messages_processed", len(messages))
 
 	// Mark all fetched messages as read.
 	storeFlags := &imap.StoreFlags{
@@ -236,6 +238,8 @@ func (p *Poller) processMessage(msg *imapclient.FetchMessageBuffer) error {
 
 	action, feedback := ParseReply(bodyText)
 
+	slog.Info("mail action", "action", action, "article_id", articleID)
+
 	switch action {
 	case ActionApprove:
 		return p.manager.Approve(articleID)
@@ -261,17 +265,17 @@ func (p *Poller) Start(ctx context.Context) {
 
 	// Run once immediately.
 	if err := p.Poll(); err != nil {
-		log.Printf("IMAP poll error: %v", err)
+		slog.Error("IMAP poll error", "error", err)
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("IMAP poller stopped")
+			slog.Info("IMAP poller stopped")
 			return
 		case <-ticker.C:
 			if err := p.Poll(); err != nil {
-				log.Printf("IMAP poll error: %v", err)
+				slog.Error("IMAP poll error", "error", err)
 			}
 		}
 	}

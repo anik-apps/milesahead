@@ -1,0 +1,18 @@
+[Unit]
+Description=Grafana Alloy - Telemetry Collector for Miles Ahead
+After=network.target milesahead.service
+
+[Service]
+Type=simple
+User=ubuntu
+ExecStart=/usr/local/bin/alloy run /opt/milesahead/alloy-config.alloy --storage.path=/tmp/alloy
+Restart=on-failure
+RestartSec=10
+Environment=GRAFANA_API_KEY=
+Environment=GRAFANA_PROM_URL=
+Environment=GRAFANA_PROM_USER=
+Environment=GRAFANA_LOKI_URL=
+Environment=GRAFANA_LOKI_USER=
+
+[Install]
+WantedBy=multi-user.target

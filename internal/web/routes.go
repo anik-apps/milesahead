@@ -3,9 +3,14 @@ package web
 import (
 	"net/http"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func (app *App) setupRoutes() {
+	// Metrics endpoint (no auth, scraped by Alloy).
+	app.mux.Handle("GET /metrics", promhttp.Handler())
+
 	// Static files.
 	app.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 

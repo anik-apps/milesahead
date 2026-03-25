@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 const defaultBaseURL = "https://router.huggingface.co/v1"
@@ -82,6 +85,8 @@ func stripThinkingTags(s string) string {
 
 // Generate sends a text generation request using the chat completions API.
 func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error) {
+	slog.Info("ai api call", "model", model, "max_tokens", maxTokens)
+	start := time.Now()
 	url := fmt.Sprintf("%s/chat/completions", c.BaseURL)
 
 	reqBody := chatRequest{
@@ -94,6 +99,8 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {
+		metrics.AIAPIErrorsTotal.Inc()
+		metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
@@ -102,6 +109,8 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
 		if err != nil {
+			metrics.AIAPIErrorsTotal.Inc()
+			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 			return "", fmt.Errorf("create request: %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+c.token)
@@ -109,46 +118,65 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
+			metrics.AIAPIErrorsTotal.Inc()
+			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 			return "", fmt.Errorf("http request: %w", err)
 		}
 
 		respBody, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
+			metrics.AIAPIErrorsTotal.Inc()
+			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 			return "", fmt.Errorf("read response: %w", err)
 		}
 
 		if resp.StatusCode == 429 || resp.StatusCode == 503 {
 			if attempt < c.maxRetries {
+				slog.Warn("ai api retry", "model", model, "attempt", attempt, "status", resp.StatusCode)
 				time.Sleep(backoff)
 				backoff *= 2
 				continue
 			}
+			metrics.AIAPIErrorsTotal.Inc()
+			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 			return "", fmt.Errorf("rate limited after %d retries: %s", c.maxRetries, string(respBody))
 		}
 
 		if resp.StatusCode != http.StatusOK {
+			metrics.AIAPIErrorsTotal.Inc()
+			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 			return "", fmt.Errorf("HF API error (status %d): %s", resp.StatusCode, string(respBody))
 		}
 
 		var chatResp chatResponse
 		if err := json.Unmarshal(respBody, &chatResp); err != nil {
+			metrics.AIAPIErrorsTotal.Inc()
+			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 			return "", fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
 		}
 
 		if chatResp.Error != nil {
+			metrics.AIAPIErrorsTotal.Inc()
+			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 			return "", fmt.Errorf("HF API error: %s", chatResp.Error.Message)
 		}
 
 		if len(chatResp.Choices) == 0 {
+			metrics.AIAPIErrorsTotal.Inc()
+			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 			return "", fmt.Errorf("empty response from HF API")
 		}
 
 		content := chatResp.Choices[0].Message.Content
 		// Strip <think>...</think> blocks from reasoning models (DeepSeek R1, etc.)
 		content = stripThinkingTags(content)
+		metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 		return content, nil
 	}
 
+	slog.Error("ai api failed", "model", model, "error", "max retries exceeded")
+	metrics.AIAPIErrorsTotal.Inc()
+	metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 	return "", fmt.Errorf("max retries exceeded")
 }

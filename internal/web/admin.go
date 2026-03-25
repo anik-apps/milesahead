@@ -4,7 +4,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -213,7 +213,7 @@ func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
 	// Trigger AI regeneration immediately in the background
 	go func() {
 		if err := app.articleManager.ProcessRevision(id); err != nil {
-			log.Printf("revision processing failed for article %d: %v", id, err)
+			slog.Error("revision processing failed", "article_id", id, "error", err)
 		}
 	}()
 

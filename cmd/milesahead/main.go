@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
@@ -12,6 +13,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/mail"
+	"github.com/kumaranik/milesahead/internal/metrics"
 	"github.com/kumaranik/milesahead/internal/newsletter"
 	"github.com/kumaranik/milesahead/internal/scanner"
 	"github.com/kumaranik/milesahead/internal/scheduler"
@@ -28,20 +30,33 @@ func (s *stubTokenResolver) Resolve(token string) (int64, string, error) {
 }
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
 	configPath := flag.String("config", "config.yaml", "path to config file")
 	flag.Parse()
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
 	}
+
+	// Metrics
+	metrics.Init()
 
 	// Database
 	database, err := db.Open(cfg.DB.Path)
 	if err != nil {
-		log.Fatalf("failed to open database: %v", err)
+		slog.Error("failed to open database", "error", err)
+		os.Exit(1)
 	}
 	defer database.Close()
+
+	metrics.RegisterSubscribersGauge(func() float64 {
+		subs, _ := database.ListConfirmedSubscribers()
+		return float64(len(subs))
+	})
 
 	// AI
 	hfClient := ai.NewHFClient(cfg.AI.HFAPIToken, cfg.AI.MaxRetries)
@@ -73,21 +88,24 @@ func main() {
 	// Scheduler
 	sched := scheduler.New()
 	sched.AddScanJob(time.Duration(cfg.Scanner.DefaultInterval)*time.Minute, func() {
+		slog.Info("scheduled job started", "job", "scan")
 		results, err := scnr.ScanAll()
 		if err != nil {
-			log.Printf("Scan error: %v", err)
+			slog.Error("scheduled job failed", "job", "scan", "error", err)
 			return
 		}
-		log.Printf("Scan complete: %d sources", len(results))
+		slog.Info("scan complete", "sources", len(results))
 	})
 	sched.AddMailPollJob(time.Duration(cfg.Mail.IMAP.PollInterval)*time.Second, func() {
+		slog.Info("scheduled job started", "job", "mail_poll")
 		if err := mailPoller.Poll(); err != nil {
-			log.Printf("Mail poll error: %v", err)
+			slog.Error("scheduled job failed", "job", "mail_poll", "error", err)
 		}
 	})
 	sched.AddNewsletterJob(cfg.Newsletter.SendTime, cfg.Newsletter.Timezone, func() {
+		slog.Info("scheduled job started", "job", "newsletter")
 		if err := newsletterSvc.SendDaily(); err != nil {
-			log.Printf("Newsletter send error: %v", err)
+			slog.Error("scheduled job failed", "job", "newsletter", "error", err)
 		}
 	})
 	sched.Start()
@@ -96,9 +114,13 @@ func main() {
 	// Web server
 	app, err := web.NewApp(cfg, database, articleMgr, voteSvc, newsletterSvc)
 	if err != nil {
-		log.Fatalf("failed to create web app: %v", err)
+		slog.Error("failed to create web app", "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("Miles Ahead running on :%d", cfg.Server.Port)
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", cfg.Server.Port), app))
+	slog.Info("server starting", "port", cfg.Server.Port)
+	if err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Server.Port), app); err != nil {
+		slog.Error("server stopped", "error", err)
+		os.Exit(1)
+	}
 }

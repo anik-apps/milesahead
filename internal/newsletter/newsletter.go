@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -218,6 +219,8 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 	}
 	nl.ID = id
 
+	slog.Info("newsletter generated", "date", date, "article_count", len(articles))
+
 	return nl, nil
 }
 
@@ -262,12 +265,15 @@ func (s *Service) SendDaily() error {
 	}
 
 	if err := s.sender.SendNewsletter(nl.Subject, nl.HTMLContent, recipients); err != nil {
+		slog.Error("newsletter send failed", "error", err)
 		return fmt.Errorf("sending newsletter: %w", err)
 	}
 
 	if err := s.db.MarkNewsletterSent(nl.ID); err != nil {
 		return fmt.Errorf("marking newsletter sent: %w", err)
 	}
+
+	slog.Info("newsletter sent", "recipients", len(recipients))
 
 	return nil
 }

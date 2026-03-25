@@ -3,12 +3,14 @@ package article
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"regexp"
 	"strings"
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // Manager coordinates article lifecycle between the AI pipeline and database.
@@ -69,6 +71,8 @@ func (m *Manager) CreateFromPipeline(result *ai.PipelineResult, rawArticleIDs []
 		return 0, fmt.Errorf("storing verification: %w", err)
 	}
 
+	metrics.ArticlesGeneratedTotal.WithLabelValues(articleType, status).Inc()
+
 	return articleID, nil
 }
 
@@ -82,7 +86,12 @@ func (m *Manager) Approve(articleID int64) error {
 	if !allowed[article.Status] {
 		return fmt.Errorf("cannot approve article with status %q", article.Status)
 	}
-	return m.db.UpdateArticleStatus(articleID, db.StatusApproved)
+	if err := m.db.UpdateArticleStatus(articleID, db.StatusApproved); err != nil {
+		return err
+	}
+	slog.Info("article approved", "article_id", articleID)
+	metrics.ArticlesApprovedTotal.Inc()
+	return nil
 }
 
 // Reject transitions an article from pending to rejected.
@@ -95,7 +104,12 @@ func (m *Manager) Reject(articleID int64) error {
 	if !allowed[article.Status] {
 		return fmt.Errorf("cannot reject article with status %q", article.Status)
 	}
-	return m.db.UpdateArticleStatus(articleID, db.StatusRejected)
+	if err := m.db.UpdateArticleStatus(articleID, db.StatusRejected); err != nil {
+		return err
+	}
+	slog.Info("article rejected", "article_id", articleID)
+	metrics.ArticlesRejectedTotal.Inc()
+	return nil
 }
 
 // RequestRevision transitions an article from pending to revision_requested
@@ -122,6 +136,8 @@ func (m *Manager) RequestRevision(articleID int64, feedback string, source strin
 	if err != nil {
 		return fmt.Errorf("storing feedback: %w", err)
 	}
+
+	slog.Info("revision requested", "article_id", articleID, "source", source)
 
 	return nil
 }

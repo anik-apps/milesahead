@@ -5,8 +5,11 @@ import (
 	"encoding/hex"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
+
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // csrfMiddleware generates CSRF tokens on GET and validates them on POST.
@@ -129,6 +132,29 @@ func extractIP(r *http.Request) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// metricsMiddleware records HTTP request counts and durations.
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		wrapped := &statusRecorder{ResponseWriter: w, status: 200}
+		next.ServeHTTP(wrapped, r)
+		duration := time.Since(start).Seconds()
+		path := r.URL.Path
+		metrics.HTTPRequestsTotal.WithLabelValues(r.Method, path, strconv.Itoa(wrapped.status)).Inc()
+		metrics.HTTPDuration.WithLabelValues(r.Method, path).Observe(duration)
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
 }
 
 // generateToken creates a cryptographically random hex token.

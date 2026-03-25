@@ -143,7 +143,7 @@ func (app *App) renderTemplate(w http.ResponseWriter, name string, data interfac
 	}
 }
 
-// ServeHTTP delegates to the internal mux.
+// ServeHTTP delegates to the internal mux, wrapped with metrics middleware.
 func (app *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	app.mux.ServeHTTP(w, r)
+	metricsMiddleware(app.mux).ServeHTTP(w, r)
 }
