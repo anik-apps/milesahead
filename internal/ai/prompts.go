@@ -131,10 +131,12 @@ Return ONLY a JSON object (no other text):
 {"score": <0-100>, "issues": [<array of specific issue strings>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
 
 Scoring guide:
-- 90-100: Publish-ready. All facts verified, reads great, no issues.
-- 70-89: Minor issues. Small factual gaps or style nits but fundamentally sound.
-- 50-69: Significant issues. Missing key facts, contains unverified claims, or reads poorly.
-- Below 50: Major problems. Hallucinations, factual errors, or incoherent writing.`, generatedArticle, formatSources(sources))
+- 90-100: Publish-ready. ALL four checks must be true. All facts verified, reads great, no issues.
+- 70-89: Minor issues. At most ONE check can be false. Small gaps but fundamentally sound.
+- 50-69: Significant issues. Two or more checks are false. Missing key facts or unverified claims.
+- Below 50: Major problems. Hallucinations, factual errors, or incoherent writing.
+
+CRITICAL: If any check is false, the score MUST be below 90. If two or more checks are false, the score MUST be below 70. Do NOT give a high score with failed checks.`, generatedArticle, formatSources(sources))
 }
 
 // RevisionPrompt builds a prompt for revising an article based on feedback.

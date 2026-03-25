@@ -25,14 +25,53 @@ func NewPipeline(generator *Generator, critic *Critic, threshold int) *Pipeline 
 	return &Pipeline{generator: generator, critic: critic, threshold: threshold}
 }
 
-// Process generates an article and verifies it against the sources.
+// Process generates an article, verifies it, and if the critic finds issues
+// but the score is above threshold, auto-revises once before finalizing.
 func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*PipelineResult, error) {
 	content, err := p.generator.Generate(articleType, sources)
 	if err != nil {
 		return nil, err
 	}
 
-	return p.buildResult(content, articleType, sources)
+	content = cleanMarkdown(content)
+
+	// First critic pass
+	verification, err := p.critic.Verify(content, sources)
+	if err != nil {
+		return nil, err
+	}
+
+	// Enforce score consistency: failed checks must lower the score
+	verification.Score = adjustScore(verification)
+
+	// If there are issues but score is still passable, auto-revise once
+	if len(verification.Issues) > 0 && verification.Score >= p.threshold {
+		issuesStr := strings.Join(verification.Issues, "; ")
+		revised, err := p.generator.GenerateWithFeedback(sources, content, "Fix the following issues found by the critic", issuesStr)
+		if err == nil && revised != "" {
+			revised = cleanMarkdown(revised)
+			// Re-verify the revision
+			v2, err := p.critic.Verify(revised, sources)
+			if err == nil {
+				v2.Score = adjustScore(v2)
+				// Use the revision if it's at least as good
+				if v2.Score >= verification.Score {
+					content = revised
+					verification = v2
+				}
+			}
+		}
+	}
+
+	title := extractTitle(content)
+
+	return &PipelineResult{
+		Content:         content,
+		Title:           title,
+		Type:            articleType,
+		Verification:    verification,
+		PassedThreshold: verification.Score >= p.threshold,
+	}, nil
 }
 
 // ProcessWithFeedback revises a previously generated article using feedback,
@@ -47,13 +86,13 @@ func (p *Pipeline) ProcessWithFeedback(sources []SourceArticle, previousOutput, 
 }
 
 func (p *Pipeline) buildResult(content, articleType string, sources []SourceArticle) (*PipelineResult, error) {
-	// Clean up any remaining Markdown in the content
 	content = cleanMarkdown(content)
 
 	verification, err := p.critic.Verify(content, sources)
 	if err != nil {
 		return nil, err
 	}
+	verification.Score = adjustScore(verification)
 
 	title := extractTitle(content)
 
@@ -64,6 +103,44 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
 	}, nil
+}
+
+// adjustScore enforces consistency between the score and the check results.
+// Each failed check deducts points, and the score is capped accordingly.
+func adjustScore(v *VerificationResult) int {
+	score := v.Score
+	failCount := 0
+	if !v.FactualCheck {
+		failCount++
+	}
+	if !v.AttributionCheck {
+		failCount++
+	}
+	if !v.CompletenessCheck {
+		failCount++
+	}
+	if !v.HallucinationCheck {
+		failCount++
+	}
+
+	// Each failed check deducts 15 points
+	penalty := failCount * 15
+	if score-penalty < score {
+		score -= penalty
+	}
+
+	// Cap: can't be above 80 with any failed check, can't be above 60 with 2+ failures
+	if failCount > 0 && score > 80 {
+		score = 80
+	}
+	if failCount >= 2 && score > 60 {
+		score = 60
+	}
+	if score < 0 {
+		score = 0
+	}
+
+	return score
 }
 
 // cleanMarkdown converts common Markdown remnants to HTML.
