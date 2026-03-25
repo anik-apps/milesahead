@@ -1,0 +1,86 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="admin-nav">
+    <a href="/admin/dashboard">Pending</a>
+    <a href="/admin/published">Published</a>
+    <a href="/admin/sources" class="active">Sources</a>
+    <a href="/admin/subscribers">Subscribers</a>
+    <a href="/admin/newsletter">Newsletter</a>
+    <a href="/admin/settings">Settings</a>
+    <form method="POST" action="/admin/logout" class="logout-btn">
+        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
+    </form>
+</div>
+<div class="admin-sources">
+    <h1>Sources</h1>
+
+    <h2>Add Source</h2>
+    <form method="POST" action="/admin/sources/add" class="source-form">
+        {{template "csrf_field" .}}
+        <div class="source-form-grid">
+            <div class="form-group">
+                <label for="add-name">Name</label>
+                <input type="text" id="add-name" name="name" required placeholder="Source name">
+            </div>
+            <div class="form-group">
+                <label for="add-url">URL</label>
+                <input type="url" id="add-url" name="url" required placeholder="https://example.com">
+            </div>
+            <div class="form-group">
+                <label for="add-rss">RSS URL</label>
+                <input type="url" id="add-rss" name="rss_url" placeholder="https://example.com/feed.xml">
+            </div>
+            <div class="form-group">
+                <label for="add-interval">Scan Interval (min)</label>
+                <input type="number" id="add-interval" name="scan_interval" placeholder="60">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Source</button>
+    </form>
+
+    {{if .Sources}}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>URL</th>
+                <th>RSS URL</th>
+                <th>Interval</th>
+                <th>Active</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Sources}}
+            <tr>
+                <td>{{.Name}}</td>
+                <td><a href="{{.URL}}">{{.URL}}</a></td>
+                <td>{{if .RSSURL}}{{deref .RSSURL}}{{else}}<span class="text-muted" style="font-style:italic;">Not set</span>{{end}}</td>
+                <td>{{if .ScanInterval}}{{deref .ScanInterval}}{{else}}<span class="text-muted" style="font-style:italic;">Not set</span>{{end}}</td>
+                <td>{{if .Active}}Yes{{else}}No{{end}}</td>
+                <td class="actions">
+                    <form method="POST" action="/admin/sources/{{.ID}}/toggle" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <button type="submit" class="btn btn-toggle">{{if .Active}}Deactivate{{else}}Activate{{end}}</button>
+                    </form>
+                    <details>
+                        <summary>Edit</summary>
+                        <form method="POST" action="/admin/sources/{{.ID}}/edit" class="source-form">
+                            {{template "csrf_field" $}}
+                            <label>Name: <input type="text" name="name" value="{{.Name}}" required></label>
+                            <label>URL: <input type="url" name="url" value="{{.URL}}" required></label>
+                            <label>RSS URL: <input type="url" name="rss_url" value="{{if .RSSURL}}{{deref .RSSURL}}{{end}}"></label>
+                            <label>Interval: <input type="number" name="scan_interval" value="{{if .ScanInterval}}{{deref .ScanInterval}}{{end}}"></label>
+                            <button type="submit" class="btn btn-edit">Save</button>
+                        </form>
+                    </details>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{else}}
+    <p>No sources configured.</p>
+    {{end}}
+</div>
+{{end}}

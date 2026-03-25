@@ -1,0 +1,44 @@
+server:
+  port: 8080
+  domain: milesahead.kumaranik.com
+
+admin:
+  password_hash: "$2a$12$..."  # bcrypt
+
+db:
+  path: /opt/milesahead/data/milesahead.db
+
+scanner:
+  default_interval: 180  # minutes
+  user_agent: "MilesAhead/1.0"
+
+ai:
+  generator_model: "mistralai/Mistral-7B-Instruct-v0.3"
+  critic_model: "meta-llama/Meta-Llama-3-8B-Instruct"
+  hf_api_token: "${HF_API_TOKEN}"
+  critic_threshold: 70
+  max_retries: 3
+  cache_ttl: 3600  # seconds
+
+mail:
+  smtp:
+    host: smtp.email.oci.oraclecloud.com
+    port: 587
+    user: "${SMTP_USER}"
+    password: "${SMTP_PASSWORD}"
+    from: "noreply@milesahead.kumaranik.com"
+  imap:
+    host: imap.gmail.com
+    port: 993
+    user: "${IMAP_USER}"
+    password: "${IMAP_APP_PASSWORD}"
+    poll_interval: 120  # seconds
+
+newsletter:
+  send_time: "08:00"
+  timezone: "America/New_York"
+
+votes:
+  alert_threshold: 10
+  alert_ratio: 0.4
+  alert_window: 24

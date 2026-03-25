@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Article Review: {{.Article.Title}}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;">
+<tr>
+<td align="center" style="padding:20px 0;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;">
+
+<!-- Header -->
+<tr>
+<td style="background-color:#1a1a2e;padding:24px 32px;">
+<h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">Miles Ahead — Article Review</h1>
+</td>
+</tr>
+
+<!-- Title & Badge -->
+<tr>
+<td style="padding:24px 32px 0 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr>
+<td>
+<h2 style="margin:0 0 8px 0;color:#1a1a2e;font-size:22px;">{{.Article.Title}}</h2>
+<span style="display:inline-block;background-color:#e8eaf6;color:#3949ab;padding:4px 12px;border-radius:12px;font-size:13px;font-weight:600;text-transform:uppercase;">{{.Article.Type}}</span>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+
+<!-- Verification Score -->
+<tr>
+<td style="padding:16px 32px;">
+<table role="presentation" cellpadding="0" cellspacing="0" style="background-color:#f8f9fa;border-radius:6px;width:100%;">
+<tr>
+<td style="padding:12px 16px;">
+<strong style="color:#555;font-size:13px;text-transform:uppercase;">Verification Score</strong><br>
+<span style="font-size:28px;font-weight:700;color:{{if ge .Verification.Score 80}}#2e7d32{{else if ge .Verification.Score 60}}#f57f17{{else}}#c62828{{end}};">{{.Verification.Score}}/100</span>
+</td>
+<td style="padding:12px 16px;vertical-align:top;">
+<table role="presentation" cellpadding="0" cellspacing="0">
+<tr><td style="padding:2px 0;font-size:13px;color:#555;">Factual: {{.Verification.FactualCheck}}</td></tr>
+<tr><td style="padding:2px 0;font-size:13px;color:#555;">Attribution: {{.Verification.AttributionCheck}}</td></tr>
+<tr><td style="padding:2px 0;font-size:13px;color:#555;">Completeness: {{.Verification.CompletenessCheck}}</td></tr>
+<tr><td style="padding:2px 0;font-size:13px;color:#555;">Hallucination: {{.Verification.HallucinationCheck}}</td></tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+
+<!-- Article Content -->
+<tr>
+<td style="padding:8px 32px 16px 32px;">
+<h3 style="margin:0 0 12px 0;color:#1a1a2e;font-size:16px;">Article Content</h3>
+<div style="color:#333;font-size:15px;line-height:1.6;">
+{{.Article.Content}}
+</div>
+</td>
+</tr>
+
+<!-- Source Citations -->
+<tr>
+<td style="padding:8px 32px 16px 32px;">
+<h3 style="margin:0 0 12px 0;color:#1a1a2e;font-size:16px;">Sources</h3>
+<div style="color:#555;font-size:14px;">
+{{.Article.SourcesJSON}}
+</div>
+</td>
+</tr>
+
+<!-- Action Instructions -->
+<tr>
+<td style="padding:16px 32px 24px 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#e3f2fd;border-radius:6px;border-left:4px solid #1976d2;">
+<tr>
+<td style="padding:16px;">
+<strong style="color:#1565c0;font-size:14px;">Reply to this email with one of the following:</strong>
+<ul style="margin:8px 0 0 0;padding-left:20px;color:#333;font-size:14px;line-height:1.8;">
+<li><strong>approve</strong> — publish this article</li>
+<li><strong>reject</strong> — discard this article</li>
+<li><strong>unpublish</strong> — remove from public site</li>
+<li>Or type your feedback to request a revision</li>
+</ul>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+
+<!-- Footer -->
+<tr>
+<td style="background-color:#f8f9fa;padding:16px 32px;border-top:1px solid #e0e0e0;">
+<p style="margin:0;color:#999;font-size:12px;">This is an automated review notification from Miles Ahead. Reply directly to take action.</p>
+</td>
+</tr>
+
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
