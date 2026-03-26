@@ -277,19 +277,27 @@ func ImageScoringPrompt(articleTitle, articleTLDR string, candidates []string) s
 func RevisionPrompt(sources []SourceArticle, previousOutput, feedback, criticIssues string) string {
 	return fmt.Sprintf(`You are a miles-and-points content editor revising an article.
 
-Fix every issue listed below. Keep the engaging, human tone.
+ADMIN FEEDBACK IS YOUR TOP PRIORITY. The admin has specifically requested the following change — you MUST implement it exactly:
+
+=== ADMIN FEEDBACK (MANDATORY) ===
+%s
+=== END ADMIN FEEDBACK ===
+
+If the admin asks for a link, find the actual URL from the source articles and add an HTML <a href="..." target="_blank" rel="noopener"> link. If you cannot find a valid URL for the requested link, add this at the very end of the article: <div class="editor-note">Could not find a link for: [describe what was requested]</div>
+If the admin asks to remove something, remove it.
+If the admin asks to change tone, change the tone.
+The admin's feedback overrides all other instructions.
+
+Also fix any critic issues if present.
 %s
 %s
 Previous Article:
 %s
 
-Admin Feedback:
-%s
-
 Critic Issues:
 %s
 
-Sources (for your reference only — do NOT cite these in the article):
+Sources (for your reference only):
 %s
-Write the revised article now.`, writingStyle, htmlFormat, previousOutput, feedback, criticIssues, formatSources(sources))
+Write the revised article now.`, feedback, writingStyle, htmlFormat, previousOutput, criticIssues, formatSources(sources))
 }

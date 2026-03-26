@@ -49,6 +49,9 @@ jobs:
           OCI_USER: ${{ secrets.OCI_USER }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
+          UNSPLASH_KEY: ${{ secrets.UNSPLASH_KEY }}
+          PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
+          PIXABAY_KEY: ${{ secrets.PIXABAY_KEY }}
         run: |
           SSH="ssh $OCI_USER@$OCI_HOST"
 
@@ -82,6 +85,9 @@ jobs:
             critic_threshold: 75
             max_retries: 3
             cache_ttl: 3600
+            unsplash_key: "${UNSPLASH_KEY}"
+            pexels_key: "${PEXELS_KEY}"
+            pixabay_key: "${PIXABAY_KEY}"
 
           mail:
             smtp:

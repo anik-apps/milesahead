@@ -1384,3 +1384,22 @@ tr:hover {
     margin-top: 16px;
     border-top: 2px solid var(--border);
 }
+
+/* Editor notes - hidden on public site, visible in admin preview */
+.editor-note {
+    display: none;
+}
+.preview-body .editor-note {
+    display: block;
+    background: #fef3c7;
+    color: #92400e;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    margin-top: 12px;
+    border-left: 3px solid #f59e0b;
+}
+[data-theme="dark"] .preview-body .editor-note {
+    background: #451a03;
+    color: #fbbf24;
+}
