@@ -2,6 +2,7 @@ package web
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"html"
 	"net/http"
@@ -9,6 +10,18 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/db"
 )
+
+// templateKeyDetail holds a key detail for template rendering.
+type templateKeyDetail struct {
+	Label string
+	Value string
+}
+
+// templateArticleLink holds a link for template rendering.
+type templateArticleLink struct {
+	Text string
+	URL  string
+}
 
 // publicArticleRow holds data for rendering an article card on public pages.
 type publicArticleRow struct {
@@ -162,6 +175,16 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		publishedAt = article.PublishedAt.Format("Jan 2, 2006")
 	}
 
+	// Parse structured content from DB.
+	var keyDetails []templateKeyDetail
+	if article.KeyDetails != "" && article.KeyDetails != "[]" {
+		json.Unmarshal([]byte(article.KeyDetails), &keyDetails)
+	}
+	var articleLinks []templateArticleLink
+	if article.Links != "" && article.Links != "[]" {
+		json.Unmarshal([]byte(article.Links), &articleLinks)
+	}
+
 	data := map[string]interface{}{
 		"Title":       article.Title,
 		"Article":     article,
@@ -170,6 +193,9 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"Downvotes":   downvotes,
 		"PublishedAt": publishedAt,
 		"UnderReview": false,
+		"TLDR":        article.TLDR,
+		"KeyDetails":  keyDetails,
+		"Links":       articleLinks,
 	}
 	app.renderTemplate(w, "article.html", data)
 }

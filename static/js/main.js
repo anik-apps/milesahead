@@ -66,6 +66,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+// Open all article content links in new tabs
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.article-content a').forEach(function(link) {
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener');
+    });
+});
+
 // Category Filter - highlight active tab based on URL
 document.addEventListener('DOMContentLoaded', function() {
     var tabs = document.querySelectorAll('.category-tabs .tab');

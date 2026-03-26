@@ -9,10 +9,25 @@ import (
 	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
+// KeyDetail represents a single key detail extracted from structured output.
+type KeyDetail struct {
+	Label string
+	Value string
+}
+
+// ArticleLink represents a link extracted from structured output.
+type ArticleLink struct {
+	Text string
+	URL  string
+}
+
 // PipelineResult holds the output of a full generate-then-verify cycle.
 type PipelineResult struct {
 	Content         string
 	Title           string
+	TLDR            string
+	KeyDetails      []KeyDetail
+	Links           []ArticleLink
 	Type            string
 	Verification    *VerificationResult
 	PassedThreshold bool
@@ -99,12 +114,22 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		}
 	}
 
-	title := extractTitle(content)
-	content = formatContent(content)
+	parsedTitle, tldr, keyDetails, links, parsedBody := parseStructuredContent(content)
+	if parsedTitle == "" {
+		parsedTitle = extractTitle(content)
+	}
+	if parsedBody == "" {
+		content = formatContent(content)
+	} else {
+		content = parsedBody
+	}
 
 	return &PipelineResult{
 		Content:         content,
-		Title:           title,
+		Title:           parsedTitle,
+		TLDR:            tldr,
+		KeyDetails:      keyDetails,
+		Links:           links,
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
@@ -132,16 +157,119 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 	verification.Score = adjustScore(verification)
 	metrics.CriticScore.Observe(float64(verification.Score))
 
-	title := extractTitle(content)
-	content = formatContent(content)
+	parsedTitle, tldr, keyDetails, links, parsedBody := parseStructuredContent(content)
+	if parsedTitle == "" {
+		parsedTitle = extractTitle(content)
+	}
+	if parsedBody == "" {
+		content = formatContent(content)
+	} else {
+		content = parsedBody
+	}
 
 	return &PipelineResult{
 		Content:         content,
-		Title:           title,
+		Title:           parsedTitle,
+		TLDR:            tldr,
+		KeyDetails:      keyDetails,
+		Links:           links,
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
 	}, nil
+}
+
+// parseStructuredContent extracts sections from the generator's structured output.
+func parseStructuredContent(raw string) (title, tldr string, keyDetails []KeyDetail, links []ArticleLink, body string) {
+	lines := strings.Split(raw, "\n")
+
+	// Title: first non-empty line
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		if t != "" {
+			title = t
+			break
+		}
+	}
+
+	// TLDR: line starting with "TLDR:"
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "TLDR:") {
+			tldr = strings.TrimSpace(strings.TrimPrefix(t, "TLDR:"))
+			break
+		}
+	}
+
+	// Key details: between KEY_DETAILS_START and KEY_DETAILS_END
+	inDetails := false
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		if t == "KEY_DETAILS_START" {
+			inDetails = true
+			continue
+		}
+		if t == "KEY_DETAILS_END" {
+			inDetails = false
+			continue
+		}
+		if inDetails && strings.HasPrefix(t, "- ") {
+			item := strings.TrimPrefix(t, "- ")
+			if idx := strings.Index(item, ": "); idx != -1 {
+				keyDetails = append(keyDetails, KeyDetail{
+					Label: strings.TrimSpace(item[:idx]),
+					Value: strings.TrimSpace(item[idx+2:]),
+				})
+			}
+		}
+	}
+
+	// Links: between LINKS_START and LINKS_END
+	inLinks := false
+	for _, line := range lines {
+		t := strings.TrimSpace(line)
+		if t == "LINKS_START" {
+			inLinks = true
+			continue
+		}
+		if t == "LINKS_END" {
+			inLinks = false
+			continue
+		}
+		if inLinks && strings.HasPrefix(t, "- ") {
+			item := strings.TrimPrefix(t, "- ")
+			if idx := strings.Index(item, " | "); idx != -1 {
+				links = append(links, ArticleLink{
+					Text: strings.TrimSpace(item[:idx]),
+					URL:  strings.TrimSpace(item[idx+3:]),
+				})
+			}
+		}
+	}
+
+	// Body: everything after LINKS_END
+	foundLinksEnd := false
+	var bodyLines []string
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "LINKS_END" {
+			foundLinksEnd = true
+			continue
+		}
+		if foundLinksEnd {
+			bodyLines = append(bodyLines, line)
+		}
+	}
+	body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
+
+	// If no LINKS_END was found, fall back to everything after the title
+	if !foundLinksEnd {
+		body = raw
+		if idx := strings.Index(raw, "\n"); idx != -1 {
+			body = strings.TrimSpace(raw[idx+1:])
+		}
+	}
+
+	return
 }
 
 // adjustScore enforces consistency between the score and the check results.

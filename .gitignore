@@ -6,3 +6,4 @@ config.yaml
 /milesahead
 /dist/
 milesahead-linux-arm64
+.superpowers/

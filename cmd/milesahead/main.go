@@ -114,7 +114,7 @@ func main() {
 			return
 		}
 
-		clusters := cluster.Cluster(clusterArticles, 0.3)
+		clusters := cluster.Cluster(clusterArticles, 0.5)
 		slog.Info("clustering complete", "articles", len(clusterArticles), "clusters", len(clusters))
 
 		// Filter to multi-source clusters and generate

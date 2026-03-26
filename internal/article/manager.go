@@ -37,6 +37,15 @@ func (m *Manager) CreateFromPipeline(result *ai.PipelineResult, rawArticleIDs []
 		return 0, fmt.Errorf("marshaling issues: %w", err)
 	}
 
+	keyDetailsJSON, kdErr := json.Marshal(result.KeyDetails)
+	if kdErr != nil {
+		keyDetailsJSON = []byte("[]")
+	}
+	linksJSON, lErr := json.Marshal(result.Links)
+	if lErr != nil {
+		linksJSON = []byte("[]")
+	}
+
 	article := &db.GeneratedArticle{
 		Title:          result.Title,
 		Slug:           GenerateSlug(result.Title),
@@ -45,6 +54,9 @@ func (m *Manager) CreateFromPipeline(result *ai.PipelineResult, rawArticleIDs []
 		Status:         status,
 		SourcesJSON:    "[]",
 		RevisionNumber: 1,
+		TLDR:           result.TLDR,
+		KeyDetails:     string(keyDetailsJSON),
+		Links:          string(linksJSON),
 	}
 
 	articleID, err := m.db.CreateGeneratedArticle(article)
