@@ -3,15 +3,15 @@ package images
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
-
-	"github.com/kumaranik/milesahead/internal/metrics"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // ImageCandidate represents a potential image for an article.
@@ -56,6 +56,8 @@ func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var allCandidates []ImageCandidate
+	var totalErrors int
+	var totalAttempts int
 
 	for _, query := range queries {
 		q := query
@@ -63,12 +65,18 @@ func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
 		// Search Unsplash
 		if s.unsplashKey != "" {
 			wg.Add(1)
+			mu.Lock()
+			totalAttempts++
+			mu.Unlock()
 			go func() {
 				defer wg.Done()
 				results, err := s.searchUnsplash(q)
 				if err != nil {
 					slog.Warn("unsplash search failed", "query", q, "error", err)
 					metrics.ImageSearchTotal.WithLabelValues("unsplash", "error").Inc()
+					mu.Lock()
+					totalErrors++
+					mu.Unlock()
 					return
 				}
 				metrics.ImageSearchTotal.WithLabelValues("unsplash", "success").Inc()
@@ -81,12 +89,18 @@ func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
 		// Search Pexels
 		if s.pexelsKey != "" {
 			wg.Add(1)
+			mu.Lock()
+			totalAttempts++
+			mu.Unlock()
 			go func() {
 				defer wg.Done()
 				results, err := s.searchPexels(q)
 				if err != nil {
 					slog.Warn("pexels search failed", "query", q, "error", err)
 					metrics.ImageSearchTotal.WithLabelValues("pexels", "error").Inc()
+					mu.Lock()
+					totalErrors++
+					mu.Unlock()
 					return
 				}
 				metrics.ImageSearchTotal.WithLabelValues("pexels", "success").Inc()
@@ -99,12 +113,18 @@ func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
 		// Search Pixabay
 		if s.pixabayKey != "" {
 			wg.Add(1)
+			mu.Lock()
+			totalAttempts++
+			mu.Unlock()
 			go func() {
 				defer wg.Done()
 				results, err := s.searchPixabay(q)
 				if err != nil {
 					slog.Warn("pixabay search failed", "query", q, "error", err)
 					metrics.ImageSearchTotal.WithLabelValues("pixabay", "error").Inc()
+					mu.Lock()
+					totalErrors++
+					mu.Unlock()
 					return
 				}
 				metrics.ImageSearchTotal.WithLabelValues("pixabay", "success").Inc()
@@ -116,12 +136,18 @@ func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
 
 		// Search Openverse (aggregates Flickr, Wikimedia, and more — no key needed)
 		wg.Add(1)
+		mu.Lock()
+		totalAttempts++
+		mu.Unlock()
 		go func() {
 			defer wg.Done()
 			results, err := s.searchOpenverse(q)
 			if err != nil {
 				slog.Warn("openverse search failed", "query", q, "error", err)
 				metrics.ImageSearchTotal.WithLabelValues("openverse", "error").Inc()
+				mu.Lock()
+				totalErrors++
+				mu.Unlock()
 				return
 			}
 			metrics.ImageSearchTotal.WithLabelValues("openverse", "success").Inc()
@@ -132,12 +158,18 @@ func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
 
 		// Search Wikimedia
 		wg.Add(1)
+		mu.Lock()
+		totalAttempts++
+		mu.Unlock()
 		go func() {
 			defer wg.Done()
 			results, err := s.searchWikimedia(q)
 			if err != nil {
 				slog.Warn("wikimedia search failed", "query", q, "error", err)
 				metrics.ImageSearchTotal.WithLabelValues("wikimedia", "error").Inc()
+				mu.Lock()
+				totalErrors++
+				mu.Unlock()
 				return
 			}
 			metrics.ImageSearchTotal.WithLabelValues("wikimedia", "success").Inc()
@@ -149,6 +181,10 @@ func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
 
 	wg.Wait()
 
+	if totalAttempts > 0 && totalErrors == totalAttempts {
+		return nil, fmt.Errorf("all %d image search API calls failed", totalAttempts)
+	}
+
 	// Deduplicate by URL
 	seen := make(map[string]bool)
 	var deduped []ImageCandidate
@@ -159,13 +195,22 @@ func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
 		}
 	}
 
-	// Return up to 15 candidates to ensure all sources are represented
-	if len(deduped) > 15 {
-		deduped = deduped[:15]
+	// Source diversity: max 3 per source, then cap at 15
+	maxPerSource := 3
+	sourceCount := map[string]int{}
+	var diverse []ImageCandidate
+	for _, c := range deduped {
+		if sourceCount[c.Source] < maxPerSource {
+			diverse = append(diverse, c)
+			sourceCount[c.Source]++
+		}
+	}
+	if len(diverse) > 15 {
+		diverse = diverse[:15]
 	}
 
-	metrics.ImageSearchCandidates.Observe(float64(len(deduped)))
-	return deduped, nil
+	metrics.ImageSearchCandidates.Observe(float64(len(diverse)))
+	return diverse, nil
 }
 
 // unsplashResponse represents the Unsplash API search response.
@@ -203,7 +248,7 @@ func (s *Searcher) searchUnsplash(query string) ([]ImageCandidate, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("unsplash API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -267,7 +312,7 @@ func (s *Searcher) searchPexels(query string) ([]ImageCandidate, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("pexels API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -313,7 +358,7 @@ func (s *Searcher) searchPixabay(query string) ([]ImageCandidate, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("pixabay API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -362,7 +407,7 @@ func (s *Searcher) searchOpenverse(query string) ([]ImageCandidate, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("openverse API error (status %d): %s", resp.StatusCode, string(body))
 	}
 
@@ -402,11 +447,6 @@ func (s *Searcher) searchOpenverse(query string) ([]ImageCandidate, error) {
 	return candidates, nil
 }
 
-func min(a, b int) int {
-	if a < b { return a }
-	return b
-}
-
 // wikimediaResponse represents the Wikimedia Commons API response.
 type wikimediaResponse struct {
 	Query struct {
@@ -439,7 +479,7 @@ func (s *Searcher) searchWikimedia(query string) ([]ImageCandidate, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("wikimedia API error (status %d): %s", resp.StatusCode, string(body))
 	}
 

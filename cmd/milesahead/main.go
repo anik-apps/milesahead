@@ -272,6 +272,4 @@ Reply with ONLY a JSON array of 3 strings, nothing else:
 
 	slog.Info("image search queries generated", "queries", queries)
 	return queries
-
-	return queries
 }

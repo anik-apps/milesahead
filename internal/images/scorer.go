@@ -24,6 +24,7 @@ type Scorer struct {
 	visionURL   string // e.g., "https://integrate.api.nvidia.com/v1"
 	visionToken string
 	visionModel string // e.g., "meta/llama-3.2-90b-vision-instruct"
+	httpClient  *http.Client
 }
 
 // NewScorer creates a Scorer with a text model for pre-filtering.
@@ -31,6 +32,7 @@ func NewScorer(textClient ai.HFClientInterface, textModel string) *Scorer {
 	return &Scorer{
 		textClient: textClient,
 		textModel:  textModel,
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -123,6 +125,18 @@ func (s *Scorer) textScore(title, tldr string, candidates []ImageCandidate) []Im
 	return candidates
 }
 
+// visionRequest is the structured request body for the vision API.
+type visionRequest struct {
+	Model     string          `json:"model"`
+	Messages  []visionMessage `json:"messages"`
+	MaxTokens int             `json:"max_tokens"`
+}
+
+type visionMessage struct {
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
+}
+
 // visionScore sends actual images to a vision model for scoring.
 func (s *Scorer) visionScore(title, tldr string, candidates []ImageCandidate) []ImageCandidate {
 	for i, c := range candidates {
@@ -137,39 +151,60 @@ Score this image 1-10 for how specifically it represents this topic.
 
 Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 
-		textContent, _ := json.Marshal(prompt)
+		contentParts := []interface{}{
+			map[string]string{"type": "text", "text": prompt},
+			map[string]interface{}{
+				"type":      "image_url",
+				"image_url": map[string]string{"url": c.Thumbnail},
+			},
+		}
+		contentJSON, err := json.Marshal(contentParts)
+		if err != nil {
+			slog.Warn("vision content marshal failed", "index", i, "error", err)
+			candidates[i].Score = candidates[i].Score * 0.5
+			continue
+		}
 
-		reqBody := fmt.Sprintf(`{
-			"model": "%s",
-			"messages": [{"role": "user", "content": [
-				{"type": "text", "text": %s},
-				{"type": "image_url", "image_url": {"url": "%s"}}
-			]}],
-			"max_tokens": 200
-		}`, s.visionModel, string(textContent), c.Thumbnail)
+		vReq := visionRequest{
+			Model: s.visionModel,
+			Messages: []visionMessage{
+				{Role: "user", Content: json.RawMessage(contentJSON)},
+			},
+			MaxTokens: 200,
+		}
+		reqBody, err := json.Marshal(vReq)
+		if err != nil {
+			slog.Warn("vision request marshal failed", "index", i, "error", err)
+			candidates[i].Score = candidates[i].Score * 0.5
+			continue
+		}
 
-		req, err := http.NewRequest("POST", s.visionURL+"/chat/completions", bytes.NewBufferString(reqBody))
+		req, err := http.NewRequest("POST", s.visionURL+"/chat/completions", bytes.NewBuffer(reqBody))
 		if err != nil {
 			slog.Warn("vision request creation failed", "index", i, "error", err)
+			candidates[i].Score = candidates[i].Score * 0.5
 			continue
 		}
 		req.Header.Set("Authorization", "Bearer "+s.visionToken)
 		req.Header.Set("Content-Type", "application/json")
 
-		client := &http.Client{Timeout: 30 * time.Second}
-		resp, err := client.Do(req)
+		resp, err := s.httpClient.Do(req)
 		if err != nil {
 			slog.Warn("vision request failed", "index", i, "error", err)
+			candidates[i].Score = candidates[i].Score * 0.5
 			continue
 		}
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		resp.Body.Close()
 
 		if resp.StatusCode != 200 {
 			body := string(respBody)
-			if len(body) > 200 { body = body[:200] }
+			if len(body) > 200 {
+				body = body[:200]
+			}
 			slog.Warn("vision API error", "index", i, "status", resp.StatusCode, "body", body)
 			metrics.ImageScoringTotal.WithLabelValues("vision", "error").Inc()
+			candidates[i].Score = candidates[i].Score * 0.5
 			continue
 		}
 
@@ -182,6 +217,7 @@ Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 		}
 		if err := json.Unmarshal(respBody, &chatResp); err != nil || len(chatResp.Choices) == 0 {
 			slog.Warn("vision response parse failed", "index", i, "error", err)
+			candidates[i].Score = candidates[i].Score * 0.5
 			continue
 		}
 
@@ -200,6 +236,7 @@ Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 		}
 		if err := json.Unmarshal([]byte(content), &result); err != nil {
 			slog.Warn("vision score parse failed", "index", i, "response", content)
+			candidates[i].Score = candidates[i].Score * 0.5
 			continue
 		}
 
