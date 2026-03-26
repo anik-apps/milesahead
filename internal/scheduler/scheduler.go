@@ -20,8 +20,11 @@ func New() *Scheduler {
 }
 
 // AddScanJob adds a periodic scan job at the given interval.
+// Runs immediately on first call, then every interval.
 func (s *Scheduler) AddScanJob(interval time.Duration, scanFunc func()) {
 	s.cron.AddFunc(fmt.Sprintf("@every %s", interval), scanFunc)
+	// Run first scan immediately in background
+	go scanFunc()
 }
 
 // AddMailPollJob adds a periodic mail polling job at the given interval.
