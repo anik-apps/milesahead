@@ -247,6 +247,30 @@ Scoring:
 - Below 50: Major logical errors that would embarrass the publication.`, generatedArticle, formatSources(sources))
 }
 
+// ImageScoringPrompt builds a prompt for scoring image candidates for relevance
+// to an article. It asks the AI to score each candidate 1-10.
+func ImageScoringPrompt(articleTitle, articleTLDR string, candidates []string) string {
+	var b strings.Builder
+	b.WriteString("You are an image editor selecting the best image for a miles-and-points article.\n\n")
+	b.WriteString(fmt.Sprintf("Article Title: %s\n", articleTitle))
+	b.WriteString(fmt.Sprintf("Article Summary: %s\n\n", articleTLDR))
+	b.WriteString("Below are candidate images. Score each one from 1 to 10 for relevance to this specific article topic.\n\n")
+	b.WriteString("SCORING GUIDELINES:\n")
+	b.WriteString("- 9-10: Directly shows the specific subject (e.g., the actual airline, hotel, or credit card mentioned)\n")
+	b.WriteString("- 7-8: Closely related (e.g., an airport for an airline deal, a travel scene for a points article)\n")
+	b.WriteString("- 5-6: Somewhat related (e.g., generic travel imagery for a specific deal)\n")
+	b.WriteString("- 1-4: Barely related or irrelevant\n")
+	b.WriteString("- PREFER specific images over generic ones: an actual airline plane > generic airport, a specific hotel > generic building\n\n")
+	b.WriteString("Candidates:\n")
+	for _, c := range candidates {
+		b.WriteString(c + "\n")
+	}
+	b.WriteString("\nReturn ONLY a JSON object (no other text):\n")
+	b.WriteString(`{"scores": [{"index": 0, "score": 8, "reason": "Shows the specific airline mentioned"}, ...]}`)
+	b.WriteString("\n")
+	return b.String()
+}
+
 // RevisionPrompt builds a prompt for revising an article based on feedback.
 func RevisionPrompt(sources []SourceArticle, previousOutput, feedback, criticIssues string) string {
 	return fmt.Sprintf(`You are a miles-and-points content editor revising an article.

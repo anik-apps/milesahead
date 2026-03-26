@@ -75,6 +75,34 @@ var (
 		Help:    "HTTP request duration",
 		Buckets: prometheus.DefBuckets,
 	}, []string{"method", "path"})
+
+	// Image pipeline metrics
+	ImageSearchTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_image_search_total",
+		Help: "Total image searches by source and status",
+	}, []string{"source", "status"}) // source=unsplash/pexels/pixabay/openverse/wikimedia, status=success/error
+
+	ImageSearchCandidates = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "milesahead_image_search_candidates",
+		Help:    "Number of image candidates found per article",
+		Buckets: []float64{0, 3, 5, 10, 15},
+	})
+
+	ImageScoringTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_image_scoring_total",
+		Help: "Total image scoring attempts by phase and status",
+	}, []string{"phase", "status"}) // phase=text/vision, status=success/error
+
+	ImageSelectedScore = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "milesahead_image_selected_score",
+		Help:    "Score of selected images",
+		Buckets: []float64{1, 3, 5, 6, 7, 8, 9, 10},
+	})
+
+	ImageSelectedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_image_selected_total",
+		Help: "Total image selection outcomes",
+	}, []string{"outcome"}) // selected, no_match, search_failed
 )
 
 func Init() {
@@ -84,6 +112,8 @@ func Init() {
 		AIAPIErrorsTotal, CriticScore, VotesTotal,
 		NewslettersSentTotal, NewsletterRecipientsTotal,
 		MailPollsTotal, HTTPRequestsTotal, HTTPDuration,
+		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,
+		ImageSelectedScore, ImageSelectedTotal,
 	)
 }
 

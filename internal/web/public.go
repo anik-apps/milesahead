@@ -25,16 +25,19 @@ type templateArticleLink struct {
 
 // publicArticleRow holds data for rendering an article card on public pages.
 type publicArticleRow struct {
-	ID          int64
-	Title       string
-	Slug        string
-	Content     string
-	Excerpt     string
-	Type        string
-	Status      string
-	Featured    bool
-	PublishedAt string
-	SourceCount int
+	ID               int64
+	Title            string
+	Slug             string
+	Content          string
+	Excerpt          string
+	Type             string
+	Status           string
+	Featured         bool
+	PublishedAt      string
+	SourceCount      int
+	ImageURL         string
+	ImageThumbnail   string
+	ImageAttribution string
 }
 
 // sourceInfo holds source data for article detail pages.
@@ -62,14 +65,17 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	var rows []publicArticleRow
 	for _, a := range articles {
 		row := publicArticleRow{
-			ID:       a.ID,
-			Title:    a.Title,
-			Slug:     a.Slug,
-			Content:  a.Content,
-			Excerpt:  truncate(a.Content, 200),
-			Type:     a.Type,
-			Status:   a.Status,
-			Featured: a.Featured,
+			ID:               a.ID,
+			Title:            a.Title,
+			Slug:             a.Slug,
+			Content:          a.Content,
+			Excerpt:          truncate(a.Content, 200),
+			Type:             a.Type,
+			Status:           a.Status,
+			Featured:         a.Featured,
+			ImageURL:         a.ImageURL,
+			ImageThumbnail:   a.ImageThumbnail,
+			ImageAttribution: a.ImageAttribution,
 		}
 		if a.PublishedAt != nil {
 			row.PublishedAt = a.PublishedAt.Format("Jan 2, 2006")

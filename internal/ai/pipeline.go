@@ -23,14 +23,17 @@ type ArticleLink struct {
 
 // PipelineResult holds the output of a full generate-then-verify cycle.
 type PipelineResult struct {
-	Content         string
-	Title           string
-	TLDR            string
-	KeyDetails      []KeyDetail
-	Links           []ArticleLink
-	Type            string
-	Verification    *VerificationResult
-	PassedThreshold bool
+	Content          string
+	Title            string
+	TLDR             string
+	KeyDetails       []KeyDetail
+	Links            []ArticleLink
+	Type             string
+	Verification     *VerificationResult
+	PassedThreshold  bool
+	ImageURL         string
+	ImageThumbnail   string
+	ImageAttribution string
 }
 
 // Pipeline orchestrates the generator and two critics to produce verified articles.

@@ -35,6 +35,9 @@ type AIConfig struct {
 	CriticThreshold int   `yaml:"critic_threshold"`
 	MaxRetries     int    `yaml:"max_retries"`
 	CacheTTL       int    `yaml:"cache_ttl"`
+	UnsplashKey    string `yaml:"unsplash_key"`
+	PexelsKey      string `yaml:"pexels_key"`
+	PixabayKey     string `yaml:"pixabay_key"`
 }
 
 type SMTPConfig struct {
