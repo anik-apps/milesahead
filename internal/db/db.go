@@ -191,8 +191,8 @@ func (d *Database) GetRawArticlesByIDs(ids []int64) ([]RawArticle, error) {
 
 func (d *Database) CreateGeneratedArticle(a *GeneratedArticle) (int64, error) {
 	res, err := d.db.Exec(
-		`INSERT INTO generated_articles (title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.Title, a.Slug, a.Content, a.Type, a.Status, a.SourcesJSON, a.RevisionNumber, a.Featured, a.TLDR, a.KeyDetails, a.Links,
+		`INSERT INTO generated_articles (title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.Title, a.Slug, a.Content, a.Type, a.Status, a.SourcesJSON, a.RevisionNumber, a.Featured, a.TLDR, a.KeyDetails, a.Links, a.ImageURL, a.ImageThumbnail, a.ImageAttribution,
 	)
 	if err != nil {
 		return 0, err
@@ -203,8 +203,8 @@ func (d *Database) CreateGeneratedArticle(a *GeneratedArticle) (int64, error) {
 func (d *Database) GetGeneratedArticle(id int64) (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, created_at, updated_at, published_at FROM generated_articles WHERE id = ?`, id,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, created_at, updated_at, published_at FROM generated_articles WHERE id = ?`, id,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +253,7 @@ func (d *Database) UpdateArticleStatus(id int64, newStatus string) error {
 
 func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY created_at DESC`, status,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY created_at DESC`, status,
 	)
 	if err != nil {
 		return nil, err
@@ -264,7 +264,7 @@ func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, erro
 
 func (d *Database) ListPublishedArticles(limit, offset int) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
 		StatusApproved, limit, offset,
 	)
 	if err != nil {
@@ -278,7 +278,7 @@ func scanGeneratedArticles(rows *sql.Rows) ([]GeneratedArticle, error) {
 	var articles []GeneratedArticle
 	for rows.Next() {
 		var a GeneratedArticle
-		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt); err != nil {
 			return nil, err
 		}
 		articles = append(articles, a)
@@ -651,8 +651,8 @@ func (d *Database) CountArticleSources(articleID int64) (int, error) {
 func (d *Database) GetGeneratedArticleBySlug(slug string) (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, created_at, updated_at, published_at FROM generated_articles WHERE slug = ?`, slug,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, created_at, updated_at, published_at FROM generated_articles WHERE slug = ?`, slug,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -662,7 +662,7 @@ func (d *Database) GetGeneratedArticleBySlug(slug string) (*GeneratedArticle, er
 // ListPublishedArticlesByType returns approved articles filtered by type.
 func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset int) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND type = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND type = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
 		StatusApproved, articleType, limit, offset,
 	)
 	if err != nil {
@@ -676,13 +676,13 @@ func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset
 func (d *Database) GetFeaturedArticle() (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND featured = 1 ORDER BY published_at DESC LIMIT 1`, StatusApproved,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND featured = 1 ORDER BY published_at DESC LIMIT 1`, StatusApproved,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
 	if err != nil {
 		// Fallback to most recent approved.
 		err = d.db.QueryRow(
-			`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT 1`, StatusApproved,
-		).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+			`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT 1`, StatusApproved,
+		).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
 		if err != nil {
 			return nil, err
 		}

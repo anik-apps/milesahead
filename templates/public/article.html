@@ -8,6 +8,15 @@
 {{else}}
 <article class="article-detail">
     <a href="/" class="back-link">&larr; Back to all articles</a>
+    {{if .Article.ImageURL}}
+    <div class="article-hero">
+        <img src="{{.Article.ImageURL}}" alt="{{.Article.Title}}">
+        {{if .Article.ImageAttribution}}
+        <span class="image-attribution">{{.Article.ImageAttribution}}</span>
+        {{end}}
+    </div>
+    {{end}}
+
     <header class="article-header">
         <span class="type-badge badge-{{.Article.Type}}">{{.Article.Type}}</span>
         <h1>{{.Article.Title}}</h1>

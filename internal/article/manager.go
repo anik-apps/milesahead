@@ -47,16 +47,19 @@ func (m *Manager) CreateFromPipeline(result *ai.PipelineResult, rawArticleIDs []
 	}
 
 	article := &db.GeneratedArticle{
-		Title:          result.Title,
-		Slug:           GenerateSlug(result.Title),
-		Content:        result.Content,
-		Type:           articleType,
-		Status:         status,
-		SourcesJSON:    "[]",
-		RevisionNumber: 1,
-		TLDR:           result.TLDR,
-		KeyDetails:     string(keyDetailsJSON),
-		Links:          string(linksJSON),
+		Title:            result.Title,
+		Slug:             GenerateSlug(result.Title),
+		Content:          result.Content,
+		Type:             articleType,
+		Status:           status,
+		SourcesJSON:      "[]",
+		RevisionNumber:   1,
+		TLDR:             result.TLDR,
+		KeyDetails:       string(keyDetailsJSON),
+		Links:            string(linksJSON),
+		ImageURL:         result.ImageURL,
+		ImageThumbnail:   result.ImageThumbnail,
+		ImageAttribution: result.ImageAttribution,
 	}
 
 	articleID, err := m.db.CreateGeneratedArticle(article)

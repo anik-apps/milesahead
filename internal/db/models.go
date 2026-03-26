@@ -48,9 +48,12 @@ type GeneratedArticle struct {
 	TLDR           string     `json:"tldr"`
 	KeyDetails     string     `json:"key_details"`
 	Links          string     `json:"links"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-	PublishedAt    *time.Time `json:"published_at"`
+	ImageURL         string     `json:"image_url"`
+	ImageThumbnail   string     `json:"image_thumbnail"`
+	ImageAttribution string     `json:"image_attribution"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	PublishedAt      *time.Time `json:"published_at"`
 }
 
 type ArticleSource struct {

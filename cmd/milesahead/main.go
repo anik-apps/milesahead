@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
@@ -13,6 +15,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/cluster"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/images"
 	"github.com/kumaranik/milesahead/internal/mail"
 	"github.com/kumaranik/milesahead/internal/metrics"
 	"github.com/kumaranik/milesahead/internal/newsletter"
@@ -71,6 +74,13 @@ func main() {
 	if cfg.AI.Critic2Model != "" {
 		critic2 := ai.NewCritic(hfClient, cfg.AI.Critic2Model)
 		pipeline.SetCritic2(critic2)
+	}
+
+	// Image search and scoring
+	imageSearcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey, cfg.AI.PixabayKey)
+	imageScorer := images.NewScorer(hfClient, cfg.AI.CriticModel)
+	if cfg.AI.HFBaseURL != "" {
+		imageScorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, "meta/llama-3.2-90b-vision-instruct")
 	}
 
 	// Services
@@ -154,6 +164,34 @@ func main() {
 				continue
 			}
 
+			// Image search: generate queries from the article title
+			imageQueries := generateImageQueries(result.Title, result.TLDR, hfClient, cfg.AI.CriticModel)
+			if len(imageQueries) > 0 {
+				candidates, searchErr := imageSearcher.Search(imageQueries)
+				if searchErr != nil {
+					slog.Warn("image search failed", "error", searchErr)
+					metrics.ImageSelectedTotal.WithLabelValues("search_failed").Inc()
+				} else if len(candidates) > 0 {
+					scored, scoreErr := imageScorer.Score(result.Title, result.TLDR, candidates)
+					if scoreErr != nil {
+						slog.Warn("image scoring failed", "error", scoreErr)
+						metrics.ImageSelectedTotal.WithLabelValues("scoring_failed").Inc()
+					} else if len(scored) > 0 && scored[0].Score >= 6 {
+						result.ImageURL = scored[0].URL
+						result.ImageThumbnail = scored[0].Thumbnail
+						result.ImageAttribution = scored[0].Attribution
+						metrics.ImageSelectedScore.Observe(scored[0].Score)
+						metrics.ImageSelectedTotal.WithLabelValues("selected").Inc()
+						slog.Info("image selected", "url", scored[0].URL, "score", scored[0].Score, "source", scored[0].Source)
+					} else {
+						topScore := float64(0)
+						if len(scored) > 0 { topScore = scored[0].Score }
+						metrics.ImageSelectedTotal.WithLabelValues("no_match").Inc()
+						slog.Info("no suitable image found", "top_score", topScore)
+					}
+				}
+			}
+
 			id, err := articleMgr.CreateFromPipeline(result, rawIDs, result.Type)
 			if err != nil {
 				slog.Error("article save failed", "error", err)
@@ -194,4 +232,44 @@ func main() {
 		slog.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+// generateImageQueries uses AI to create targeted search queries for stock photo APIs.
+func generateImageQueries(title, tldr string, client ai.HFClientInterface, model string) []string {
+	prompt := fmt.Sprintf(`Given this article title and summary, generate exactly 3 image search queries for stock photo sites (Unsplash, Pexels).
+
+Title: %s
+Summary: %s
+
+Rules:
+- Query 1: The specific brand/company/airline/hotel name + what it is (e.g., "United Airlines plane", "Wyndham hotel resort", "Delta Airlines aircraft")
+- Query 2: The specific subject or product (e.g., "airplane lie-flat economy seat", "hotel loyalty points card", "airport lounge")
+- Query 3: A broader visual scene related to the topic (e.g., "tropical beach resort", "business class cabin", "Tokyo skyline")
+
+Reply with ONLY a JSON array of 3 strings, nothing else:
+["query 1", "query 2", "query 3"]`, title, tldr)
+
+	resp, err := client.Generate(model, prompt, 256)
+	if err != nil {
+		slog.Warn("AI query generation failed, using title fallback", "error", err)
+		return []string{title}
+	}
+
+	// Parse JSON array
+	resp = strings.TrimSpace(resp)
+	if idx := strings.Index(resp, "["); idx != -1 {
+		resp = resp[idx:]
+	}
+	if idx := strings.LastIndex(resp, "]"); idx != -1 {
+		resp = resp[:idx+1]
+	}
+
+	var queries []string
+	if err := json.Unmarshal([]byte(resp), &queries); err != nil {
+		slog.Warn("failed to parse AI queries, using title", "error", err, "response", resp)
+		return []string{title}
+	}
+
+	slog.Info("image search queries generated", "queries", queries)
+	return queries
 }

@@ -128,6 +128,9 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE generated_articles ADD COLUMN tldr TEXT DEFAULT ''`,
 		`ALTER TABLE generated_articles ADD COLUMN key_details TEXT DEFAULT '[]'`,
 		`ALTER TABLE generated_articles ADD COLUMN links TEXT DEFAULT '[]'`,
+		`ALTER TABLE generated_articles ADD COLUMN image_url TEXT DEFAULT ''`,
+		`ALTER TABLE generated_articles ADD COLUMN image_thumbnail TEXT DEFAULT ''`,
+		`ALTER TABLE generated_articles ADD COLUMN image_attribution TEXT DEFAULT ''`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)

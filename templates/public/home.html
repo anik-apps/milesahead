@@ -15,7 +15,7 @@
 
 <div class="magazine-grid">
     {{if .Featured}}
-    <div class="featured-card">
+    <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}"{{if .Featured.ImageURL}} style="background-image: url('{{.Featured.ImageURL}}'); background-size: cover; background-position: center;"{{end}}>
         <a href="/article/{{.Featured.Slug}}">
             <div class="featured-overlay">
                 <span class="type-badge badge-{{.Featured.Type}}">{{.Featured.Type}}</span>
@@ -28,14 +28,21 @@
 
     <div class="sidebar-stack">
         {{range .Sidebar}}
-        <div class="article-card">
+        <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}">
             <a href="/article/{{.Slug}}">
-                <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
-                <h3>{{.Title}}</h3>
-                <p class="excerpt">{{.Excerpt}}</p>
-                <div class="card-meta">
-                    <span class="date">{{.PublishedAt}}</span>
-                    {{if .SourceCount}}<span class="sources">{{.SourceCount}} sources</span>{{end}}
+                {{if .ImageThumbnail}}
+                <div class="card-thumb">
+                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}">
+                </div>
+                {{end}}
+                <div class="card-body">
+                    <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+                    <h3>{{.Title}}</h3>
+                    <p class="excerpt">{{.Excerpt}}</p>
+                    <div class="card-meta">
+                        <span class="date">{{.PublishedAt}}</span>
+                        {{if .SourceCount}}<span class="sources">{{.SourceCount}} sources</span>{{end}}
+                    </div>
                 </div>
             </a>
         </div>
@@ -46,14 +53,21 @@
 {{if .Grid}}
 <div class="bottom-grid">
     {{range .Grid}}
-    <div class="article-card">
+    <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}">
         <a href="/article/{{.Slug}}">
-            <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
-            <h3>{{.Title}}</h3>
-            <p class="excerpt">{{.Excerpt}}</p>
-            <div class="card-meta">
-                <span class="date">{{.PublishedAt}}</span>
-                {{if .SourceCount}}<span class="sources">{{.SourceCount}} sources</span>{{end}}
+            {{if .ImageThumbnail}}
+            <div class="card-thumb">
+                <img src="{{.ImageThumbnail}}" alt="{{.Title}}">
+            </div>
+            {{end}}
+            <div class="card-body">
+                <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+                <h3>{{.Title}}</h3>
+                <p class="excerpt">{{.Excerpt}}</p>
+                <div class="card-meta">
+                    <span class="date">{{.PublishedAt}}</span>
+                    {{if .SourceCount}}<span class="sources">{{.SourceCount}} sources</span>{{end}}
+                </div>
             </div>
         </a>
     </div>
