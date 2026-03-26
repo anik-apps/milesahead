@@ -92,7 +92,7 @@ func summary(content string) string {
 func (s *Service) listRecentApproved() ([]db.GeneratedArticle, error) {
 	since := time.Now().UTC().Add(-24 * time.Hour)
 	rows, err := s.db.DB().Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, created_at, updated_at, published_at
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, created_at, updated_at, published_at
 		 FROM generated_articles
 		 WHERE status = ? AND published_at >= ?
 		 ORDER BY featured DESC, published_at DESC`,
@@ -107,7 +107,7 @@ func (s *Service) listRecentApproved() ([]db.GeneratedArticle, error) {
 	for rows.Next() {
 		var a db.GeneratedArticle
 		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status,
-			&a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt); err != nil {
+			&a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt); err != nil {
 			return nil, fmt.Errorf("scanning article: %w", err)
 		}
 		articles = append(articles, a)

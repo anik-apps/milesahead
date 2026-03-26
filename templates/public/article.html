@@ -14,8 +14,40 @@
         <time class="published-date">{{.PublishedAt}}</time>
     </header>
 
-    <div class="article-content">
-        {{.Article.Content | safeHTML}}
+    <div class="article-layout">
+        <aside class="article-sidebar">
+            {{if .TLDR}}
+            <div class="sidebar-section">
+                <h4>TL;DR</h4>
+                <p>{{.TLDR}}</p>
+            </div>
+            {{end}}
+            {{if .KeyDetails}}
+            <div class="sidebar-section">
+                <h4>Key Details</h4>
+                <ul class="key-details">
+                    {{range .KeyDetails}}
+                    <li><strong>{{.Label}}:</strong> {{.Value}}</li>
+                    {{end}}
+                </ul>
+            </div>
+            {{end}}
+            {{if .Links}}
+            <div class="sidebar-section">
+                <h4>Links</h4>
+                <ul class="article-links">
+                    {{range .Links}}
+                    <li><a href="{{.URL}}" target="_blank" rel="noopener">&rarr; {{.Text}}</a></li>
+                    {{end}}
+                </ul>
+            </div>
+            {{end}}
+        </aside>
+        <div class="article-main">
+            <div class="article-content">
+                {{.Article.Content | safeHTML}}
+            </div>
+        </div>
     </div>
 
     <div class="vote-card">

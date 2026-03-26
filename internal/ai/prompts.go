@@ -61,10 +61,45 @@ WRITING STYLE — THIS IS CRITICAL:
 
 const htmlFormat = `
 OUTPUT FORMAT:
-- Output HTML only. No Markdown (no **, no ##, no [text](url)).
-- Use <strong> for bold, <em> for italic, <h3> for subheadings, <ul>/<li> for lists, <p> for paragraphs.
-- The first line must be the article title as plain text (no HTML tags, no formatting).
-- After the title line, write the full article body in HTML.
+- Output HTML only. No Markdown.
+- The output must have this exact structure:
+
+Line 1: Article title (plain text, no HTML tags)
+Line 2: Empty line
+Line 3: TLDR: A 1-2 sentence summary of the key takeaway
+Line 4: Empty line
+Line 5+: KEY_DETAILS_START
+- Detail 1 label: value
+- Detail 2 label: value
+(include 3-6 bullet points with the most important facts: bonus amounts, deadlines, costs, requirements)
+KEY_DETAILS_END
+Line: Empty line
+Line: LINKS_START
+- Link text | URL
+(include 2-4 links to actual deal pages, booking sites, or official program pages — NOT news articles)
+LINKS_END
+Line: Empty line
+Line+: The full article body in HTML (<p>, <h3>, <ul>, <li>, <strong>, <em>)
+
+Example:
+Wyndham Points 100% Bonus Through May 1
+
+TLDR: Wyndham Rewards is doubling purchased points through May 1 — works out to about 0.5 cents per point if you have a specific redemption in mind.
+
+KEY_DETAILS_START
+- Bonus: 100% extra points on purchases
+- Deadline: May 1, 2026
+- Minimum purchase: 1,000 points
+- Effective cost: ~0.5¢/point with bonus
+KEY_DETAILS_END
+
+LINKS_START
+- Buy Wyndham Points | https://www.wyndhamrewards.com/buy-points
+- Wyndham Hotel Search | https://www.wyndham.com
+LINKS_END
+
+<p>If you've been eyeing a Wyndham property...</p>
+
 - Do NOT link to source news articles (TPG, OMAAT, etc.). DO link to actual deals, products, and official pages.
 - For ROUNDUP articles covering multiple topics: use <hr class="topic-break"> between each topic section to create clear visual separation. Each topic should have its own <h3> heading.`
 

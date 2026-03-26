@@ -271,7 +271,7 @@ main {
 
 /* Article Detail */
 .article-detail {
-    max-width: 800px;
+    max-width: 1100px;
     margin: 0 auto;
 }
 
@@ -1197,4 +1197,83 @@ tr:hover {
 .vote-card .vote-btn {
     padding: 0.75rem 1.5rem;
     font-size: 1.1rem;
+}
+
+/* Article Two-Column Layout */
+.article-layout {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.article-sidebar {
+    position: sticky;
+    top: 80px;
+    align-self: start;
+}
+
+.sidebar-section {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+
+.sidebar-section h4 {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+}
+
+.sidebar-section p {
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.key-details {
+    list-style: none;
+    padding: 0;
+}
+
+.key-details li {
+    padding: 0.4rem 0;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.key-details li:last-child {
+    border-bottom: none;
+}
+
+.article-links {
+    list-style: none;
+    padding: 0;
+}
+
+.article-links li {
+    padding: 0.35rem 0;
+}
+
+.article-links a {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.article-main {
+    min-width: 0;
+}
+
+@media (max-width: 768px) {
+    .article-layout {
+        grid-template-columns: 1fr;
+    }
+    .article-sidebar {
+        position: static;
+    }
 }
