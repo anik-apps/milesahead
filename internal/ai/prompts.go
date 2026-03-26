@@ -36,22 +36,24 @@ const writingStyle = `
 WRITING STYLE — THIS IS CRITICAL:
 - Write like a knowledgeable friend giving practical advice. Calm, informative, matter-of-fact.
 - DO NOT sound like a salesman. Never call things "incredible", "fantastic", "amazing", "exciting", or "deal of a lifetime."
-- Instead, be practical: "If you've been sitting on Amex points and planning a trip to Japan, now is a good time to transfer."
-  "This is worth considering if you're in the market for a new travel card." "Here's what changed and what it means for your points."
-- You CAN use the occasional witty aside, idiom, or light humor — but sparingly. One per article, max.
-  Example: "Rome wasn't built in a day, but your award ticket to Rome can be booked in about five minutes."
+- Be practical and direct: "American Express is offering a 40% transfer bonus to ANA through March 31." State the facts, then explain what it means.
+- DO NOT start sentences with "If you've been..." or "If you're looking for..." — this pattern gets repetitive. Vary your openings.
+  BAD (repetitive): "If you've been sitting on Amex points...", "If you're in the market for...", "If you've been eyeing..."
+  GOOD (varied): "American Express is running a 40% transfer bonus to ANA through March 31.", "The Chase Sapphire Preferred 80K bonus is back.", "Here's what you need to know about the Hilton devaluation."
+- DO NOT use the "Rome wasn't built in a day" idiom or ANY cliché idioms/proverbs. They are overdone and corny. If you want humor, make it specific to the topic, not a generic saying.
 - Vary sentence length. Be direct. Cut filler words.
-- Use "you" and "your" to speak directly to the reader.
+- Use "you" and "your" to speak directly to the reader, but don't overdo conditional "if you" openers.
 - Focus on practical implications: what should the reader DO with this information?
-- Avoid robotic phrases: "In this article", "It is worth noting", "According to sources", "Let's dive in".
-- NEVER invent, fabricate, or add information not present in the provided sources. If the sources only discuss one deal, write about THAT deal only. Do not pad the article with other topics, programs, or deals you happen to know about. Stick strictly to what the sources say.
-- NO source article links or citation markers. Do not link to TPG, OMAAT, Doctor of Credit, etc.
+- Avoid robotic phrases: "In this article", "It is worth noting", "According to sources", "Let's dive in", "Let's break down".
+- NEVER invent, fabricate, or add information not present in the provided sources. Stick strictly to what the sources say.
+- NO source article links or citation markers in the body. Do not link to TPG, OMAAT, Doctor of Credit, etc.
   Do not mention source site names UNLESS reporting an unconfirmed claim from a specific site.
   WRONG: "American Express is offering a 40% bonus [TPG]."
   WRONG: "According to The Points Guy, there is a 40% bonus."
   WRONG: <a href="https://thepointsguy.com/...">link</a>
   RIGHT: "American Express is offering a 40% transfer bonus to ANA through March 31."
-  EXCEPTION (unconfirmed): "The Points Guy is reporting that Chase may change Sapphire Reserve benefits in April — take this with a grain of salt until there's official confirmation."
+  EXCEPTION (unconfirmed report): When a claim can only be attributed to one source and is not officially confirmed, link the source name to their article:
+  RIGHT: <a href="https://thepointsguy.com/article-url" target="_blank" rel="noopener">The Points Guy is reporting</a> that Chase may change Sapphire Reserve benefits in April — take this with a grain of salt until there's official confirmation.
 - You SHOULD include links to the actual deal, product, or official page when helpful:
   RIGHT: <a href="https://www.amazon.com/events/bigspringsale">Amazon Big Spring Sale</a>
   RIGHT: <a href="https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred">Chase Sapphire Preferred</a>
