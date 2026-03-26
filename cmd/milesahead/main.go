@@ -10,6 +10,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/article"
+	"github.com/kumaranik/milesahead/internal/cluster"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/mail"
@@ -95,13 +96,83 @@ func main() {
 			return
 		}
 		slog.Info("scan complete", "sources", len(results))
-	})
-	sched.AddMailPollJob(time.Duration(cfg.Mail.IMAP.PollInterval)*time.Second, func() {
-		slog.Info("scheduled job started", "job", "mail_poll")
-		if err := mailPoller.Poll(); err != nil {
-			slog.Error("scheduled job failed", "job", "mail_poll", "error", err)
+
+		// Cluster and generate articles from multi-source topics
+		sources, _ := database.ListActiveSources()
+		var clusterArticles []cluster.Article
+		for _, s := range sources {
+			raws, _ := database.GetRawArticlesBySourceID(s.ID)
+			for _, r := range raws {
+				if time.Since(r.CreatedAt) < 48*time.Hour {
+					clusterArticles = append(clusterArticles, cluster.Article{
+						ID: r.ID, Title: r.Title, SourceID: r.SourceID, Content: r.Content,
+					})
+				}
+			}
+		}
+		if len(clusterArticles) == 0 {
+			return
+		}
+
+		clusters := cluster.Cluster(clusterArticles, 0.3)
+		slog.Info("clustering complete", "articles", len(clusterArticles), "clusters", len(clusters))
+
+		// Filter to multi-source clusters and generate
+		for _, c := range clusters {
+			sourceIDs := make(map[int64]bool)
+			for _, a := range c.Articles {
+				sourceIDs[a.SourceID] = true
+			}
+			if len(sourceIDs) < 2 {
+				continue
+			}
+
+			var sa []ai.SourceArticle
+			var rawIDs []int64
+			for _, a := range c.Articles {
+				raws, _ := database.GetRawArticlesByIDs([]int64{a.ID})
+				if len(raws) == 0 {
+					continue
+				}
+				r := raws[0]
+				src, _ := database.GetSource(r.SourceID)
+				name := "Unknown"
+				if src != nil {
+					name = src.Name
+				}
+				content := r.Content
+				if len(content) > 1500 {
+					content = content[:1500]
+				}
+				sa = append(sa, ai.SourceArticle{Name: name, URL: r.URL, Title: r.Title, Content: content})
+				rawIDs = append(rawIDs, a.ID)
+			}
+
+			result, err := pipeline.Process("auto", sa)
+			if err != nil {
+				slog.Warn("article generation skipped", "topic", c.Articles[0].Title, "error", err)
+				continue
+			}
+
+			id, err := articleMgr.CreateFromPipeline(result, rawIDs, result.Type)
+			if err != nil {
+				slog.Error("article save failed", "error", err)
+				continue
+			}
+			art, _ := database.GetGeneratedArticle(id)
+			slog.Info("article created", "id", id, "title", result.Title, "score", result.Verification.Score, "status", art.Status)
 		}
 	})
+	if cfg.Mail.IMAP.Host != "localhost" && cfg.Mail.IMAP.Password != "placeholder" {
+		sched.AddMailPollJob(time.Duration(cfg.Mail.IMAP.PollInterval)*time.Second, func() {
+			slog.Info("scheduled job started", "job", "mail_poll")
+			if err := mailPoller.Poll(); err != nil {
+				slog.Error("scheduled job failed", "job", "mail_poll", "error", err)
+			}
+		})
+	} else {
+		slog.Info("mail polling disabled", "reason", "IMAP not configured")
+	}
 	sched.AddNewsletterJob(cfg.Newsletter.SendTime, cfg.Newsletter.Timezone, func() {
 		slog.Info("scheduled job started", "job", "newsletter")
 		if err := newsletterSvc.SendDaily(); err != nil {
