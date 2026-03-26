@@ -1374,3 +1374,13 @@ tr:hover {
         position: static;
     }
 }
+
+/* Preview Actions */
+.preview-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 16px 0;
+    margin-top: 16px;
+    border-top: 2px solid var(--border);
+}

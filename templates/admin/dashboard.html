@@ -76,16 +76,71 @@
                 <button class="preview-close" onclick="closePreview(document.getElementById('preview-{{.ID}}'))">&times;</button>
             </div>
             <div class="preview-body">
-                <!-- Article preview in published style -->
+                {{if .ImageURL}}
+                <div class="article-hero">
+                    <img src="{{.ImageURL}}" alt="{{.Title}}">
+                </div>
+                {{end}}
                 <article class="article-detail">
                     <header class="article-header">
                         <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
                         <h1>{{.Title}}</h1>
                     </header>
-                    <div class="article-content">
-                        {{.Content | safeHTML}}
+                    <div class="article-layout">
+                        <aside class="article-sidebar">
+                            {{if .TLDR}}
+                            <div class="sidebar-section">
+                                <h4>TL;DR</h4>
+                                <p>{{.TLDR}}</p>
+                            </div>
+                            {{end}}
+                            {{if .KeyDetails}}
+                            <div class="sidebar-section">
+                                <h4>Key Details</h4>
+                                <ul class="key-details">
+                                    {{range .KeyDetails}}
+                                    <li><strong>{{.Label}}:</strong> {{.Value}}</li>
+                                    {{end}}
+                                </ul>
+                            </div>
+                            {{end}}
+                            {{if .ArticleLinks}}
+                            <div class="sidebar-section">
+                                <h4>Links</h4>
+                                <ul class="article-links">
+                                    {{range .ArticleLinks}}
+                                    <li><a href="{{.URL}}" target="_blank" rel="noopener">→ {{.Text}}</a></li>
+                                    {{end}}
+                                </ul>
+                            </div>
+                            {{end}}
+                        </aside>
+                        <div class="article-main">
+                            <div class="article-content">
+                                {{.Content | safeHTML}}
+                            </div>
+                        </div>
                     </div>
                 </article>
+
+                <!-- Actions inside preview -->
+                <div class="preview-actions">
+                    <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <button type="submit" class="btn btn-approve" onclick="return confirm('Approve this article for publishing?')">Approve</button>
+                    </form>
+                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <button type="submit" class="btn btn-reject" onclick="return confirm('Reject this article?')">Reject</button>
+                    </form>
+                    <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form" style="flex:1">
+                        {{template "csrf_field" $}}
+                        <div style="display:flex;gap:8px">
+                            <textarea name="feedback" placeholder="Revision feedback..." required style="flex:1;min-height:36px"></textarea>
+                            <button type="submit" class="btn btn-primary">Revise</button>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <!-- Admin-only sections below the preview -->
