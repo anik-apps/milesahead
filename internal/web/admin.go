@@ -47,6 +47,10 @@ type adminArticleRow struct {
 	PublishedAt       string
 	Sources           []adminSourceInfo
 	CriticReport      *adminCriticReport
+	TLDR              string
+	KeyDetails        []struct{ Label, Value string }
+	ArticleLinks      []struct{ Text, URL string }
+	ImageURL          string
 }
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +74,20 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 			Slug:           a.Slug,
 			Content:        a.Content,
 			RevisionNumber: a.RevisionNumber,
+			TLDR:           a.TLDR,
+			ImageURL:       a.ImageURL,
+		}
+
+		// Parse key details and links from JSON
+		if a.KeyDetails != "" && a.KeyDetails != "[]" {
+			var kd []struct{ Label, Value string }
+			json.Unmarshal([]byte(a.KeyDetails), &kd)
+			row.KeyDetails = kd
+		}
+		if a.Links != "" && a.Links != "[]" {
+			var links []struct{ Text, URL string }
+			json.Unmarshal([]byte(a.Links), &links)
+			row.ArticleLinks = links
 		}
 
 		if v, err := app.db.GetLatestVerification(a.ID); err == nil {

@@ -138,7 +138,22 @@ type visionMessage struct {
 }
 
 // visionScore sends actual images to a vision model for scoring.
+// If ALL vision calls fail, restores original text scores (no penalty).
 func (s *Scorer) visionScore(title, tldr string, candidates []ImageCandidate) []ImageCandidate {
+	// Save original text scores in case all vision calls fail
+	textScores := make([]float64, len(candidates))
+	for i, c := range candidates {
+		textScores[i] = c.Score
+	}
+	visionSuccesses := 0
+	defer func() {
+		if visionSuccesses == 0 {
+			slog.Warn("all vision scoring failed, restoring text scores")
+			for i := range candidates {
+				candidates[i].Score = textScores[i]
+			}
+		}
+	}()
 	for i, c := range candidates {
 		prompt := fmt.Sprintf(
 			`Look at this image. The article is titled: "%s". Summary: "%s".
@@ -161,7 +176,7 @@ Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 		contentJSON, err := json.Marshal(contentParts)
 		if err != nil {
 			slog.Warn("vision content marshal failed", "index", i, "error", err)
-			candidates[i].Score = candidates[i].Score * 0.5
+			candidates[i].Score = candidates[i].Score * 0.6
 			continue
 		}
 
@@ -175,14 +190,14 @@ Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 		reqBody, err := json.Marshal(vReq)
 		if err != nil {
 			slog.Warn("vision request marshal failed", "index", i, "error", err)
-			candidates[i].Score = candidates[i].Score * 0.5
+			candidates[i].Score = candidates[i].Score * 0.6
 			continue
 		}
 
 		req, err := http.NewRequest("POST", s.visionURL+"/chat/completions", bytes.NewBuffer(reqBody))
 		if err != nil {
 			slog.Warn("vision request creation failed", "index", i, "error", err)
-			candidates[i].Score = candidates[i].Score * 0.5
+			candidates[i].Score = candidates[i].Score * 0.6
 			continue
 		}
 		req.Header.Set("Authorization", "Bearer "+s.visionToken)
@@ -191,7 +206,7 @@ Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 		resp, err := s.httpClient.Do(req)
 		if err != nil {
 			slog.Warn("vision request failed", "index", i, "error", err)
-			candidates[i].Score = candidates[i].Score * 0.5
+			candidates[i].Score = candidates[i].Score * 0.6
 			continue
 		}
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -204,7 +219,7 @@ Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 			}
 			slog.Warn("vision API error", "index", i, "status", resp.StatusCode, "body", body)
 			metrics.ImageScoringTotal.WithLabelValues("vision", "error").Inc()
-			candidates[i].Score = candidates[i].Score * 0.5
+			candidates[i].Score = candidates[i].Score * 0.6
 			continue
 		}
 
@@ -217,7 +232,7 @@ Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 		}
 		if err := json.Unmarshal(respBody, &chatResp); err != nil || len(chatResp.Choices) == 0 {
 			slog.Warn("vision response parse failed", "index", i, "error", err)
-			candidates[i].Score = candidates[i].Score * 0.5
+			candidates[i].Score = candidates[i].Score * 0.6
 			continue
 		}
 
@@ -236,11 +251,12 @@ Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 		}
 		if err := json.Unmarshal([]byte(content), &result); err != nil {
 			slog.Warn("vision score parse failed", "index", i, "response", content)
-			candidates[i].Score = candidates[i].Score * 0.5
+			candidates[i].Score = candidates[i].Score * 0.6
 			continue
 		}
 
 		candidates[i].Score = result.Score
+		visionSuccesses++
 		slog.Info("image vision-scored", "index", i, "score", result.Score, "reason", result.Reason, "attribution", c.Attribution)
 		metrics.ImageScoringTotal.WithLabelValues("vision", "success").Inc()
 	}
