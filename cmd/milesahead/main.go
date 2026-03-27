@@ -158,6 +158,13 @@ func main() {
 				rawIDs = append(rawIDs, a.ID)
 			}
 
+			// Skip if we already have articles from these source articles
+			exists, _ := database.HasArticleForRawIDs(rawIDs)
+			if exists {
+				slog.Info("skipping cluster, articles already exist for these sources", "topic", c.Articles[0].Title)
+				continue
+			}
+
 			result, err := pipeline.Process("auto", sa)
 			if err != nil {
 				slog.Warn("article generation skipped", "topic", c.Articles[0].Title, "error", err)

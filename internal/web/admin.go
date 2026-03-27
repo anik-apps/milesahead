@@ -41,6 +41,8 @@ type adminArticleRow struct {
 	RevisionNumber    int
 	VerificationScore int
 	SourceCount       int
+	CreatedAt         string
+	UpdatedAt         string
 	Upvotes           int
 	Downvotes         int
 	Flagged           bool
@@ -76,6 +78,8 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 			RevisionNumber: a.RevisionNumber,
 			TLDR:           a.TLDR,
 			ImageURL:       a.ImageURL,
+			CreatedAt:      a.CreatedAt.Format("Jan 2, 2006 3:04 PM"),
+			UpdatedAt:      a.UpdatedAt.Format("Jan 2, 2006 3:04 PM"),
 		}
 
 		// Parse key details and links from JSON

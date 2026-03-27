@@ -31,6 +31,7 @@
                 <th>Score</th>
                 <th>Sources</th>
                 <th title="Revision number">Rev</th>
+                <th>Created</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -47,6 +48,7 @@
                 <td>{{.VerificationScore}}</td>
                 <td>{{.SourceCount}}</td>
                 <td>{{.RevisionNumber}}</td>
+                <td>{{.CreatedAt}}</td>
                 <td class="actions">
                     <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
                         {{template "csrf_field" $}}
@@ -85,6 +87,7 @@
                     <header class="article-header">
                         <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
                         <h1>{{.Title}}</h1>
+                        <span class="dim">Created: {{.CreatedAt}} | Rev {{.RevisionNumber}}</span>
                     </header>
                     <div class="article-layout">
                         <aside class="article-sidebar">

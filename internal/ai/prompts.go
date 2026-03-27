@@ -24,6 +24,14 @@ func formatSources(sources []SourceArticle) string {
 	return b.String()
 }
 
+func formatSourceURLs(sources []SourceArticle) string {
+	var parts []string
+	for _, s := range sources {
+		parts = append(parts, fmt.Sprintf("- %s: %s", s.Name, s.URL))
+	}
+	return strings.Join(parts, "\n")
+}
+
 func formatSourceLinks(sources []SourceArticle) string {
 	var parts []string
 	for _, s := range sources {
@@ -277,16 +285,13 @@ func ImageScoringPrompt(articleTitle, articleTLDR string, candidates []string) s
 func RevisionPrompt(sources []SourceArticle, previousOutput, feedback, criticIssues string) string {
 	return fmt.Sprintf(`You are a miles-and-points content editor revising an article.
 
-ADMIN FEEDBACK IS YOUR TOP PRIORITY. The admin has specifically requested the following change — you MUST implement it exactly:
+The admin has requested the following change. Implement EXACTLY what they asked — nothing more, nothing less.
 
-=== ADMIN FEEDBACK (MANDATORY) ===
+=== ADMIN FEEDBACK ===
 %s
-=== END ADMIN FEEDBACK ===
+=== END FEEDBACK ===
 
-If the admin asks for a link, find the actual URL from the source articles and add an HTML <a href="..." target="_blank" rel="noopener"> link. If you cannot find a valid URL for the requested link, add this at the very end of the article: <div class="editor-note">Could not find a link for: [describe what was requested]</div>
-If the admin asks to remove something, remove it.
-If the admin asks to change tone, change the tone.
-The admin's feedback overrides all other instructions.
+IMPORTANT: Only make the changes the admin requested. Do not add editor notes, do not add warnings, do not add disclaimers unless the admin specifically asked for them. If the admin asked for a link and you can find a URL in the sources, add it as: <a href="URL" target="_blank" rel="noopener">descriptive text</a>. If you cannot find a URL, just leave the text as-is without adding any notes about missing links.
 
 Also fix any critic issues if present.
 %s
@@ -297,7 +302,10 @@ Previous Article:
 Critic Issues:
 %s
 
+Source article URLs (can be used as links if no better URL is available):
+%s
+
 Sources (for your reference only):
 %s
-Write the revised article now.`, feedback, writingStyle, htmlFormat, previousOutput, criticIssues, formatSources(sources))
+Write the revised article now.`, feedback, writingStyle, htmlFormat, previousOutput, criticIssues, formatSourceURLs(sources), formatSources(sources))
 }
