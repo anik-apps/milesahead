@@ -281,6 +281,37 @@ func ImageScoringPrompt(articleTitle, articleTLDR string, candidates []string) s
 	return b.String()
 }
 
+// ExtractDetailsPrompt asks the AI to extract key details and links from an article.
+func ExtractDetailsPrompt(title, content string) string {
+	truncated := content
+	if len(truncated) > 2000 {
+		truncated = truncated[:2000]
+	}
+	return fmt.Sprintf(`Extract key details and useful links from this article. Return ONLY a JSON object.
+
+Article Title: %s
+Article Content:
+%s
+
+Return this exact JSON format (no other text):
+{
+  "key_details": [
+    {"label": "Bonus", "value": "100%% extra points"},
+    {"label": "Deadline", "value": "May 1, 2026"},
+    {"label": "Cost", "value": "$95 annual fee"}
+  ],
+  "links": [
+    {"text": "Apply Now", "url": "https://example.com/apply"},
+    {"text": "Program Details", "url": "https://example.com/details"}
+  ]
+}
+
+Rules:
+- key_details: 3-6 bullet points with the most important facts (bonus amounts, deadlines, costs, requirements, eligibility)
+- links: 2-4 links to actual deal pages, booking sites, or official program pages found in the article content. Extract real URLs from the HTML <a href> tags. Do NOT invent URLs.
+- If the article has no links, return an empty links array.`, title, truncated)
+}
+
 // RevisionPrompt builds a prompt for revising an article based on feedback.
 func RevisionPrompt(sources []SourceArticle, previousOutput, feedback, criticIssues string) string {
 	return fmt.Sprintf(`You are a miles-and-points content editor revising an article.

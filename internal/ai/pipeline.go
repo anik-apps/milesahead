@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -119,6 +120,17 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 
 	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
 
+	// If structured parsing didn't extract key details, use a separate AI call
+	if len(keyDetails) == 0 {
+		kd, lk := p.extractDetails(parsedTitle, content)
+		if len(kd) > 0 {
+			keyDetails = kd
+		}
+		if len(lk) > 0 && len(links) == 0 {
+			links = lk
+		}
+	}
+
 	return &PipelineResult{
 		Content:         content,
 		Title:           parsedTitle,
@@ -129,6 +141,37 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
 	}, nil
+}
+
+// extractDetails makes a separate AI call to extract key details and links from the article.
+func (p *Pipeline) extractDetails(title, content string) ([]KeyDetail, []ArticleLink) {
+	prompt := ExtractDetailsPrompt(title, content)
+	resp, err := p.critic.client.Generate(p.critic.model, prompt, 1024)
+	if err != nil {
+		slog.Warn("extract details failed", "error", err)
+		return nil, nil
+	}
+
+	// Parse JSON
+	resp = strings.TrimSpace(resp)
+	if idx := strings.Index(resp, "{"); idx != -1 {
+		resp = resp[idx:]
+	}
+	if idx := strings.LastIndex(resp, "}"); idx != -1 {
+		resp = resp[:idx+1]
+	}
+
+	var result struct {
+		KeyDetails []KeyDetail   `json:"key_details"`
+		Links      []ArticleLink `json:"links"`
+	}
+	if err := json.Unmarshal([]byte(resp), &result); err != nil {
+		slog.Warn("extract details parse failed", "error", err)
+		return nil, nil
+	}
+
+	slog.Info("extracted details", "key_details", len(result.KeyDetails), "links", len(result.Links))
+	return result.KeyDetails, result.Links
 }
 
 // ProcessWithFeedback revises a previously generated article using feedback,
@@ -207,6 +250,14 @@ func parseStructuredContent(raw string) (title, tldr string, keyDetails []KeyDet
 		if t != "" {
 			title = t
 			break
+		}
+	}
+	// Truncate overly long titles
+	if len(title) > 150 {
+		if idx := strings.LastIndex(title[:150], " "); idx > 50 {
+			title = title[:idx]
+		} else {
+			title = title[:150]
 		}
 	}
 
@@ -665,5 +716,15 @@ func extractTitle(content string) string {
 		}
 		title = title[:start] + title[start+end+1:]
 	}
-	return strings.TrimSpace(title)
+	// Truncate overly long titles
+	title = strings.TrimSpace(title)
+	if len(title) > 150 {
+		// Try to cut at last space before 150
+		if idx := strings.LastIndex(title[:150], " "); idx > 50 {
+			title = title[:idx]
+		} else {
+			title = title[:150]
+		}
+	}
+	return title
 }

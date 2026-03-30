@@ -370,7 +370,7 @@ func (s *Searcher) searchPixabay(query string) ([]ImageCandidate, error) {
 	var candidates []ImageCandidate
 	for _, h := range result.Hits {
 		candidates = append(candidates, ImageCandidate{
-			URL:         h.LargeImageURL,
+			URL:         h.WebformatURL,
 			Thumbnail:   h.WebformatURL,
 			Source:      "pixabay",
 			Attribution: fmt.Sprintf("Photo by %s on Pixabay", h.User),
