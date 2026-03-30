@@ -18,23 +18,19 @@
         <thead>
             <tr>
                 <th>Title</th>
-                <th>Type</th>
                 <th>Published</th>
-                <th>Upvotes</th>
-                <th>Downvotes</th>
-                <th>Status</th>
+                <th class="hide-mobile">Upvotes</th>
+                <th class="hide-mobile">Downvotes</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody>
             {{range .Articles}}
             <tr{{if .Flagged}} class="flagged"{{end}}>
-                <td>{{.Title}}</td>
-                <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
+                <td><span class="badge badge-{{.Type}}">{{.Type}}</span> {{.Title}}{{if .Flagged}} <span class="flag-icon" title="High downvotes">&#9873;</span>{{end}}</td>
                 <td>{{.PublishedAt}}</td>
-                <td>{{.Upvotes}}</td>
-                <td>{{.Downvotes}}</td>
-                <td>{{if .Flagged}}<span class="flag-icon" title="High downvotes">&#9873;</span>{{end}}</td>
+                <td class="hide-mobile">{{.Upvotes}}</td>
+                <td class="hide-mobile">{{.Downvotes}}</td>
                 <td class="actions">
                     <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="inline-form">
                         {{template "csrf_field" $}}

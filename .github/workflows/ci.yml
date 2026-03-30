@@ -16,3 +16,98 @@ jobs:
       - run: go vet ./...
       - run: go test ./... -v -race
       - run: go build ./cmd/milesahead
+
+  screenshot-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build
+        run: go build -o milesahead ./cmd/milesahead
+      - name: Setup test DB and config
+        run: |
+          mkdir -p data
+          cat > config.yaml << 'EOF'
+          server:
+            port: 9090
+            domain: localhost
+          admin:
+            password_hash: "$2a$12$LJ3m4sFZ7ZZr7K7T6C7nL.bG9Y5H5.8HYBn5e5fKn3p6ZR3RxRPxK"
+          db:
+            path: ./data/test.db
+          scanner:
+            default_interval: 9999
+            user_agent: "Test/1.0"
+          ai:
+            generator_model: "test"
+            critic_model: "test"
+            critic2_model: ""
+            hf_api_token: "test"
+            hf_base_url: ""
+            critic_threshold: 75
+            max_retries: 0
+            cache_ttl: 3600
+          mail:
+            smtp:
+              host: localhost
+              port: 587
+              user: "test"
+              password: "test"
+              from: "test@localhost"
+            imap:
+              host: localhost
+              port: 993
+              user: "test"
+              password: "test"
+              poll_interval: 9999
+          newsletter:
+            send_time: "08:00"
+            timezone: "UTC"
+          votes:
+            alert_threshold: 10
+            alert_ratio: 0.4
+            alert_window: 24
+          EOF
+      - name: Install Playwright
+        run: |
+          npm install playwright
+          npx playwright install --with-deps chromium
+      - name: Start app
+        run: |
+          ./milesahead -config config.yaml &
+          for i in $(seq 1 30); do curl -s http://localhost:9090/ > /dev/null && break || sleep 1; done
+      - name: Screenshot tests
+        run: |
+          node -e "
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch();
+            const viewports = [
+              { name: 'desktop', width: 1440, height: 900 },
+              { name: 'tablet', width: 768, height: 1024 },
+              { name: 'mobile', width: 375, height: 812 },
+            ];
+            for (const vp of viewports) {
+              const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+              const page = await ctx.newPage();
+              // Homepage
+              await page.goto('http://localhost:9090/', { waitUntil: 'networkidle' });
+              await page.screenshot({ path: \`screenshots/\${vp.name}-home.png\` });
+              // Login page
+              await page.goto('http://localhost:9090/admin/login', { waitUntil: 'networkidle' });
+              await page.screenshot({ path: \`screenshots/\${vp.name}-login.png\` });
+              console.log(\`\${vp.name}: OK\`);
+              await ctx.close();
+            }
+            await browser.close();
+            console.log('All screenshots captured');
+          })();
+          "
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots/

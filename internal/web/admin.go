@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
 )
@@ -53,6 +55,7 @@ type adminArticleRow struct {
 	KeyDetails        []struct{ Label, Value string }
 	ArticleLinks      []struct{ Text, URL string }
 	ImageURL          string
+	createdAtRaw      time.Time // for sorting only, not exposed to template
 }
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
@@ -80,17 +83,22 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 			ImageURL:       a.ImageURL,
 			CreatedAt:      a.CreatedAt.Format("Jan 2, 2006 3:04 PM"),
 			UpdatedAt:      a.UpdatedAt.Format("Jan 2, 2006 3:04 PM"),
+			createdAtRaw:   a.CreatedAt,
 		}
 
 		// Parse key details and links from JSON
 		if a.KeyDetails != "" && a.KeyDetails != "[]" {
 			var kd []struct{ Label, Value string }
-			json.Unmarshal([]byte(a.KeyDetails), &kd)
+			if err := json.Unmarshal([]byte(a.KeyDetails), &kd); err != nil {
+				slog.Warn("failed to parse key details", "article_id", a.ID, "error", err)
+			}
 			row.KeyDetails = kd
 		}
 		if a.Links != "" && a.Links != "[]" {
 			var links []struct{ Text, URL string }
-			json.Unmarshal([]byte(a.Links), &links)
+			if err := json.Unmarshal([]byte(a.Links), &links); err != nil {
+				slog.Warn("failed to parse links", "article_id", a.ID, "error", err)
+			}
 			row.ArticleLinks = links
 		}
 
@@ -128,6 +136,14 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 
 		rows = append(rows, row)
+	}
+
+	// Sort by CreatedAt DESC (most recent first) and limit to 20 for dashboard
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].createdAtRaw.After(rows[j].createdAtRaw)
+	})
+	if len(rows) > 20 {
+		rows = rows[:20]
 	}
 
 	data := map[string]interface{}{

@@ -35,6 +35,8 @@ body {
     color: var(--text);
     line-height: 1.6;
     min-height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 a {
@@ -96,6 +98,7 @@ main {
     max-width: 1200px;
     margin: 0 auto;
     padding: 2rem;
+    flex: 1;
 }
 
 /* Category Tabs */
@@ -791,6 +794,7 @@ tr:hover {
     display: flex;
     justify-content: center;
     align-items: flex-start;
+    background: rgba(0, 0, 0, 0.75);
 }
 
 .preview-modal {
@@ -805,6 +809,8 @@ tr:hover {
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    position: relative;
+    z-index: 1001;
 }
 
 .preview-header {
@@ -1380,9 +1386,13 @@ tr:hover {
     display: flex;
     gap: 8px;
     align-items: center;
-    padding: 16px 0;
-    margin-top: 16px;
+    position: sticky;
+    bottom: 0;
+    background: var(--bg);
     border-top: 2px solid var(--border);
+    padding: 12px 0;
+    z-index: 10;
+    margin-top: 16px;
 }
 
 /* Editor notes - hidden on public site, visible in admin preview */
@@ -1403,3 +1413,140 @@ tr:hover {
     background: #451a03;
     color: #fbbf24;
 }
+
+/* Issue 12: Sources URLs truncation */
+.admin-table td a[href] {
+    display: inline-block;
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Admin table title overflow fix */
+.admin-table td:first-child {
+    max-width: 400px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.admin-table td:first-child a {
+    display: block;
+    line-height: 1.4;
+}
+
+@media (max-width: 1024px) {
+    .admin-table td:first-child {
+        max-width: 250px;
+    }
+    .admin-table td a[href] {
+        max-width: 180px;
+    }
+}
+
+@media (max-width: 768px) {
+    .admin-table td:first-child {
+        max-width: 180px;
+    }
+    .admin-table {
+        font-size: 0.85rem;
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Issue 2: Preview sidebar responsive */
+    .preview-body .article-layout {
+        grid-template-columns: 1fr;
+    }
+    .preview-body .article-sidebar {
+        position: static;
+    }
+
+    /* Issue 12: Sources table URL cells - mobile override */
+    .admin-table td a[href] {
+        max-width: 120px;
+    }
+
+    /* Issue 6: Hero card title readability */
+    .featured-overlay {
+        background: linear-gradient(transparent 20%, rgba(0,0,0,0.85));
+    }
+
+    /* Issue N2: Hide columns on mobile */
+    .hide-mobile {
+        display: none;
+    }
+
+    /* Issue 7 + 13: Sidebar compact on mobile */
+    .sidebar-section {
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+    }
+    .sidebar-section h4 {
+        font-size: 0.7rem;
+        margin-bottom: 0.5rem;
+    }
+    .sidebar-section p,
+    .sidebar-section li {
+        font-size: 0.85rem;
+    }
+    .key-details li {
+        padding: 0.25rem 0;
+    }
+
+    /* Issue 9 + 14: Admin nav horizontal scroll with fade hint */
+    .admin-nav {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 8px;
+        position: relative;
+        mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        padding-right: 2rem;
+    }
+
+    /* Issue 10: Category filter pills touch-friendly */
+    .tab {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        padding: 0.5rem 1rem;
+    }
+}
+
+/* Issue 4: Dashboard table at tablet */
+@media (max-width: 1024px) and (min-width: 769px) {
+    .admin-table th,
+    .admin-table td {
+        padding: 0.85rem 1.1rem;
+    }
+    .admin-table {
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+.status-badge.pending {
+    background: #dbeafe;
+    color: #1e40af;
+}
+[data-theme="dark"] .status-badge.pending {
+    background: #1e3a5f;
+    color: #93c5fd;
+}
+
+/* Dim text */
+.dim {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+/* Flagged rows */
+tr.flagged { background: #fef2f2; }
+[data-theme="dark"] tr.flagged { background: #3b1114; }
+.flag-icon { color: #dc2626; margin-left: 0.25rem; }
