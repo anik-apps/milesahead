@@ -29,7 +29,47 @@ jobs:
       - name: Setup test DB and config
         run: |
           mkdir -p data
-          cp config.example.yaml config.yaml
+          cat > config.yaml << 'EOF'
+          server:
+            port: 9090
+            domain: localhost
+          admin:
+            password_hash: "$2a$12$LJ3m4sFZ7ZZr7K7T6C7nL.bG9Y5H5.8HYBn5e5fKn3p6ZR3RxRPxK"
+          db:
+            path: ./data/test.db
+          scanner:
+            default_interval: 9999
+            user_agent: "Test/1.0"
+          ai:
+            generator_model: "test"
+            critic_model: "test"
+            critic2_model: ""
+            hf_api_token: "test"
+            hf_base_url: ""
+            critic_threshold: 75
+            max_retries: 0
+            cache_ttl: 3600
+          mail:
+            smtp:
+              host: localhost
+              port: 587
+              user: "test"
+              password: "test"
+              from: "test@localhost"
+            imap:
+              host: localhost
+              port: 993
+              user: "test"
+              password: "test"
+              poll_interval: 9999
+          newsletter:
+            send_time: "08:00"
+            timezone: "UTC"
+          votes:
+            alert_threshold: 10
+            alert_ratio: 0.4
+            alert_window: 24
+          EOF
       - name: Install Playwright
         run: |
           npm install playwright
