@@ -31,11 +31,13 @@ jobs:
           mkdir -p data
           cp config.example.yaml config.yaml
       - name: Install Playwright
-        run: npx playwright install --with-deps chromium
+        run: |
+          npm install playwright
+          npx playwright install --with-deps chromium
       - name: Start app
         run: |
           ./milesahead -config config.yaml &
-          sleep 3
+          for i in $(seq 1 30); do curl -s http://localhost:9090/ > /dev/null && break || sleep 1; done
       - name: Screenshot tests
         run: |
           node -e "
