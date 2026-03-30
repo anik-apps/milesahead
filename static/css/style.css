@@ -37,6 +37,12 @@ body {
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    overflow-x: hidden;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
 }
 
 a {
@@ -96,6 +102,7 @@ nav .nav-links a:hover {
 /* Main content */
 main {
     max-width: 1200px;
+    width: 100%;
     margin: 0 auto;
     padding: 2rem;
     flex: 1;
@@ -671,6 +678,8 @@ footer {
 
 .admin-table {
     width: 100%;
+    table-layout: fixed;
+    word-wrap: break-word;
 }
 
 .admin-table details summary {

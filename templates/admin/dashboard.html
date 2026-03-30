@@ -164,6 +164,16 @@
                     {{end}}
                 </div>
                 {{end}}
+                {{if .Sources}}
+                <div class="admin-sources-section">
+                    <h4>Sources</h4>
+                    <ul>
+                        {{range .Sources}}
+                        <li><strong>{{.Name}}</strong>: <a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}</a></li>
+                        {{end}}
+                    </ul>
+                </div>
+                {{end}}
             </div>
         </div>
     </div>
