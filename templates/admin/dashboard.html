@@ -27,11 +27,9 @@
         <thead>
             <tr>
                 <th>Title</th>
-                <th>Type</th>
                 <th>Score</th>
-                <th>Sources</th>
                 <th title="Revision number">Rev</th>
-                <th>Created</th>
+                <th>Date</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -39,16 +37,16 @@
             {{range .Articles}}
             <tr{{if eq .Status "revision_requested"}} class="row-revising"{{end}}>
                 <td>
+                    <span class="badge badge-{{.Type}}">{{.Type}}</span>
                     <a href="#" class="preview-link" onclick="openPreview('preview-{{.ID}}'); return false;">{{.Title}}</a>
+                    {{if eq .Status "pending"}}<span class="status-badge pending">Pending</span>{{end}}
                     {{if eq .Status "revision_requested"}}<span class="status-badge revising">Revising...</span>{{end}}
                     {{if eq .Status "unpublished"}}<span class="status-badge unpublished">Unpublished</span>{{end}}
-                    {{if eq .Status "draft"}}<span class="status-badge draft">Draft (below threshold)</span>{{end}}
+                    {{if eq .Status "draft"}}<span class="status-badge draft">Draft</span>{{end}}
                 </td>
-                <td><span class="badge badge-{{.Type}}">{{.Type}}</span></td>
                 <td>{{.VerificationScore}}</td>
-                <td>{{.SourceCount}}</td>
                 <td>{{.RevisionNumber}}</td>
-                <td>{{.CreatedAt}}</td>
+                <td><span class="dim">{{.CreatedAt}}</span><br><span class="dim">Updated: {{.UpdatedAt}}</span></td>
                 <td class="actions">
                     <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
                         {{template "csrf_field" $}}
@@ -87,7 +85,7 @@
                     <header class="article-header">
                         <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
                         <h1>{{.Title}}</h1>
-                        <span class="dim">Created: {{.CreatedAt}} | Rev {{.RevisionNumber}}</span>
+                        <span class="dim">Created: {{.CreatedAt}} | Updated: {{.UpdatedAt}} | Rev {{.RevisionNumber}}</span>
                     </header>
                     <div class="article-layout">
                         <aside class="article-sidebar">
@@ -148,17 +146,6 @@
 
             <!-- Admin-only sections below the preview -->
             <div class="preview-admin-info">
-                {{if .Sources}}
-                <div class="admin-sources-section">
-                    <h4>Sources</h4>
-                    <ul>
-                        {{range .Sources}}
-                        <li><strong>{{.Name}}</strong>: <a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}</a></li>
-                        {{end}}
-                    </ul>
-                </div>
-                {{end}}
-
                 {{if .CriticReport}}
                 <div class="admin-critic-section">
                     <h4>Critic Report (Score: {{.CriticReport.Score}}/100)</h4>

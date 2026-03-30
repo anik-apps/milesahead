@@ -16,3 +16,56 @@ jobs:
       - run: go vet ./...
       - run: go test ./... -v -race
       - run: go build ./cmd/milesahead
+
+  screenshot-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build
+        run: go build -o milesahead ./cmd/milesahead
+      - name: Setup test DB and config
+        run: |
+          mkdir -p data
+          cp config.example.yaml config.yaml
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Start app
+        run: |
+          ./milesahead -config config.yaml &
+          sleep 3
+      - name: Screenshot tests
+        run: |
+          node -e "
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch();
+            const viewports = [
+              { name: 'desktop', width: 1440, height: 900 },
+              { name: 'tablet', width: 768, height: 1024 },
+              { name: 'mobile', width: 375, height: 812 },
+            ];
+            for (const vp of viewports) {
+              const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+              const page = await ctx.newPage();
+              // Homepage
+              await page.goto('http://localhost:9090/', { waitUntil: 'networkidle' });
+              await page.screenshot({ path: \`screenshots/\${vp.name}-home.png\` });
+              // Login page
+              await page.goto('http://localhost:9090/admin/login', { waitUntil: 'networkidle' });
+              await page.screenshot({ path: \`screenshots/\${vp.name}-login.png\` });
+              console.log(\`\${vp.name}: OK\`);
+              await ctx.close();
+            }
+            await browser.close();
+            console.log('All screenshots captured');
+          })();
+          "
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots/

@@ -117,15 +117,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		}
 	}
 
-	parsedTitle, tldr, keyDetails, links, parsedBody := parseStructuredContent(content)
-	if parsedTitle == "" {
-		parsedTitle = extractTitle(content)
-	}
-	if parsedBody == "" {
-		content = formatContent(content)
-	} else {
-		content = parsedBody
-	}
+	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
 
 	return &PipelineResult{
 		Content:         content,
@@ -160,15 +152,7 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 	verification.Score = adjustScore(verification)
 	metrics.CriticScore.Observe(float64(verification.Score))
 
-	parsedTitle, tldr, keyDetails, links, parsedBody := parseStructuredContent(content)
-	if parsedTitle == "" {
-		parsedTitle = extractTitle(content)
-	}
-	if parsedBody == "" {
-		content = formatContent(content)
-	} else {
-		content = parsedBody
-	}
+	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
 
 	return &PipelineResult{
 		Content:         content,
@@ -180,6 +164,37 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
 	}, nil
+}
+
+// finalizeContent processes raw generated content through the structured parsing pipeline.
+func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr string, keyDetails []KeyDetail, links []ArticleLink) {
+	parsedTitle, tldr, keyDetails, links, parsedBody := parseStructuredContent(content)
+	if parsedTitle == "" {
+		parsedTitle = extractTitle(content)
+	}
+	if parsedBody != "" {
+		content = parsedBody
+	}
+	content = stripStructuralMarkers(content)
+	// Format: if body was extracted or content is single-line, just wrap in HTML
+	if parsedBody != "" || !strings.Contains(content, "\n") {
+		if !strings.Contains(content, "<p>") && content != "" {
+			blocks := strings.Split(content, "\n\n")
+			var formatted []string
+			for _, b := range blocks {
+				b = strings.TrimSpace(b)
+				if b != "" && !strings.HasPrefix(b, "<") {
+					formatted = append(formatted, "<p>"+b+"</p>")
+				} else if b != "" {
+					formatted = append(formatted, b)
+				}
+			}
+			content = strings.Join(formatted, "\n")
+		}
+	} else {
+		content = formatContent(content)
+	}
+	return content, parsedTitle, tldr, keyDetails, links
 }
 
 // parseStructuredContent extracts sections from the generator's structured output.
@@ -273,6 +288,21 @@ func parseStructuredContent(raw string) (title, tldr string, keyDetails []KeyDet
 	}
 
 	return
+}
+
+// stripStructuralMarkers removes structural markers from article content.
+func stripStructuralMarkers(content string) string {
+	var clean []string
+	for _, line := range strings.Split(content, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "KEY_DETAILS_START" || t == "KEY_DETAILS_END" ||
+			t == "LINKS_START" || t == "LINKS_END" ||
+			strings.HasPrefix(t, "TLDR:") {
+			continue
+		}
+		clean = append(clean, line)
+	}
+	return strings.TrimSpace(strings.Join(clean, "\n"))
 }
 
 // adjustScore enforces consistency between the score and the check results.
