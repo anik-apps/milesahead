@@ -171,8 +171,10 @@ main {
 }
 
 .featured-card a {
-    display: block;
-    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-height: 400px;
     color: #ffffff;
 }
 
@@ -181,12 +183,10 @@ main {
 }
 
 .featured-overlay {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
     padding: 2rem;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+    background: linear-gradient(transparent 0%, rgba(0, 0, 0, 0.7) 15%, rgba(0, 0, 0, 0.85) 100%);
+    margin-top: auto;
+    padding-top: 3rem;
 }
 
 .featured-title {
@@ -239,6 +239,8 @@ main {
     margin: 0.5rem 0;
     font-size: 1.1rem;
     line-height: 1.4;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .article-card .excerpt {
@@ -312,12 +314,13 @@ main {
     display: flex;
     gap: 1rem;
     align-items: flex-start;
+    min-height: 0;
 }
 
 .card-thumb {
     flex-shrink: 0;
     width: 100px;
-    height: 75px;
+    min-height: 75px;
     border-radius: 6px;
     overflow: hidden;
 }
@@ -678,8 +681,11 @@ footer {
 
 .admin-table {
     width: 100%;
-    table-layout: fixed;
     word-wrap: break-word;
+}
+.admin-table th:first-child,
+.admin-table td:first-child {
+    width: 45%;
 }
 
 .admin-table details summary {
@@ -1193,12 +1199,12 @@ tr:hover {
         grid-template-columns: 1fr;
     }
 
-    .featured-card {
+    .featured-card a {
         min-height: 280px;
     }
 
     .featured-title {
-        font-size: 1.4rem;
+        font-size: 1.3rem;
     }
 
     .bottom-grid {
@@ -1646,6 +1652,8 @@ tr.flagged { background: #fef2f2; }
     font-size: 1.05rem;
     margin-bottom: 0.5rem;
     line-height: 1.3;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 .card-grid-excerpt {
     font-size: 0.9rem;
