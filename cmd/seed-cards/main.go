@@ -41,9 +41,14 @@ func main() {
 	force := flag.Bool("force", false, "overwrite existing cards")
 	flag.Parse()
 
-	// Find cards.json relative to this source file.
-	_, thisFile, _, _ := runtime.Caller(0)
-	jsonPath := filepath.Join(filepath.Dir(thisFile), "cards.json")
+	// Find cards.json: next to the binary, or relative to source (for go run).
+	exe, _ := os.Executable()
+	jsonPath := filepath.Join(filepath.Dir(exe), "cards.json")
+	if _, err := os.Stat(jsonPath); err != nil {
+		// Fallback for `go run`: look relative to source file.
+		_, thisFile, _, _ := runtime.Caller(0)
+		jsonPath = filepath.Join(filepath.Dir(thisFile), "cards.json")
+	}
 
 	data, err := os.ReadFile(jsonPath)
 	if err != nil {
