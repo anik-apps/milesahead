@@ -43,7 +43,7 @@ go run ./cmd/seed-cards
 
 Full documentation is built with [Hugo](https://gohugo.io/) using the [Hextra](https://imfing.github.io/hextra/) theme.
 
-**Online:** [anik-apps.github.io/milesahead](https://anik-apps.github.io/milesahead/) (deployed via GitHub Pages)
+**Online:** [docs.milesahead.kumaranik.com](https://docs.milesahead.kumaranik.com/) (deployed via Cloudflare Pages)
 
 **Local:**
 ```bash
