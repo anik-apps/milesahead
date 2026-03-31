@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 252" fill="none">
+  <rect width="400" height="252" rx="16" fill="#1a1a2e"/>
+  <rect x="1" y="1" width="398" height="250" rx="15" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+  <!-- Chip -->
+  <rect x="40" y="90" width="50" height="38" rx="6" fill="#c4a84e" opacity="0.7"/>
+  <line x1="52" y1="90" x2="52" y2="128" stroke="#1a1a2e" stroke-width="1.5" opacity="0.4"/>
+  <line x1="65" y1="90" x2="65" y2="128" stroke="#1a1a2e" stroke-width="1.5" opacity="0.4"/>
+  <line x1="78" y1="90" x2="78" y2="128" stroke="#1a1a2e" stroke-width="1.5" opacity="0.4"/>
+  <line x1="40" y1="103" x2="90" y2="103" stroke="#1a1a2e" stroke-width="1.5" opacity="0.4"/>
+  <line x1="40" y1="115" x2="90" y2="115" stroke="#1a1a2e" stroke-width="1.5" opacity="0.4"/>
+  <!-- Mastercard circles -->
+  <circle cx="330" cy="200" r="28" fill="#eb001b" opacity="0.85"/>
+  <circle cx="362" cy="200" r="28" fill="#f79e1b" opacity="0.85"/>
+  <ellipse cx="346" cy="200" rx="12" ry="24" fill="#ff5f00" opacity="0.85"/>
+  <!-- Card number dots -->
+  <g fill="rgba(255,255,255,0.3)">
+    <circle cx="40" cy="155" r="4"/><circle cx="55" cy="155" r="4"/><circle cx="70" cy="155" r="4"/><circle cx="85" cy="155" r="4"/>
+    <circle cx="115" cy="155" r="4"/><circle cx="130" cy="155" r="4"/><circle cx="145" cy="155" r="4"/><circle cx="160" cy="155" r="4"/>
+    <circle cx="190" cy="155" r="4"/><circle cx="205" cy="155" r="4"/><circle cx="220" cy="155" r="4"/><circle cx="235" cy="155" r="4"/>
+    <circle cx="265" cy="155" r="4"/><circle cx="280" cy="155" r="4"/><circle cx="295" cy="155" r="4"/><circle cx="310" cy="155" r="4"/>
+  </g>
+  <!-- Cardholder text -->
+  <text x="40" y="210" font-family="system-ui,sans-serif" font-size="14" fill="rgba(255,255,255,0.35)" letter-spacing="2">CREDIT CARD</text>
+</svg>
