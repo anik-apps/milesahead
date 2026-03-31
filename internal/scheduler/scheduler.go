@@ -59,5 +59,6 @@ func (s *Scheduler) Start() {
 
 // Stop stops the scheduler, waiting for running jobs to complete.
 func (s *Scheduler) Stop() {
-	s.cron.Stop()
+	ctx := s.cron.Stop()
+	<-ctx.Done() // Wait for running jobs to finish
 }

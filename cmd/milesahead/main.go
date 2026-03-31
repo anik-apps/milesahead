@@ -266,20 +266,26 @@ func main() {
 	}
 
 	// Start server in a goroutine
+	serverErr := make(chan error, 1)
 	go func() {
 		slog.Info("server starting", "port", cfg.Server.Port)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server error", "error", err)
-			os.Exit(1)
+			serverErr <- err
 		}
 	}()
 
-	// Wait for shutdown signal
-	sig := <-sigCh
-	slog.Info("shutting down...", "signal", sig.String())
+	// Wait for shutdown signal or server error
+	select {
+	case sig := <-sigCh:
+		slog.Info("shutting down...", "signal", sig.String())
+	case err := <-serverErr:
+		slog.Error("server error", "error", err)
+		cancel()
+		return // defers will run
+	}
 	cancel()
 
-	// Stop scheduler (waits for running jobs)
+	// Stop scheduler (waits for running jobs to finish)
 	sched.Stop()
 
 	// Shutdown HTTP server with 30s timeout
@@ -288,7 +294,6 @@ func main() {
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown error", "error", err)
-		os.Exit(1)
 	}
 
 	slog.Info("shutdown complete")
