@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
@@ -45,6 +48,13 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+
+	// Shutdown context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	// Metrics
 	metrics.Init()
@@ -99,6 +109,12 @@ func main() {
 	// Scheduler
 	sched := scheduler.New()
 	sched.AddScanJob(time.Duration(cfg.Scanner.DefaultInterval)*time.Minute, func() {
+		select {
+		case <-ctx.Done():
+			slog.Info("scan job skipped, shutting down")
+			return
+		default:
+		}
 		slog.Info("scheduled job started", "job", "scan")
 		results, err := scnr.ScanAll()
 		if err != nil {
@@ -235,7 +251,6 @@ func main() {
 		}
 	})
 	sched.Start()
-	defer sched.Stop()
 
 	// Web server
 	app, err := web.NewApp(cfg, database, articleMgr, voteSvc, newsletterSvc)
@@ -244,11 +259,39 @@ func main() {
 		os.Exit(1)
 	}
 
-	slog.Info("server starting", "port", cfg.Server.Port)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Server.Port), app); err != nil {
-		slog.Error("server stopped", "error", err)
+	// Web server with explicit Server struct for graceful shutdown
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
+		Handler: app,
+	}
+
+	// Start server in a goroutine
+	go func() {
+		slog.Info("server starting", "port", cfg.Server.Port)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server error", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Wait for shutdown signal
+	sig := <-sigCh
+	slog.Info("shutting down...", "signal", sig.String())
+	cancel()
+
+	// Stop scheduler (waits for running jobs)
+	sched.Stop()
+
+	// Shutdown HTTP server with 30s timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("server shutdown error", "error", err)
 		os.Exit(1)
 	}
+
+	slog.Info("shutdown complete")
 }
 
 // generateImageQueries uses AI to create targeted search queries for stock photo APIs.
