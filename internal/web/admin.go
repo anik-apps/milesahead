@@ -248,12 +248,14 @@ func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger AI regeneration immediately in the background
-	go func() {
-		if err := app.articleManager.ProcessRevision(id); err != nil {
-			slog.Error("revision processing failed", "article_id", id, "error", err)
-		}
-	}()
+	// Trigger AI regeneration immediately in the background.
+	if app.articleManager != nil {
+		go func() {
+			if err := app.articleManager.ProcessRevision(id); err != nil {
+				slog.Error("revision processing failed", "article_id", id, "error", err)
+			}
+		}()
+	}
 
 	http.Redirect(w, r, "/admin/dashboard?msg=revision_submitted", http.StatusSeeOther)
 }
