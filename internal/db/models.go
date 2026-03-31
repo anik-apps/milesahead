@@ -52,6 +52,7 @@ type GeneratedArticle struct {
 	ImageThumbnail   string     `json:"image_thumbnail"`
 	ImageAttribution string     `json:"image_attribution"`
 	ScoutsTake       string     `json:"scouts_take"`
+	RelatedCardsJSON string     `json:"related_cards_json"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 	PublishedAt      *time.Time `json:"published_at"`

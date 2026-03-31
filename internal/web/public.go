@@ -192,19 +192,29 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(article.Links), &articleLinks)
 	}
 
+	type relatedCard struct {
+		Slug  string `json:"slug"`
+		Title string `json:"title"`
+	}
+	var relatedCards []relatedCard
+	if article.RelatedCardsJSON != "" && article.RelatedCardsJSON != "[]" {
+		json.Unmarshal([]byte(article.RelatedCardsJSON), &relatedCards)
+	}
+
 	data := map[string]interface{}{
-		"Title":       article.Title,
-		"Article":     article,
-		"Sources":     sources,
-		"Upvotes":     upvotes,
-		"Downvotes":   downvotes,
-		"PublishedAt": publishedAt,
-		"UnderReview": false,
-		"TLDR":        article.TLDR,
-		"KeyDetails":  keyDetails,
-		"Links":       articleLinks,
-		"ScoutsTake":  article.ScoutsTake,
-		"PersonaName": app.cfg.Site.PersonaName,
+		"Title":        article.Title,
+		"Article":      article,
+		"Sources":      sources,
+		"Upvotes":      upvotes,
+		"Downvotes":    downvotes,
+		"PublishedAt":  publishedAt,
+		"UnderReview":  false,
+		"TLDR":         article.TLDR,
+		"KeyDetails":   keyDetails,
+		"Links":        articleLinks,
+		"RelatedCards": relatedCards,
+		"ScoutsTake":   article.ScoutsTake,
+		"PersonaName":  app.cfg.Site.PersonaName,
 	}
 	app.renderTemplate(w, "article.html", data)
 }

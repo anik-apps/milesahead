@@ -16,6 +16,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/cluster"
+	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/images"
@@ -222,6 +223,22 @@ func main() {
 						metrics.ImageSelectedTotal.WithLabelValues("no_match").Inc()
 						slog.Info("no suitable image found", "top_score", topScore)
 					}
+				}
+			}
+
+			// Auto-link card mentions in article content.
+			refPages, _ := database.ListPublishedReferencePages("")
+			if len(refPages) > 0 {
+				linkedContent, matchedCards := linker.AutoLink(result.Content, refPages)
+				result.Content = linkedContent
+				for _, mc := range matchedCards {
+					result.RelatedCards = append(result.RelatedCards, ai.RelatedCard{
+						Slug:  mc.Slug,
+						Title: mc.Title,
+					})
+				}
+				if len(matchedCards) > 0 {
+					slog.Info("auto-linked card mentions", "title", result.Title, "cards", len(matchedCards))
 				}
 			}
 

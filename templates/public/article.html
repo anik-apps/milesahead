@@ -51,6 +51,16 @@
                 </ul>
             </div>
             {{end}}
+            {{if .RelatedCards}}
+            <div class="sidebar-section">
+                <h4>Related Cards</h4>
+                <ul class="related-cards">
+                    {{range .RelatedCards}}
+                    <li><a href="/cards/{{.Slug}}">&rarr; {{.Title}}</a></li>
+                    {{end}}
+                </ul>
+            </div>
+            {{end}}
         </aside>
         <div class="article-main">
             <div class="article-content">
