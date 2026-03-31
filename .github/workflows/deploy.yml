@@ -24,11 +24,16 @@ jobs:
           go-version: '1.22'
       - name: Build ARM64 binary
         run: GOOS=linux GOARCH=arm64 go build -o milesahead ./cmd/milesahead
-      - name: Upload binary
+      - name: Build seed-cards ARM64 binary
+        run: GOOS=linux GOARCH=arm64 go build -o seed-cards ./cmd/seed-cards
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: milesahead-arm64
-          path: milesahead
+          path: |
+            milesahead
+            seed-cards
+            cmd/seed-cards/cards.json
 
   setup:
     needs: build
@@ -187,10 +192,18 @@ jobs:
           scp deploy/alloy-config.alloy $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/alloy-config.alloy
           $SSH "sudo systemctl restart alloy 2>/dev/null || true"
 
+          # Copy seed binary and data
+          scp seed-cards $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/seed-cards
+          scp cmd/seed-cards/cards.json $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/cards.json
+          $SSH "chmod +x ${{ env.APP_DIR }}/seed-cards"
+
           # Atomic swap and restart
           $SSH "mv ${{ env.APP_DIR }}/milesahead.new ${{ env.APP_DIR }}/milesahead && sudo systemctl restart milesahead"
 
           # Verify
           sleep 3
           $SSH "sudo systemctl is-active milesahead" || ($SSH "sudo journalctl -u milesahead -n 20 --no-pager" && exit 1)
+
+          # Seed reference pages (skips existing, safe to run every deploy)
+          $SSH "${{ env.APP_DIR }}/seed-cards -db ${{ env.APP_DIR }}/data/milesahead.db"
           echo "Deployment successful!"
