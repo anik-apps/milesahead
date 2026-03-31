@@ -28,9 +28,9 @@
         <thead>
             <tr>
                 <th>Title</th>
-                <th>Score</th>
-                <th title="Revision number">Rev</th>
-                <th>Date</th>
+                <th class="hide-mobile">Score</th>
+                <th class="hide-mobile" title="Revision number">Rev</th>
+                <th class="hide-mobile">Date</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -45,9 +45,9 @@
                     {{if eq .Status "unpublished"}}<span class="status-badge unpublished">Unpublished</span>{{end}}
                     {{if eq .Status "draft"}}<span class="status-badge draft">Draft</span>{{end}}
                 </td>
-                <td>{{.VerificationScore}}</td>
-                <td>{{.RevisionNumber}}</td>
-                <td><span class="dim">{{.CreatedAt}}</span><br><span class="dim">Updated: {{.UpdatedAt}}</span></td>
+                <td class="hide-mobile">{{.VerificationScore}}</td>
+                <td class="hide-mobile">{{.RevisionNumber}}</td>
+                <td class="hide-mobile"><span class="dim">{{.CreatedAt}}</span><br><span class="dim">Updated: {{.UpdatedAt}}</span></td>
                 <td class="actions">
                     <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
                         {{template "csrf_field" $}}
