@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -198,7 +199,12 @@ func (d *Database) CreateGeneratedArticle(a *GeneratedArticle) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	_ = d.SyncArticleFTS(id)
+	return id, nil
 }
 
 func (d *Database) GetGeneratedArticle(id int64) (*GeneratedArticle, error) {
@@ -742,7 +748,12 @@ func (d *Database) CreateReferencePage(page *ReferencePage) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	_ = d.SyncCardFTS(id)
+	return id, nil
 }
 
 func (d *Database) GetReferencePage(id int64) (*ReferencePage, error) {
@@ -812,7 +823,11 @@ func (d *Database) UpdateReferencePage(page *ReferencePage) error {
 		`UPDATE reference_pages SET slug = ?, title = ?, category = ?, issuer = ?, sections_json = ?, recent_changes_json = ?, pending_updates_json = ?, scouts_verdict = ?, keywords_json = ?, image_url = ?, apply_url = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		page.Slug, page.Title, page.Category, page.Issuer, page.SectionsJSON, page.RecentChangesJSON, page.PendingUpdatesJSON, page.ScoutsVerdict, page.KeywordsJSON, page.ImageURL, page.ApplyURL, page.Status, page.ID,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	_ = d.SyncCardFTS(page.ID)
+	return nil
 }
 
 func (d *Database) DeleteReferencePage(id int64) error {
@@ -843,4 +858,150 @@ func scanReferencePages(rows *sql.Rows) ([]ReferencePage, error) {
 		pages = append(pages, p)
 	}
 	return pages, rows.Err()
+}
+
+// --- FTS Sync ---
+
+// SyncArticleFTS updates the FTS index for a single article.
+func (d *Database) SyncArticleFTS(id int64) error {
+	var title, tldr, content string
+	err := d.db.QueryRow(`SELECT title, tldr, content FROM generated_articles WHERE id = ?`, id).Scan(&title, &tldr, &content)
+	if err != nil {
+		return err
+	}
+	// Delete existing entry, then insert.
+	d.db.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id)
+	_, err = d.db.Exec(
+		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
+		id, stripHTMLForDB(title), stripHTMLForDB(tldr), stripHTMLForDB(content),
+	)
+	return err
+}
+
+// SyncCardFTS updates the FTS index for a single reference page.
+func (d *Database) SyncCardFTS(id int64) error {
+	var title, sectionsJSON, verdict string
+	err := d.db.QueryRow(`SELECT title, sections_json, scouts_verdict FROM reference_pages WHERE id = ?`, id).Scan(&title, &sectionsJSON, &verdict)
+	if err != nil {
+		return err
+	}
+	d.db.Exec(`DELETE FROM cards_fts WHERE rowid = ?`, id)
+	_, err = d.db.Exec(
+		`INSERT INTO cards_fts(rowid, title, sections_text, scouts_verdict) VALUES (?, ?, ?, ?)`,
+		id, stripHTMLForDB(title), extractSectionsTextDB(sectionsJSON), stripHTMLForDB(verdict),
+	)
+	return err
+}
+
+// DeleteArticleFTS removes an article from the FTS index.
+func (d *Database) DeleteArticleFTS(id int64) error {
+	_, err := d.db.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id)
+	return err
+}
+
+// DeleteCardFTS removes a card from the FTS index.
+func (d *Database) DeleteCardFTS(id int64) error {
+	_, err := d.db.Exec(`DELETE FROM cards_fts WHERE rowid = ?`, id)
+	return err
+}
+
+// stripHTMLForDB removes HTML tags from a string for FTS indexing.
+func stripHTMLForDB(s string) string {
+	var result []byte
+	inTag := false
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '<':
+			inTag = true
+		case s[i] == '>':
+			inTag = false
+		case !inTag:
+			result = append(result, s[i])
+		}
+	}
+	return strings.TrimSpace(string(result))
+}
+
+// extractSectionsTextDB extracts plain text from sections_json for FTS indexing.
+func extractSectionsTextDB(sectionsJSON string) string {
+	var sections []struct {
+		Title   string `json:"title"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal([]byte(sectionsJSON), &sections); err != nil {
+		return ""
+	}
+	var parts []string
+	for _, s := range sections {
+		parts = append(parts, stripHTMLForDB(s.Title))
+		parts = append(parts, stripHTMLForDB(s.Content))
+	}
+	return strings.Join(parts, " ")
+}
+
+// --- FTS Search ---
+
+// SearchResult holds a single search result.
+type SearchResult struct {
+	ID      int64
+	Title   string
+	Slug    string
+	Excerpt string
+	Type    string // "article" or "card"
+}
+
+// SearchArticles performs a full-text search on articles, returning only approved ones.
+func (d *Database) SearchArticles(query string, limit, offset int) ([]SearchResult, error) {
+	rows, err := d.db.Query(
+		`SELECT a.id, a.title, a.slug, snippet(articles_fts, 2, '<mark>', '</mark>', '...', 40) AS excerpt
+		FROM articles_fts f
+		JOIN generated_articles a ON a.id = f.rowid
+		WHERE articles_fts MATCH ? AND a.status = ?
+		ORDER BY rank
+		LIMIT ? OFFSET ?`,
+		query, StatusApproved, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt); err != nil {
+			return nil, err
+		}
+		r.Type = "article"
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// SearchCards performs a full-text search on reference pages, returning only published ones.
+func (d *Database) SearchCards(query string, limit, offset int) ([]SearchResult, error) {
+	rows, err := d.db.Query(
+		`SELECT p.id, p.title, p.slug, snippet(cards_fts, 1, '<mark>', '</mark>', '...', 40) AS excerpt
+		FROM cards_fts f
+		JOIN reference_pages p ON p.id = f.rowid
+		WHERE cards_fts MATCH ? AND p.status = 'published'
+		ORDER BY rank
+		LIMIT ? OFFSET ?`,
+		query, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt); err != nil {
+			return nil, err
+		}
+		r.Type = "card"
+		results = append(results, r)
+	}
+	return results, rows.Err()
 }

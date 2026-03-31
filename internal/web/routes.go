@@ -25,6 +25,9 @@ func (app *App) setupRoutes() {
 	app.mux.HandleFunc("GET /subscribe/confirm", app.handleSubscribeConfirm)
 	app.mux.HandleFunc("GET /unsubscribe", app.handleUnsubscribe)
 
+	// Search route.
+	app.mux.HandleFunc("GET /search", app.handleSearch)
+
 	// Public card routes.
 	app.mux.HandleFunc("GET /cards/", app.handleCardsList)
 	app.mux.HandleFunc("GET /cards/{slug}", app.handleCardDetail)

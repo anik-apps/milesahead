@@ -74,6 +74,35 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+// Search Toggle
+document.addEventListener('DOMContentLoaded', function() {
+    var searchToggle = document.getElementById('search-toggle');
+    var searchForm = document.getElementById('nav-search-form');
+    if (!searchToggle || !searchForm) return;
+
+    searchToggle.addEventListener('click', function(e) {
+        e.stopPropagation();
+        searchForm.classList.toggle('active');
+        if (searchForm.classList.contains('active')) {
+            searchForm.querySelector('input').focus();
+        }
+    });
+
+    // Close search form when clicking outside.
+    document.addEventListener('click', function(e) {
+        if (!searchForm.contains(e.target) && e.target !== searchToggle) {
+            searchForm.classList.remove('active');
+        }
+    });
+
+    // Submit on Enter.
+    searchForm.querySelector('input').addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            searchForm.classList.remove('active');
+        }
+    });
+});
+
 // Category Filter - highlight active tab based on URL
 document.addEventListener('DOMContentLoaded', function() {
     var tabs = document.querySelectorAll('.category-tabs .tab');
