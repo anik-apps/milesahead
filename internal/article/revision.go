@@ -54,6 +54,9 @@ func (m *Manager) ProcessRevision(articleID int64) error {
 	}
 
 	// Call pipeline with feedback.
+	if m.pipeline == nil {
+		return fmt.Errorf("pipeline not configured")
+	}
 	result, err := m.pipeline.ProcessWithFeedback(sources, article.Content, latestFeedback.FeedbackText, criticIssues)
 	if err != nil {
 		metrics.RevisionsTotal.WithLabelValues("failed").Inc()
