@@ -1,0 +1,38 @@
+baseURL: https://anik-apps.github.io/milesahead/
+title: Miles Ahead
+languageCode: en-us
+
+module:
+  imports:
+    - path: github.com/imfing/hextra
+
+enableRobotsTXT: true
+enableGitInfo: true
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  highlight:
+    noClasses: false
+
+menu:
+  main:
+    - name: Site
+      url: https://milesahead.kumaranik.com
+      weight: 1
+    - name: GitHub
+      url: https://github.com/anik-apps/milesahead
+      weight: 2
+
+params:
+  description: Documentation for Miles Ahead — a self-hosted AI content platform for miles & points news.
+  navbar:
+    displayTitle: true
+    displayLogo: false
+  footer:
+    displayCopyright: false
+    displayPoweredBy: false
+  editURL:
+    enable: true
+    base: https://github.com/anik-apps/milesahead/edit/main/docs/content
