@@ -1,0 +1,117 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="admin-nav">
+    <a href="/admin/dashboard">Pending</a>
+    <a href="/admin/published">Published</a>
+    <a href="/admin/sources">Sources</a>
+    <a href="/admin/subscribers">Subscribers</a>
+    <a href="/admin/cards" class="active">Cards</a>
+    <a href="/admin/newsletter">Newsletter</a>
+    <a href="/admin/settings">Settings</a>
+    <form method="POST" action="/admin/logout" class="logout-btn">
+        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
+    </form>
+</div>
+<div class="admin-card-edit">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <h1>{{if .IsNew}}New Card{{else}}Edit: {{.Card.Title}}{{end}}</h1>
+        <a href="/admin/cards" class="btn" style="font-size:0.85rem;">Back to Cards</a>
+    </div>
+
+    <form method="POST" action="{{.FormAction}}">
+        {{template "csrf_field" .}}
+
+        <div class="source-form-grid" style="margin-bottom:1.5rem;">
+            <div class="form-group">
+                <label for="title">Title</label>
+                <input type="text" id="title" name="title" value="{{.Card.Title}}" required placeholder="American Express Platinum Card">
+            </div>
+            <div class="form-group">
+                <label for="slug">Slug</label>
+                <input type="text" id="slug" name="slug" value="{{.Card.Slug}}" required placeholder="amex-platinum">
+            </div>
+            <div class="form-group">
+                <label for="category">Category</label>
+                <input type="text" id="category" name="category" value="{{if .Card.Category}}{{.Card.Category}}{{else}}credit-card{{end}}" placeholder="credit-card">
+            </div>
+            <div class="form-group">
+                <label for="issuer">Issuer</label>
+                <input type="text" id="issuer" name="issuer" value="{{.Card.Issuer}}" required placeholder="Amex">
+            </div>
+            <div class="form-group">
+                <label for="keywords">Keywords (comma-separated)</label>
+                <input type="text" id="keywords" name="keywords" value="{{.Keywords}}" placeholder="Amex Platinum, American Express Platinum">
+            </div>
+            <div class="form-group">
+                <label for="image_url">Image URL</label>
+                <input type="text" id="image_url" name="image_url" value="{{.Card.ImageURL}}" placeholder="https://...">
+            </div>
+            <div class="form-group">
+                <label for="apply_url">Card Details URL</label>
+                <input type="text" id="apply_url" name="apply_url" value="{{.Card.ApplyURL}}" placeholder="https://issuer.com/cards/...">
+            </div>
+            <div class="form-group">
+                <label for="status">Status</label>
+                <select id="status" name="status">
+                    <option value="draft"{{if eq .Card.Status "draft"}} selected{{end}}>Draft</option>
+                    <option value="published"{{if eq .Card.Status "published"}} selected{{end}}>Published</option>
+                </select>
+            </div>
+        </div>
+
+        <h2 style="margin-bottom:1rem;">Sections</h2>
+        <div id="sections-container">
+            {{range $i, $s := .Sections}}
+            <fieldset class="card-section-fieldset" style="border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1rem;">
+                <legend style="font-weight:600;font-size:0.9rem;">Section {{$i}}</legend>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
+                    <div class="form-group">
+                        <label>Key</label>
+                        <input type="text" name="section_key[]" value="{{$s.Key}}" placeholder="overview">
+                    </div>
+                    <div class="form-group">
+                        <label>Title</label>
+                        <input type="text" name="section_title[]" value="{{$s.Title}}" placeholder="Overview">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Content (HTML)</label>
+                    <textarea name="section_content[]" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;">{{$s.Content}}</textarea>
+                </div>
+                <button type="button" class="btn btn-reject" style="font-size:0.8rem;margin-top:0.5rem;" onclick="this.closest('fieldset').remove()">Remove Section</button>
+            </fieldset>
+            {{end}}
+        </div>
+        <button type="button" class="btn" style="margin-bottom:1.5rem;" onclick="addSection()">Add Section</button>
+
+        <h2 style="margin-bottom:1rem;">{{.PersonaName}}'s Verdict</h2>
+        <div class="form-group" style="margin-bottom:1.5rem;">
+            <textarea name="scouts_verdict" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;">{{.Card.ScoutsVerdict}}</textarea>
+        </div>
+
+        <div style="display:flex;gap:1rem;">
+            <button type="submit" class="btn btn-primary">Save Card</button>
+            <a href="/admin/cards" class="btn">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<script>
+var sectionIndex = {{len .Sections}};
+function addSection() {
+    var container = document.getElementById('sections-container');
+    var fieldset = document.createElement('fieldset');
+    fieldset.className = 'card-section-fieldset';
+    fieldset.style = 'border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1rem;';
+    fieldset.innerHTML = '<legend style="font-weight:600;font-size:0.9rem;">Section ' + sectionIndex + '</legend>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">' +
+        '<div class="form-group"><label>Key</label><input type="text" name="section_key[]" placeholder="key_name"></div>' +
+        '<div class="form-group"><label>Title</label><input type="text" name="section_title[]" placeholder="Section Title"></div></div>' +
+        '<div class="form-group"><label>Content (HTML)</label>' +
+        '<textarea name="section_content[]" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;"></textarea></div>' +
+        '<button type="button" class="btn btn-reject" style="font-size:0.8rem;margin-top:0.5rem;" onclick="this.closest(\'fieldset\').remove()">Remove Section</button>';
+    container.appendChild(fieldset);
+    sectionIndex++;
+}
+</script>
+{{end}}

@@ -72,6 +72,10 @@ type VotesConfig struct {
 	AlertWindow    int     `yaml:"alert_window"`
 }
 
+type SiteConfig struct {
+	PersonaName string `yaml:"persona_name"`
+}
+
 type Config struct {
 	Server     ServerConfig     `yaml:"server"`
 	Admin      AdminConfig      `yaml:"admin"`
@@ -81,6 +85,7 @@ type Config struct {
 	Mail       MailConfig       `yaml:"mail"`
 	Newsletter NewsletterConfig `yaml:"newsletter"`
 	Votes      VotesConfig      `yaml:"votes"`
+	Site       SiteConfig       `yaml:"site"`
 }
 
 var envVarPattern = regexp.MustCompile(`\$\{(\w+)\}`)
@@ -105,6 +110,10 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(expanded, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config file: %w", err)
+	}
+
+	if cfg.Site.PersonaName == "" {
+		cfg.Site.PersonaName = "Scout"
 	}
 
 	return &cfg, nil

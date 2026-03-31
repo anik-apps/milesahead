@@ -171,6 +171,16 @@ func main() {
 				continue
 			}
 
+			// Generate Scout's Take using the critic model
+			scoutsTakePrompt := ai.ScoutsTakePrompt(cfg.Site.PersonaName, result.Title, result.TLDR, result.Content)
+			scoutsTake, stErr := hfClient.Generate(cfg.AI.CriticModel, scoutsTakePrompt, 256)
+			if stErr != nil {
+				slog.Warn("scouts take generation failed", "error", stErr)
+			} else {
+				result.ScoutsTake = strings.TrimSpace(scoutsTake)
+				slog.Info("scouts take generated", "title", result.Title)
+			}
+
 			// Image search: generate queries from the article title
 			imageQueries := generateImageQueries(result.Title, result.TLDR, hfClient, cfg.AI.CriticModel)
 			if len(imageQueries) > 0 {

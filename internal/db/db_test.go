@@ -34,11 +34,12 @@ func TestOpenAndMigrate(t *testing.T) {
 		t.Fatal("database file not created")
 	}
 
-	// Verify all 11 tables exist.
+	// Verify all 12 tables exist.
 	tables := []string{
 		"sources", "raw_articles", "generated_articles", "article_sources",
 		"verification_results", "admin_feedback", "article_revisions",
 		"article_votes", "newsletters", "subscribers", "admin_sessions",
+		"reference_pages",
 	}
 	for _, table := range tables {
 		var name string

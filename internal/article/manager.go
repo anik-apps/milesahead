@@ -60,6 +60,7 @@ func (m *Manager) CreateFromPipeline(result *ai.PipelineResult, rawArticleIDs []
 		ImageURL:         result.ImageURL,
 		ImageThumbnail:   result.ImageThumbnail,
 		ImageAttribution: result.ImageAttribution,
+		ScoutsTake:       result.ScoutsTake,
 	}
 
 	articleID, err := m.db.CreateGeneratedArticle(article)

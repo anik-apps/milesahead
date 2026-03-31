@@ -1,0 +1,75 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="admin-nav">
+    <a href="/admin/dashboard">Pending</a>
+    <a href="/admin/published">Published</a>
+    <a href="/admin/sources">Sources</a>
+    <a href="/admin/subscribers">Subscribers</a>
+    <a href="/admin/cards" class="active">Cards</a>
+    <a href="/admin/newsletter">Newsletter</a>
+    <a href="/admin/settings">Settings</a>
+    <form method="POST" action="/admin/logout" class="logout-btn">
+        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
+    </form>
+</div>
+<div class="admin-cards">
+    {{if .Message}}
+    <div class="message success">{{.Message}}</div>
+    {{end}}
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+        <h1>Reference Cards</h1>
+        <a href="/admin/cards/new" class="btn btn-primary">Add New Card</a>
+    </div>
+
+    {{if .Cards}}
+    {{range .Issuers}}
+    <h2 style="margin:1.5rem 0 0.75rem;font-size:1.1rem;color:var(--text-muted);">{{.Name}}</h2>
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th>Sections</th>
+                <th>Pending</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Cards}}
+            <tr>
+                <td>
+                    {{if .ImageURL}}<img src="{{.ImageURL}}" alt="" style="width:24px;height:16px;object-fit:cover;border-radius:2px;vertical-align:middle;margin-right:6px;">{{end}}
+                    <a href="/admin/cards/{{.ID}}/edit">{{.Title}}</a>
+                </td>
+                <td><span class="badge">{{.Category}}</span></td>
+                <td>
+                    {{if eq .Status "published"}}<span class="status-badge" style="background:#dcfce7;color:#166534;">Published</span>
+                    {{else}}<span class="status-badge draft">Draft</span>{{end}}
+                </td>
+                <td>{{.SectionCount}}</td>
+                <td>
+                    {{if gt .PendingCount 0}}<a href="/admin/cards/{{.ID}}/updates" style="color:#dc2626;font-weight:600;">{{.PendingCount}} pending</a>
+                    {{else}}<span class="dim">0</span>{{end}}
+                </td>
+                <td class="actions">
+                    <a href="/admin/cards/{{.ID}}/edit" class="btn btn-edit" style="font-size:0.8rem;">Edit</a>
+                    {{if gt .PendingCount 0}}<a href="/admin/cards/{{.ID}}/updates" class="btn btn-primary" style="font-size:0.8rem;">Updates</a>{{end}}
+                    <form method="POST" action="/admin/cards/{{.ID}}/delete" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <button type="submit" class="btn btn-reject" style="font-size:0.8rem;" onclick="return confirm('Delete this card permanently?')">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    {{end}}
+    {{else}}
+    <div class="empty-state">
+        <p>No reference cards yet.</p>
+        <p style="margin-top:0.5rem;"><a href="/admin/cards/new">Create your first card</a></p>
+    </div>
+    {{end}}
+</div>
+{{end}}

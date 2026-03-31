@@ -1,0 +1,105 @@
+{{template "layout" .}}
+{{define "content"}}
+<article class="card-page">
+    <a href="/cards/" class="back-link">&larr; All Cards</a>
+
+    <div class="card-layout">
+        {{if .Sections}}
+        <aside class="card-sidebar">
+            {{if .Card.ImageURL}}
+            <div class="card-sidebar-image">
+                <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}">
+            </div>
+            {{end}}
+            <nav class="card-toc">
+                <ul>
+                    {{range .Sections}}
+                    <li><a href="#section-{{.Key}}">{{.Title}}</a></li>
+                    {{end}}
+                    {{if $.ScoutsVerdict}}
+                    <li><a href="#section-verdict">{{$.PersonaName}}'s Verdict</a></li>
+                    {{end}}
+                    {{if $.RecentChanges}}
+                    <li><a href="#section-recent-changes">Recent Changes</a></li>
+                    {{end}}
+                </ul>
+            </nav>
+            {{if .Card.ApplyURL}}
+            <a href="{{.Card.ApplyURL}}" target="_blank" rel="noopener noreferrer" class="card-apply-btn">Card Details &rarr;</a>
+            {{end}}
+        </aside>
+        {{end}}
+
+        <div class="card-main">
+            {{/* Mobile-only header card */}}
+            <div class="card-mobile-header">
+                {{if .Card.ImageURL}}
+                <div class="card-mobile-image">
+                    <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}">
+                </div>
+                {{end}}
+                <span class="issuer-badge">{{.Card.Issuer}}</span>
+                <h1>{{.Card.Title}}</h1>
+                {{if .Card.ApplyURL}}
+                <a href="{{.Card.ApplyURL}}" target="_blank" rel="noopener noreferrer" class="card-apply-btn">Card Details &rarr;</a>
+                {{end}}
+            </div>
+
+            {{/* Mobile-only pill nav */}}
+            {{if .Sections}}
+            <div class="card-mobile-pills">
+                {{range .Sections}}
+                <a href="#section-{{.Key}}">{{.Title}}</a>
+                {{end}}
+                {{if $.ScoutsVerdict}}
+                <a href="#section-verdict">{{$.PersonaName}}'s Verdict</a>
+                {{end}}
+            </div>
+            {{end}}
+
+            {{/* Desktop title */}}
+            <div class="card-desktop-title">
+                <span class="issuer-badge">{{.Card.Issuer}}</span>
+                <h1>{{.Card.Title}}</h1>
+            </div>
+
+            <div class="card-sections">
+                {{range .Sections}}
+                <section class="card-section" id="section-{{.Key}}">
+                    <h2>{{.Title}}</h2>
+                    <div class="card-section-content">
+                        {{.Content | safeHTML}}
+                    </div>
+                </section>
+                {{end}}
+            </div>
+
+            {{if .ScoutsVerdict}}
+            <section class="scouts-verdict" id="section-verdict">
+                <div class="scout-label">{{.PersonaName}}'s Verdict</div>
+                <div class="scouts-verdict-content">
+                    {{.ScoutsVerdict | safeHTML}}
+                </div>
+            </section>
+            {{end}}
+
+            {{if .RecentChanges}}
+            <section class="recent-changes" id="section-recent-changes">
+                <h2>Recent Changes</h2>
+                <ul class="changes-list">
+                    {{range .RecentChanges}}
+                    <li>
+                        <span class="change-date">{{.Date}}</span>
+                        <span class="change-summary">{{.Summary}}</span>
+                        {{if .ArticleSlug}}
+                        <a href="/article/{{.ArticleSlug}}" class="change-link">Read more</a>
+                        {{end}}
+                    </li>
+                    {{end}}
+                </ul>
+            </section>
+            {{end}}
+        </div>
+    </div>
+</article>
+{{end}}

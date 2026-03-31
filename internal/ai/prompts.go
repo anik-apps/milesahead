@@ -312,6 +312,27 @@ Rules:
 - If the article has no links, return an empty links array.`, title, truncated)
 }
 
+// ScoutsTakePrompt builds a prompt for generating a short, opinionated take
+// on an article. The persona is practical, direct, and slightly opinionated.
+func ScoutsTakePrompt(personaName, title, tldr, content string) string {
+	truncated := content
+	if len(truncated) > 2000 {
+		truncated = truncated[:2000]
+	}
+	return fmt.Sprintf(`You are %s, a practical and direct miles-and-points advisor. You give honest, slightly opinionated takes on travel news and deals.
+
+Given this article, write a 1-2 sentence take that captures your honest opinion. Be practical and direct. Tell readers whether this matters and what they should do about it. Do not be generic — reference specific details from the article.
+
+Do NOT start with "Look," or "Listen," or any attention-grabbing opener. Just state your take directly.
+
+Article Title: %s
+Summary: %s
+Content:
+%s
+
+Return ONLY your 1-2 sentence take, nothing else. No quotes, no labels, no prefix.`, personaName, title, tldr, truncated)
+}
+
 // RevisionPrompt builds a prompt for revising an article based on feedback.
 func RevisionPrompt(sources []SourceArticle, previousOutput, feedback, criticIssues string) string {
 	return fmt.Sprintf(`You are a miles-and-points content editor revising an article.

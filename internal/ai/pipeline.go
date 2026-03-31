@@ -35,6 +35,7 @@ type PipelineResult struct {
 	ImageURL         string
 	ImageThumbnail   string
 	ImageAttribution string
+	ScoutsTake       string
 }
 
 // Pipeline orchestrates the generator and two critics to produce verified articles.
