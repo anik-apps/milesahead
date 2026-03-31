@@ -51,6 +51,7 @@ type GeneratedArticle struct {
 	ImageURL         string     `json:"image_url"`
 	ImageThumbnail   string     `json:"image_thumbnail"`
 	ImageAttribution string     `json:"image_attribution"`
+	ScoutsTake       string     `json:"scouts_take"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 	PublishedAt      *time.Time `json:"published_at"`
@@ -123,4 +124,50 @@ type AdminSession struct {
 	Token     string    `json:"token"`
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// ReferenceSection represents a single section within a reference page.
+type ReferenceSection struct {
+	Key     string `json:"key"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+// RecentChange records when a new article affects a reference page.
+type RecentChange struct {
+	Date        string `json:"date"`
+	Summary     string `json:"summary"`
+	ArticleID   int64  `json:"article_id"`
+	ArticleSlug string `json:"article_slug"`
+}
+
+// PendingUpdate holds an AI-drafted section update awaiting admin approval.
+type PendingUpdate struct {
+	ID              int    `json:"id"`
+	ArticleID       int64  `json:"article_id"`
+	ArticleTitle    string `json:"article_title"`
+	SectionKey      string `json:"section_key"`
+	CurrentContent  string `json:"current_content"`
+	ProposedContent string `json:"proposed_content"`
+	Summary         string `json:"summary"`
+	CreatedAt       string `json:"created_at"`
+}
+
+// ReferencePage represents a curated reference page (e.g., a credit card).
+type ReferencePage struct {
+	ID                 int64     `json:"id"`
+	Slug               string    `json:"slug"`
+	Title              string    `json:"title"`
+	Category           string    `json:"category"`
+	Issuer             string    `json:"issuer"`
+	SectionsJSON       string    `json:"sections_json"`
+	RecentChangesJSON  string    `json:"recent_changes_json"`
+	PendingUpdatesJSON string    `json:"pending_updates_json"`
+	ScoutsVerdict      string    `json:"scouts_verdict"`
+	KeywordsJSON       string    `json:"keywords_json"`
+	ImageURL           string    `json:"image_url"`
+	ApplyURL           string    `json:"apply_url"`
+	Status             string    `json:"status"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }

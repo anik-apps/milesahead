@@ -59,6 +59,13 @@
         </div>
     </div>
 
+    {{if .ScoutsTake}}
+    <div class="scouts-take">
+        <div class="scout-label">{{.PersonaName}}'s Take</div>
+        <p>{{.ScoutsTake}}</p>
+    </div>
+    {{end}}
+
     <div class="vote-card">
         <p class="vote-prompt">Was this article helpful?</p>
         <div class="vote-buttons" data-article-id="{{.Article.ID}}">

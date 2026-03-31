@@ -1,0 +1,39 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="cards-listing">
+    <div class="cards-hero">
+        <h1>Credit Card Guide</h1>
+        <p>In-depth reference pages for top credit cards — maintained by {{.PersonaName}}.</p>
+    </div>
+
+    {{if .Groups}}
+    {{range .Groups}}
+    <div class="cards-category-group">
+        <h2 class="category-heading">{{.Name}}</h2>
+        <div class="card-grid">
+            {{range .Cards}}
+            <a href="/cards/{{.Slug}}" class="card-grid-item">
+                {{if .ImageURL}}
+                <div class="card-grid-image">
+                    <img src="{{.ImageURL}}" alt="{{.Title}}">
+                </div>
+                {{end}}
+                <div class="card-grid-body">
+                    <span class="issuer-badge">{{.Issuer}}</span>
+                    <h3>{{.Title}}</h3>
+                    {{if .VerdictPreview}}
+                    <p class="card-grid-excerpt">{{.VerdictPreview}}</p>
+                    {{end}}
+                </div>
+            </a>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+    {{else}}
+    <div class="empty-state">
+        <p>No cards published yet. Check back soon!</p>
+    </div>
+    {{end}}
+</div>
+{{end}}

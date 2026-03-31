@@ -22,6 +22,10 @@ func (app *App) setupRoutes() {
 	app.mux.HandleFunc("GET /subscribe/confirm", app.handleSubscribeConfirm)
 	app.mux.HandleFunc("GET /unsubscribe", app.handleUnsubscribe)
 
+	// Public card routes.
+	app.mux.HandleFunc("GET /cards/", app.handleCardsList)
+	app.mux.HandleFunc("GET /cards/{slug}", app.handleCardDetail)
+
 	// Auth routes (with rate limiting on login POST).
 	app.mux.HandleFunc("GET /admin/login", app.handleLoginPage)
 	loginHandler := csrfMiddleware(rateLimitMiddleware(
@@ -50,6 +54,17 @@ func (app *App) setupRoutes() {
 	// Newsletter action routes.
 	adminMux.HandleFunc("POST /admin/newsletter/send", app.handleNewsletterSend)
 	adminMux.HandleFunc("GET /admin/newsletter/history", app.handleNewsletterHistory)
+
+	// Card admin routes.
+	adminMux.HandleFunc("GET /admin/cards", app.handleAdminCards)
+	adminMux.HandleFunc("GET /admin/cards/new", app.handleAdminCardNew)
+	adminMux.HandleFunc("POST /admin/cards", app.handleAdminCardCreate)
+	adminMux.HandleFunc("GET /admin/cards/{id}/edit", app.handleAdminCardEdit)
+	adminMux.HandleFunc("POST /admin/cards/{id}/edit", app.handleAdminCardUpdate)
+	adminMux.HandleFunc("POST /admin/cards/{id}/delete", app.handleAdminCardDelete)
+	adminMux.HandleFunc("GET /admin/cards/{id}/updates", app.handleAdminCardUpdates)
+	adminMux.HandleFunc("POST /admin/cards/{id}/updates/{uid}/approve", app.handleApproveCardUpdate)
+	adminMux.HandleFunc("POST /admin/cards/{id}/updates/{uid}/reject", app.handleRejectCardUpdate)
 
 	// Source action routes.
 	adminMux.HandleFunc("POST /admin/sources/add", app.handleAddSource)

@@ -594,3 +594,417 @@ func (app *App) handleNewsletterHistory(w http.ResponseWriter, r *http.Request) 
 // dbSource is a type alias to avoid import cycle in this file.
 // We use db.Source directly since it's already imported through App.
 type dbSource = db.Source
+
+// --- Admin Reference Card Handlers ---
+
+// adminCardRow holds a card for admin list display.
+type adminCardRow struct {
+	ID           int64
+	Title        string
+	Slug         string
+	Category     string
+	Issuer       string
+	Status       string
+	ImageURL     string
+	SectionCount int
+	PendingCount int
+}
+
+// adminIssuerGroup groups cards by issuer for admin display.
+type adminIssuerGroup struct {
+	Name  string
+	Cards []adminCardRow
+}
+
+func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
+	pages, err := app.db.ListReferencePages("")
+	if err != nil {
+		http.Error(w, "Failed to load cards", http.StatusInternalServerError)
+		return
+	}
+
+	// Group by issuer.
+	issuerMap := make(map[string][]adminCardRow)
+	var issuerOrder []string
+	for _, p := range pages {
+		var sections []db.ReferenceSection
+		if p.SectionsJSON != "" && p.SectionsJSON != "[]" {
+			json.Unmarshal([]byte(p.SectionsJSON), &sections)
+		}
+		var pending []db.PendingUpdate
+		if p.PendingUpdatesJSON != "" && p.PendingUpdatesJSON != "[]" {
+			json.Unmarshal([]byte(p.PendingUpdatesJSON), &pending)
+		}
+		row := adminCardRow{
+			ID:           p.ID,
+			Title:        p.Title,
+			Slug:         p.Slug,
+			Category:     p.Category,
+			Issuer:       p.Issuer,
+			Status:       p.Status,
+			ImageURL:     p.ImageURL,
+			SectionCount: len(sections),
+			PendingCount: len(pending),
+		}
+		if _, exists := issuerMap[p.Issuer]; !exists {
+			issuerOrder = append(issuerOrder, p.Issuer)
+		}
+		issuerMap[p.Issuer] = append(issuerMap[p.Issuer], row)
+	}
+
+	var issuers []adminIssuerGroup
+	for _, name := range issuerOrder {
+		issuers = append(issuers, adminIssuerGroup{Name: name, Cards: issuerMap[name]})
+	}
+
+	data := map[string]interface{}{
+		"Title":     "Cards",
+		"Cards":     pages,
+		"Issuers":   issuers,
+		"CSRFToken": getCSRFToken(w, r),
+		"Message":   r.URL.Query().Get("msg"),
+	}
+	app.renderTemplate(w, "admin-cards.html", data)
+}
+
+func (app *App) handleAdminCardNew(w http.ResponseWriter, r *http.Request) {
+	personaName := app.cfg.Site.PersonaName
+
+	data := map[string]interface{}{
+		"Title":       "New Card",
+		"IsNew":       true,
+		"Card":        &db.ReferencePage{Status: "draft"},
+		"Sections":    []db.ReferenceSection{},
+		"Keywords":    "",
+		"FormAction":  "/admin/cards",
+		"PersonaName": personaName,
+		"CSRFToken":   getCSRFToken(w, r),
+	}
+	app.renderTemplate(w, "card-edit.html", data)
+}
+
+func (app *App) handleAdminCardCreate(w http.ResponseWriter, r *http.Request) {
+	page := &db.ReferencePage{
+		Title:    strings.TrimSpace(r.FormValue("title")),
+		Slug:     strings.TrimSpace(r.FormValue("slug")),
+		Category: strings.TrimSpace(r.FormValue("category")),
+		Issuer:   strings.TrimSpace(r.FormValue("issuer")),
+		ImageURL: strings.TrimSpace(r.FormValue("image_url")),
+		Status:   r.FormValue("status"),
+		ScoutsVerdict: r.FormValue("scouts_verdict"),
+	}
+
+	if page.Title == "" || page.Slug == "" {
+		http.Error(w, "Title and slug are required", http.StatusBadRequest)
+		return
+	}
+	if page.Category == "" {
+		page.Category = "credit-card"
+	}
+	if page.Status == "" {
+		page.Status = "draft"
+	}
+
+	// Parse keywords.
+	keywords := parseKeywords(r.FormValue("keywords"))
+	keywordsJSON, _ := json.Marshal(keywords)
+	page.KeywordsJSON = string(keywordsJSON)
+
+	// Parse sections.
+	sections := parseSectionsFromForm(r)
+	sectionsJSON, _ := json.Marshal(sections)
+	page.SectionsJSON = string(sectionsJSON)
+
+	// Initialize empty JSON arrays.
+	page.RecentChangesJSON = "[]"
+	page.PendingUpdatesJSON = "[]"
+
+	if _, err := app.db.CreateReferencePage(page); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create card: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/cards?msg=Card+created", http.StatusSeeOther)
+}
+
+func (app *App) handleAdminCardEdit(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	page, err := app.db.GetReferencePage(id)
+	if err != nil {
+		http.Error(w, "Card not found", http.StatusNotFound)
+		return
+	}
+
+	var sections []db.ReferenceSection
+	if page.SectionsJSON != "" && page.SectionsJSON != "[]" {
+		json.Unmarshal([]byte(page.SectionsJSON), &sections)
+	}
+
+	var keywords []string
+	if page.KeywordsJSON != "" && page.KeywordsJSON != "[]" {
+		json.Unmarshal([]byte(page.KeywordsJSON), &keywords)
+	}
+
+	personaName := app.cfg.Site.PersonaName
+
+	data := map[string]interface{}{
+		"Title":       "Edit: " + page.Title,
+		"IsNew":       false,
+		"Card":        page,
+		"Sections":    sections,
+		"Keywords":    strings.Join(keywords, ", "),
+		"FormAction":  fmt.Sprintf("/admin/cards/%d/edit", page.ID),
+		"PersonaName": personaName,
+		"CSRFToken":   getCSRFToken(w, r),
+	}
+	app.renderTemplate(w, "card-edit.html", data)
+}
+
+func (app *App) handleAdminCardUpdate(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	page, err := app.db.GetReferencePage(id)
+	if err != nil {
+		http.Error(w, "Card not found", http.StatusNotFound)
+		return
+	}
+
+	page.Title = strings.TrimSpace(r.FormValue("title"))
+	page.Slug = strings.TrimSpace(r.FormValue("slug"))
+	page.Category = strings.TrimSpace(r.FormValue("category"))
+	page.Issuer = strings.TrimSpace(r.FormValue("issuer"))
+	page.ImageURL = strings.TrimSpace(r.FormValue("image_url"))
+	page.Status = r.FormValue("status")
+	page.ScoutsVerdict = r.FormValue("scouts_verdict")
+
+	if page.Title == "" || page.Slug == "" {
+		http.Error(w, "Title and slug are required", http.StatusBadRequest)
+		return
+	}
+	if page.Category == "" {
+		page.Category = "credit-card"
+	}
+
+	// Parse keywords.
+	keywords := parseKeywords(r.FormValue("keywords"))
+	keywordsJSON, _ := json.Marshal(keywords)
+	page.KeywordsJSON = string(keywordsJSON)
+
+	// Parse sections.
+	sections := parseSectionsFromForm(r)
+	sectionsJSON, _ := json.Marshal(sections)
+	page.SectionsJSON = string(sectionsJSON)
+
+	if err := app.db.UpdateReferencePage(page); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update card: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/cards?msg=Card+updated", http.StatusSeeOther)
+}
+
+func (app *App) handleAdminCardDelete(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := app.db.DeleteReferencePage(id); err != nil {
+		http.Error(w, "Failed to delete card", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/cards?msg=Card+deleted", http.StatusSeeOther)
+}
+
+func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	page, err := app.db.GetReferencePage(id)
+	if err != nil {
+		http.Error(w, "Card not found", http.StatusNotFound)
+		return
+	}
+
+	var updates []db.PendingUpdate
+	if page.PendingUpdatesJSON != "" && page.PendingUpdatesJSON != "[]" {
+		json.Unmarshal([]byte(page.PendingUpdatesJSON), &updates)
+	}
+
+	data := map[string]interface{}{
+		"Title":     "Pending Updates: " + page.Title,
+		"Card":      page,
+		"Updates":   updates,
+		"CSRFToken": getCSRFToken(w, r),
+		"Message":   r.URL.Query().Get("msg"),
+	}
+	app.renderTemplate(w, "card-updates.html", data)
+}
+
+func (app *App) handleApproveCardUpdate(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+	uid, err := strconv.Atoi(r.PathValue("uid"))
+	if err != nil {
+		http.Error(w, "Invalid update ID", http.StatusBadRequest)
+		return
+	}
+
+	page, err := app.db.GetReferencePage(id)
+	if err != nil {
+		http.Error(w, "Card not found", http.StatusNotFound)
+		return
+	}
+
+	var updates []db.PendingUpdate
+	if page.PendingUpdatesJSON != "" && page.PendingUpdatesJSON != "[]" {
+		json.Unmarshal([]byte(page.PendingUpdatesJSON), &updates)
+	}
+
+	// Find the update to approve and apply it.
+	var approved *db.PendingUpdate
+	var remaining []db.PendingUpdate
+	for _, u := range updates {
+		if u.ID == uid {
+			approved = &u
+		} else {
+			remaining = append(remaining, u)
+		}
+	}
+
+	if approved == nil {
+		http.Error(w, "Update not found", http.StatusNotFound)
+		return
+	}
+
+	// Apply the proposed content to the matching section.
+	var sections []db.ReferenceSection
+	if page.SectionsJSON != "" && page.SectionsJSON != "[]" {
+		json.Unmarshal([]byte(page.SectionsJSON), &sections)
+	}
+	for i, s := range sections {
+		if s.Key == approved.SectionKey {
+			sections[i].Content = approved.ProposedContent
+			break
+		}
+	}
+
+	sectionsJSON, _ := json.Marshal(sections)
+	page.SectionsJSON = string(sectionsJSON)
+
+	if remaining == nil {
+		remaining = []db.PendingUpdate{}
+	}
+	remainingJSON, _ := json.Marshal(remaining)
+	page.PendingUpdatesJSON = string(remainingJSON)
+
+	if err := app.db.UpdateReferencePage(page); err != nil {
+		http.Error(w, "Failed to save", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=Update+approved", id), http.StatusSeeOther)
+}
+
+func (app *App) handleRejectCardUpdate(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+	uid, err := strconv.Atoi(r.PathValue("uid"))
+	if err != nil {
+		http.Error(w, "Invalid update ID", http.StatusBadRequest)
+		return
+	}
+
+	page, err := app.db.GetReferencePage(id)
+	if err != nil {
+		http.Error(w, "Card not found", http.StatusNotFound)
+		return
+	}
+
+	var updates []db.PendingUpdate
+	if page.PendingUpdatesJSON != "" && page.PendingUpdatesJSON != "[]" {
+		json.Unmarshal([]byte(page.PendingUpdatesJSON), &updates)
+	}
+
+	// Remove the rejected update.
+	var remaining []db.PendingUpdate
+	for _, u := range updates {
+		if u.ID != uid {
+			remaining = append(remaining, u)
+		}
+	}
+
+	if remaining == nil {
+		remaining = []db.PendingUpdate{}
+	}
+	remainingJSON, _ := json.Marshal(remaining)
+	page.PendingUpdatesJSON = string(remainingJSON)
+
+	if err := app.db.UpdateReferencePage(page); err != nil {
+		http.Error(w, "Failed to save", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=Update+rejected", id), http.StatusSeeOther)
+}
+
+// parseKeywords splits a comma-separated keyword string into a clean slice.
+func parseKeywords(s string) []string {
+	var result []string
+	for _, k := range strings.Split(s, ",") {
+		k = strings.TrimSpace(k)
+		if k != "" {
+			result = append(result, k)
+		}
+	}
+	return result
+}
+
+// parseSectionsFromForm extracts sections from form arrays.
+func parseSectionsFromForm(r *http.Request) []db.ReferenceSection {
+	keys := r.Form["section_key[]"]
+	titles := r.Form["section_title[]"]
+	contents := r.Form["section_content[]"]
+
+	var sections []db.ReferenceSection
+	for i := 0; i < len(keys); i++ {
+		key := strings.TrimSpace(keys[i])
+		if key == "" {
+			continue
+		}
+		title := ""
+		if i < len(titles) {
+			title = strings.TrimSpace(titles[i])
+		}
+		content := ""
+		if i < len(contents) {
+			content = contents[i]
+		}
+		sections = append(sections, db.ReferenceSection{
+			Key:     key,
+			Title:   title,
+			Content: content,
+		})
+	}
+	return sections
+}

@@ -202,6 +202,8 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"TLDR":        article.TLDR,
 		"KeyDetails":  keyDetails,
 		"Links":       articleLinks,
+		"ScoutsTake":  article.ScoutsTake,
+		"PersonaName": app.cfg.Site.PersonaName,
 	}
 	app.renderTemplate(w, "article.html", data)
 }
@@ -334,6 +336,135 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprint(w, `</channel>`)
 	fmt.Fprint(w, `</rss>`)
+}
+
+// --- Public Reference Card Handlers ---
+
+// publicCardRow holds data for a card in the public listing.
+type publicCardRow struct {
+	ID             int64
+	Title          string
+	Slug           string
+	Issuer         string
+	ImageURL       string
+	VerdictPreview string
+}
+
+// publicCardGroup groups cards by category for the public listing.
+type publicCardGroup struct {
+	Name  string
+	Cards []publicCardRow
+}
+
+// categoryDisplayNames maps DB category slugs to display names.
+var categoryDisplayNames = map[string]string{
+	"travel":    "Travel & Premium",
+	"cash-back": "Cash Back",
+	"business":  "Business",
+	"hotel":     "Hotel",
+	"airline":   "Airline",
+	"rewards":   "Rewards",
+}
+
+// categoryOrder defines the display order of categories.
+var categoryOrder = []string{"travel", "cash-back", "hotel", "airline", "business", "rewards"}
+
+func (app *App) handleCardsList(w http.ResponseWriter, r *http.Request) {
+	pages, err := app.db.ListPublishedReferencePages("")
+	if err != nil {
+		http.Error(w, "Failed to load cards", http.StatusInternalServerError)
+		return
+	}
+
+	personaName := app.cfg.Site.PersonaName
+
+	// Group by category.
+	catMap := make(map[string][]publicCardRow)
+	for _, p := range pages {
+		verdict := truncate(p.ScoutsVerdict, 120)
+		row := publicCardRow{
+			ID:             p.ID,
+			Title:          p.Title,
+			Slug:           p.Slug,
+			Issuer:         p.Issuer,
+			ImageURL:       p.ImageURL,
+			VerdictPreview: verdict,
+		}
+		catMap[p.Category] = append(catMap[p.Category], row)
+	}
+
+	var groups []publicCardGroup
+	for _, cat := range categoryOrder {
+		if cards, ok := catMap[cat]; ok {
+			name := categoryDisplayNames[cat]
+			if name == "" {
+				name = cat
+			}
+			groups = append(groups, publicCardGroup{Name: name, Cards: cards})
+		}
+	}
+	// Add any categories not in the predefined order.
+	for cat, cards := range catMap {
+		found := false
+		for _, c := range categoryOrder {
+			if c == cat {
+				found = true
+				break
+			}
+		}
+		if !found {
+			name := categoryDisplayNames[cat]
+			if name == "" {
+				name = cat
+			}
+			groups = append(groups, publicCardGroup{Name: name, Cards: cards})
+		}
+	}
+
+	data := map[string]interface{}{
+		"Title":       "Cards",
+		"PersonaName": personaName,
+		"Groups":      groups,
+	}
+	app.renderTemplate(w, "cards.html", data)
+}
+
+func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+
+	page, err := app.db.GetReferencePageBySlug(slug)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Only show published cards to the public.
+	if page.Status != "published" {
+		http.NotFound(w, r)
+		return
+	}
+
+	personaName := app.cfg.Site.PersonaName
+
+	var sections []db.ReferenceSection
+	if page.SectionsJSON != "" && page.SectionsJSON != "[]" {
+		json.Unmarshal([]byte(page.SectionsJSON), &sections)
+	}
+
+	var recentChanges []db.RecentChange
+	if page.RecentChangesJSON != "" && page.RecentChangesJSON != "[]" {
+		json.Unmarshal([]byte(page.RecentChangesJSON), &recentChanges)
+	}
+
+	data := map[string]interface{}{
+		"Title":         page.Title,
+		"Card":          page,
+		"Sections":      sections,
+		"ScoutsVerdict": page.ScoutsVerdict,
+		"RecentChanges": recentChanges,
+		"PersonaName":   personaName,
+	}
+	app.renderTemplate(w, "card.html", data)
 }
 
 // truncate strips HTML tags and returns the first n characters, appending "..." if truncated.

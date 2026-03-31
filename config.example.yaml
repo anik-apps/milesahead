@@ -42,3 +42,6 @@ votes:
   alert_threshold: 10
   alert_ratio: 0.4
   alert_window: 24
+
+site:
+  persona_name: "Scout"

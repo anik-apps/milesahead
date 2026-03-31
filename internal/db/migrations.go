@@ -123,6 +123,31 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 
+	// Create reference_pages table.
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS reference_pages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		slug TEXT UNIQUE NOT NULL,
+		title TEXT NOT NULL,
+		category TEXT NOT NULL DEFAULT 'credit-card',
+		issuer TEXT NOT NULL DEFAULT '',
+		sections_json TEXT NOT NULL DEFAULT '[]',
+		recent_changes_json TEXT NOT NULL DEFAULT '[]',
+		pending_updates_json TEXT NOT NULL DEFAULT '[]',
+		scouts_verdict TEXT NOT NULL DEFAULT '',
+		keywords_json TEXT NOT NULL DEFAULT '[]',
+		image_url TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'draft',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_reference_pages_slug ON reference_pages(slug);
+	CREATE INDEX IF NOT EXISTS idx_reference_pages_category ON reference_pages(category);
+	`)
+	if err != nil {
+		return err
+	}
+
 	// Add new columns for structured content (idempotent).
 	alterStatements := []string{
 		`ALTER TABLE generated_articles ADD COLUMN tldr TEXT DEFAULT ''`,
@@ -131,6 +156,8 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE generated_articles ADD COLUMN image_url TEXT DEFAULT ''`,
 		`ALTER TABLE generated_articles ADD COLUMN image_thumbnail TEXT DEFAULT ''`,
 		`ALTER TABLE generated_articles ADD COLUMN image_attribution TEXT DEFAULT ''`,
+		`ALTER TABLE generated_articles ADD COLUMN scouts_take TEXT DEFAULT ''`,
+		`ALTER TABLE reference_pages ADD COLUMN apply_url TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)
