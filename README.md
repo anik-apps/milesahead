@@ -17,7 +17,7 @@ A self-hosted content aggregation platform that scans miles and points websites,
 
 ## Tech Stack
 
-- **Language:** Go 1.22+
+- **Language:** Go 1.26+
 - **Database:** SQLite (WAL mode)
 - **AI:** NVIDIA API (Nemotron, Llama 70B, Llama Vision)
 - **Deployment:** OCI ARM VM, Caddy, systemd, GitHub Actions CI/CD
@@ -41,20 +41,17 @@ go run ./cmd/seed-cards
 
 ## Documentation
 
-Full documentation is built with [Hugo](https://gohugo.io/) using the [Hextra](https://imfing.github.io/hextra/) theme:
+Full documentation is built with [Hugo](https://gohugo.io/) using the [Hextra](https://imfing.github.io/hextra/) theme.
 
+**Online:** [anik-apps.github.io/milesahead](https://anik-apps.github.io/milesahead/) (deployed via GitHub Pages)
+
+**Local:**
 ```bash
-cd docs
-hugo server
+cd docs && hugo server
+# Visit http://localhost:1313
 ```
 
-Then visit http://localhost:1313 for:
-- [Getting Started](docs/content/docs/getting-started.md)
-- [Architecture](docs/content/docs/architecture/_index.md)
-- [AI Pipeline](docs/content/docs/architecture/ai-pipeline.md)
-- [Reference Pages](docs/content/docs/features/reference-pages.md)
-- [Deployment](docs/content/docs/deployment/_index.md)
-- [Development](docs/content/docs/development/_index.md)
+Covers: [Getting Started](docs/content/docs/getting-started.md) · [Architecture](docs/content/docs/architecture/_index.md) · [AI Pipeline](docs/content/docs/architecture/ai-pipeline.md) · [Reference Pages](docs/content/docs/features/reference-pages.md) · [Deployment](docs/content/docs/deployment/_index.md) · [Development](docs/content/docs/development/_index.md)
 
 ## License
 

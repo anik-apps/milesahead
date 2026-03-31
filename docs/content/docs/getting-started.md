@@ -13,21 +13,19 @@ weight: 1
 
 ```bash
 # Clone the repository
-git clone https://github.com/kumaranik/milesahead.git
+git clone https://github.com/anik-apps/milesahead.git
 cd milesahead
 
 # Copy and edit the configuration
 cp config.example.yaml config.yaml
 # Edit config.yaml with your API keys and settings
 
-# Build the binary
-make build
-
-# Run the server
-./milesahead -config config.yaml
+# Build and run
+go build -o milesahead ./cmd/milesahead
+./milesahead
 ```
 
-The server starts on the port specified in your config (default `8080`). Visit `http://localhost:8080` for the public site and `http://localhost:8080/admin/login` for the admin dashboard.
+The server starts on port `9090` by default. Visit `http://localhost:9090` for the public site and `http://localhost:9090/admin/login` for the admin dashboard.
 
 ## Configuration
 
@@ -35,7 +33,7 @@ All settings live in a single `config.yaml` file. Environment variables can be i
 
 | Section | Key | Description |
 |---------|-----|-------------|
-| `server` | `port` | HTTP port (default `8080`) |
+| `server` | `port` | HTTP port (default `9090`) |
 | `server` | `domain` | Public domain name |
 | `admin` | `password_hash` | bcrypt hash of admin password |
 | `db` | `path` | Path to SQLite database file |
@@ -65,10 +63,10 @@ All settings live in a single `config.yaml` file. Environment variables can be i
 Generate a bcrypt hash for your admin password:
 
 ```bash
-go run -e 'import "golang.org/x/crypto/bcrypt"; h, _ := bcrypt.GenerateFromPassword([]byte("your-password"), 12); println(string(h))'
+htpasswd -nbBC 12 "" "your-password" | tr -d ':\n' | sed 's/$2y/$2a/'
 ```
 
-Or use any bcrypt tool and paste the hash into `config.yaml` under `admin.password_hash`.
+Or use any online bcrypt generator and paste the hash into `config.yaml` under `admin.password_hash`.
 
 ## Seeding Reference Pages
 
