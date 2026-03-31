@@ -467,13 +467,14 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 	app.renderTemplate(w, "card.html", data)
 }
 
-// truncate strips HTML tags and returns the first n characters, appending "..." if truncated.
+// truncate strips HTML tags and returns the first n runes, appending "..." if truncated.
 func truncate(s string, n int) string {
 	s = stripHTML(s)
-	if len(s) <= n {
+	runes := []rune(s)
+	if len(runes) <= n {
 		return s
 	}
-	return s[:n] + "..."
+	return string(runes[:n]) + "..."
 }
 
 // stripHTML removes HTML tags from a string.

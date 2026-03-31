@@ -690,6 +690,7 @@ func (app *App) handleAdminCardCreate(w http.ResponseWriter, r *http.Request) {
 		Category: strings.TrimSpace(r.FormValue("category")),
 		Issuer:   strings.TrimSpace(r.FormValue("issuer")),
 		ImageURL: strings.TrimSpace(r.FormValue("image_url")),
+		ApplyURL: strings.TrimSpace(r.FormValue("apply_url")),
 		Status:   r.FormValue("status"),
 		ScoutsVerdict: r.FormValue("scouts_verdict"),
 	}
@@ -783,6 +784,7 @@ func (app *App) handleAdminCardUpdate(w http.ResponseWriter, r *http.Request) {
 	page.Category = strings.TrimSpace(r.FormValue("category"))
 	page.Issuer = strings.TrimSpace(r.FormValue("issuer"))
 	page.ImageURL = strings.TrimSpace(r.FormValue("image_url"))
+	page.ApplyURL = strings.TrimSpace(r.FormValue("apply_url"))
 	page.Status = r.FormValue("status")
 	page.ScoutsVerdict = r.FormValue("scouts_verdict")
 
@@ -982,6 +984,7 @@ func parseKeywords(s string) []string {
 
 // parseSectionsFromForm extracts sections from form arrays.
 func parseSectionsFromForm(r *http.Request) []db.ReferenceSection {
+	r.ParseForm()
 	keys := r.Form["section_key[]"]
 	titles := r.Form["section_title[]"]
 	contents := r.Form["section_content[]"]
