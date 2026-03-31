@@ -7,6 +7,7 @@ import (
 	"html"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
 )
@@ -465,6 +466,41 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		"PersonaName":   personaName,
 	}
 	app.renderTemplate(w, "card.html", data)
+}
+
+func (app *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	uptime := time.Since(app.startedAt).Round(time.Second).String()
+
+	var dbStatus string
+	var dbErr string
+	err := app.db.DB().QueryRow("SELECT 1").Err()
+	if err != nil {
+		dbStatus = "error"
+		dbErr = err.Error()
+	} else {
+		dbStatus = "ok"
+	}
+
+	status := "ok"
+	httpCode := http.StatusOK
+	if dbStatus != "ok" {
+		status = "degraded"
+		httpCode = http.StatusServiceUnavailable
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(httpCode)
+
+	resp := map[string]string{
+		"status": status,
+		"db":     dbStatus,
+		"uptime": uptime,
+	}
+	if dbErr != "" {
+		resp["error"] = dbErr
+	}
+
+	json.NewEncoder(w).Encode(resp)
 }
 
 // truncate strips HTML tags and returns the first n runes, appending "..." if truncated.

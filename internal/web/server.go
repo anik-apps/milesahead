@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
@@ -54,6 +55,7 @@ type App struct {
 	newsletterSvc  NewsletterService
 	templates      map[string]*template.Template
 	mux            *http.ServeMux
+	startedAt      time.Time
 }
 
 // NewApp creates a new App, loads templates, and sets up routes.
@@ -65,6 +67,7 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 		voteSvc:        voteSvc,
 		newsletterSvc:  newsletterSvc,
 		mux:            http.NewServeMux(),
+		startedAt:      time.Now(),
 	}
 
 	if err := app.loadTemplates("templates"); err != nil {
@@ -84,6 +87,7 @@ func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *artic
 		voteSvc:        voteSvc,
 		newsletterSvc:  newsletterSvc,
 		mux:            http.NewServeMux(),
+		startedAt:      time.Now(),
 	}
 
 	if err := app.loadTemplates(templateDir); err != nil {

@@ -8,6 +8,9 @@ import (
 )
 
 func (app *App) setupRoutes() {
+	// Health check endpoint.
+	app.mux.HandleFunc("GET /healthz", app.handleHealthz)
+
 	// Metrics endpoint (no auth, scraped by Alloy).
 	app.mux.Handle("GET /metrics", promhttp.Handler())
 
