@@ -15,6 +15,9 @@ import (
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
+// sem limits concurrent card update detection goroutines.
+var sem = make(chan struct{}, 2)
+
 // adminSourceInfo holds source article info for admin display.
 type adminSourceInfo struct {
 	Name  string
@@ -210,6 +213,22 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 	if err := app.articleManager.Approve(id); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to approve: %v", err), http.StatusBadRequest)
 		return
+	}
+
+	// Trigger card update detection in the background.
+	if app.cardDetector != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("card update detection panicked", "article_id", id, "panic", r)
+				}
+			}()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			if err := app.cardDetector.DetectAndDraft(app.shutdownCtx, id); err != nil {
+				slog.Error("card update detection failed", "article_id", id, "error", err)
+			}
+		}()
 	}
 
 	http.Redirect(w, r, "/admin/dashboard?msg=approved", http.StatusSeeOther)

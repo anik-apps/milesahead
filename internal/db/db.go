@@ -830,6 +830,38 @@ func (d *Database) UpdateReferencePage(page *ReferencePage) error {
 	return nil
 }
 
+// AppendRecentChange prepends a new RecentChange to a reference page's
+// recent_changes_json, keeping at most 10 entries.
+func (d *Database) AppendRecentChange(cardID int64, change RecentChange) error {
+	page, err := d.GetReferencePage(cardID)
+	if err != nil {
+		return fmt.Errorf("getting reference page: %w", err)
+	}
+
+	var changes []RecentChange
+	if page.RecentChangesJSON != "" && page.RecentChangesJSON != "[]" {
+		if err := json.Unmarshal([]byte(page.RecentChangesJSON), &changes); err != nil {
+			return fmt.Errorf("unmarshaling recent changes: %w", err)
+		}
+	}
+
+	// Prepend
+	changes = append([]RecentChange{change}, changes...)
+
+	// Keep max 10
+	if len(changes) > 10 {
+		changes = changes[:10]
+	}
+
+	data, err := json.Marshal(changes)
+	if err != nil {
+		return fmt.Errorf("marshaling recent changes: %w", err)
+	}
+
+	_, err = d.db.Exec(`UPDATE reference_pages SET recent_changes_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(data), cardID)
+	return err
+}
+
 func (d *Database) DeleteReferencePage(id int64) error {
 	_, err := d.db.Exec(`DELETE FROM reference_pages WHERE id = ?`, id)
 	return err

@@ -15,6 +15,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/article"
+	"github.com/kumaranik/milesahead/internal/cardupdate"
 	"github.com/kumaranik/milesahead/internal/cluster"
 	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/config"
@@ -269,8 +270,11 @@ func main() {
 	})
 	sched.Start()
 
+	// Card update detector
+	detector := cardupdate.NewDetector(database, hfClient, cfg.AI.CriticModel)
+
 	// Web server
-	app, err := web.NewApp(cfg, database, articleMgr, voteSvc, newsletterSvc)
+	app, err := web.NewApp(cfg, database, articleMgr, voteSvc, newsletterSvc, detector, ctx)
 	if err != nil {
 		slog.Error("failed to create web app", "error", err)
 		os.Exit(1)
