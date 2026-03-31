@@ -239,6 +239,8 @@ main {
     margin: 0.5rem 0;
     font-size: 1.1rem;
     line-height: 1.4;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .article-card .excerpt {
@@ -1646,6 +1648,8 @@ tr.flagged { background: #fef2f2; }
     font-size: 1.05rem;
     margin-bottom: 0.5rem;
     line-height: 1.3;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 .card-grid-excerpt {
     font-size: 0.9rem;
