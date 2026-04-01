@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -203,7 +205,9 @@ func (d *Database) CreateGeneratedArticle(a *GeneratedArticle) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	_ = d.SyncArticleFTS(id)
+	if err := d.SyncArticleFTS(id); err != nil {
+		slog.Warn("FTS sync failed", "article_id", id, "error", err)
+	}
 	return id, nil
 }
 
@@ -752,7 +756,9 @@ func (d *Database) CreateReferencePage(page *ReferencePage) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	_ = d.SyncCardFTS(id)
+	if err := d.SyncCardFTS(id); err != nil {
+		slog.Warn("FTS sync failed", "card_id", id, "error", err)
+	}
 	return id, nil
 }
 
@@ -826,7 +832,9 @@ func (d *Database) UpdateReferencePage(page *ReferencePage) error {
 	if err != nil {
 		return err
 	}
-	_ = d.SyncCardFTS(page.ID)
+	if err := d.SyncCardFTS(page.ID); err != nil {
+		slog.Warn("FTS sync failed", "card_id", page.ID, "error", err)
+	}
 	return nil
 }
 
@@ -937,7 +945,9 @@ func (d *Database) DeleteCardFTS(id int64) error {
 	return err
 }
 
-// stripHTMLForDB removes HTML tags from a string for FTS indexing.
+// stripHTMLForDB removes HTML tags from a string and HTML-escapes the result
+// so that FTS content is safe to render with safeHTML (only FTS5 snippet
+// <mark> tags should be unescaped at render time).
 func stripHTMLForDB(s string) string {
 	var result []byte
 	inTag := false
@@ -947,11 +957,12 @@ func stripHTMLForDB(s string) string {
 			inTag = true
 		case s[i] == '>':
 			inTag = false
+			result = append(result, ' ')
 		case !inTag:
 			result = append(result, s[i])
 		}
 	}
-	return strings.TrimSpace(string(result))
+	return html.EscapeString(strings.TrimSpace(string(result)))
 }
 
 // extractSectionsTextDB extracts plain text from sections_json for FTS indexing.

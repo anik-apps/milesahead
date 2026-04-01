@@ -12,9 +12,6 @@ import (
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
-// sem limits concurrent DetectAndDraft goroutines.
-var sem = make(chan struct{}, 2)
-
 // keySections are the reference page sections checked for updates.
 var keySections = []string{
 	"overview",

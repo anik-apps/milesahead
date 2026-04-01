@@ -486,7 +486,7 @@ func (app *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	err := app.db.DB().QueryRow("SELECT 1").Err()
 	if err != nil {
 		dbStatus = "error"
-		dbErr = err.Error()
+		dbErr = "database unreachable"
 	} else {
 		dbStatus = "ok"
 	}
@@ -499,6 +499,7 @@ func (app *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache, no-store")
 	w.WriteHeader(httpCode)
 
 	resp := map[string]string{
@@ -515,6 +516,9 @@ func (app *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
 
 func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(query) > 200 {
+		query = query[:200]
+	}
 	pageArticles := 1
 	pageCards := 1
 	if p := r.URL.Query().Get("pa"); p != "" {

@@ -20,7 +20,7 @@
                 {{range .Articles}}
                 <li class="search-item">
                     <a href="/article/{{.Slug}}" class="search-item-title">{{.Title}}</a>
-                    <p class="search-item-excerpt">{{.Excerpt}}</p>
+                    <p class="search-item-excerpt">{{.Excerpt | safeHTML}}</p>
                 </li>
                 {{end}}
             </ul>
@@ -42,7 +42,7 @@
                 {{range .Cards}}
                 <li class="search-item">
                     <a href="/cards/{{.Slug}}" class="search-item-title">{{.Title}}</a>
-                    <p class="search-item-excerpt">{{.Excerpt}}</p>
+                    <p class="search-item-excerpt">{{.Excerpt | safeHTML}}</p>
                 </li>
                 {{end}}
             </ul>

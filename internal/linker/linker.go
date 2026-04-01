@@ -3,6 +3,7 @@ package linker
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"regexp"
 	"sort"
 	"strings"
@@ -81,7 +82,7 @@ func AutoLink(content string, cards []db.ReferencePage) (string, []MatchedCard) 
 
 		// Replace the first match with a link.
 		original := content[loc[0]:loc[1]]
-		link := fmt.Sprintf(`<a href="/cards/%s">%s</a>`, kw.card.Slug, original)
+		link := fmt.Sprintf(`<a href="/cards/%s">%s</a>`, html.EscapeString(kw.card.Slug), original)
 		content = content[:loc[0]] + link + content[loc[1]:]
 
 		matched = append(matched, MatchedCard{Slug: kw.card.Slug, Title: kw.card.Title})

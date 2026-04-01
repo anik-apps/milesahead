@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html"
 	"strings"
 )
 
@@ -187,67 +188,75 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
-// populateFTS backfills FTS tables from existing data (runs only once).
-func populateFTS(db *sql.DB) error {
-	// Check if articles_fts already has data.
-	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM articles_fts`).Scan(&count); err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil // Already populated.
+// populateFTS backfills FTS tables from existing data. It only populates
+// tables that are empty, so it is safe to call on every startup.
+func populateFTS(conn *sql.DB) error {
+	var articleCount, cardCount int
+	conn.QueryRow(`SELECT COUNT(*) FROM articles_fts`).Scan(&articleCount)
+	conn.QueryRow(`SELECT COUNT(*) FROM cards_fts`).Scan(&cardCount)
+	if articleCount > 0 && cardCount > 0 {
+		return nil
 	}
 
-	// Populate articles_fts from generated_articles.
-	rows, err := db.Query(`SELECT rowid, title, tldr, content FROM generated_articles`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var id int64
-		var title, tldr, content string
-		if err := rows.Scan(&id, &title, &tldr, &content); err != nil {
-			return err
-		}
-		_, err := db.Exec(
-			`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
-			id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), stripHTMLForFTS(content),
-		)
+	// Populate articles_fts if empty.
+	if articleCount == 0 {
+		rows, err := conn.Query(`SELECT rowid, title, tldr, content FROM generated_articles`)
 		if err != nil {
 			return err
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
+		defer rows.Close()
 
-	// Populate cards_fts from reference_pages.
-	cardRows, err := db.Query(`SELECT rowid, title, sections_json, scouts_verdict FROM reference_pages`)
-	if err != nil {
-		return err
-	}
-	defer cardRows.Close()
-
-	for cardRows.Next() {
-		var id int64
-		var title, sectionsJSON, verdict string
-		if err := cardRows.Scan(&id, &title, &sectionsJSON, &verdict); err != nil {
+		for rows.Next() {
+			var id int64
+			var title, tldr, content string
+			if err := rows.Scan(&id, &title, &tldr, &content); err != nil {
+				return err
+			}
+			_, err := conn.Exec(
+				`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
+				id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), stripHTMLForFTS(content),
+			)
+			if err != nil {
+				return err
+			}
+		}
+		if err := rows.Err(); err != nil {
 			return err
 		}
-		_, err := db.Exec(
-			`INSERT INTO cards_fts(rowid, title, sections_text, scouts_verdict) VALUES (?, ?, ?, ?)`,
-			id, stripHTMLForFTS(title), extractSectionsText(sectionsJSON), stripHTMLForFTS(verdict),
-		)
+	}
+
+	// Populate cards_fts if empty.
+	if cardCount == 0 {
+		cardRows, err := conn.Query(`SELECT rowid, title, sections_json, scouts_verdict FROM reference_pages`)
 		if err != nil {
 			return err
 		}
+		defer cardRows.Close()
+
+		for cardRows.Next() {
+			var id int64
+			var title, sectionsJSON, verdict string
+			if err := cardRows.Scan(&id, &title, &sectionsJSON, &verdict); err != nil {
+				return err
+			}
+			_, err := conn.Exec(
+				`INSERT INTO cards_fts(rowid, title, sections_text, scouts_verdict) VALUES (?, ?, ?, ?)`,
+				id, stripHTMLForFTS(title), extractSectionsText(sectionsJSON), stripHTMLForFTS(verdict),
+			)
+			if err != nil {
+				return err
+			}
+		}
+		if err := cardRows.Err(); err != nil {
+			return err
+		}
 	}
-	return cardRows.Err()
+
+	return nil
 }
 
-// stripHTMLForFTS removes HTML tags from a string for FTS indexing.
+// stripHTMLForFTS removes HTML tags from a string and HTML-escapes the result
+// so that FTS content is safe to render with safeHTML.
 func stripHTMLForFTS(s string) string {
 	var result []byte
 	inTag := false
@@ -257,11 +266,12 @@ func stripHTMLForFTS(s string) string {
 			inTag = true
 		case s[i] == '>':
 			inTag = false
+			result = append(result, ' ')
 		case !inTag:
 			result = append(result, s[i])
 		}
 	}
-	return strings.TrimSpace(string(result))
+	return html.EscapeString(strings.TrimSpace(string(result)))
 }
 
 // extractSectionsText extracts plain text from sections_json for FTS indexing.
