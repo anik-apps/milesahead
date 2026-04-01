@@ -548,7 +548,7 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 			Name:        page.Title,
 			Description: metaDesc,
 			Image:       page.ImageURL,
-			Brand:       page.Issuer,
+			Brand:       jsonLDBrand{Type: "Brand", Name: page.Issuer},
 		}),
 	}
 	app.renderTemplate(w, "card.html", data)
@@ -724,13 +724,18 @@ type articleLDData struct {
 	Publisher     jsonLDOrg `json:"publisher"`
 }
 
+type jsonLDBrand struct {
+	Type string `json:"@type"`
+	Name string `json:"name"`
+}
+
 type cardLDData struct {
-	Context     string `json:"@context"`
-	Type        string `json:"@type"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Image       string `json:"image,omitempty"`
-	Brand       string `json:"brand,omitempty"`
+	Context     string      `json:"@context"`
+	Type        string      `json:"@type"`
+	Name        string      `json:"name"`
+	Description string      `json:"description,omitempty"`
+	Image       string      `json:"image,omitempty"`
+	Brand       jsonLDBrand `json:"brand"`
 }
 
 func buildJSONLD(data interface{}) template.HTML {
@@ -738,7 +743,9 @@ func buildJSONLD(data interface{}) template.HTML {
 	if err != nil {
 		return ""
 	}
-	return template.HTML(`<script type="application/ld+json">` + string(b) + `</script>`)
+	// Escape </script> to prevent XSS when embedding JSON in script tags
+	s := strings.ReplaceAll(string(b), "</", `<\/`)
+	return template.HTML(`<script type="application/ld+json">` + s + `</script>`)
 }
 
 // --- Sitemap & Robots ---

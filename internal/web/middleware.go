@@ -238,6 +238,17 @@ func (r *responseRecorder) Write(b []byte) (int, error) {
 
 var seenIPs sync.Map
 
+func init() {
+	go func() {
+		for {
+			now := time.Now().UTC()
+			next := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
+			time.Sleep(time.Until(next))
+			seenIPs = sync.Map{}
+		}
+	}()
+}
+
 func trackUniqueVisitor(ip, normalizedPath string) {
 	if strings.HasPrefix(normalizedPath, "/admin") || normalizedPath == "/metrics" || normalizedPath == "/healthz" || normalizedPath == "/static" {
 		return

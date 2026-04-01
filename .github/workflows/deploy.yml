@@ -213,11 +213,16 @@ jobs:
           # Deploy Grafana dashboard
           if [ -n "$GRAFANA_URL" ] && [ -n "$GRAFANA_API_KEY" ]; then
             sed "s/DS_PLACEHOLDER/${GRAFANA_DS_UID:-grafanacloud-prom}/g" deploy/grafana-dashboard.json > /tmp/dashboard.json
-            RESPONSE=$(curl -sS -X POST "$GRAFANA_URL/api/dashboards/db" \
+            HTTP_CODE=$(curl -sS -o /tmp/dash-response.json -w "%{http_code}" -X POST "$GRAFANA_URL/api/dashboards/db" \
               -H "Authorization: Bearer $GRAFANA_API_KEY" \
               -H "Content-Type: application/json" \
               -d @/tmp/dashboard.json)
-            echo "Dashboard deploy: $RESPONSE"
+            if [ "$HTTP_CODE" -ne 200 ]; then
+              echo "Dashboard deploy failed (HTTP $HTTP_CODE):"
+              cat /tmp/dash-response.json
+              exit 1
+            fi
+            echo "Dashboard deployed successfully"
           else
             echo "Skipping dashboard deploy — secrets not set"
           fi
