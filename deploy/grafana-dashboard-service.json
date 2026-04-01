@@ -1,0 +1,505 @@
+{
+  "dashboard": {
+    "uid": "milesahead-service",
+    "title": "Miles Ahead \u2014 Service",
+    "tags": [
+      "milesahead"
+    ],
+    "timezone": "browser",
+    "refresh": "1m",
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "type": "row",
+        "title": "AI Pipeline",
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 0
+        },
+        "panels": []
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 1
+        },
+        "id": 1,
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(milesahead_ai_api_duration_seconds_bucket[5m]))",
+            "legendFormat": "p95 latency",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "AI API latency",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 1
+        },
+        "id": 2,
+        "targets": [
+          {
+            "expr": "rate(milesahead_ai_api_errors_total[5m])",
+            "legendFormat": "errors/sec",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "AI API error rate",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 0,
+          "y": 1
+        },
+        "id": 3,
+        "targets": [
+          {
+            "expr": "milesahead_critic_score_bucket",
+            "format": "heatmap",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Critic score distribution",
+        "type": "histogram"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 8,
+          "y": 1
+        },
+        "id": 4,
+        "targets": [
+          {
+            "expr": "sum by (status) (milesahead_revisions_total)",
+            "legendFormat": "{{status}}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Revisions by outcome",
+        "type": "piechart"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 16,
+          "y": 1
+        },
+        "id": 5,
+        "targets": [
+          {
+            "expr": "sum by (status) (milesahead_articles_generated_total)",
+            "legendFormat": "{{status}}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Articles by status",
+        "type": "bargauge"
+      },
+      {
+        "type": "row",
+        "title": "Image Pipeline",
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 10
+        },
+        "panels": []
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 0,
+          "y": 11
+        },
+        "id": 6,
+        "targets": [
+          {
+            "expr": "rate(milesahead_image_search_total[1h])",
+            "legendFormat": "{{source}} ({{status}})",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Image Search by Source",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 8,
+          "y": 11
+        },
+        "id": 7,
+        "targets": [
+          {
+            "expr": "rate(milesahead_image_scoring_total[1h])",
+            "legendFormat": "{{phase}} ({{status}})",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Image Scoring (Text vs Vision)",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 8,
+          "x": 16,
+          "y": 11
+        },
+        "id": 8,
+        "targets": [
+          {
+            "expr": "milesahead_image_selected_total",
+            "legendFormat": "{{outcome}}",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Image Selection Outcomes",
+        "type": "piechart"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 11
+        },
+        "id": 9,
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.5, rate(milesahead_image_selected_score_bucket[1h]))",
+            "legendFormat": "median",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(milesahead_image_selected_score_bucket[1h]))",
+            "legendFormat": "p95",
+            "refId": "B",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Selected Image Scores",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 11
+        },
+        "id": 10,
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.5, rate(milesahead_image_search_candidates_bucket[1h]))",
+            "legendFormat": "median",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Candidates per Article",
+        "type": "timeseries"
+      },
+      {
+        "type": "row",
+        "title": "Scanning & Operations",
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 20
+        },
+        "panels": []
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                }
+              ]
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 6,
+          "x": 12,
+          "y": 21
+        },
+        "id": 11,
+        "options": {
+          "displayMode": "gradient",
+          "orientation": "horizontal",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ]
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            },
+            "expr": "sum(increase(milesahead_scans_total[24h])) by (source, status)",
+            "instant": true,
+            "legendFormat": "{{ source }} - {{ status }}",
+            "refId": "A"
+          }
+        ],
+        "title": "Scan Status",
+        "type": "bargauge"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 21
+        },
+        "id": 12,
+        "targets": [
+          {
+            "expr": "rate(milesahead_scans_total[1h])",
+            "legendFormat": "scans/hr",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Scans per hour",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 21
+        },
+        "id": 13,
+        "targets": [
+          {
+            "expr": "rate(milesahead_articles_generated_total[1h])",
+            "legendFormat": "generated",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          },
+          {
+            "expr": "rate(milesahead_articles_approved_total[1h])",
+            "legendFormat": "approved",
+            "refId": "B",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Articles generated vs approved",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "grafanacloud-prom"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit"
+          }
+        },
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 21
+        },
+        "id": 14,
+        "targets": [
+          {
+            "expr": "milesahead_articles_rejected_total / (milesahead_articles_approved_total + milesahead_articles_rejected_total)",
+            "refId": "A",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "grafanacloud-prom"
+            }
+          }
+        ],
+        "title": "Rejection rate",
+        "type": "stat"
+      },
+      {
+        "type": "row",
+        "title": "Logs",
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 30
+        },
+        "panels": []
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "grafanacloud-logs"
+        },
+        "gridPos": {
+          "h": 10,
+          "w": 24,
+          "x": 0,
+          "y": 31
+        },
+        "id": 15,
+        "targets": [
+          {
+            "expr": "{unit=\"milesahead.service\"} | json",
+            "refId": "A"
+          }
+        ],
+        "title": "Recent logs",
+        "type": "logs"
+      }
+    ],
+    "schemaVersion": 39
+  },
+  "folderUid": "ffh46waaplbswe",
+  "overwrite": true
+}
