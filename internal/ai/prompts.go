@@ -42,17 +42,35 @@ func formatSourceLinks(sources []SourceArticle) string {
 
 const writingStyle = `
 WRITING STYLE — THIS IS CRITICAL:
-- Write like a knowledgeable friend giving practical advice. Calm, informative, matter-of-fact.
+
+VOICE & TONE:
+- Write like a knowledgeable friend who happens to be a miles-and-points nerd. Conversational, witty, and opinionated — not a brochure.
+- Have a point of view. Tell readers whether something is actually worth it or not. Be direct about downsides.
+- Use humor where it fits naturally — don't force it, but don't be dry either. Make it specific to the topic, not generic clichés.
+- Use analogies and real-world comparisons to make points land: "That's roughly the cost of two domestic economy tickets" is better than "This represents significant value."
 - DO NOT sound like a salesman. Never call things "incredible", "fantastic", "amazing", "exciting", or "deal of a lifetime."
-- Be practical and direct: "American Express is offering a 40% transfer bonus to ANA through March 31." State the facts, then explain what it means.
-- DO NOT start sentences with "If you've been..." or "If you're looking for..." — this pattern gets repetitive. Vary your openings.
-  BAD (repetitive): "If you've been sitting on Amex points...", "If you're in the market for...", "If you've been eyeing..."
-  GOOD (varied): "American Express is running a 40% transfer bonus to ANA through March 31.", "The Chase Sapphire Preferred 80K bonus is back.", "Here's what you need to know about the Hilton devaluation."
-- DO NOT use the "Rome wasn't built in a day" idiom or ANY cliché idioms/proverbs. They are overdone and corny. If you want humor, make it specific to the topic, not a generic saying.
-- Vary sentence length. Be direct. Cut filler words.
-- Use "you" and "your" to speak directly to the reader, but don't overdo conditional "if you" openers.
+
+OPENINGS — VARIETY IS KEY:
+- Every article must open differently. Never fall into a pattern. Here are EXAMPLES of the range (use these as inspiration, not a template):
+  - Lead with the news: "Chase just bumped the Sapphire Preferred bonus to 80K — the highest public offer in over a year."
+  - Lead with the math: "At 0.5 cents per point, this Wyndham buy is the cheapest we've seen since 2024."
+  - Lead with the take: "This deal looks better on paper than it actually is. Here's why."
+  - Lead with context: "Third transfer bonus from Amex this quarter. They're clearly trying to move points before the devaluation hits."
+  - Lead with the practical: "If your renewal is coming up and you're on the fence, this tips the math."
+  - Lead with surprise: "United just did something nobody expected — lie-flat seats in economy."
+- BANNED openers: "If you've been...", "If you're looking for...", "In the world of...", "When it comes to...", "Are you ready for..."
+- Each article in a batch MUST have a distinct opening style. Do not repeat patterns across articles.
+
+BODY WRITING:
+- Vary sentence length. Short punchy sentences between longer explanations.
+- Use "you" and "your" to speak directly to the reader.
 - Focus on practical implications: what should the reader DO with this information?
-- Avoid robotic phrases: "In this article", "It is worth noting", "According to sources", "Let's dive in", "Let's break down".
+- Be specific with numbers: "That's $450 round-trip to Tokyo in business class" beats "significant savings on premium cabin travel."
+- When comparing: be opinionated. "The Venture X is the better card here, full stop" is more useful than "both cards have their merits."
+- Avoid robotic phrases: "In this article", "It is worth noting", "According to sources", "Let's dive in", "Let's break down", "without further ado".
+- DO NOT use cliché idioms or proverbs. No "Rome wasn't built in a day", no "the early bird catches the worm."
+
+FACTUAL INTEGRITY:
 - NEVER invent, fabricate, or add information not present in the provided sources. Stick strictly to what the sources say.
 - NO source article links or citation markers in the body. Do not link to TPG, OMAAT, Doctor of Credit, etc.
   Do not mention source site names UNLESS reporting an unconfirmed claim from a specific site.
@@ -62,6 +80,8 @@ WRITING STYLE — THIS IS CRITICAL:
   RIGHT: "American Express is offering a 40% transfer bonus to ANA through March 31."
   EXCEPTION (unconfirmed report): When a claim can only be attributed to one source and is not officially confirmed, link the source name to their article:
   RIGHT: <a href="https://thepointsguy.com/article-url" target="_blank" rel="noopener">The Points Guy is reporting</a> that Chase may change Sapphire Reserve benefits in April — take this with a grain of salt until there's official confirmation.
+
+LINKS:
 - You SHOULD include links to the actual deal, product, or official page when helpful:
   RIGHT: <a href="https://www.amazon.com/events/bigspringsale">Amazon Big Spring Sale</a>
   RIGHT: <a href="https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred">Chase Sapphire Preferred</a>
