@@ -50,21 +50,6 @@ var (
 		Help: "Total votes cast",
 	}, []string{"direction"}) // up, down
 
-	NewslettersSentTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "milesahead_newsletters_sent_total",
-		Help: "Total newsletters sent",
-	}, []string{"status"}) // success, error
-
-	NewsletterRecipientsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "milesahead_newsletter_recipients_total",
-		Help: "Total newsletter recipients",
-	}, []string{"status"}) // success, error
-
-	MailPollsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "milesahead_mail_polls_total",
-		Help: "Total IMAP mail polls",
-	}, []string{"status"}) // success, error
-
 	HTTPRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "milesahead_http_requests_total",
 		Help: "Total HTTP requests",
@@ -110,8 +95,7 @@ func Init() {
 		ScansTotal, ArticlesGeneratedTotal, ArticlesApprovedTotal,
 		ArticlesRejectedTotal, RevisionsTotal, AIAPIDuration,
 		AIAPIErrorsTotal, CriticScore, VotesTotal,
-		NewslettersSentTotal, NewsletterRecipientsTotal,
-		MailPollsTotal, HTTPRequestsTotal, HTTPDuration,
+		HTTPRequestsTotal, HTTPDuration,
 		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,
 		ImageSelectedScore, ImageSelectedTotal,
 	)
