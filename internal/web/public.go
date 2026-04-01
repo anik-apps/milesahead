@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"html/template"
 	"net/http"
 	"strings"
 	"time"
@@ -121,14 +122,33 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	domain := app.cfg.Server.Domain
+	if domain == "" {
+		domain = "localhost"
+	}
+
 	data := map[string]interface{}{
-		"Title":      "Home",
-		"Featured":   featured,
-		"Sidebar":    sidebar,
-		"Grid":       grid,
-		"Articles":   rows,
-		"TypeFilter": typeFilter,
-		"Types":      []string{"deal", "roundup", "alert", "summary"},
+		"Title":           "Home",
+		"Featured":        featured,
+		"Sidebar":         sidebar,
+		"Grid":            grid,
+		"Articles":        rows,
+		"TypeFilter":      typeFilter,
+		"Types":           []string{"deal", "roundup", "alert", "summary"},
+		"MetaDescription": "The latest miles, points, and credit card deals — curated daily.",
+		"CanonicalURL":    "https://" + domain + "/",
+		"OGType":          "website",
+		"JSONLD": buildJSONLD(websiteLDData{
+			Context: "https://schema.org",
+			Type:    "WebSite",
+			Name:    "Miles Ahead",
+			URL:     "https://" + domain + "/",
+			PotentialAction: jsonLDSearchAction{
+				Type:       "SearchAction",
+				Target:     "https://" + domain + "/search?q={search_term_string}",
+				QueryInput: "required name=search_term_string",
+			},
+		}),
 	}
 	app.renderTemplate(w, "home.html", data)
 }
@@ -201,20 +221,49 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(article.RelatedCardsJSON), &relatedCards)
 	}
 
+	domain := app.cfg.Server.Domain
+	if domain == "" {
+		domain = "localhost"
+	}
+	canonicalURL := "https://" + domain + "/article/" + article.Slug
+	metaDesc := truncate(article.TLDR, 160)
+	if metaDesc == "" {
+		metaDesc = truncate(article.Content, 160)
+	}
+
+	datePublished := ""
+	if article.PublishedAt != nil {
+		datePublished = article.PublishedAt.Format("2006-01-02")
+	}
+
 	data := map[string]interface{}{
-		"Title":        article.Title,
-		"Article":      article,
-		"Sources":      sources,
-		"Upvotes":      upvotes,
-		"Downvotes":    downvotes,
-		"PublishedAt":  publishedAt,
-		"UnderReview":  false,
-		"TLDR":         article.TLDR,
-		"KeyDetails":   keyDetails,
-		"Links":        articleLinks,
-		"RelatedCards": relatedCards,
-		"ScoutsTake":   article.ScoutsTake,
-		"PersonaName":  app.cfg.Site.PersonaName,
+		"Title":           article.Title,
+		"Article":         article,
+		"Sources":         sources,
+		"Upvotes":         upvotes,
+		"Downvotes":       downvotes,
+		"PublishedAt":     publishedAt,
+		"UnderReview":     false,
+		"TLDR":            article.TLDR,
+		"KeyDetails":      keyDetails,
+		"Links":           articleLinks,
+		"RelatedCards":    relatedCards,
+		"ScoutsTake":      article.ScoutsTake,
+		"PersonaName":     app.cfg.Site.PersonaName,
+		"MetaDescription": metaDesc,
+		"CanonicalURL":    canonicalURL,
+		"OGType":          "article",
+		"OGImage":         article.ImageURL,
+		"JSONLD": buildJSONLD(articleLDData{
+			Context:       "https://schema.org",
+			Type:          "Article",
+			Headline:      article.Title,
+			DatePublished: datePublished,
+			Description:   metaDesc,
+			Image:         article.ImageURL,
+			Author:        jsonLDOrg{Type: "Organization", Name: "Miles Ahead"},
+			Publisher:     jsonLDOrg{Type: "Organization", Name: "Miles Ahead"},
+		}),
 	}
 	app.renderTemplate(w, "article.html", data)
 }
@@ -432,10 +481,18 @@ func (app *App) handleCardsList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	domain := app.cfg.Server.Domain
+	if domain == "" {
+		domain = "localhost"
+	}
+
 	data := map[string]interface{}{
-		"Title":       "Cards",
-		"PersonaName": personaName,
-		"Groups":      groups,
+		"Title":           "Cards",
+		"PersonaName":     personaName,
+		"Groups":          groups,
+		"MetaDescription": "Compare the best credit cards for travel, cash back, hotels, and more.",
+		"CanonicalURL":    "https://" + domain + "/cards/",
+		"OGType":          "website",
 	}
 	app.renderTemplate(w, "cards.html", data)
 }
@@ -467,13 +524,32 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(page.RecentChangesJSON), &recentChanges)
 	}
 
+	domain := app.cfg.Server.Domain
+	if domain == "" {
+		domain = "localhost"
+	}
+	canonicalURL := "https://" + domain + "/cards/" + page.Slug
+	metaDesc := truncate(page.ScoutsVerdict, 160)
+
 	data := map[string]interface{}{
-		"Title":         page.Title,
-		"Card":          page,
-		"Sections":      sections,
-		"ScoutsVerdict": page.ScoutsVerdict,
-		"RecentChanges": recentChanges,
-		"PersonaName":   personaName,
+		"Title":           page.Title,
+		"Card":            page,
+		"Sections":        sections,
+		"ScoutsVerdict":   page.ScoutsVerdict,
+		"RecentChanges":   recentChanges,
+		"PersonaName":     personaName,
+		"MetaDescription": metaDesc,
+		"CanonicalURL":    canonicalURL,
+		"OGType":          "website",
+		"OGImage":         page.ImageURL,
+		"JSONLD": buildJSONLD(cardLDData{
+			Context:     "https://schema.org",
+			Type:        "Product",
+			Name:        page.Title,
+			Description: metaDesc,
+			Image:       page.ImageURL,
+			Brand:       page.Issuer,
+		}),
 	}
 	app.renderTemplate(w, "card.html", data)
 }
@@ -534,9 +610,17 @@ func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	const perPage = 10
 
+	domain := app.cfg.Server.Domain
+	if domain == "" {
+		domain = "localhost"
+	}
+
 	data := map[string]interface{}{
-		"Title": "Search",
-		"Query": query,
+		"Title":           "Search",
+		"Query":           query,
+		"MetaDescription": "Search Miles Ahead for credit card deals, travel rewards, and points strategies.",
+		"CanonicalURL":    "https://" + domain + "/search",
+		"OGType":          "website",
 	}
 
 	if query != "" {
@@ -606,4 +690,128 @@ func stripHTML(s string) string {
 		}
 	}
 	return strings.TrimSpace(string(result))
+}
+
+// --- JSON-LD structured data ---
+
+type jsonLDOrg struct {
+	Type string `json:"@type"`
+	Name string `json:"name"`
+}
+
+type jsonLDSearchAction struct {
+	Type        string `json:"@type"`
+	Target      string `json:"target"`
+	QueryInput  string `json:"query-input"`
+}
+
+type websiteLDData struct {
+	Context         string             `json:"@context"`
+	Type            string             `json:"@type"`
+	Name            string             `json:"name"`
+	URL             string             `json:"url"`
+	PotentialAction jsonLDSearchAction `json:"potentialAction"`
+}
+
+type articleLDData struct {
+	Context       string    `json:"@context"`
+	Type          string    `json:"@type"`
+	Headline      string    `json:"headline"`
+	DatePublished string    `json:"datePublished,omitempty"`
+	Description   string    `json:"description,omitempty"`
+	Image         string    `json:"image,omitempty"`
+	Author        jsonLDOrg `json:"author"`
+	Publisher     jsonLDOrg `json:"publisher"`
+}
+
+type cardLDData struct {
+	Context     string `json:"@context"`
+	Type        string `json:"@type"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Image       string `json:"image,omitempty"`
+	Brand       string `json:"brand,omitempty"`
+}
+
+func buildJSONLD(data interface{}) template.HTML {
+	b, err := json.Marshal(data)
+	if err != nil {
+		return ""
+	}
+	return template.HTML(`<script type="application/ld+json">` + string(b) + `</script>`)
+}
+
+// --- Sitemap & Robots ---
+
+func (app *App) handleSitemap(w http.ResponseWriter, r *http.Request) {
+	domain := app.cfg.Server.Domain
+	if domain == "" {
+		domain = "localhost"
+	}
+	baseURL := "https://" + domain
+
+	articles, err := app.db.ListPublishedArticles(10000, 0)
+	if err != nil {
+		http.Error(w, "Failed to generate sitemap", http.StatusInternalServerError)
+		return
+	}
+
+	cards, err := app.db.ListPublishedReferencePages("")
+	if err != nil {
+		http.Error(w, "Failed to generate sitemap", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+
+	fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
+	fmt.Fprint(w, `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
+
+	// Homepage
+	fmt.Fprintf(w, `<url><loc>%s/</loc><priority>1.0</priority></url>`, html.EscapeString(baseURL))
+
+	// Cards listing
+	fmt.Fprintf(w, `<url><loc>%s/cards/</loc><priority>0.9</priority></url>`, html.EscapeString(baseURL))
+
+	// Search
+	fmt.Fprintf(w, `<url><loc>%s/search</loc><priority>0.3</priority></url>`, html.EscapeString(baseURL))
+
+	// Articles
+	for _, a := range articles {
+		loc := fmt.Sprintf("%s/article/%s", baseURL, a.Slug)
+		lastmod := ""
+		if a.PublishedAt != nil {
+			lastmod = a.PublishedAt.Format("2006-01-02")
+		}
+		fmt.Fprintf(w, `<url><loc>%s</loc><priority>0.8</priority>`, html.EscapeString(loc))
+		if lastmod != "" {
+			fmt.Fprintf(w, `<lastmod>%s</lastmod>`, lastmod)
+		}
+		fmt.Fprint(w, `</url>`)
+	}
+
+	// Cards
+	for _, c := range cards {
+		loc := fmt.Sprintf("%s/cards/%s", baseURL, c.Slug)
+		lastmod := c.UpdatedAt.Format("2006-01-02")
+		fmt.Fprintf(w, `<url><loc>%s</loc><priority>0.7</priority><lastmod>%s</lastmod></url>`, html.EscapeString(loc), lastmod)
+	}
+
+	fmt.Fprint(w, `</urlset>`)
+}
+
+func (app *App) handleRobots(w http.ResponseWriter, r *http.Request) {
+	domain := app.cfg.Server.Domain
+	if domain == "" {
+		domain = "localhost"
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	fmt.Fprint(w, "User-agent: *\n")
+	fmt.Fprint(w, "Allow: /\n")
+	fmt.Fprint(w, "Disallow: /admin/\n")
+	fmt.Fprint(w, "Disallow: /metrics\n")
+	fmt.Fprint(w, "Disallow: /healthz\n")
+	fmt.Fprintf(w, "\nSitemap: https://%s/sitemap.xml\n", domain)
 }

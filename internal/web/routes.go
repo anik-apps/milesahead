@@ -17,6 +17,10 @@ func (app *App) setupRoutes() {
 	// Static files.
 	app.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
+	// SEO routes.
+	app.mux.HandleFunc("GET /sitemap.xml", app.handleSitemap)
+	app.mux.HandleFunc("GET /robots.txt", app.handleRobots)
+
 	// Public routes (placeholders).
 	app.mux.HandleFunc("GET /{$}", app.handleHome)
 	app.mux.HandleFunc("GET /article/{slug}", app.handleArticle)
