@@ -22,6 +22,12 @@ type ArticleLink struct {
 	URL  string
 }
 
+// RelatedCard represents a card linked from an article.
+type RelatedCard struct {
+	Slug  string `json:"slug"`
+	Title string `json:"title"`
+}
+
 // PipelineResult holds the output of a full generate-then-verify cycle.
 type PipelineResult struct {
 	Content          string
@@ -36,6 +42,7 @@ type PipelineResult struct {
 	ImageThumbnail   string
 	ImageAttribution string
 	ScoutsTake       string
+	RelatedCards     []RelatedCard
 }
 
 // Pipeline orchestrates the generator and two critics to produce verified articles.

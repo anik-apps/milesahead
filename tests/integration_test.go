@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -296,7 +297,7 @@ func TestFullPipeline(t *testing.T) {
 	// 8. GET homepage via web app -> verify article appears.
 	templateDir := filepath.Join("..", "templates")
 	voteSvc := vote.NewService(database, cfg.Votes, nil)
-	app, err := web.NewAppWithTemplateDir(cfg, database, mgr, voteSvc, nil, templateDir)
+	app, err := web.NewAppWithTemplateDir(cfg, database, mgr, voteSvc, nil, nil, context.Background(), templateDir)
 	if err != nil {
 		t.Fatalf("creating web app: %v", err)
 	}
@@ -729,7 +730,7 @@ func TestWebFeedXML(t *testing.T) {
 	mgr := article.NewManager(database, pipeline)
 	voteSvc := vote.NewService(database, cfg.Votes, nil)
 	templateDir := filepath.Join("..", "templates")
-	app, err := web.NewAppWithTemplateDir(cfg, database, mgr, voteSvc, nil, templateDir)
+	app, err := web.NewAppWithTemplateDir(cfg, database, mgr, voteSvc, nil, nil, context.Background(), templateDir)
 	if err != nil {
 		t.Fatalf("creating web app: %v", err)
 	}

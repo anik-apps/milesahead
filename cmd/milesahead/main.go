@@ -1,18 +1,23 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/article"
+	"github.com/kumaranik/milesahead/internal/cardupdate"
 	"github.com/kumaranik/milesahead/internal/cluster"
+	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/images"
@@ -45,6 +50,13 @@ func main() {
 		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+
+	// Shutdown context
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	// Metrics
 	metrics.Init()
@@ -99,6 +111,12 @@ func main() {
 	// Scheduler
 	sched := scheduler.New()
 	sched.AddScanJob(time.Duration(cfg.Scanner.DefaultInterval)*time.Minute, func() {
+		select {
+		case <-ctx.Done():
+			slog.Info("scan job skipped, shutting down")
+			return
+		default:
+		}
 		slog.Info("scheduled job started", "job", "scan")
 		results, err := scnr.ScanAll()
 		if err != nil {
@@ -209,6 +227,22 @@ func main() {
 				}
 			}
 
+			// Auto-link card mentions in article content.
+			refPages, _ := database.ListPublishedReferencePages("")
+			if len(refPages) > 0 {
+				linkedContent, matchedCards := linker.AutoLink(result.Content, refPages)
+				result.Content = linkedContent
+				for _, mc := range matchedCards {
+					result.RelatedCards = append(result.RelatedCards, ai.RelatedCard{
+						Slug:  mc.Slug,
+						Title: mc.Title,
+					})
+				}
+				if len(matchedCards) > 0 {
+					slog.Info("auto-linked card mentions", "title", result.Title, "cards", len(matchedCards))
+				}
+			}
+
 			id, err := articleMgr.CreateFromPipeline(result, rawIDs, result.Type)
 			if err != nil {
 				slog.Error("article save failed", "error", err)
@@ -235,20 +269,55 @@ func main() {
 		}
 	})
 	sched.Start()
-	defer sched.Stop()
+
+	// Card update detector
+	detector := cardupdate.NewDetector(database, hfClient, cfg.AI.CriticModel)
 
 	// Web server
-	app, err := web.NewApp(cfg, database, articleMgr, voteSvc, newsletterSvc)
+	app, err := web.NewApp(cfg, database, articleMgr, voteSvc, newsletterSvc, detector, ctx)
 	if err != nil {
 		slog.Error("failed to create web app", "error", err)
 		os.Exit(1)
 	}
 
-	slog.Info("server starting", "port", cfg.Server.Port)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.Server.Port), app); err != nil {
-		slog.Error("server stopped", "error", err)
-		os.Exit(1)
+	// Web server with explicit Server struct for graceful shutdown
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", cfg.Server.Port),
+		Handler: app,
 	}
+
+	// Start server in a goroutine
+	serverErr := make(chan error, 1)
+	go func() {
+		slog.Info("server starting", "port", cfg.Server.Port)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+		}
+	}()
+
+	// Wait for shutdown signal or server error
+	select {
+	case sig := <-sigCh:
+		slog.Info("shutting down...", "signal", sig.String())
+	case err := <-serverErr:
+		slog.Error("server error", "error", err)
+		cancel()
+		return // defers will run
+	}
+	cancel()
+
+	// Stop scheduler (waits for running jobs to finish)
+	sched.Stop()
+
+	// Shutdown HTTP server with 30s timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		slog.Error("server shutdown error", "error", err)
+	}
+
+	slog.Info("shutdown complete")
 }
 
 // generateImageQueries uses AI to create targeted search queries for stock photo APIs.

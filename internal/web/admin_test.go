@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -130,7 +131,7 @@ func setupAdminTestApp(t *testing.T) (*App, *db.Database) {
 		t.Fatalf("failed to write newsletter template: %v", err)
 	}
 
-	app, err := NewAppWithTemplateDir(cfg, database, mgr, nil, nil, filepath.Join(tmpDir, "templates"))
+	app, err := NewAppWithTemplateDir(cfg, database, mgr, nil, nil, nil, context.Background(), filepath.Join(tmpDir, "templates"))
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}
@@ -684,7 +685,7 @@ func setupNewsletterTestApp(t *testing.T, mock *mockNewsletterSvc) (*App, *db.Da
 		t.Fatalf("failed to write newsletter template: %v", err)
 	}
 
-	app, err := NewAppWithTemplateDir(cfg, database, mgr, nil, mock, filepath.Join(tmpDir, "templates"))
+	app, err := NewAppWithTemplateDir(cfg, database, mgr, nil, mock, nil, context.Background(), filepath.Join(tmpDir, "templates"))
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}

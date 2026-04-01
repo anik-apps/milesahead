@@ -1,11 +1,13 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
@@ -45,6 +47,12 @@ type NewsletterService interface {
 	SendDaily() error
 }
 
+// CardUpdateDetector detects whether a newly approved article affects any
+// credit card reference pages and drafts pending updates.
+type CardUpdateDetector interface {
+	DetectAndDraft(ctx context.Context, articleID int64) error
+}
+
 // App is the main web application struct that holds dependencies and serves HTTP.
 type App struct {
 	db             *db.Database
@@ -52,19 +60,25 @@ type App struct {
 	articleManager *article.Manager
 	voteSvc        *vote.Service
 	newsletterSvc  NewsletterService
+	cardDetector   CardUpdateDetector
+	shutdownCtx    context.Context
 	templates      map[string]*template.Template
 	mux            *http.ServeMux
+	startedAt      time.Time
 }
 
 // NewApp creates a new App, loads templates, and sets up routes.
-func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, voteSvc *vote.Service, newsletterSvc NewsletterService) (*App, error) {
+func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, voteSvc *vote.Service, newsletterSvc NewsletterService, cardDetector CardUpdateDetector, shutdownCtx context.Context) (*App, error) {
 	app := &App{
 		db:             database,
 		cfg:            cfg,
 		articleManager: mgr,
 		voteSvc:        voteSvc,
 		newsletterSvc:  newsletterSvc,
+		cardDetector:   cardDetector,
+		shutdownCtx:    shutdownCtx,
 		mux:            http.NewServeMux(),
+		startedAt:      time.Now(),
 	}
 
 	if err := app.loadTemplates("templates"); err != nil {
@@ -76,14 +90,17 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 }
 
 // NewAppWithTemplateDir creates a new App loading templates from the specified directory.
-func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *article.Manager, voteSvc *vote.Service, newsletterSvc NewsletterService, templateDir string) (*App, error) {
+func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *article.Manager, voteSvc *vote.Service, newsletterSvc NewsletterService, cardDetector CardUpdateDetector, shutdownCtx context.Context, templateDir string) (*App, error) {
 	app := &App{
 		db:             database,
 		cfg:            cfg,
 		articleManager: mgr,
 		voteSvc:        voteSvc,
 		newsletterSvc:  newsletterSvc,
+		cardDetector:   cardDetector,
+		shutdownCtx:    shutdownCtx,
 		mux:            http.NewServeMux(),
+		startedAt:      time.Now(),
 	}
 
 	if err := app.loadTemplates(templateDir); err != nil {

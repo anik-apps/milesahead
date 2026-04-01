@@ -8,6 +8,9 @@ import (
 )
 
 func (app *App) setupRoutes() {
+	// Health check endpoint.
+	app.mux.HandleFunc("GET /healthz", app.handleHealthz)
+
 	// Metrics endpoint (no auth, scraped by Alloy).
 	app.mux.Handle("GET /metrics", promhttp.Handler())
 
@@ -21,6 +24,9 @@ func (app *App) setupRoutes() {
 	app.mux.HandleFunc("POST /subscribe", app.handleSubscribe)
 	app.mux.HandleFunc("GET /subscribe/confirm", app.handleSubscribeConfirm)
 	app.mux.HandleFunc("GET /unsubscribe", app.handleUnsubscribe)
+
+	// Search route.
+	app.mux.HandleFunc("GET /search", app.handleSearch)
 
 	// Public card routes.
 	app.mux.HandleFunc("GET /cards/", app.handleCardsList)

@@ -2,6 +2,9 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
+	"fmt"
+	"html"
 	"strings"
 )
 
@@ -158,6 +161,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE generated_articles ADD COLUMN image_attribution TEXT DEFAULT ''`,
 		`ALTER TABLE generated_articles ADD COLUMN scouts_take TEXT DEFAULT ''`,
 		`ALTER TABLE reference_pages ADD COLUMN apply_url TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE generated_articles ADD COLUMN related_cards_json TEXT DEFAULT '[]'`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)
@@ -166,5 +170,123 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
+	// Create FTS5 virtual tables for full-text search.
+	ftsStatements := []string{
+		`CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(title, tldr, content)`,
+		`CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(title, sections_text, scouts_verdict)`,
+	}
+	for _, stmt := range ftsStatements {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("creating FTS table: %w", err)
+		}
+	}
+
+	if err := populateFTS(db); err != nil {
+		return fmt.Errorf("populating FTS: %w", err)
+	}
+
 	return nil
+}
+
+// populateFTS backfills FTS tables from existing data. It only populates
+// tables that are empty, so it is safe to call on every startup.
+func populateFTS(conn *sql.DB) error {
+	var articleCount, cardCount int
+	conn.QueryRow(`SELECT COUNT(*) FROM articles_fts`).Scan(&articleCount)
+	conn.QueryRow(`SELECT COUNT(*) FROM cards_fts`).Scan(&cardCount)
+	if articleCount > 0 && cardCount > 0 {
+		return nil
+	}
+
+	// Populate articles_fts if empty.
+	if articleCount == 0 {
+		rows, err := conn.Query(`SELECT rowid, title, tldr, content FROM generated_articles`)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var id int64
+			var title, tldr, content string
+			if err := rows.Scan(&id, &title, &tldr, &content); err != nil {
+				return err
+			}
+			_, err := conn.Exec(
+				`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
+				id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), stripHTMLForFTS(content),
+			)
+			if err != nil {
+				return err
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+	}
+
+	// Populate cards_fts if empty.
+	if cardCount == 0 {
+		cardRows, err := conn.Query(`SELECT rowid, title, sections_json, scouts_verdict FROM reference_pages`)
+		if err != nil {
+			return err
+		}
+		defer cardRows.Close()
+
+		for cardRows.Next() {
+			var id int64
+			var title, sectionsJSON, verdict string
+			if err := cardRows.Scan(&id, &title, &sectionsJSON, &verdict); err != nil {
+				return err
+			}
+			_, err := conn.Exec(
+				`INSERT INTO cards_fts(rowid, title, sections_text, scouts_verdict) VALUES (?, ?, ?, ?)`,
+				id, stripHTMLForFTS(title), extractSectionsText(sectionsJSON), stripHTMLForFTS(verdict),
+			)
+			if err != nil {
+				return err
+			}
+		}
+		if err := cardRows.Err(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// stripHTMLForFTS removes HTML tags from a string and HTML-escapes the result
+// so that FTS content is safe to render with safeHTML.
+func stripHTMLForFTS(s string) string {
+	var result []byte
+	inTag := false
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '<':
+			inTag = true
+		case s[i] == '>':
+			inTag = false
+			result = append(result, ' ')
+		case !inTag:
+			result = append(result, s[i])
+		}
+	}
+	return html.EscapeString(strings.TrimSpace(string(result)))
+}
+
+// extractSectionsText extracts plain text from sections_json for FTS indexing.
+func extractSectionsText(sectionsJSON string) string {
+	var sections []struct {
+		Title   string `json:"title"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal([]byte(sectionsJSON), &sections); err != nil {
+		return ""
+	}
+	var parts []string
+	for _, s := range sections {
+		parts = append(parts, stripHTMLForFTS(s.Title))
+		parts = append(parts, stripHTMLForFTS(s.Content))
+	}
+	return strings.Join(parts, " ")
 }

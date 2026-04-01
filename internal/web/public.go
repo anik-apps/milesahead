@@ -7,6 +7,7 @@ import (
 	"html"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
 )
@@ -191,19 +192,29 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(article.Links), &articleLinks)
 	}
 
+	type relatedCard struct {
+		Slug  string `json:"slug"`
+		Title string `json:"title"`
+	}
+	var relatedCards []relatedCard
+	if article.RelatedCardsJSON != "" && article.RelatedCardsJSON != "[]" {
+		json.Unmarshal([]byte(article.RelatedCardsJSON), &relatedCards)
+	}
+
 	data := map[string]interface{}{
-		"Title":       article.Title,
-		"Article":     article,
-		"Sources":     sources,
-		"Upvotes":     upvotes,
-		"Downvotes":   downvotes,
-		"PublishedAt": publishedAt,
-		"UnderReview": false,
-		"TLDR":        article.TLDR,
-		"KeyDetails":  keyDetails,
-		"Links":       articleLinks,
-		"ScoutsTake":  article.ScoutsTake,
-		"PersonaName": app.cfg.Site.PersonaName,
+		"Title":        article.Title,
+		"Article":      article,
+		"Sources":      sources,
+		"Upvotes":      upvotes,
+		"Downvotes":    downvotes,
+		"PublishedAt":  publishedAt,
+		"UnderReview":  false,
+		"TLDR":         article.TLDR,
+		"KeyDetails":   keyDetails,
+		"Links":        articleLinks,
+		"RelatedCards": relatedCards,
+		"ScoutsTake":   article.ScoutsTake,
+		"PersonaName":  app.cfg.Site.PersonaName,
 	}
 	app.renderTemplate(w, "article.html", data)
 }
@@ -465,6 +476,109 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		"PersonaName":   personaName,
 	}
 	app.renderTemplate(w, "card.html", data)
+}
+
+func (app *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	uptime := time.Since(app.startedAt).Round(time.Second).String()
+
+	var dbStatus string
+	var dbErr string
+	err := app.db.DB().QueryRow("SELECT 1").Err()
+	if err != nil {
+		dbStatus = "error"
+		dbErr = "database unreachable"
+	} else {
+		dbStatus = "ok"
+	}
+
+	status := "ok"
+	httpCode := http.StatusOK
+	if dbStatus != "ok" {
+		status = "degraded"
+		httpCode = http.StatusServiceUnavailable
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache, no-store")
+	w.WriteHeader(httpCode)
+
+	resp := map[string]string{
+		"status": status,
+		"db":     dbStatus,
+		"uptime": uptime,
+	}
+	if dbErr != "" {
+		resp["error"] = dbErr
+	}
+
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if len(query) > 200 {
+		query = query[:200]
+	}
+	pageArticles := 1
+	pageCards := 1
+	if p := r.URL.Query().Get("pa"); p != "" {
+		if v, err := fmt.Sscanf(p, "%d", &pageArticles); err != nil || v < 1 {
+			pageArticles = 1
+		}
+	}
+	if p := r.URL.Query().Get("pc"); p != "" {
+		if v, err := fmt.Sscanf(p, "%d", &pageCards); err != nil || v < 1 {
+			pageCards = 1
+		}
+	}
+
+	const perPage = 10
+
+	data := map[string]interface{}{
+		"Title": "Search",
+		"Query": query,
+	}
+
+	if query != "" {
+		// Sanitize for FTS5: wrap in double quotes to treat as phrase.
+		safeQuery := `"` + strings.ReplaceAll(query, `"`, `""`) + `"`
+
+		articleOffset := (pageArticles - 1) * perPage
+		articles, err := app.db.SearchArticles(safeQuery, perPage+1, articleOffset)
+		if err != nil {
+			articles = nil
+		}
+		hasMoreArticles := len(articles) > perPage
+		if hasMoreArticles {
+			articles = articles[:perPage]
+		}
+
+		cardOffset := (pageCards - 1) * perPage
+		cards, err := app.db.SearchCards(safeQuery, perPage+1, cardOffset)
+		if err != nil {
+			cards = nil
+		}
+		hasMoreCards := len(cards) > perPage
+		if hasMoreCards {
+			cards = cards[:perPage]
+		}
+
+		data["Articles"] = articles
+		data["Cards"] = cards
+		data["PageArticles"] = pageArticles
+		data["PageCards"] = pageCards
+		data["HasMoreArticles"] = hasMoreArticles
+		data["HasMoreCards"] = hasMoreCards
+		data["HasPrevArticles"] = pageArticles > 1
+		data["HasPrevCards"] = pageCards > 1
+		data["PrevPageArticles"] = pageArticles - 1
+		data["NextPageArticles"] = pageArticles + 1
+		data["PrevPageCards"] = pageCards - 1
+		data["NextPageCards"] = pageCards + 1
+		data["TotalResults"] = len(articles) + len(cards)
+	}
+
+	app.renderTemplate(w, "search.html", data)
 }
 
 // truncate strips HTML tags and returns the first n runes, appending "..." if truncated.

@@ -1,0 +1,62 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="search-page">
+    <h1>Search</h1>
+    <form action="/search" method="GET" class="search-form">
+        <input type="text" name="q" value="{{.Query}}" placeholder="Search articles and cards..." autofocus>
+        <button type="submit">Search</button>
+    </form>
+
+    {{if .Query}}
+    <div class="search-results">
+        {{if and (not .Articles) (not .Cards)}}
+        <p class="search-empty">No results found for "{{.Query}}".</p>
+        {{end}}
+
+        {{if .Articles}}
+        <section class="search-section">
+            <h2>Articles</h2>
+            <ul class="search-list">
+                {{range .Articles}}
+                <li class="search-item">
+                    <a href="/article/{{.Slug}}" class="search-item-title">{{.Title}}</a>
+                    <p class="search-item-excerpt">{{.Excerpt | safeHTML}}</p>
+                </li>
+                {{end}}
+            </ul>
+            <div class="search-pagination">
+                {{if .HasPrevArticles}}
+                <a href="/search?q={{.Query}}&pa={{.PrevPageArticles}}&pc={{.PageCards}}" class="btn-page">Previous</a>
+                {{end}}
+                {{if .HasMoreArticles}}
+                <a href="/search?q={{.Query}}&pa={{.NextPageArticles}}&pc={{.PageCards}}" class="btn-page">Next</a>
+                {{end}}
+            </div>
+        </section>
+        {{end}}
+
+        {{if .Cards}}
+        <section class="search-section">
+            <h2>Cards</h2>
+            <ul class="search-list">
+                {{range .Cards}}
+                <li class="search-item">
+                    <a href="/cards/{{.Slug}}" class="search-item-title">{{.Title}}</a>
+                    <p class="search-item-excerpt">{{.Excerpt | safeHTML}}</p>
+                </li>
+                {{end}}
+            </ul>
+            <div class="search-pagination">
+                {{if .HasPrevCards}}
+                <a href="/search?q={{.Query}}&pa={{.PageArticles}}&pc={{.PrevPageCards}}" class="btn-page">Previous</a>
+                {{end}}
+                {{if .HasMoreCards}}
+                <a href="/search?q={{.Query}}&pa={{.PageArticles}}&pc={{.NextPageCards}}" class="btn-page">Next</a>
+                {{end}}
+            </div>
+        </section>
+        {{end}}
+    </div>
+    {{end}}
+</div>
+{{end}}

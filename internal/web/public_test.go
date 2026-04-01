@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -96,7 +97,7 @@ func setupPublicTestApp(t *testing.T) (*App, *db.Database) {
 		t.Fatalf("failed to write subscribe template: %v", err)
 	}
 
-	app, err := NewAppWithTemplateDir(cfg, database, mgr, voteSvc, nil, templateDir)
+	app, err := NewAppWithTemplateDir(cfg, database, mgr, voteSvc, nil, nil, context.Background(), templateDir)
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}

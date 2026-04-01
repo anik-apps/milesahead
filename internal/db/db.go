@@ -2,7 +2,10 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"html"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -192,20 +195,27 @@ func (d *Database) GetRawArticlesByIDs(ids []int64) ([]RawArticle, error) {
 
 func (d *Database) CreateGeneratedArticle(a *GeneratedArticle) (int64, error) {
 	res, err := d.db.Exec(
-		`INSERT INTO generated_articles (title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.Title, a.Slug, a.Content, a.Type, a.Status, a.SourcesJSON, a.RevisionNumber, a.Featured, a.TLDR, a.KeyDetails, a.Links, a.ImageURL, a.ImageThumbnail, a.ImageAttribution, a.ScoutsTake,
+		`INSERT INTO generated_articles (title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.Title, a.Slug, a.Content, a.Type, a.Status, a.SourcesJSON, a.RevisionNumber, a.Featured, a.TLDR, a.KeyDetails, a.Links, a.ImageURL, a.ImageThumbnail, a.ImageAttribution, a.ScoutsTake, a.RelatedCardsJSON,
 	)
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if err := d.SyncArticleFTS(id); err != nil {
+		slog.Warn("FTS sync failed", "article_id", id, "error", err)
+	}
+	return id, nil
 }
 
 func (d *Database) GetGeneratedArticle(id int64) (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, created_at, updated_at, published_at FROM generated_articles WHERE id = ?`, id,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, created_at, updated_at, published_at FROM generated_articles WHERE id = ?`, id,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +264,7 @@ func (d *Database) UpdateArticleStatus(id int64, newStatus string) error {
 
 func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY created_at DESC`, status,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY created_at DESC`, status,
 	)
 	if err != nil {
 		return nil, err
@@ -265,7 +275,7 @@ func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, erro
 
 func (d *Database) ListPublishedArticles(limit, offset int) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
 		StatusApproved, limit, offset,
 	)
 	if err != nil {
@@ -279,7 +289,7 @@ func scanGeneratedArticles(rows *sql.Rows) ([]GeneratedArticle, error) {
 	var articles []GeneratedArticle
 	for rows.Next() {
 		var a GeneratedArticle
-		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt); err != nil {
 			return nil, err
 		}
 		articles = append(articles, a)
@@ -652,8 +662,8 @@ func (d *Database) CountArticleSources(articleID int64) (int, error) {
 func (d *Database) GetGeneratedArticleBySlug(slug string) (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, created_at, updated_at, published_at FROM generated_articles WHERE slug = ?`, slug,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, created_at, updated_at, published_at FROM generated_articles WHERE slug = ?`, slug,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -663,7 +673,7 @@ func (d *Database) GetGeneratedArticleBySlug(slug string) (*GeneratedArticle, er
 // ListPublishedArticlesByType returns approved articles filtered by type.
 func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset int) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND type = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND type = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
 		StatusApproved, articleType, limit, offset,
 	)
 	if err != nil {
@@ -677,13 +687,13 @@ func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset
 func (d *Database) GetFeaturedArticle() (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND featured = 1 ORDER BY published_at DESC LIMIT 1`, StatusApproved,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND featured = 1 ORDER BY published_at DESC LIMIT 1`, StatusApproved,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
 	if err != nil {
 		// Fallback to most recent approved.
 		err = d.db.QueryRow(
-			`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT 1`, StatusApproved,
-		).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+			`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT 1`, StatusApproved,
+		).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -742,7 +752,14 @@ func (d *Database) CreateReferencePage(page *ReferencePage) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+	if err := d.SyncCardFTS(id); err != nil {
+		slog.Warn("FTS sync failed", "card_id", id, "error", err)
+	}
+	return id, nil
 }
 
 func (d *Database) GetReferencePage(id int64) (*ReferencePage, error) {
@@ -812,6 +829,44 @@ func (d *Database) UpdateReferencePage(page *ReferencePage) error {
 		`UPDATE reference_pages SET slug = ?, title = ?, category = ?, issuer = ?, sections_json = ?, recent_changes_json = ?, pending_updates_json = ?, scouts_verdict = ?, keywords_json = ?, image_url = ?, apply_url = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		page.Slug, page.Title, page.Category, page.Issuer, page.SectionsJSON, page.RecentChangesJSON, page.PendingUpdatesJSON, page.ScoutsVerdict, page.KeywordsJSON, page.ImageURL, page.ApplyURL, page.Status, page.ID,
 	)
+	if err != nil {
+		return err
+	}
+	if err := d.SyncCardFTS(page.ID); err != nil {
+		slog.Warn("FTS sync failed", "card_id", page.ID, "error", err)
+	}
+	return nil
+}
+
+// AppendRecentChange prepends a new RecentChange to a reference page's
+// recent_changes_json, keeping at most 10 entries.
+func (d *Database) AppendRecentChange(cardID int64, change RecentChange) error {
+	page, err := d.GetReferencePage(cardID)
+	if err != nil {
+		return fmt.Errorf("getting reference page: %w", err)
+	}
+
+	var changes []RecentChange
+	if page.RecentChangesJSON != "" && page.RecentChangesJSON != "[]" {
+		if err := json.Unmarshal([]byte(page.RecentChangesJSON), &changes); err != nil {
+			return fmt.Errorf("unmarshaling recent changes: %w", err)
+		}
+	}
+
+	// Prepend
+	changes = append([]RecentChange{change}, changes...)
+
+	// Keep max 10
+	if len(changes) > 10 {
+		changes = changes[:10]
+	}
+
+	data, err := json.Marshal(changes)
+	if err != nil {
+		return fmt.Errorf("marshaling recent changes: %w", err)
+	}
+
+	_, err = d.db.Exec(`UPDATE reference_pages SET recent_changes_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(data), cardID)
 	return err
 }
 
@@ -843,4 +898,153 @@ func scanReferencePages(rows *sql.Rows) ([]ReferencePage, error) {
 		pages = append(pages, p)
 	}
 	return pages, rows.Err()
+}
+
+// --- FTS Sync ---
+
+// SyncArticleFTS updates the FTS index for a single article.
+func (d *Database) SyncArticleFTS(id int64) error {
+	var title, tldr, content string
+	err := d.db.QueryRow(`SELECT title, tldr, content FROM generated_articles WHERE id = ?`, id).Scan(&title, &tldr, &content)
+	if err != nil {
+		return err
+	}
+	// Delete existing entry, then insert.
+	d.db.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id)
+	_, err = d.db.Exec(
+		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
+		id, stripHTMLForDB(title), stripHTMLForDB(tldr), stripHTMLForDB(content),
+	)
+	return err
+}
+
+// SyncCardFTS updates the FTS index for a single reference page.
+func (d *Database) SyncCardFTS(id int64) error {
+	var title, sectionsJSON, verdict string
+	err := d.db.QueryRow(`SELECT title, sections_json, scouts_verdict FROM reference_pages WHERE id = ?`, id).Scan(&title, &sectionsJSON, &verdict)
+	if err != nil {
+		return err
+	}
+	d.db.Exec(`DELETE FROM cards_fts WHERE rowid = ?`, id)
+	_, err = d.db.Exec(
+		`INSERT INTO cards_fts(rowid, title, sections_text, scouts_verdict) VALUES (?, ?, ?, ?)`,
+		id, stripHTMLForDB(title), extractSectionsTextDB(sectionsJSON), stripHTMLForDB(verdict),
+	)
+	return err
+}
+
+// DeleteArticleFTS removes an article from the FTS index.
+func (d *Database) DeleteArticleFTS(id int64) error {
+	_, err := d.db.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id)
+	return err
+}
+
+// DeleteCardFTS removes a card from the FTS index.
+func (d *Database) DeleteCardFTS(id int64) error {
+	_, err := d.db.Exec(`DELETE FROM cards_fts WHERE rowid = ?`, id)
+	return err
+}
+
+// stripHTMLForDB removes HTML tags from a string and HTML-escapes the result
+// so that FTS content is safe to render with safeHTML (only FTS5 snippet
+// <mark> tags should be unescaped at render time).
+func stripHTMLForDB(s string) string {
+	var result []byte
+	inTag := false
+	for i := 0; i < len(s); i++ {
+		switch {
+		case s[i] == '<':
+			inTag = true
+		case s[i] == '>':
+			inTag = false
+			result = append(result, ' ')
+		case !inTag:
+			result = append(result, s[i])
+		}
+	}
+	return html.EscapeString(strings.TrimSpace(string(result)))
+}
+
+// extractSectionsTextDB extracts plain text from sections_json for FTS indexing.
+func extractSectionsTextDB(sectionsJSON string) string {
+	var sections []struct {
+		Title   string `json:"title"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal([]byte(sectionsJSON), &sections); err != nil {
+		return ""
+	}
+	var parts []string
+	for _, s := range sections {
+		parts = append(parts, stripHTMLForDB(s.Title))
+		parts = append(parts, stripHTMLForDB(s.Content))
+	}
+	return strings.Join(parts, " ")
+}
+
+// --- FTS Search ---
+
+// SearchResult holds a single search result.
+type SearchResult struct {
+	ID      int64
+	Title   string
+	Slug    string
+	Excerpt string
+	Type    string // "article" or "card"
+}
+
+// SearchArticles performs a full-text search on articles, returning only approved ones.
+func (d *Database) SearchArticles(query string, limit, offset int) ([]SearchResult, error) {
+	rows, err := d.db.Query(
+		`SELECT a.id, a.title, a.slug, snippet(articles_fts, 2, '<mark>', '</mark>', '...', 40) AS excerpt
+		FROM articles_fts f
+		JOIN generated_articles a ON a.id = f.rowid
+		WHERE articles_fts MATCH ? AND a.status = ?
+		ORDER BY rank
+		LIMIT ? OFFSET ?`,
+		query, StatusApproved, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt); err != nil {
+			return nil, err
+		}
+		r.Type = "article"
+		results = append(results, r)
+	}
+	return results, rows.Err()
+}
+
+// SearchCards performs a full-text search on reference pages, returning only published ones.
+func (d *Database) SearchCards(query string, limit, offset int) ([]SearchResult, error) {
+	rows, err := d.db.Query(
+		`SELECT p.id, p.title, p.slug, snippet(cards_fts, 1, '<mark>', '</mark>', '...', 40) AS excerpt
+		FROM cards_fts f
+		JOIN reference_pages p ON p.id = f.rowid
+		WHERE cards_fts MATCH ? AND p.status = 'published'
+		ORDER BY rank
+		LIMIT ? OFFSET ?`,
+		query, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt); err != nil {
+			return nil, err
+		}
+		r.Type = "card"
+		results = append(results, r)
+	}
+	return results, rows.Err()
 }

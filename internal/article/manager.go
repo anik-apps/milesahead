@@ -46,6 +46,11 @@ func (m *Manager) CreateFromPipeline(result *ai.PipelineResult, rawArticleIDs []
 		linksJSON = []byte("[]")
 	}
 
+	relatedCardsJSON, rcErr := json.Marshal(result.RelatedCards)
+	if rcErr != nil {
+		relatedCardsJSON = []byte("[]")
+	}
+
 	article := &db.GeneratedArticle{
 		Title:            result.Title,
 		Slug:             GenerateSlug(result.Title),
@@ -61,6 +66,7 @@ func (m *Manager) CreateFromPipeline(result *ai.PipelineResult, rawArticleIDs []
 		ImageThumbnail:   result.ImageThumbnail,
 		ImageAttribution: result.ImageAttribution,
 		ScoutsTake:       result.ScoutsTake,
+		RelatedCardsJSON: string(relatedCardsJSON),
 	}
 
 	articleID, err := m.db.CreateGeneratedArticle(article)

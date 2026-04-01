@@ -333,6 +333,38 @@ Content:
 Return ONLY your 1-2 sentence take, nothing else. No quotes, no labels, no prefix.`, personaName, title, tldr, truncated)
 }
 
+// CardUpdateDetectionPrompt builds a prompt that asks the AI whether a newly
+// approved article warrants an update to a specific section of a credit card
+// reference page. The AI returns either the literal string NO_UPDATE or a JSON
+// object with "updated_content" and "summary" keys.
+func CardUpdateDetectionPrompt(articleTitle, articleContent, cardTitle, sectionTitle, currentSectionContent string) string {
+	truncatedArticle := articleContent
+	if len(truncatedArticle) > 2000 {
+		truncatedArticle = truncatedArticle[:2000]
+	}
+	truncatedSection := currentSectionContent
+	if len(truncatedSection) > 1000 {
+		truncatedSection = truncatedSection[:1000]
+	}
+	return fmt.Sprintf(`You are a credit card reference page editor. A new article has been published that may affect a credit card's reference page.
+
+Determine whether the section below needs to be updated based on the article content. If the article contains relevant new information for this section, return a JSON object with the updated content and a short summary of the change. If the article is NOT relevant to this section, return exactly: NO_UPDATE
+
+Article Title: %s
+Article Content:
+%s
+
+Card: %s
+Section: %s
+Current Section Content:
+%s
+
+If an update is needed, return ONLY a JSON object (no other text):
+{"updated_content": "<the full updated section content in HTML>", "summary": "<1 sentence describing what changed>"}
+
+If no update is needed, return ONLY: NO_UPDATE`, articleTitle, truncatedArticle, cardTitle, sectionTitle, truncatedSection)
+}
+
 // RevisionPrompt builds a prompt for revising an article based on feedback.
 func RevisionPrompt(sources []SourceArticle, previousOutput, feedback, criticIssues string) string {
 	return fmt.Sprintf(`You are a miles-and-points content editor revising an article.

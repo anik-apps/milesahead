@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -64,7 +65,7 @@ func setupTestApp(t *testing.T) *App {
 		t.Fatalf("failed to write login template: %v", err)
 	}
 
-	app, err := NewAppWithTemplateDir(cfg, database, nil, nil, nil, filepath.Join(tmpDir, "templates"))
+	app, err := NewAppWithTemplateDir(cfg, database, nil, nil, nil, nil, context.Background(), filepath.Join(tmpDir, "templates"))
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}
