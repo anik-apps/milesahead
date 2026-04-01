@@ -50,21 +50,6 @@ var (
 		Help: "Total votes cast",
 	}, []string{"direction"}) // up, down
 
-	NewslettersSentTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "milesahead_newsletters_sent_total",
-		Help: "Total newsletters sent",
-	}, []string{"status"}) // success, error
-
-	NewsletterRecipientsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "milesahead_newsletter_recipients_total",
-		Help: "Total newsletter recipients",
-	}, []string{"status"}) // success, error
-
-	MailPollsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "milesahead_mail_polls_total",
-		Help: "Total IMAP mail polls",
-	}, []string{"status"}) // success, error
-
 	HTTPRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "milesahead_http_requests_total",
 		Help: "Total HTTP requests",
@@ -103,6 +88,17 @@ var (
 		Name: "milesahead_image_selected_total",
 		Help: "Total image selection outcomes",
 	}, []string{"outcome"}) // selected, no_match, search_failed
+
+	ResponseBytes = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "milesahead_http_response_bytes",
+		Help:    "HTTP response body size in bytes",
+		Buckets: []float64{256, 1024, 4096, 16384, 65536, 262144, 1048576},
+	}, []string{"method", "path"})
+
+	DailyUniqueVisitors = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "milesahead_daily_unique_visitors_total",
+		Help: "Approximate unique visitors (increments on first-seen IP hash)",
+	})
 )
 
 func Init() {
@@ -110,10 +106,10 @@ func Init() {
 		ScansTotal, ArticlesGeneratedTotal, ArticlesApprovedTotal,
 		ArticlesRejectedTotal, RevisionsTotal, AIAPIDuration,
 		AIAPIErrorsTotal, CriticScore, VotesTotal,
-		NewslettersSentTotal, NewsletterRecipientsTotal,
-		MailPollsTotal, HTTPRequestsTotal, HTTPDuration,
+		HTTPRequestsTotal, HTTPDuration,
 		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,
 		ImageSelectedScore, ImageSelectedTotal,
+		ResponseBytes, DailyUniqueVisitors,
 	)
 }
 

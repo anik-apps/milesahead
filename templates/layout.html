@@ -6,6 +6,18 @@
     <title>{{if .Title}}{{.Title}} - {{end}}Miles Ahead</title>
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="icon" href="/static/img/logo.svg" type="image/svg+xml">
+    {{if .MetaDescription}}<meta name="description" content="{{.MetaDescription}}">{{end}}
+    {{if .CanonicalURL}}<link rel="canonical" href="{{.CanonicalURL}}">{{end}}
+    <meta property="og:title" content="{{if .Title}}{{.Title}} - {{end}}Miles Ahead">
+    {{if .MetaDescription}}<meta property="og:description" content="{{.MetaDescription}}">{{end}}
+    {{if .CanonicalURL}}<meta property="og:url" content="{{.CanonicalURL}}">{{end}}
+    <meta property="og:type" content="{{or .OGType "website"}}">
+    {{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{end}}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{if .Title}}{{.Title}} - {{end}}Miles Ahead">
+    {{if .MetaDescription}}<meta name="twitter:description" content="{{.MetaDescription}}">{{end}}
+    {{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{end}}
+    {{if .JSONLD}}{{.JSONLD}}{{end}}
 </head>
 <body>
     <nav>
