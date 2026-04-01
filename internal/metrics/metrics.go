@@ -88,6 +88,17 @@ var (
 		Name: "milesahead_image_selected_total",
 		Help: "Total image selection outcomes",
 	}, []string{"outcome"}) // selected, no_match, search_failed
+
+	ResponseBytes = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "milesahead_http_response_bytes",
+		Help:    "HTTP response body size in bytes",
+		Buckets: []float64{256, 1024, 4096, 16384, 65536, 262144, 1048576},
+	}, []string{"method", "path"})
+
+	DailyUniqueVisitors = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "milesahead_daily_unique_visitors_total",
+		Help: "Approximate unique visitors (increments on first-seen IP hash)",
+	})
 )
 
 func Init() {
@@ -98,6 +109,7 @@ func Init() {
 		HTTPRequestsTotal, HTTPDuration,
 		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,
 		ImageSelectedScore, ImageSelectedTotal,
+		ResponseBytes, DailyUniqueVisitors,
 	)
 }
 
