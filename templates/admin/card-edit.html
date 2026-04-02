@@ -59,6 +59,40 @@
             </div>
         </div>
 
+        <h2 style="margin-bottom:1rem;">Structured Data</h2>
+        <div class="source-form-grid" style="margin-bottom:1.5rem;">
+            <div class="form-group">
+                <label for="annual_fee_amount">Annual Fee Amount</label>
+                <input type="number" id="annual_fee_amount" name="annual_fee_amount" value="{{.Card.AnnualFeeAmount}}" placeholder="0">
+            </div>
+            <div class="form-group">
+                <label for="annual_fee_note">Annual Fee Note</label>
+                <input type="text" id="annual_fee_note" name="annual_fee_note" value="{{.Card.AnnualFeeNote}}" placeholder="e.g. Waived first year">
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+                <label for="welcome_bonus_text">Welcome Bonus Text</label>
+                <input type="text" id="welcome_bonus_text" name="welcome_bonus_text" value="{{.Card.WelcomeBonusText}}" placeholder="e.g. 75,000 points after $4k spend in 6 months">
+            </div>
+        </div>
+        <div style="margin-bottom:1.5rem;">
+            <div class="form-group" style="margin-bottom:1rem;">
+                <label for="earning_rates_json">Earning Rates JSON</label>
+                <textarea id="earning_rates_json" name="earning_rates_json" rows="8" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"dining": {"rate": "3x", "note": ""}, ...}'>{{.Card.EarningRatesJSON}}</textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:1rem;">
+                <label for="credits_json">Credits JSON</label>
+                <textarea id="credits_json" name="credits_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"airline": {"amount": "$200/yr", "note": ""}, ...}'>{{.Card.CreditsJSON}}</textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:1rem;">
+                <label for="benefits_json">Benefits JSON</label>
+                <textarea id="benefits_json" name="benefits_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"lounge_access": {"value": "Priority Pass", "note": ""}, ...}'>{{.Card.BenefitsJSON}}</textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:1rem;">
+                <label for="protections_json">Protections JSON</label>
+                <textarea id="protections_json" name="protections_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"purchase_protection": {"amount": "$10,000", "note": "120 days"}, ...}'>{{.Card.ProtectionsJSON}}</textarea>
+            </div>
+        </div>
+
         <h2 style="margin-bottom:1rem;">Sections</h2>
         <div id="sections-container">
             {{range $i, $s := .Sections}}

@@ -780,32 +780,86 @@ type compareCardView struct {
 }
 
 // earningRate represents one row in the earning_rates_json array.
+// earningRate holds parsed earning rate data for a single category.
 type earningRate struct {
-	Category    string `json:"category"`
-	DirectRate  string `json:"direct_rate"`
-	PortalRate  string `json:"portal_rate"`
-	Note        string `json:"note"`
+	Category    string
+	DirectRate  string
+	PortalRate  string
+	Note        string
 }
 
-// creditItem represents one row in the credits_json array.
-type creditItem struct {
-	Name   string `json:"name"`
-	Value  string `json:"value"`
-	Note   string `json:"note"`
+// genericItem holds a parsed credit/benefit/protection row.
+type genericItem struct {
+	Name  string
+	Value string
+	Note  string
 }
 
-// benefitItem represents one row in the benefits_json array.
-type benefitItem struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-	Note  string `json:"note"`
+// earningRateCategories defines the display order and labels for earning rate keys.
+var earningRateCategories = []struct {
+	Key   string
+	Label string
+}{
+	{"dining", "Dining"},
+	{"groceries", "Groceries"},
+	{"gas", "Gas"},
+	{"airlines", "Airlines"},
+	{"hotels", "Hotels"},
+	{"car_rental", "Car Rental"},
+	{"other_travel", "Other Travel"},
+	{"streaming", "Streaming"},
+	{"base", "Everything Else"},
 }
 
-// protectionItem represents one row in the protections_json array.
-type protectionItem struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-	Note  string `json:"note"`
+// directPortalPairs maps base keys that have direct/portal variants.
+var directPortalPairs = map[string]bool{
+	"airlines":     true,
+	"hotels":       true,
+	"car_rental":   true,
+	"other_travel": true,
+}
+
+// genericCategories defines known keys and labels for credits, benefits, protections.
+var genericCategories = map[string][]struct {
+	Key   string
+	Label string
+}{
+	"credits": {
+		{"airline", "Airline Credit"},
+		{"hotel", "Hotel Credit"},
+		{"dining", "Dining Credit"},
+		{"uber", "Uber Credit"},
+		{"entertainment", "Entertainment Credit"},
+		{"streaming", "Streaming Credit"},
+		{"transit", "Transit Credit"},
+		{"wellness", "Wellness Credit"},
+		{"saks", "Saks Credit"},
+		{"clear", "CLEAR Credit"},
+		{"global_entry", "Global Entry/TSA PreCheck"},
+		{"equinox", "Equinox Credit"},
+		{"digital", "Digital Entertainment Credit"},
+	},
+	"benefits": {
+		{"lounge_access", "Lounge Access"},
+		{"hotel_status", "Hotel Status"},
+		{"airline_status", "Airline Status"},
+		{"global_entry", "Global Entry/TSA PreCheck"},
+		{"travel_insurance", "Travel Insurance"},
+		{"concierge", "Concierge"},
+		{"companion_pass", "Companion Certificate"},
+		{"free_night", "Free Night Award"},
+		{"priority_boarding", "Priority Boarding"},
+	},
+	"protections": {
+		{"purchase_protection", "Purchase Protection"},
+		{"return_protection", "Return Protection"},
+		{"extended_warranty", "Extended Warranty"},
+		{"trip_cancellation", "Trip Cancellation"},
+		{"trip_delay", "Trip Delay"},
+		{"baggage_insurance", "Baggage Insurance"},
+		{"car_rental_insurance", "Car Rental Insurance"},
+		{"cell_phone", "Cell Phone Protection"},
+	},
 }
 
 // extractNumber extracts the first numeric value from strings like "3x", "5x", "2%", "$300".
@@ -948,49 +1002,53 @@ func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 
 	colSpan := len(cards) + 1
 
-	// Parse earning rates and build rows.
-	var allEarningRates [][]earningRate
-	for _, c := range cards {
-		var rates []earningRate
-		if c.EarningRatesJSON != "" && c.EarningRatesJSON != "[]" {
-			json.Unmarshal([]byte(c.EarningRatesJSON), &rates)
+	// Parse earning rates from map-format JSON and build rows.
+	allEarningMaps := make([]map[string]json.RawMessage, len(cards))
+	for i, c := range cards {
+		if c.EarningRatesJSON != "" && c.EarningRatesJSON != "[]" && c.EarningRatesJSON != "{}" {
+			json.Unmarshal([]byte(c.EarningRatesJSON), &allEarningMaps[i])
 		}
-		allEarningRates = append(allEarningRates, rates)
+		if allEarningMaps[i] == nil {
+			allEarningMaps[i] = make(map[string]json.RawMessage)
+		}
 	}
-	earningRateRows := buildEarningRateRows(allEarningRates, len(cards))
+	earningRateRows := buildEarningRateRowsFromMaps(allEarningMaps, len(cards))
 
-	// Parse credits.
-	var allCredits [][]creditItem
-	for _, c := range cards {
-		var items []creditItem
-		if c.CreditsJSON != "" && c.CreditsJSON != "[]" {
-			json.Unmarshal([]byte(c.CreditsJSON), &items)
+	// Parse credits from map-format JSON.
+	allCreditMaps := make([]map[string]json.RawMessage, len(cards))
+	for i, c := range cards {
+		if c.CreditsJSON != "" && c.CreditsJSON != "[]" && c.CreditsJSON != "{}" {
+			json.Unmarshal([]byte(c.CreditsJSON), &allCreditMaps[i])
 		}
-		allCredits = append(allCredits, items)
+		if allCreditMaps[i] == nil {
+			allCreditMaps[i] = make(map[string]json.RawMessage)
+		}
 	}
-	creditRows := buildGenericRows(allCredits, len(cards))
+	creditRows := buildGenericRowsFromMaps(allCreditMaps, len(cards), "credits")
 
-	// Parse benefits.
-	var allBenefits [][]benefitItem
-	for _, c := range cards {
-		var items []benefitItem
-		if c.BenefitsJSON != "" && c.BenefitsJSON != "[]" {
-			json.Unmarshal([]byte(c.BenefitsJSON), &items)
+	// Parse benefits from map-format JSON.
+	allBenefitMaps := make([]map[string]json.RawMessage, len(cards))
+	for i, c := range cards {
+		if c.BenefitsJSON != "" && c.BenefitsJSON != "[]" && c.BenefitsJSON != "{}" {
+			json.Unmarshal([]byte(c.BenefitsJSON), &allBenefitMaps[i])
 		}
-		allBenefits = append(allBenefits, items)
+		if allBenefitMaps[i] == nil {
+			allBenefitMaps[i] = make(map[string]json.RawMessage)
+		}
 	}
-	benefitRows := buildGenericRows(allBenefits, len(cards))
+	benefitRows := buildGenericRowsFromMaps(allBenefitMaps, len(cards), "benefits")
 
-	// Parse protections.
-	var allProtections [][]protectionItem
-	for _, c := range cards {
-		var items []protectionItem
-		if c.ProtectionsJSON != "" && c.ProtectionsJSON != "[]" {
-			json.Unmarshal([]byte(c.ProtectionsJSON), &items)
+	// Parse protections from map-format JSON.
+	allProtectionMaps := make([]map[string]json.RawMessage, len(cards))
+	for i, c := range cards {
+		if c.ProtectionsJSON != "" && c.ProtectionsJSON != "[]" && c.ProtectionsJSON != "{}" {
+			json.Unmarshal([]byte(c.ProtectionsJSON), &allProtectionMaps[i])
 		}
-		allProtections = append(allProtections, items)
+		if allProtectionMaps[i] == nil {
+			allProtectionMaps[i] = make(map[string]json.RawMessage)
+		}
 	}
-	protectionRows := buildGenericRows(allProtections, len(cards))
+	protectionRows := buildGenericRowsFromMaps(allProtectionMaps, len(cards), "protections")
 
 	data := map[string]interface{}{
 		"Title":           "Compare Cards",
@@ -1013,142 +1071,341 @@ func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 	app.renderTemplate(w, "compare.html", data)
 }
 
-// buildEarningRateRows merges earning rates across cards into comparison rows.
-func buildEarningRateRows(allRates [][]earningRate, numCards int) []compareRow {
-	// Collect all unique categories in order.
-	catOrder := []string{}
-	catSeen := map[string]bool{}
-	for _, rates := range allRates {
-		for _, r := range rates {
-			if !catSeen[r.Category] {
-				catSeen[r.Category] = true
-				catOrder = append(catOrder, r.Category)
-			}
-		}
-	}
+// rateEntry is the JSON shape for a single earning rate value.
+type rateEntry struct {
+	Rate string `json:"rate"`
+	Note string `json:"note"`
+}
 
-	// Build a lookup per card.
-	type rateMap = map[string]earningRate
-	cardMaps := make([]rateMap, numCards)
-	for i, rates := range allRates {
-		m := make(rateMap)
-		for _, r := range rates {
-			m[r.Category] = r
-		}
-		cardMaps[i] = m
-	}
+// transferPartnersEntry is the JSON shape for the transfer_partners key.
+type transferPartnersEntry struct {
+	Program     string   `json:"program"`
+	Count       string   `json:"count"`
+	KeyPartners []string `json:"key_partners"`
+}
 
+// genericEntry is the JSON shape for a credit/benefit/protection value.
+type genericEntry struct {
+	Amount string `json:"amount"`
+	Value  string `json:"value"`
+	Note   string `json:"note"`
+}
+
+// nicheEntry is the JSON shape for items in the "niche" array.
+type nicheEntry struct {
+	Label string `json:"label"`
+	Note  string `json:"note"`
+	Value string `json:"value"`
+}
+
+// buildEarningRateRowsFromMaps parses map-format earning rate JSON into comparison rows.
+func buildEarningRateRowsFromMaps(allMaps []map[string]json.RawMessage, numCards int) []compareRow {
 	var rows []compareRow
-	for _, cat := range catOrder {
-		cells := make([]compareCell, numCards)
-		hasPortal := false
-		for i := 0; i < numCards; i++ {
-			if r, ok := cardMaps[i][cat]; ok && r.PortalRate != "" && r.PortalRate != "-" {
-				hasPortal = true
-				break
-			}
-		}
 
+	for _, cat := range earningRateCategories {
+		if directPortalPairs[cat.Key] {
+			// Build combined Direct|Portal row.
+			directKey := cat.Key + "_direct"
+			portalKey := cat.Key + "_portal"
+
+			// Check if any card has this category.
+			hasAny := false
+			for i := 0; i < numCards; i++ {
+				if _, ok := allMaps[i][directKey]; ok {
+					hasAny = true
+					break
+				}
+				if _, ok := allMaps[i][portalKey]; ok {
+					hasAny = true
+					break
+				}
+			}
+			if !hasAny {
+				continue
+			}
+
+			cells := make([]compareCell, numCards)
+			hasPortal := false
+			for i := 0; i < numCards; i++ {
+				if raw, ok := allMaps[i][portalKey]; ok {
+					var e rateEntry
+					json.Unmarshal(raw, &e)
+					if e.Rate != "" && e.Rate != "-" {
+						hasPortal = true
+						break
+					}
+				}
+			}
+
+			for i := 0; i < numCards; i++ {
+				var directRate, portalRate, note string
+				if raw, ok := allMaps[i][directKey]; ok {
+					var e rateEntry
+					json.Unmarshal(raw, &e)
+					directRate = e.Rate
+					note = e.Note
+				}
+				if raw, ok := allMaps[i][portalKey]; ok {
+					var e rateEntry
+					json.Unmarshal(raw, &e)
+					portalRate = e.Rate
+					if note == "" {
+						note = e.Note
+					}
+				}
+
+				if directRate == "" && portalRate == "" {
+					cells[i] = compareCell{Value: "-"}
+					continue
+				}
+
+				if hasPortal {
+					d := directRate
+					if d == "" {
+						d = "-"
+					}
+					p := portalRate
+					if p == "" {
+						p = "-"
+					}
+					cells[i] = compareCell{Value: d + " D | " + p + " P", Note: note}
+				} else {
+					v := directRate
+					if v == "" {
+						v = "-"
+					}
+					cells[i] = compareCell{Value: v, Note: note}
+				}
+			}
+
+			if hasPortal {
+				portalCells := make([]compareCell, numCards)
+				for i := 0; i < numCards; i++ {
+					if raw, ok := allMaps[i][portalKey]; ok {
+						var e rateEntry
+						json.Unmarshal(raw, &e)
+						portalCells[i] = compareCell{Value: e.Rate}
+					}
+				}
+				computeWinners(portalCells)
+				for i, pc := range portalCells {
+					cells[i].IsWinner = pc.IsWinner
+				}
+			} else {
+				computeWinners(cells)
+			}
+
+			label := cat.Label
+			if hasPortal {
+				label = cat.Label + " (D|P)"
+			}
+			rows = append(rows, compareRow{Label: label, Cells: cells})
+		} else {
+			// Simple category (dining, groceries, gas, streaming, base).
+			hasAny := false
+			for i := 0; i < numCards; i++ {
+				if _, ok := allMaps[i][cat.Key]; ok {
+					hasAny = true
+					break
+				}
+			}
+			if !hasAny {
+				continue
+			}
+
+			cells := make([]compareCell, numCards)
+			for i := 0; i < numCards; i++ {
+				raw, ok := allMaps[i][cat.Key]
+				if !ok {
+					cells[i] = compareCell{Value: "-"}
+					continue
+				}
+				var e rateEntry
+				json.Unmarshal(raw, &e)
+				v := e.Rate
+				if v == "" {
+					v = "-"
+				}
+				cells[i] = compareCell{Value: v, Note: e.Note}
+			}
+			computeWinners(cells)
+			rows = append(rows, compareRow{Label: cat.Label, Cells: cells})
+		}
+	}
+
+	// Transfer partners row.
+	hasTP := false
+	for i := 0; i < numCards; i++ {
+		if _, ok := allMaps[i]["transfer_partners"]; ok {
+			hasTP = true
+			break
+		}
+	}
+	if hasTP {
+		cells := make([]compareCell, numCards)
 		for i := 0; i < numCards; i++ {
-			r, ok := cardMaps[i][cat]
+			raw, ok := allMaps[i]["transfer_partners"]
 			if !ok {
 				cells[i] = compareCell{Value: "-"}
 				continue
 			}
-			var val string
-			if hasPortal {
-				d := r.DirectRate
-				if d == "" { d = "-" }
-				p := r.PortalRate
-				if p == "" { p = "-" }
-				val = d + " D | " + p + " P"
-			} else {
-				val = r.DirectRate
-				if val == "" { val = "-" }
+			var tp transferPartnersEntry
+			json.Unmarshal(raw, &tp)
+			val := tp.Program
+			if tp.Count != "" {
+				val += " (" + tp.Count + " partners)"
 			}
-			cells[i] = compareCell{Value: val, Note: r.Note}
+			note := ""
+			if len(tp.KeyPartners) > 0 {
+				note = strings.Join(tp.KeyPartners, ", ")
+			}
+			cells[i] = compareCell{Value: val, Note: note}
+		}
+		rows = append(rows, compareRow{Label: "Transfer Partners", Cells: cells})
+	}
+
+	// Niche earning items.
+	for i := 0; i < numCards; i++ {
+		raw, ok := allMaps[i]["niche"]
+		if !ok {
+			continue
+		}
+		var niches []nicheEntry
+		json.Unmarshal(raw, &niches)
+		for _, n := range niches {
+			// Add a row for each niche item only if not already present.
+			cells := make([]compareCell, numCards)
+			for j := 0; j < numCards; j++ {
+				cells[j] = compareCell{Value: "-"}
+			}
+			v := n.Value
+			if v == "" {
+				v = "Yes"
+			}
+			cells[i] = compareCell{Value: v, Note: n.Note}
+			rows = append(rows, compareRow{Label: n.Label, Cells: cells})
+		}
+	}
+
+	return rows
+}
+
+// buildGenericRowsFromMaps parses map-format credit/benefit/protection JSON into comparison rows.
+func buildGenericRowsFromMaps(allMaps []map[string]json.RawMessage, numCards int, section string) []compareRow {
+	var rows []compareRow
+
+	knownKeys := genericCategories[section]
+
+	// Process known keys in order.
+	for _, cat := range knownKeys {
+		hasAny := false
+		for i := 0; i < numCards; i++ {
+			if _, ok := allMaps[i][cat.Key]; ok {
+				hasAny = true
+				break
+			}
+		}
+		if !hasAny {
+			continue
 		}
 
-		// Compute winner based on the best portal rate if portal exists, otherwise direct rate.
-		if hasPortal {
-			portalCells := make([]compareCell, numCards)
-			for i := 0; i < numCards; i++ {
-				if r, ok := cardMaps[i][cat]; ok {
-					portalCells[i] = compareCell{Value: r.PortalRate}
-				}
+		cells := make([]compareCell, numCards)
+		for i := 0; i < numCards; i++ {
+			raw, ok := allMaps[i][cat.Key]
+			if !ok {
+				cells[i] = compareCell{Value: "-"}
+				continue
 			}
-			computeWinners(portalCells)
-			for i, pc := range portalCells {
-				cells[i].IsWinner = pc.IsWinner
+			var e genericEntry
+			json.Unmarshal(raw, &e)
+			v := e.Amount
+			if v == "" {
+				v = e.Value
 			}
-		} else {
-			computeWinners(cells)
+			if v == "" {
+				v = "-"
+			}
+			cells[i] = compareCell{Value: v, Note: e.Note}
 		}
+		computeWinners(cells)
+		rows = append(rows, compareRow{Label: cat.Label, Cells: cells})
+	}
 
-		label := cat
-		if hasPortal {
-			label = cat + " (D|P)"
+	// Process unknown keys (not in knownKeys) that appear in any card.
+	knownSet := make(map[string]bool)
+	for _, cat := range knownKeys {
+		knownSet[cat.Key] = true
+	}
+	knownSet["niche"] = true // handled separately
+
+	// Collect unknown keys in order of first appearance.
+	var unknownKeys []string
+	unknownSeen := make(map[string]bool)
+	for i := 0; i < numCards; i++ {
+		for key := range allMaps[i] {
+			if !knownSet[key] && !unknownSeen[key] {
+				unknownSeen[key] = true
+				unknownKeys = append(unknownKeys, key)
+			}
 		}
+	}
+
+	for _, key := range unknownKeys {
+		cells := make([]compareCell, numCards)
+		for i := 0; i < numCards; i++ {
+			raw, ok := allMaps[i][key]
+			if !ok {
+				cells[i] = compareCell{Value: "-"}
+				continue
+			}
+			var e genericEntry
+			json.Unmarshal(raw, &e)
+			v := e.Amount
+			if v == "" {
+				v = e.Value
+			}
+			if v == "" {
+				v = "-"
+			}
+			cells[i] = compareCell{Value: v, Note: e.Note}
+		}
+		// Format key as label: replace underscores, title case words.
+		label := strings.ReplaceAll(key, "_", " ")
+		words := strings.Fields(label)
+		for wi, w := range words {
+			if len(w) > 0 {
+				words[wi] = strings.ToUpper(w[:1]) + w[1:]
+			}
+		}
+		label = strings.Join(words, " ")
+		computeWinners(cells)
 		rows = append(rows, compareRow{Label: label, Cells: cells})
 	}
 
-	// Add transfer partners row.
-	// Not from JSON data; skip if no earning rates exist.
+	// Niche items.
+	for i := 0; i < numCards; i++ {
+		raw, ok := allMaps[i]["niche"]
+		if !ok {
+			continue
+		}
+		var niches []nicheEntry
+		json.Unmarshal(raw, &niches)
+		for _, n := range niches {
+			cells := make([]compareCell, numCards)
+			for j := 0; j < numCards; j++ {
+				cells[j] = compareCell{Value: "-"}
+			}
+			v := n.Value
+			if v == "" {
+				v = "Yes"
+			}
+			cells[i] = compareCell{Value: v, Note: n.Note}
+			rows = append(rows, compareRow{Label: n.Label, Cells: cells})
+		}
+	}
 
 	return rows
 }
-
-// genericItem is an interface-like struct for credits/benefits/protections.
-type genericItem struct {
-	Name  string
-	Value string
-	Note  string
-}
-
-// buildGenericRows merges items across cards by name.
-func buildGenericRows[T interface{ getName() string; getVal() string; getNote() string }](allItems [][]T, numCards int) []compareRow {
-	nameOrder := []string{}
-	nameSeen := map[string]bool{}
-	type itemMap = map[string]T
-	cardMaps := make([]itemMap, numCards)
-	for i, items := range allItems {
-		m := make(itemMap)
-		for _, item := range items {
-			n := item.getName()
-			m[n] = item
-			if !nameSeen[n] {
-				nameSeen[n] = true
-				nameOrder = append(nameOrder, n)
-			}
-		}
-		cardMaps[i] = m
-	}
-
-	var rows []compareRow
-	for _, name := range nameOrder {
-		cells := make([]compareCell, numCards)
-		for i := 0; i < numCards; i++ {
-			if item, ok := cardMaps[i][name]; ok {
-				cells[i] = compareCell{Value: item.getVal(), Note: item.getNote()}
-			} else {
-				cells[i] = compareCell{Value: "-"}
-			}
-		}
-		computeWinners(cells)
-		rows = append(rows, compareRow{Label: name, Cells: cells})
-	}
-	return rows
-}
-
-func (c creditItem) getName() string    { return c.Name }
-func (c creditItem) getVal() string     { return c.Value }
-func (c creditItem) getNote() string    { return c.Note }
-func (b benefitItem) getName() string   { return b.Name }
-func (b benefitItem) getVal() string    { return b.Value }
-func (b benefitItem) getNote() string   { return b.Note }
-func (p protectionItem) getName() string { return p.Name }
-func (p protectionItem) getVal() string  { return p.Value }
-func (p protectionItem) getNote() string { return p.Note }
 
 // truncate strips HTML tags and returns the first n runes, appending "..." if truncated.
 func truncate(s string, n int) string {

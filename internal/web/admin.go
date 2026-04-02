@@ -885,9 +885,33 @@ func (app *App) handleAdminCardCreate(w http.ResponseWriter, r *http.Request) {
 	sectionsJSON, _ := json.Marshal(sections)
 	page.SectionsJSON = string(sectionsJSON)
 
+	// Parse structured data fields.
+	if feeStr := strings.TrimSpace(r.FormValue("annual_fee_amount")); feeStr != "" {
+		fmt.Sscanf(feeStr, "%d", &page.AnnualFeeAmount)
+	}
+	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
+	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
+	page.EarningRatesJSON = strings.TrimSpace(r.FormValue("earning_rates_json"))
+	page.CreditsJSON = strings.TrimSpace(r.FormValue("credits_json"))
+	page.BenefitsJSON = strings.TrimSpace(r.FormValue("benefits_json"))
+	page.ProtectionsJSON = strings.TrimSpace(r.FormValue("protections_json"))
+
 	// Initialize empty JSON arrays.
 	page.RecentChangesJSON = "[]"
 	page.PendingUpdatesJSON = "[]"
+	if page.EarningRatesJSON == "" {
+		page.EarningRatesJSON = "{}"
+	}
+	if page.CreditsJSON == "" {
+		page.CreditsJSON = "{}"
+	}
+	if page.BenefitsJSON == "" {
+		page.BenefitsJSON = "{}"
+	}
+	if page.ProtectionsJSON == "" {
+		page.ProtectionsJSON = "{}"
+	}
+	page.FlaggedFieldsJSON = "[]"
 
 	if _, err := app.db.CreateReferencePage(page); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create card: %v", err), http.StatusInternalServerError)
@@ -965,6 +989,27 @@ func (app *App) handleAdminCardUpdate(w http.ResponseWriter, r *http.Request) {
 	page.ApplyURL = strings.TrimSpace(r.FormValue("apply_url"))
 	page.Status = r.FormValue("status")
 	page.ScoutsVerdict = r.FormValue("scouts_verdict")
+
+	// Parse structured data fields.
+	if feeStr := strings.TrimSpace(r.FormValue("annual_fee_amount")); feeStr != "" {
+		fmt.Sscanf(feeStr, "%d", &page.AnnualFeeAmount)
+	} else {
+		page.AnnualFeeAmount = 0
+	}
+	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
+	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
+	if v := strings.TrimSpace(r.FormValue("earning_rates_json")); v != "" {
+		page.EarningRatesJSON = v
+	}
+	if v := strings.TrimSpace(r.FormValue("credits_json")); v != "" {
+		page.CreditsJSON = v
+	}
+	if v := strings.TrimSpace(r.FormValue("benefits_json")); v != "" {
+		page.BenefitsJSON = v
+	}
+	if v := strings.TrimSpace(r.FormValue("protections_json")); v != "" {
+		page.ProtectionsJSON = v
+	}
 
 	if page.Title == "" || page.Slug == "" {
 		http.Error(w, "Title and slug are required", http.StatusBadRequest)

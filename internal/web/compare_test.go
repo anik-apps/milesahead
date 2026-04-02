@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -104,19 +103,20 @@ func setupCompareTestApp(t *testing.T) (*App, *db.Database) {
 func createTestCard(t *testing.T, database *db.Database, title, slug, issuer, category string) string {
 	t.Helper()
 
-	earningRates, _ := json.Marshal([]earningRate{
-		{Category: "Dining", DirectRate: "3x", PortalRate: "5x", Note: ""},
-		{Category: "Travel", DirectRate: "2x", PortalRate: "4x", Note: ""},
-	})
-	credits, _ := json.Marshal([]creditItem{
-		{Name: "Dining Credit", Value: "$120", Note: "Annual"},
-	})
-	benefits, _ := json.Marshal([]benefitItem{
-		{Name: "Lounge Access", Value: "Priority Pass", Note: ""},
-	})
-	protections, _ := json.Marshal([]protectionItem{
-		{Name: "Purchase Protection", Value: "$10,000", Note: "120 days"},
-	})
+	earningRates := []byte(`{
+		"dining": {"rate": "3x", "note": ""},
+		"other_travel_direct": {"rate": "2x", "note": ""},
+		"other_travel_portal": {"rate": "4x", "note": ""}
+	}`)
+	credits := []byte(`{
+		"dining": {"amount": "$120", "note": "Annual"}
+	}`)
+	benefits := []byte(`{
+		"lounge_access": {"value": "Priority Pass", "note": ""}
+	}`)
+	protections := []byte(`{
+		"purchase_protection": {"amount": "$10,000", "note": "120 days"}
+	}`)
 
 	_, err := database.CreateReferencePage(&db.ReferencePage{
 		Slug:               slug,
@@ -170,8 +170,8 @@ func TestCompare_TwoCards(t *testing.T) {
 	if !strings.Contains(body, "Dining") {
 		t.Error("expected body to contain earning rate category")
 	}
-	if !strings.Contains(body, "Dining Credit") {
-		t.Error("expected body to contain credit name")
+	if !strings.Contains(body, "credit-row") {
+		t.Error("expected body to contain credit rows")
 	}
 	if strings.Contains(body, "selector") {
 		t.Error("should NOT show selector mode when 2 valid cards provided")
