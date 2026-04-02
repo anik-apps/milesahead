@@ -246,14 +246,15 @@ func tagDisplayName(slug string) string {
 
 // orderedTagGroups returns tag groups as an ordered slice of tag/articles pairs.
 type tagGroup struct {
-	Tag      string
-	Articles []articleItem
+	Tag         string
+	DisplayName string
+	Articles    []articleItem
 }
 
 func orderedTagGroups(groups map[string][]articleItem) []tagGroup {
 	result := make([]tagGroup, 0, len(groups))
 	for tag, articles := range groups {
-		result = append(result, tagGroup{Tag: tag, Articles: articles})
+		result = append(result, tagGroup{Tag: tag, DisplayName: tagDisplayName(tag), Articles: articles})
 	}
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Tag < result[j].Tag
