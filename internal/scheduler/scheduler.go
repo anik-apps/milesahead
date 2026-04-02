@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -32,19 +33,12 @@ func (s *Scheduler) AddMailPollJob(interval time.Duration, pollFunc func()) {
 	s.cron.AddFunc(fmt.Sprintf("@every %s", interval), pollFunc)
 }
 
-// AddNewsletterJob adds a daily newsletter job at the configured time and timezone.
-// sendTime should be in "HH:MM" format, timezone should be a valid IANA timezone name.
-func (s *Scheduler) AddNewsletterJob(sendTime, timezone string, sendFunc func()) {
-	loc, err := time.LoadLocation(timezone)
+// AddWeeklyJob adds a job with a full cron expression (6-field with seconds).
+func (s *Scheduler) AddWeeklyJob(name, cronExpr string, fn func()) {
+	_, err := s.cron.AddFunc(cronExpr, fn)
 	if err != nil {
-		loc = time.UTC
+		slog.Error("failed to add weekly job", "name", name, "error", err)
 	}
-
-	var hour, min int
-	fmt.Sscanf(sendTime, "%d:%d", &hour, &min)
-
-	spec := fmt.Sprintf("CRON_TZ=%s %d %d * * *", loc.String(), min, hour)
-	s.cron.AddFunc(spec, sendFunc)
 }
 
 // AddRevisionJob adds a periodic revision processing job at the given interval.

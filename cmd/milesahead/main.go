@@ -106,7 +106,7 @@ func main() {
 			mailSender.SendVoteAlert(cfg.Mail.SMTP.From, articleID, a.Title)
 		}
 	})
-	newsletterSvc := newsletter.NewService(database, mailSender, cfg.Newsletter)
+	newsletterSvc := newsletter.NewServiceWithAI(database, mailSender, cfg.Newsletter, hfClient, cfg.AI.CriticModel)
 
 	// Scheduler
 	sched := scheduler.New()
@@ -297,12 +297,23 @@ func main() {
 	} else {
 		slog.Info("mail polling disabled", "reason", "IMAP not configured")
 	}
-	sched.AddNewsletterJob(cfg.Newsletter.SendTime, cfg.Newsletter.Timezone, func() {
-		slog.Info("scheduled job started", "job", "newsletter")
-		if err := newsletterSvc.SendDaily(); err != nil {
-			slog.Error("scheduled job failed", "job", "newsletter", "error", err)
-		}
-	})
+	// Friday 20:00 ET — build newsletter
+	sched.AddWeeklyJob("newsletter-build",
+		"CRON_TZ=America/New_York 0 0 20 * * 5",
+		func() {
+			if _, err := newsletterSvc.BuildWeekly(); err != nil {
+				slog.Error("newsletter build failed", "error", err)
+			}
+		})
+
+	// Saturday 08:00 ET — send newsletter
+	sched.AddWeeklyJob("newsletter-send",
+		"CRON_TZ=America/New_York 0 0 8 * * 6",
+		func() {
+			if err := newsletterSvc.SendWeekly(); err != nil {
+				slog.Error("newsletter send failed", "error", err)
+			}
+		})
 	sched.Start()
 
 	// Card update detector
