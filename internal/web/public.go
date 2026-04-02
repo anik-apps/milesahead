@@ -719,6 +719,405 @@ func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 	app.renderTemplate(w, "search.html", data)
 }
 
+// --- Compare Handler ---
+
+// compareCell holds a single cell value in the comparison table.
+type compareCell struct {
+	Value    string
+	Note     string
+	IsWinner bool
+}
+
+// compareRow holds a label and one cell per card.
+type compareRow struct {
+	Label string
+	Cells []compareCell
+}
+
+// compareCardView holds parsed card data ready for the template.
+type compareCardView struct {
+	ID                 int64
+	Slug               string
+	Title              string
+	Issuer             string
+	ImageURL           string
+	AnnualFeeAmount    int
+	AnnualFeeNote      string
+	WelcomeBonusText   string
+	ScoutsVerdictShort string
+}
+
+// earningRate represents one row in the earning_rates_json array.
+type earningRate struct {
+	Category    string `json:"category"`
+	DirectRate  string `json:"direct_rate"`
+	PortalRate  string `json:"portal_rate"`
+	Note        string `json:"note"`
+}
+
+// creditItem represents one row in the credits_json array.
+type creditItem struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Note   string `json:"note"`
+}
+
+// benefitItem represents one row in the benefits_json array.
+type benefitItem struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+	Note  string `json:"note"`
+}
+
+// protectionItem represents one row in the protections_json array.
+type protectionItem struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+	Note  string `json:"note"`
+}
+
+// extractNumber extracts the first numeric value from strings like "3x", "5x", "2%", "$300".
+func extractNumber(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "-" || s == "N/A" {
+		return 0
+	}
+	s = strings.ReplaceAll(s, "$", "")
+	s = strings.ReplaceAll(s, ",", "")
+	var num float64
+	fmt.Sscanf(s, "%f", &num)
+	return num
+}
+
+// computeWinners sets IsWinner=true on the cell with the highest numeric value.
+func computeWinners(cells []compareCell) {
+	if len(cells) < 2 {
+		return
+	}
+	maxVal := -1.0
+	maxIdx := -1
+	for i, c := range cells {
+		v := extractNumber(c.Value)
+		if v > maxVal {
+			maxVal = v
+			maxIdx = i
+		}
+	}
+	if maxVal <= 0 {
+		return
+	}
+	// Check for ties.
+	winners := 0
+	for _, c := range cells {
+		if extractNumber(c.Value) == maxVal {
+			winners++
+		}
+	}
+	if winners == len(cells) {
+		return // all tied, no winner
+	}
+	if maxIdx >= 0 {
+		cells[maxIdx].IsWinner = true
+	}
+}
+
+func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
+	cardsParam := strings.TrimSpace(r.URL.Query().Get("cards"))
+
+	// Load all published cards for dropdowns.
+	allPages, err := app.db.ListPublishedReferencePages("")
+	if err != nil {
+		http.Error(w, "Failed to load cards", http.StatusInternalServerError)
+		return
+	}
+	type selectorCard struct {
+		Slug  string
+		Title string
+	}
+	var allCards []selectorCard
+	for _, p := range allPages {
+		allCards = append(allCards, selectorCard{Slug: p.Slug, Title: p.Title})
+	}
+
+	domain := app.cfg.Server.Domain
+	if domain == "" {
+		domain = "localhost"
+	}
+
+	// Parse and validate slugs.
+	var slugs []string
+	if cardsParam != "" {
+		parts := strings.Split(cardsParam, ",")
+		seen := make(map[string]bool)
+		for _, s := range parts {
+			s = strings.TrimSpace(s)
+			if s == "" || len(s) > 100 || seen[s] {
+				continue
+			}
+			seen[s] = true
+			slugs = append(slugs, s)
+			if len(slugs) >= 3 {
+				break
+			}
+		}
+	}
+
+	// If fewer than 2 valid slugs, show selector.
+	if len(slugs) < 2 {
+		data := map[string]interface{}{
+			"Title":           "Compare Cards",
+			"SelectorMode":    true,
+			"AllCards":        allCards,
+			"MetaDescription": "Compare credit cards side by side.",
+			"CanonicalURL":    "https://" + domain + "/compare",
+			"OGType":          "website",
+		}
+		app.renderTemplate(w, "compare.html", data)
+		return
+	}
+
+	// Load comparison data.
+	cards, err := app.db.GetComparisonData(slugs)
+	if err != nil {
+		http.Error(w, "Failed to load comparison data", http.StatusInternalServerError)
+		return
+	}
+
+	// If fewer than 2 valid cards returned, show selector.
+	if len(cards) < 2 {
+		data := map[string]interface{}{
+			"Title":           "Compare Cards",
+			"SelectorMode":    true,
+			"AllCards":        allCards,
+			"MetaDescription": "Compare credit cards side by side.",
+			"CanonicalURL":    "https://" + domain + "/compare",
+			"OGType":          "website",
+		}
+		app.renderTemplate(w, "compare.html", data)
+		return
+	}
+
+	// Build card views.
+	var cardViews []compareCardView
+	for _, c := range cards {
+		cv := compareCardView{
+			ID:               c.ID,
+			Slug:             c.Slug,
+			Title:            c.Title,
+			Issuer:           c.Issuer,
+			ImageURL:         c.ImageURL,
+			AnnualFeeAmount:  c.AnnualFeeAmount,
+			AnnualFeeNote:    c.AnnualFeeNote,
+			WelcomeBonusText: c.WelcomeBonusText,
+			ScoutsVerdictShort: truncate(c.ScoutsVerdict, 120),
+		}
+		cardViews = append(cardViews, cv)
+	}
+
+	colSpan := len(cards) + 1
+
+	// Parse earning rates and build rows.
+	var allEarningRates [][]earningRate
+	for _, c := range cards {
+		var rates []earningRate
+		if c.EarningRatesJSON != "" && c.EarningRatesJSON != "[]" {
+			json.Unmarshal([]byte(c.EarningRatesJSON), &rates)
+		}
+		allEarningRates = append(allEarningRates, rates)
+	}
+	earningRateRows := buildEarningRateRows(allEarningRates, len(cards))
+
+	// Parse credits.
+	var allCredits [][]creditItem
+	for _, c := range cards {
+		var items []creditItem
+		if c.CreditsJSON != "" && c.CreditsJSON != "[]" {
+			json.Unmarshal([]byte(c.CreditsJSON), &items)
+		}
+		allCredits = append(allCredits, items)
+	}
+	creditRows := buildGenericRows(allCredits, len(cards))
+
+	// Parse benefits.
+	var allBenefits [][]benefitItem
+	for _, c := range cards {
+		var items []benefitItem
+		if c.BenefitsJSON != "" && c.BenefitsJSON != "[]" {
+			json.Unmarshal([]byte(c.BenefitsJSON), &items)
+		}
+		allBenefits = append(allBenefits, items)
+	}
+	benefitRows := buildGenericRows(allBenefits, len(cards))
+
+	// Parse protections.
+	var allProtections [][]protectionItem
+	for _, c := range cards {
+		var items []protectionItem
+		if c.ProtectionsJSON != "" && c.ProtectionsJSON != "[]" {
+			json.Unmarshal([]byte(c.ProtectionsJSON), &items)
+		}
+		allProtections = append(allProtections, items)
+	}
+	protectionRows := buildGenericRows(allProtections, len(cards))
+
+	data := map[string]interface{}{
+		"Title":           "Compare Cards",
+		"SelectorMode":    false,
+		"AllCards":        allCards,
+		"Cards":           cardViews,
+		"ColSpan":         colSpan,
+		"EarningRateRows": earningRateRows,
+		"CreditRows":      creditRows,
+		"BenefitRows":     benefitRows,
+		"ProtectionRows":  protectionRows,
+		"MetaDescription": "Compare credit cards side by side.",
+		"CanonicalURL":    "https://" + domain + "/compare",
+		"OGType":          "website",
+	}
+
+	// Set CurrentSlug for template option matching.
+	// Each header select needs to know its own card's slug, done via data-slot in template.
+
+	app.renderTemplate(w, "compare.html", data)
+}
+
+// buildEarningRateRows merges earning rates across cards into comparison rows.
+func buildEarningRateRows(allRates [][]earningRate, numCards int) []compareRow {
+	// Collect all unique categories in order.
+	catOrder := []string{}
+	catSeen := map[string]bool{}
+	for _, rates := range allRates {
+		for _, r := range rates {
+			if !catSeen[r.Category] {
+				catSeen[r.Category] = true
+				catOrder = append(catOrder, r.Category)
+			}
+		}
+	}
+
+	// Build a lookup per card.
+	type rateMap = map[string]earningRate
+	cardMaps := make([]rateMap, numCards)
+	for i, rates := range allRates {
+		m := make(rateMap)
+		for _, r := range rates {
+			m[r.Category] = r
+		}
+		cardMaps[i] = m
+	}
+
+	var rows []compareRow
+	for _, cat := range catOrder {
+		cells := make([]compareCell, numCards)
+		hasPortal := false
+		for i := 0; i < numCards; i++ {
+			if r, ok := cardMaps[i][cat]; ok && r.PortalRate != "" && r.PortalRate != "-" {
+				hasPortal = true
+				break
+			}
+		}
+
+		for i := 0; i < numCards; i++ {
+			r, ok := cardMaps[i][cat]
+			if !ok {
+				cells[i] = compareCell{Value: "-"}
+				continue
+			}
+			var val string
+			if hasPortal {
+				d := r.DirectRate
+				if d == "" { d = "-" }
+				p := r.PortalRate
+				if p == "" { p = "-" }
+				val = d + " D | " + p + " P"
+			} else {
+				val = r.DirectRate
+				if val == "" { val = "-" }
+			}
+			cells[i] = compareCell{Value: val, Note: r.Note}
+		}
+
+		// Compute winner based on the best portal rate if portal exists, otherwise direct rate.
+		if hasPortal {
+			portalCells := make([]compareCell, numCards)
+			for i := 0; i < numCards; i++ {
+				if r, ok := cardMaps[i][cat]; ok {
+					portalCells[i] = compareCell{Value: r.PortalRate}
+				}
+			}
+			computeWinners(portalCells)
+			for i, pc := range portalCells {
+				cells[i].IsWinner = pc.IsWinner
+			}
+		} else {
+			computeWinners(cells)
+		}
+
+		label := cat
+		if hasPortal {
+			label = cat + " (D|P)"
+		}
+		rows = append(rows, compareRow{Label: label, Cells: cells})
+	}
+
+	// Add transfer partners row.
+	// Not from JSON data; skip if no earning rates exist.
+
+	return rows
+}
+
+// genericItem is an interface-like struct for credits/benefits/protections.
+type genericItem struct {
+	Name  string
+	Value string
+	Note  string
+}
+
+// buildGenericRows merges items across cards by name.
+func buildGenericRows[T interface{ getName() string; getVal() string; getNote() string }](allItems [][]T, numCards int) []compareRow {
+	nameOrder := []string{}
+	nameSeen := map[string]bool{}
+	type itemMap = map[string]T
+	cardMaps := make([]itemMap, numCards)
+	for i, items := range allItems {
+		m := make(itemMap)
+		for _, item := range items {
+			n := item.getName()
+			m[n] = item
+			if !nameSeen[n] {
+				nameSeen[n] = true
+				nameOrder = append(nameOrder, n)
+			}
+		}
+		cardMaps[i] = m
+	}
+
+	var rows []compareRow
+	for _, name := range nameOrder {
+		cells := make([]compareCell, numCards)
+		for i := 0; i < numCards; i++ {
+			if item, ok := cardMaps[i][name]; ok {
+				cells[i] = compareCell{Value: item.getVal(), Note: item.getNote()}
+			} else {
+				cells[i] = compareCell{Value: "-"}
+			}
+		}
+		computeWinners(cells)
+		rows = append(rows, compareRow{Label: name, Cells: cells})
+	}
+	return rows
+}
+
+func (c creditItem) getName() string    { return c.Name }
+func (c creditItem) getVal() string     { return c.Value }
+func (c creditItem) getNote() string    { return c.Note }
+func (b benefitItem) getName() string   { return b.Name }
+func (b benefitItem) getVal() string    { return b.Value }
+func (b benefitItem) getNote() string   { return b.Note }
+func (p protectionItem) getName() string { return p.Name }
+func (p protectionItem) getVal() string  { return p.Value }
+func (p protectionItem) getNote() string { return p.Note }
+
 // truncate strips HTML tags and returns the first n runes, appending "..." if truncated.
 func truncate(s string, n int) string {
 	s = stripHTML(s)

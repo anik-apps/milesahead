@@ -36,6 +36,9 @@ func (app *App) setupRoutes() {
 	app.mux.HandleFunc("GET /cards/", app.handleCardsList)
 	app.mux.HandleFunc("GET /cards/{slug}", app.handleCardDetail)
 
+	// Compare route.
+	app.mux.HandleFunc("GET /compare", app.handleCompare)
+
 	// Auth routes (with rate limiting on login POST).
 	app.mux.HandleFunc("GET /admin/login", app.handleLoginPage)
 	loginHandler := csrfMiddleware(rateLimitMiddleware(
