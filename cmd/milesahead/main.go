@@ -106,7 +106,7 @@ func main() {
 			mailSender.SendVoteAlert(cfg.Mail.SMTP.From, articleID, a.Title)
 		}
 	})
-	newsletterSvc := newsletter.NewServiceWithAI(database, mailSender, cfg.Newsletter, hfClient, cfg.AI.CriticModel)
+	newsletterSvc := newsletter.NewServiceWithAI(database, mailSender, cfg.Newsletter, hfClient, cfg.AI.CriticModel, cfg.Server.Domain)
 
 	// Scheduler
 	sched := scheduler.New()

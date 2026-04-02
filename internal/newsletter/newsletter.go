@@ -34,6 +34,7 @@ type Service struct {
 	aiModel  string
 	timezone string
 	sendTime string
+	domain   string
 }
 
 // NewService creates a new newsletter Service.
@@ -55,10 +56,11 @@ func NewService(database *db.Database, sender MailSender, cfg config.NewsletterC
 }
 
 // NewServiceWithAI creates a newsletter Service with AI ranking support.
-func NewServiceWithAI(database *db.Database, sender MailSender, cfg config.NewsletterConfig, aiClient ai.HFClientInterface, aiModel string) *Service {
+func NewServiceWithAI(database *db.Database, sender MailSender, cfg config.NewsletterConfig, aiClient ai.HFClientInterface, aiModel, domain string) *Service {
 	svc := NewService(database, sender, cfg)
 	svc.ai = aiClient
 	svc.aiModel = aiModel
+	svc.domain = domain
 	return svc
 }
 
@@ -362,8 +364,9 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 		return existing, nil
 	}
 
-	// Query the week's articles.
-	since := time.Now().UTC().Add(-7 * 24 * time.Hour)
+	// Query the week's articles (Saturday minus 7 days, same window as SendWeekly).
+	satDate, _ := time.Parse("2006-01-02", sendDate)
+	since := satDate.AddDate(0, 0, -7)
 	articles, err := s.db.ListApprovedArticlesSince(since)
 	if err != nil {
 		return nil, fmt.Errorf("listing approved articles: %w", err)
@@ -435,7 +438,7 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	var sp *scoutsPickData
 	sp = s.loadScoutsPickData(scoutsPickID)
 
-	htmlContent, err := renderWeeklyNewsletter(articles, sendDate, "", cow, sp)
+	htmlContent, err := renderWeeklyNewsletter(articles, sendDate, "https://"+s.domain, cow, sp)
 	if err != nil {
 		slog.Error("failed to render weekly newsletter", "error", err)
 	} else {
@@ -657,7 +660,7 @@ func (s *Service) SendWeekly() error {
 			articles = reorderArticles(articles, candidateIDs)
 		}
 
-		htmlContent, err := renderWeeklyNewsletter(articles, sendDate, "", cow, sp)
+		htmlContent, err := renderWeeklyNewsletter(articles, sendDate, "https://"+s.domain, cow, sp)
 		if err != nil {
 			slog.Error("failed to re-render newsletter at send time", "error", err)
 		} else {
