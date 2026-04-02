@@ -1161,14 +1161,22 @@ func buildEarningRateRowsFromMaps(allMaps []map[string]json.RawMessage, numCards
 
 				if hasPortal {
 					d := directRate
-					if d == "" {
-						d = "-"
+					if d == "" || d == "N/A" {
+						d = "—"
 					}
 					p := portalRate
-					if p == "" {
-						p = "-"
+					if p == "" || p == "N/A" || p == "—" {
+						// No portal — show direct only with "no portal" note
+						val := d + " D"
+						if note != "" {
+							note = note + "; no portal"
+						} else {
+							note = "No portal booking bonus"
+						}
+						cells[i] = compareCell{Value: val, Note: note}
+					} else {
+						cells[i] = compareCell{Value: d + " D | " + p + " P", Note: note}
 					}
-					cells[i] = compareCell{Value: d + " D | " + p + " P", Note: note}
 				} else {
 					v := directRate
 					if v == "" {
