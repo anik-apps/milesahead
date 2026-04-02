@@ -5,55 +5,53 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Miles Ahead Weekly</title>
 </head>
-<body style="margin:0;padding:0;background-color:#0f0f1a;font-family:Georgia,'Times New Roman',Times,serif;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#0f0f1a;">
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Georgia,'Times New Roman',Times,serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;">
 <tr>
 <td align="center" style="padding:20px 0;">
-<table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background-color:#1a1a2e;border-radius:8px;overflow:hidden;">
+<table role="presentation" width="640" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border:1px solid #d0d0d0;">
 
-<!-- Header -->
+<!-- Masthead -->
 <tr>
-<td style="padding:32px 32px 16px 32px;text-align:center;border-bottom:1px solid #2a2a4a;">
-<h1 style="margin:0;font-size:28px;font-weight:700;color:#e0e0e0;letter-spacing:4px;text-transform:uppercase;font-family:Georgia,'Times New Roman',Times,serif;">MILES AHEAD</h1>
-<p style="margin:6px 0 0 0;font-size:13px;color:#8b8ba0;letter-spacing:1px;">WEEKLY &middot; {{.Date}}</p>
+<td style="padding:24px 32px 8px 32px;text-align:center;border-bottom:3px double #1a1a2e;">
+<h1 style="margin:0;font-size:28px;font-weight:700;color:#1a1a2e;letter-spacing:4px;text-transform:uppercase;font-family:Georgia,'Times New Roman',Times,serif;">MILES AHEAD</h1>
+<p style="margin:4px 0 0 0;font-size:11px;color:#666;letter-spacing:2px;text-transform:uppercase;">THE WEEKLY POINTS &amp; MILES DIGEST &middot; {{.Date}}</p>
 </td>
 </tr>
 
 <!-- Scout's Pick -->
 {{if .ScoutsPick}}
 <tr>
-<td style="padding:28px 32px 8px 32px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-<tr>
-<td>
-<p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#c9a84c;letter-spacing:3px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">&#9733; SCOUT'S PICK</p>
+<td style="padding:24px 32px 8px 32px;">
+<p style="margin:0 0 8px 0;font-size:11px;color:#999;letter-spacing:2px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">SCOUT'S PICK</p>
 </td>
 </tr>
+<tr>
+<td style="padding:0 32px 16px 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 {{if .ScoutsPick.ImageURL}}
 <tr>
-<td style="padding-bottom:16px;">
-<img src="{{.ScoutsPick.ImageURL}}" alt="" width="576" style="width:100%;max-width:576px;height:auto;border-radius:6px;display:block;" />
+<td style="padding-bottom:12px;">
+<img src="{{.ScoutsPick.ImageURL}}" alt="" width="576" style="width:100%;max-width:576px;border-radius:4px;display:block;">
 </td>
 </tr>
 {{end}}
 <tr>
 <td>
-<h2 style="margin:0 0 12px 0;font-size:24px;font-weight:700;color:#e0e0e0;line-height:1.3;font-family:Georgia,'Times New Roman',Times,serif;">{{.ScoutsPick.Title}}</h2>
+<h2 style="margin:0 0 12px 0;font-size:24px;font-weight:700;color:#1a1a2e;line-height:1.3;font-family:Georgia,'Times New Roman',Times,serif;">{{.ScoutsPick.Title}}</h2>
 {{if .ScoutsPick.ScoutsTake}}
-<p style="margin:0 0 16px 0;font-size:15px;color:#b0b0c0;line-height:1.7;font-family:Georgia,'Times New Roman',Times,serif;">{{.ScoutsPick.ScoutsTake}}</p>
+<p style="margin:0 0 8px 0;font-size:14px;color:#555;line-height:1.6;font-style:italic;border-left:3px solid #1a1a2e;padding-left:12px;">{{.ScoutsPick.ScoutsTake}}</p>
 {{end}}
-{{if .ScoutsPick.Slug}}
-<p style="margin:0;"><a href="{{.Domain}}/article/{{.ScoutsPick.Slug}}" style="display:inline-block;padding:10px 24px;background-color:#c9a84c;color:#1a1a2e;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-decoration:none;border-radius:4px;font-family:Arial,Helvetica,sans-serif;">Read More &rarr;</a></p>
-{{end}}
+<p style="margin:16px 0 0 0;"><a href="{{.Domain}}/article/{{.ScoutsPick.Slug}}" style="color:#1a1a2e;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-decoration:none;border-bottom:1px solid #1a1a2e;">Read Full Story &rarr;</a></p>
 </td>
 </tr>
 </table>
 </td>
 </tr>
 <tr>
-<td style="padding:20px 32px 0 32px;">
+<td style="padding:0 32px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-<tr><td style="border-bottom:1px solid #2a2a4a;"></td></tr>
+<tr><td style="border-bottom:3px double #d0d0d0;"></td></tr>
 </table>
 </td>
 </tr>
@@ -62,104 +60,93 @@
 <!-- Articles Grouped by Tag -->
 {{range .OrderedTagGroups}}
 <tr>
-<td style="padding:24px 32px 8px 32px;">
-<h3 style="margin:0 0 16px 0;font-size:13px;font-weight:700;color:#c9a84c;letter-spacing:2px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">{{.DisplayName}}</h3>
+<td style="padding:16px 32px 4px 32px;">
+<h3 style="margin:0 0 12px 0;font-size:13px;color:#999;letter-spacing:2px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">{{.DisplayName}}</h3>
 </td>
 </tr>
 {{range .Articles}}
 <tr>
-<td style="padding:0 32px 16px 32px;">
+<td style="padding:4px 32px 12px 32px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr>
-<td style="padding:12px 16px;background-color:#22223a;border-radius:6px;border-left:3px solid #c9a84c;">
-<h4 style="margin:0 0 4px 0;font-size:16px;font-weight:700;color:#e0e0e0;font-family:Georgia,'Times New Roman',Times,serif;">
-{{if .Slug}}<a href="{{$.Domain}}/article/{{.Slug}}" style="color:#e0e0e0;text-decoration:none;">{{.Title}}</a>{{else}}{{.Title}}{{end}}
+<td style="padding-left:12px;border-left:3px solid #1a1a2e;">
+<h4 style="margin:0 0 4px 0;font-size:16px;font-weight:700;color:#1a1a2e;font-family:Georgia,'Times New Roman',Times,serif;">
+{{if .Slug}}<a href="{{$.Domain}}/article/{{.Slug}}" style="color:#1a1a2e;text-decoration:none;">{{.Title}}</a>{{else}}{{.Title}}{{end}}
 </h4>
-<p style="margin:0;font-size:13px;color:#8b8ba0;line-height:1.5;font-family:Georgia,'Times New Roman',Times,serif;">{{.Summary}}</p>
+<p style="margin:0;font-size:13px;color:#666;line-height:1.5;font-family:Georgia,'Times New Roman',Times,serif;">{{.Summary}}</p>
 </td>
 </tr>
 </table>
 </td>
 </tr>
 {{end}}
-{{end}}
-
-<!-- Divider before Card of the Week -->
-{{if .CardOfWeek}}
-<tr>
-<td style="padding:8px 32px 0 32px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-<tr><td style="border-bottom:1px solid #2a2a4a;"></td></tr>
-</table>
-</td>
-</tr>
-
-<!-- Card of the Week -->
-<tr>
-<td style="padding:24px 32px 8px 32px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-<tr>
-<td style="padding:20px;background-color:#22223a;border-radius:8px;border:1px solid #2a2a4a;">
-<p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#c9a84c;letter-spacing:3px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">&#127183; CARD OF THE WEEK</p>
-{{if .CardOfWeek.ImageURL}}
-<div style="text-align:center;padding-bottom:12px;">
-<img src="{{.CardOfWeek.ImageURL}}" alt="{{.CardOfWeek.Title}}" width="300" style="max-width:300px;height:auto;border-radius:6px;display:inline-block;" />
-</div>
-{{end}}
-<h3 style="margin:0 0 8px 0;font-size:20px;font-weight:700;color:#e0e0e0;font-family:Georgia,'Times New Roman',Times,serif;">{{.CardOfWeek.Title}}</h3>
-{{if .CardOfWeek.Verdict}}
-<p style="margin:0 0 16px 0;font-size:14px;color:#b0b0c0;line-height:1.6;font-family:Georgia,'Times New Roman',Times,serif;">{{.CardOfWeek.Verdict}}</p>
-{{end}}
-{{if .CardOfWeek.Slug}}
-<p style="margin:0;"><a href="{{$.Domain}}/cards/{{.CardOfWeek.Slug}}" style="display:inline-block;padding:10px 24px;background-color:#c9a84c;color:#1a1a2e;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-decoration:none;border-radius:4px;font-family:Arial,Helvetica,sans-serif;">View Card &rarr;</a></p>
-{{end}}
-</td>
-</tr>
-</table>
-</td>
-</tr>
-{{end}}
-
-<!-- Legacy Lead/Sidebar (for daily digests) -->
-{{if and (not .ScoutsPick) (not .TagGroups) .Lead}}
-<tr>
-<td style="padding:24px 32px 16px 32px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-<tr>
-<td>
-<h2 style="margin:0 0 12px 0;font-size:24px;font-weight:700;color:#e0e0e0;line-height:1.3;font-family:Georgia,'Times New Roman',Times,serif;">{{.Lead.Title}}</h2>
-<p style="margin:0;font-size:15px;color:#b0b0c0;line-height:1.7;font-family:Georgia,'Times New Roman',Times,serif;">{{.Lead.Excerpt}}</p>
-{{if .Lead.Slug}}
-<p style="margin:12px 0 0 0;"><a href="{{.Domain}}/article/{{.Lead.Slug}}" style="color:#c9a84c;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-decoration:none;border-bottom:1px solid #c9a84c;font-family:Arial,Helvetica,sans-serif;">Read Full Story &rarr;</a></p>
-{{end}}
-</td>
-</tr>
-</table>
-</td>
-</tr>
-{{if .Sidebar}}
 <tr>
 <td style="padding:0 32px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-<tr><td style="border-bottom:1px solid #2a2a4a;"></td></tr>
+<tr><td style="border-bottom:1px solid #d0d0d0;"></td></tr>
 </table>
 </td>
 </tr>
+{{end}}
+
+<!-- Card of the Week -->
+{{if .CardOfWeek}}
 <tr>
-<td style="padding:16px 32px 8px 32px;">
-<h3 style="margin:0 0 12px 0;font-size:13px;color:#8b8ba0;letter-spacing:2px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">MORE STORIES</h3>
+<td style="padding:16px 32px 4px 32px;">
+<h3 style="margin:0 0 12px 0;font-size:13px;color:#999;letter-spacing:2px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">CARD OF THE WEEK</h3>
 </td>
 </tr>
+<tr>
+<td style="padding:0 32px 16px 32px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f9f9f9;border:1px solid #e0e0e0;border-radius:4px;">
+<tr>
+<td style="padding:16px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+<tr>
+{{if .CardOfWeek.ImageURL}}
+<td width="120" valign="top" style="padding-right:16px;">
+<img src="{{.CardOfWeek.ImageURL}}" alt="" width="120" style="width:120px;border-radius:4px;display:block;">
+</td>
+{{end}}
+<td valign="top">
+<h4 style="margin:0 0 6px 0;font-size:18px;font-weight:700;color:#1a1a2e;font-family:Georgia,'Times New Roman',Times,serif;">{{.CardOfWeek.Title}}</h4>
+{{if .CardOfWeek.Verdict}}
+<p style="margin:0 0 8px 0;font-size:13px;color:#555;line-height:1.5;font-family:Georgia,'Times New Roman',Times,serif;">{{.CardOfWeek.Verdict}}</p>
+{{end}}
+<a href="{{.Domain}}/cards/{{.CardOfWeek.Slug}}" style="color:#1a1a2e;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-decoration:none;border-bottom:1px solid #1a1a2e;">View Card &rarr;</a>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</td>
+</tr>
+{{end}}
+
+<!-- Legacy daily format fallback -->
+{{if and (not .ScoutsPick) .Lead}}
+<tr>
+<td style="padding:24px 32px 16px 32px;">
+<h2 style="margin:0 0 12px 0;font-size:24px;font-weight:700;color:#1a1a2e;line-height:1.3;font-family:Georgia,'Times New Roman',Times,serif;">{{.Lead.Title}}</h2>
+<p style="margin:0;font-size:15px;color:#333;line-height:1.7;font-family:Georgia,'Times New Roman',Times,serif;">{{.Lead.Excerpt}}</p>
+{{if .Lead.Slug}}
+<p style="margin:12px 0 0 0;"><a href="{{.Domain}}/articles/{{.Lead.Slug}}" style="color:#1a1a2e;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;text-decoration:none;border-bottom:1px solid #1a1a2e;">Read Full Story &rarr;</a></p>
+{{end}}
+</td>
+</tr>
+{{end}}
+{{if and (not .OrderedTagGroups) .Sidebar}}
 {{range .Sidebar}}
 <tr>
 <td style="padding:4px 32px 12px 32px;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr>
-<td style="padding:8px 12px;border-left:3px solid #c9a84c;">
-<h4 style="margin:0 0 4px 0;font-size:16px;font-weight:700;color:#e0e0e0;font-family:Georgia,'Times New Roman',Times,serif;">
-{{if .Slug}}<a href="{{$.Domain}}/article/{{.Slug}}" style="color:#e0e0e0;text-decoration:none;">{{.Title}}</a>{{else}}{{.Title}}{{end}}
+<td style="padding-left:12px;border-left:3px solid #1a1a2e;">
+<h4 style="margin:0 0 4px 0;font-size:16px;font-weight:700;color:#1a1a2e;font-family:Georgia,'Times New Roman',Times,serif;">
+{{if .Slug}}<a href="{{$.Domain}}/articles/{{.Slug}}" style="color:#1a1a2e;text-decoration:none;">{{.Title}}</a>{{else}}{{.Title}}{{end}}
 </h4>
-<p style="margin:0;font-size:13px;color:#8b8ba0;line-height:1.5;font-family:Georgia,'Times New Roman',Times,serif;">{{.Summary}}</p>
+<p style="margin:0;font-size:13px;color:#666;line-height:1.5;font-family:Georgia,'Times New Roman',Times,serif;">{{.Summary}}</p>
 </td>
 </tr>
 </table>
@@ -167,18 +154,16 @@
 </tr>
 {{end}}
 {{end}}
-{{end}}
 
 <!-- Footer -->
 <tr>
-<td style="padding:24px 32px;background-color:#0f0f1a;border-top:1px solid #2a2a4a;">
+<td style="padding:20px 32px;background-color:#1a1a2e;border-top:3px double #1a1a2e;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr>
 <td style="text-align:center;">
-<p style="margin:0 0 4px 0;font-size:11px;color:#666;letter-spacing:1px;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">Miles Ahead</p>
-<p style="margin:0 0 12px 0;font-size:12px;color:#555;font-family:Arial,Helvetica,sans-serif;">You are receiving this because you subscribed to Miles Ahead Weekly.</p>
+<p style="margin:0 0 8px 0;font-size:12px;color:#aaa;font-family:Arial,Helvetica,sans-serif;">You are receiving this because you subscribed to Miles Ahead Weekly.</p>
 <p style="margin:0;font-size:12px;font-family:Arial,Helvetica,sans-serif;">
-<a href="{{.UnsubscribeURL}}" style="color:#8b8ba0;text-decoration:underline;">Unsubscribe</a>
+<a href="{{.UnsubscribeURL}}" style="color:#ccc;text-decoration:underline;">Unsubscribe</a>
 </p>
 </td>
 </tr>
