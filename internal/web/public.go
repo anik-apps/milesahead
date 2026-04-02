@@ -470,6 +470,12 @@ type publicCardGroup struct {
 	Cards []publicCardRow
 }
 
+// compareGroup groups cards by category for the "Compare with..." dropdown.
+type compareGroup struct {
+	Category string
+	Cards    []struct{ Slug, Title string }
+}
+
 // categoryDisplayNames maps DB category slugs to display names.
 var categoryDisplayNames = map[string]string{
 	"travel":    "Travel & Premium",
@@ -585,6 +591,31 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 	canonicalURL := "https://" + domain + "/cards/" + page.Slug
 	metaDesc := truncate(page.ScoutsVerdict, 160)
 
+	// Build "Compare with..." groups: all published cards except the current one.
+	var compareGroups []compareGroup
+	allCards, err := app.db.ListPublishedReferencePages("")
+	if err == nil {
+		groupMap := map[string]*compareGroup{}
+		var groupOrder []string
+		for _, c := range allCards {
+			if c.Slug == page.Slug {
+				continue
+			}
+			cat := c.Category
+			if display, ok := categoryDisplayNames[cat]; ok {
+				cat = display
+			}
+			if _, exists := groupMap[cat]; !exists {
+				groupMap[cat] = &compareGroup{Category: cat}
+				groupOrder = append(groupOrder, cat)
+			}
+			groupMap[cat].Cards = append(groupMap[cat].Cards, struct{ Slug, Title string }{c.Slug, c.Title})
+		}
+		for _, cat := range groupOrder {
+			compareGroups = append(compareGroups, *groupMap[cat])
+		}
+	}
+
 	data := map[string]interface{}{
 		"Title":           page.Title,
 		"Card":            page,
@@ -596,6 +627,7 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		"CanonicalURL":    canonicalURL,
 		"OGType":          "website",
 		"OGImage":         page.ImageURL,
+		"CompareGroups":   compareGroups,
 		"JSONLD": buildJSONLD(cardLDData{
 			Context:     "https://schema.org",
 			Type:        "Product",

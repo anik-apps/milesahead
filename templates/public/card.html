@@ -27,6 +27,21 @@
             {{if .Card.ApplyURL}}
             <a href="{{.Card.ApplyURL}}" target="_blank" rel="noopener noreferrer" class="card-apply-btn">Card Details &rarr;</a>
             {{end}}
+            {{if .CompareGroups}}
+            <div class="card-compare-section" style="margin-top:1rem;">
+                <h4 style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.5rem;">Compare with...</h4>
+                <select onchange="if(this.value) window.location='/compare?cards={{.Card.Slug}},'+this.value" style="width:100%;padding:0.4rem;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:0.85rem;">
+                    <option value="">Select a card</option>
+                    {{range .CompareGroups}}
+                    <optgroup label="{{.Category}}">
+                        {{range .Cards}}
+                        <option value="{{.Slug}}">{{.Title}}</option>
+                        {{end}}
+                    </optgroup>
+                    {{end}}
+                </select>
+            </div>
+            {{end}}
         </aside>
         {{end}}
 
