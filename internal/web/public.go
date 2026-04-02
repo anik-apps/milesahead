@@ -827,38 +827,24 @@ var genericCategories = map[string][]struct {
 	"credits": {
 		{"airline", "Airline Credit"},
 		{"hotel", "Hotel Credit"},
+		{"travel_other", "Other Travel Credit"},
 		{"dining", "Dining Credit"},
-		{"uber", "Uber Credit"},
-		{"entertainment", "Entertainment Credit"},
 		{"streaming", "Streaming Credit"},
-		{"transit", "Transit Credit"},
-		{"wellness", "Wellness Credit"},
-		{"saks", "Saks Credit"},
-		{"clear", "CLEAR Credit"},
-		{"global_entry", "Global Entry/TSA PreCheck"},
-		{"equinox", "Equinox Credit"},
-		{"digital", "Digital Entertainment Credit"},
 	},
 	"benefits": {
 		{"lounge_access", "Lounge Access"},
 		{"hotel_status", "Hotel Status"},
-		{"airline_status", "Airline Status"},
-		{"global_entry", "Global Entry/TSA PreCheck"},
-		{"travel_insurance", "Travel Insurance"},
-		{"concierge", "Concierge"},
-		{"companion_pass", "Companion Certificate"},
-		{"free_night", "Free Night Award"},
-		{"priority_boarding", "Priority Boarding"},
+		{"global_entry_tsa", "Global Entry / TSA PreCheck"},
+		{"companion_cert", "Companion Certificate"},
+		{"free_checked_bags", "Free Checked Bags"},
+		{"no_ftf", "No Foreign Transaction Fee"},
 	},
 	"protections": {
-		{"purchase_protection", "Purchase Protection"},
-		{"return_protection", "Return Protection"},
-		{"extended_warranty", "Extended Warranty"},
-		{"trip_cancellation", "Trip Cancellation"},
 		{"trip_delay", "Trip Delay"},
-		{"baggage_insurance", "Baggage Insurance"},
-		{"car_rental_insurance", "Car Rental Insurance"},
-		{"cell_phone", "Cell Phone Protection"},
+		{"baggage_delay_loss", "Baggage Delay / Loss"},
+		{"car_rental", "Car Rental Insurance"},
+		{"purchase_protection", "Purchase Protection"},
+		{"extended_warranty", "Extended Warranty"},
 	},
 }
 
@@ -881,12 +867,10 @@ func computeWinners(cells []compareCell) {
 		return
 	}
 	maxVal := -1.0
-	maxIdx := -1
-	for i, c := range cells {
+	for _, c := range cells {
 		v := extractNumber(c.Value)
 		if v > maxVal {
 			maxVal = v
-			maxIdx = i
 		}
 	}
 	if maxVal <= 0 {
@@ -902,8 +886,10 @@ func computeWinners(cells []compareCell) {
 	if winners == len(cells) {
 		return // all tied, no winner
 	}
-	if maxIdx >= 0 {
-		cells[maxIdx].IsWinner = true
+	for i := range cells {
+		if extractNumber(cells[i].Value) == maxVal {
+			cells[i].IsWinner = true
+		}
 	}
 }
 

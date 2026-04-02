@@ -891,10 +891,27 @@ func (app *App) handleAdminCardCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
 	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
-	page.EarningRatesJSON = strings.TrimSpace(r.FormValue("earning_rates_json"))
-	page.CreditsJSON = strings.TrimSpace(r.FormValue("credits_json"))
-	page.BenefitsJSON = strings.TrimSpace(r.FormValue("benefits_json"))
-	page.ProtectionsJSON = strings.TrimSpace(r.FormValue("protections_json"))
+	earningRatesJSON := strings.TrimSpace(r.FormValue("earning_rates_json"))
+	creditsJSON := strings.TrimSpace(r.FormValue("credits_json"))
+	benefitsJSON := strings.TrimSpace(r.FormValue("benefits_json"))
+	protectionsJSON := strings.TrimSpace(r.FormValue("protections_json"))
+
+	for _, field := range []struct{ name, value string }{
+		{"earning_rates_json", earningRatesJSON},
+		{"credits_json", creditsJSON},
+		{"benefits_json", benefitsJSON},
+		{"protections_json", protectionsJSON},
+	} {
+		if field.value != "" && !json.Valid([]byte(field.value)) {
+			http.Error(w, fmt.Sprintf("Invalid JSON in %s", field.name), http.StatusBadRequest)
+			return
+		}
+	}
+
+	page.EarningRatesJSON = earningRatesJSON
+	page.CreditsJSON = creditsJSON
+	page.BenefitsJSON = benefitsJSON
+	page.ProtectionsJSON = protectionsJSON
 
 	// Initialize empty JSON arrays.
 	page.RecentChangesJSON = "[]"
@@ -998,17 +1015,34 @@ func (app *App) handleAdminCardUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
 	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
-	if v := strings.TrimSpace(r.FormValue("earning_rates_json")); v != "" {
-		page.EarningRatesJSON = v
+	updateEarningRatesJSON := strings.TrimSpace(r.FormValue("earning_rates_json"))
+	updateCreditsJSON := strings.TrimSpace(r.FormValue("credits_json"))
+	updateBenefitsJSON := strings.TrimSpace(r.FormValue("benefits_json"))
+	updateProtectionsJSON := strings.TrimSpace(r.FormValue("protections_json"))
+
+	for _, field := range []struct{ name, value string }{
+		{"earning_rates_json", updateEarningRatesJSON},
+		{"credits_json", updateCreditsJSON},
+		{"benefits_json", updateBenefitsJSON},
+		{"protections_json", updateProtectionsJSON},
+	} {
+		if field.value != "" && !json.Valid([]byte(field.value)) {
+			http.Error(w, fmt.Sprintf("Invalid JSON in %s", field.name), http.StatusBadRequest)
+			return
+		}
 	}
-	if v := strings.TrimSpace(r.FormValue("credits_json")); v != "" {
-		page.CreditsJSON = v
+
+	if updateEarningRatesJSON != "" {
+		page.EarningRatesJSON = updateEarningRatesJSON
 	}
-	if v := strings.TrimSpace(r.FormValue("benefits_json")); v != "" {
-		page.BenefitsJSON = v
+	if updateCreditsJSON != "" {
+		page.CreditsJSON = updateCreditsJSON
 	}
-	if v := strings.TrimSpace(r.FormValue("protections_json")); v != "" {
-		page.ProtectionsJSON = v
+	if updateBenefitsJSON != "" {
+		page.BenefitsJSON = updateBenefitsJSON
+	}
+	if updateProtectionsJSON != "" {
+		page.ProtectionsJSON = updateProtectionsJSON
 	}
 
 	if page.Title == "" || page.Slug == "" {
