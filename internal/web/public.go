@@ -1260,7 +1260,7 @@ func buildEarningRateRowsFromMaps(allMaps []map[string]json.RawMessage, numCards
 			}
 			cells[i] = compareCell{Value: val}
 		}
-		rows = append(rows, compareRow{Label: "Transfer Partners", Cells: cells})
+		rows = append(rows, compareRow{Label: "Earned Currency", Cells: cells})
 	}
 
 	// Niche earning items — consolidated into a single row.
