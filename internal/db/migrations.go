@@ -182,6 +182,15 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE generated_articles ADD COLUMN tags_json TEXT DEFAULT '[]'`,
 		`ALTER TABLE newsletters ADD COLUMN card_of_week_id INTEGER DEFAULT NULL`,
 		`ALTER TABLE newsletters ADD COLUMN scouts_pick_article_id INTEGER DEFAULT NULL`,
+		`ALTER TABLE reference_pages ADD COLUMN annual_fee_amount INTEGER DEFAULT 0`,
+		`ALTER TABLE reference_pages ADD COLUMN annual_fee_note TEXT DEFAULT ''`,
+		`ALTER TABLE reference_pages ADD COLUMN welcome_bonus_text TEXT DEFAULT ''`,
+		`ALTER TABLE reference_pages ADD COLUMN welcome_bonus_verified_at DATETIME DEFAULT NULL`,
+		`ALTER TABLE reference_pages ADD COLUMN earning_rates_json TEXT DEFAULT '{}'`,
+		`ALTER TABLE reference_pages ADD COLUMN credits_json TEXT DEFAULT '{}'`,
+		`ALTER TABLE reference_pages ADD COLUMN benefits_json TEXT DEFAULT '{}'`,
+		`ALTER TABLE reference_pages ADD COLUMN protections_json TEXT DEFAULT '{}'`,
+		`ALTER TABLE reference_pages ADD COLUMN flagged_fields_json TEXT DEFAULT '[]'`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)

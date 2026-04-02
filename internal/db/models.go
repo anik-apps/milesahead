@@ -179,8 +179,17 @@ type ReferencePage struct {
 	ScoutsVerdict      string    `json:"scouts_verdict"`
 	KeywordsJSON       string    `json:"keywords_json"`
 	ImageURL           string    `json:"image_url"`
-	ApplyURL           string    `json:"apply_url"`
-	Status             string    `json:"status"`
+	ApplyURL               string     `json:"apply_url"`
+	AnnualFeeAmount        int        `json:"annual_fee_amount"`
+	AnnualFeeNote          string     `json:"annual_fee_note"`
+	WelcomeBonusText       string     `json:"welcome_bonus_text"`
+	WelcomeBonusVerifiedAt *time.Time `json:"welcome_bonus_verified_at"`
+	EarningRatesJSON       string     `json:"earning_rates_json"`
+	CreditsJSON            string     `json:"credits_json"`
+	BenefitsJSON           string     `json:"benefits_json"`
+	ProtectionsJSON        string     `json:"protections_json"`
+	FlaggedFieldsJSON      string     `json:"flagged_fields_json"`
+	Status                 string     `json:"status"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }

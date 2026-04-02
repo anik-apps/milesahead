@@ -776,8 +776,8 @@ func (d *Database) GetLinkedRawArticles(generatedArticleID int64) ([]RawArticle,
 
 func (d *Database) CreateReferencePage(page *ReferencePage) (int64, error) {
 	res, err := d.db.Exec(
-		`INSERT INTO reference_pages (slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		page.Slug, page.Title, page.Category, page.Issuer, page.SectionsJSON, page.RecentChangesJSON, page.PendingUpdatesJSON, page.ScoutsVerdict, page.KeywordsJSON, page.ImageURL, page.ApplyURL, page.Status,
+		`INSERT INTO reference_pages (slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, flagged_fields_json, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		page.Slug, page.Title, page.Category, page.Issuer, page.SectionsJSON, page.RecentChangesJSON, page.PendingUpdatesJSON, page.ScoutsVerdict, page.KeywordsJSON, page.ImageURL, page.ApplyURL, page.AnnualFeeAmount, page.AnnualFeeNote, page.WelcomeBonusText, page.WelcomeBonusVerifiedAt, page.EarningRatesJSON, page.CreditsJSON, page.BenefitsJSON, page.ProtectionsJSON, page.FlaggedFieldsJSON, page.Status,
 	)
 	if err != nil {
 		return 0, err
@@ -795,8 +795,8 @@ func (d *Database) CreateReferencePage(page *ReferencePage) (int64, error) {
 func (d *Database) GetReferencePage(id int64) (*ReferencePage, error) {
 	p := &ReferencePage{}
 	err := d.db.QueryRow(
-		`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, status, created_at, updated_at FROM reference_pages WHERE id = ?`, id,
-	).Scan(&p.ID, &p.Slug, &p.Title, &p.Category, &p.Issuer, &p.SectionsJSON, &p.RecentChangesJSON, &p.PendingUpdatesJSON, &p.ScoutsVerdict, &p.KeywordsJSON, &p.ImageURL, &p.ApplyURL, &p.Status, &p.CreatedAt, &p.UpdatedAt)
+		`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, flagged_fields_json, status, created_at, updated_at FROM reference_pages WHERE id = ?`, id,
+	).Scan(&p.ID, &p.Slug, &p.Title, &p.Category, &p.Issuer, &p.SectionsJSON, &p.RecentChangesJSON, &p.PendingUpdatesJSON, &p.ScoutsVerdict, &p.KeywordsJSON, &p.ImageURL, &p.ApplyURL, &p.AnnualFeeAmount, &p.AnnualFeeNote, &p.WelcomeBonusText, &p.WelcomeBonusVerifiedAt, &p.EarningRatesJSON, &p.CreditsJSON, &p.BenefitsJSON, &p.ProtectionsJSON, &p.FlaggedFieldsJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -806,8 +806,8 @@ func (d *Database) GetReferencePage(id int64) (*ReferencePage, error) {
 func (d *Database) GetReferencePageBySlug(slug string) (*ReferencePage, error) {
 	p := &ReferencePage{}
 	err := d.db.QueryRow(
-		`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, status, created_at, updated_at FROM reference_pages WHERE slug = ?`, slug,
-	).Scan(&p.ID, &p.Slug, &p.Title, &p.Category, &p.Issuer, &p.SectionsJSON, &p.RecentChangesJSON, &p.PendingUpdatesJSON, &p.ScoutsVerdict, &p.KeywordsJSON, &p.ImageURL, &p.ApplyURL, &p.Status, &p.CreatedAt, &p.UpdatedAt)
+		`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, flagged_fields_json, status, created_at, updated_at FROM reference_pages WHERE slug = ?`, slug,
+	).Scan(&p.ID, &p.Slug, &p.Title, &p.Category, &p.Issuer, &p.SectionsJSON, &p.RecentChangesJSON, &p.PendingUpdatesJSON, &p.ScoutsVerdict, &p.KeywordsJSON, &p.ImageURL, &p.ApplyURL, &p.AnnualFeeAmount, &p.AnnualFeeNote, &p.WelcomeBonusText, &p.WelcomeBonusVerifiedAt, &p.EarningRatesJSON, &p.CreditsJSON, &p.BenefitsJSON, &p.ProtectionsJSON, &p.FlaggedFieldsJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -820,11 +820,11 @@ func (d *Database) ListReferencePages(category string) ([]ReferencePage, error) 
 	var err error
 	if category != "" {
 		rows, err = d.db.Query(
-			`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, status, created_at, updated_at FROM reference_pages WHERE category = ? ORDER BY issuer, title`, category,
+			`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, flagged_fields_json, status, created_at, updated_at FROM reference_pages WHERE category = ? ORDER BY issuer, title`, category,
 		)
 	} else {
 		rows, err = d.db.Query(
-			`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, status, created_at, updated_at FROM reference_pages ORDER BY issuer, title`,
+			`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, flagged_fields_json, status, created_at, updated_at FROM reference_pages ORDER BY issuer, title`,
 		)
 	}
 	if err != nil {
@@ -840,11 +840,11 @@ func (d *Database) ListPublishedReferencePages(category string) ([]ReferencePage
 	var err error
 	if category != "" {
 		rows, err = d.db.Query(
-			`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, status, created_at, updated_at FROM reference_pages WHERE status = 'published' AND category = ? ORDER BY issuer, title`, category,
+			`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, flagged_fields_json, status, created_at, updated_at FROM reference_pages WHERE status = 'published' AND category = ? ORDER BY issuer, title`, category,
 		)
 	} else {
 		rows, err = d.db.Query(
-			`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, status, created_at, updated_at FROM reference_pages WHERE status = 'published' ORDER BY issuer, title`,
+			`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, flagged_fields_json, status, created_at, updated_at FROM reference_pages WHERE status = 'published' ORDER BY issuer, title`,
 		)
 	}
 	if err != nil {
@@ -856,8 +856,8 @@ func (d *Database) ListPublishedReferencePages(category string) ([]ReferencePage
 
 func (d *Database) UpdateReferencePage(page *ReferencePage) error {
 	_, err := d.db.Exec(
-		`UPDATE reference_pages SET slug = ?, title = ?, category = ?, issuer = ?, sections_json = ?, recent_changes_json = ?, pending_updates_json = ?, scouts_verdict = ?, keywords_json = ?, image_url = ?, apply_url = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-		page.Slug, page.Title, page.Category, page.Issuer, page.SectionsJSON, page.RecentChangesJSON, page.PendingUpdatesJSON, page.ScoutsVerdict, page.KeywordsJSON, page.ImageURL, page.ApplyURL, page.Status, page.ID,
+		`UPDATE reference_pages SET slug = ?, title = ?, category = ?, issuer = ?, sections_json = ?, recent_changes_json = ?, pending_updates_json = ?, scouts_verdict = ?, keywords_json = ?, image_url = ?, apply_url = ?, annual_fee_amount = ?, annual_fee_note = ?, welcome_bonus_text = ?, welcome_bonus_verified_at = ?, earning_rates_json = ?, credits_json = ?, benefits_json = ?, protections_json = ?, flagged_fields_json = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		page.Slug, page.Title, page.Category, page.Issuer, page.SectionsJSON, page.RecentChangesJSON, page.PendingUpdatesJSON, page.ScoutsVerdict, page.KeywordsJSON, page.ImageURL, page.ApplyURL, page.AnnualFeeAmount, page.AnnualFeeNote, page.WelcomeBonusText, page.WelcomeBonusVerifiedAt, page.EarningRatesJSON, page.CreditsJSON, page.BenefitsJSON, page.ProtectionsJSON, page.FlaggedFieldsJSON, page.Status, page.ID,
 	)
 	if err != nil {
 		return err
@@ -909,7 +909,7 @@ func (d *Database) DeleteReferencePage(id int64) error {
 func (d *Database) GetReferencePagesByKeyword(keyword string) ([]ReferencePage, error) {
 	pattern := "%" + strings.ToLower(keyword) + "%"
 	rows, err := d.db.Query(
-		`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, status, created_at, updated_at FROM reference_pages WHERE status = 'published' AND LOWER(keywords_json) LIKE ? ORDER BY title`, pattern,
+		`SELECT id, slug, title, category, issuer, sections_json, recent_changes_json, pending_updates_json, scouts_verdict, keywords_json, image_url, apply_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, flagged_fields_json, status, created_at, updated_at FROM reference_pages WHERE status = 'published' AND LOWER(keywords_json) LIKE ? ORDER BY title`, pattern,
 	)
 	if err != nil {
 		return nil, err
@@ -922,12 +922,145 @@ func scanReferencePages(rows *sql.Rows) ([]ReferencePage, error) {
 	var pages []ReferencePage
 	for rows.Next() {
 		var p ReferencePage
-		if err := rows.Scan(&p.ID, &p.Slug, &p.Title, &p.Category, &p.Issuer, &p.SectionsJSON, &p.RecentChangesJSON, &p.PendingUpdatesJSON, &p.ScoutsVerdict, &p.KeywordsJSON, &p.ImageURL, &p.ApplyURL, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Slug, &p.Title, &p.Category, &p.Issuer, &p.SectionsJSON, &p.RecentChangesJSON, &p.PendingUpdatesJSON, &p.ScoutsVerdict, &p.KeywordsJSON, &p.ImageURL, &p.ApplyURL, &p.AnnualFeeAmount, &p.AnnualFeeNote, &p.WelcomeBonusText, &p.WelcomeBonusVerifiedAt, &p.EarningRatesJSON, &p.CreditsJSON, &p.BenefitsJSON, &p.ProtectionsJSON, &p.FlaggedFieldsJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		pages = append(pages, p)
 	}
 	return pages, rows.Err()
+}
+
+// ComparisonCard holds the structured data needed to render a side-by-side comparison.
+type ComparisonCard struct {
+	ID                     int64
+	Slug                   string
+	Title                  string
+	Issuer                 string
+	ImageURL               string
+	AnnualFeeAmount        int
+	AnnualFeeNote          string
+	WelcomeBonusText       string
+	WelcomeBonusVerifiedAt *time.Time
+	EarningRatesJSON       string
+	CreditsJSON            string
+	BenefitsJSON           string
+	ProtectionsJSON        string
+	ScoutsVerdict          string
+}
+
+// GetComparisonData returns structured comparison data for the given slugs,
+// sorted to match the input slug order.
+func (d *Database) GetComparisonData(slugs []string) ([]ComparisonCard, error) {
+	if len(slugs) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, len(slugs))
+	args := make([]interface{}, len(slugs))
+	for i, s := range slugs {
+		placeholders[i] = "?"
+		args[i] = s
+	}
+
+	query := `SELECT id, slug, title, issuer, image_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, scouts_verdict FROM reference_pages WHERE slug IN (` + strings.Join(placeholders, ",") + `)`
+
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cardMap := make(map[string]ComparisonCard)
+	for rows.Next() {
+		var c ComparisonCard
+		if err := rows.Scan(&c.ID, &c.Slug, &c.Title, &c.Issuer, &c.ImageURL, &c.AnnualFeeAmount, &c.AnnualFeeNote, &c.WelcomeBonusText, &c.WelcomeBonusVerifiedAt, &c.EarningRatesJSON, &c.CreditsJSON, &c.BenefitsJSON, &c.ProtectionsJSON, &c.ScoutsVerdict); err != nil {
+			return nil, err
+		}
+		cardMap[c.Slug] = c
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Return in the same order as the input slugs.
+	result := make([]ComparisonCard, 0, len(slugs))
+	for _, s := range slugs {
+		if c, ok := cardMap[s]; ok {
+			result = append(result, c)
+		}
+	}
+	return result, nil
+}
+
+// FlaggedField represents a single flagged field entry.
+type FlaggedField struct {
+	Field     string `json:"field"`
+	Note      string `json:"note"`
+	FlaggedAt string `json:"flagged_at"`
+}
+
+// AppendFlaggedField adds a flagged-field entry to a reference page's flagged_fields_json.
+func (d *Database) AppendFlaggedField(cardID int64, field, note string) error {
+	var raw string
+	err := d.db.QueryRow(`SELECT flagged_fields_json FROM reference_pages WHERE id = ?`, cardID).Scan(&raw)
+	if err != nil {
+		return fmt.Errorf("loading flagged fields: %w", err)
+	}
+
+	var flags []FlaggedField
+	if raw != "" && raw != "[]" {
+		if err := json.Unmarshal([]byte(raw), &flags); err != nil {
+			return fmt.Errorf("unmarshaling flagged fields: %w", err)
+		}
+	}
+
+	flags = append(flags, FlaggedField{
+		Field:     field,
+		Note:      note,
+		FlaggedAt: time.Now().UTC().Format(time.RFC3339),
+	})
+
+	data, err := json.Marshal(flags)
+	if err != nil {
+		return fmt.Errorf("marshaling flagged fields: %w", err)
+	}
+
+	_, err = d.db.Exec(`UPDATE reference_pages SET flagged_fields_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(data), cardID)
+	return err
+}
+
+// ResolveFlaggedField removes all flagged-field entries matching the given field name.
+func (d *Database) ResolveFlaggedField(cardID int64, field string) error {
+	var raw string
+	err := d.db.QueryRow(`SELECT flagged_fields_json FROM reference_pages WHERE id = ?`, cardID).Scan(&raw)
+	if err != nil {
+		return fmt.Errorf("loading flagged fields: %w", err)
+	}
+
+	var flags []FlaggedField
+	if raw != "" && raw != "[]" {
+		if err := json.Unmarshal([]byte(raw), &flags); err != nil {
+			return fmt.Errorf("unmarshaling flagged fields: %w", err)
+		}
+	}
+
+	var kept []FlaggedField
+	for _, f := range flags {
+		if f.Field != field {
+			kept = append(kept, f)
+		}
+	}
+	if kept == nil {
+		kept = []FlaggedField{}
+	}
+
+	data, err := json.Marshal(kept)
+	if err != nil {
+		return fmt.Errorf("marshaling flagged fields: %w", err)
+	}
+
+	_, err = d.db.Exec(`UPDATE reference_pages SET flagged_fields_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(data), cardID)
+	return err
 }
 
 // --- FTS Sync ---
