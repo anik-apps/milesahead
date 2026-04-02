@@ -120,7 +120,16 @@ nav .nav-links a:hover {
     min-width: 160px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     z-index: 200;
-    margin-top: 0.5rem;
+    padding-top: 0.6rem;
+}
+/* Invisible bridge between button and menu to prevent hover gap */
+.nav-dropdown::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    height: 0.5rem;
 }
 .nav-dropdown:hover .nav-dropdown-menu,
 .nav-dropdown.open .nav-dropdown-menu {
