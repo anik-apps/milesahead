@@ -83,8 +83,14 @@ func main() {
 			continue
 		}
 
+		// Normalize JSON fields before writing
+		normalizedEarning := normalizeEarningRates(c.EarningRates)
+		normalizedCredits := normalizeCredits(c.Credits)
+		normalizedBenefits := normalizeBenefitsOrProtections(c.Benefits, "value")
+		normalizedProtections := normalizeBenefitsOrProtections(c.Protections, "value")
+
 		// Build earning_rates with transfer_partners merged in
-		earningWithPartners := mergeTransferPartners(c.EarningRates, c.TransferPartners)
+		earningWithPartners := mergeTransferPartners(normalizedEarning, c.TransferPartners)
 
 		// Update structured fields
 		now := time.Now()
@@ -105,9 +111,9 @@ func main() {
 			c.WelcomeBonusText,
 			now,
 			string(earningWithPartners),
-			string(c.Credits),
-			string(c.Benefits),
-			string(c.Protections),
+			string(normalizedCredits),
+			string(normalizedBenefits),
+			string(normalizedProtections),
 			c.Slug,
 		)
 		if err != nil {
@@ -130,6 +136,109 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// normalizeEarningRates converts flat string values like "2x" into {"rate":"2x","note":""}.
+// Also normalizes "niche" strings into arrays.
+func normalizeEarningRates(raw json.RawMessage) json.RawMessage {
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return raw
+	}
+	for k, v := range m {
+		if k == "niche" {
+			m[k] = normalizeNiche(v)
+			continue
+		}
+		switch val := v.(type) {
+		case string:
+			if val == "N/A" || val == "" {
+				m[k] = map[string]string{"rate": "N/A", "note": ""}
+			} else {
+				m[k] = map[string]string{"rate": val, "note": ""}
+			}
+		}
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
+// normalizeCredits converts flat string values like "$200 credit" into {"amount":"$200 credit","note":""}.
+func normalizeCredits(raw json.RawMessage) json.RawMessage {
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return raw
+	}
+	for k, v := range m {
+		if k == "niche" {
+			m[k] = normalizeNiche(v)
+			continue
+		}
+		switch val := v.(type) {
+		case string:
+			if val == "N/A" || val == "" {
+				m[k] = map[string]string{"amount": "", "note": ""}
+			} else {
+				m[k] = map[string]string{"amount": val, "note": ""}
+			}
+		}
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
+// normalizeBenefitsOrProtections converts flat string values into {"value":"...","note":""}.
+// Also handles boolean values for fields like no_ftf.
+func normalizeBenefitsOrProtections(raw json.RawMessage, _ string) json.RawMessage {
+	var m map[string]interface{}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return raw
+	}
+	for k, v := range m {
+		if k == "niche" {
+			m[k] = normalizeNiche(v)
+			continue
+		}
+		switch val := v.(type) {
+		case string:
+			if val == "N/A" || val == "" {
+				m[k] = map[string]string{"value": "N/A", "note": ""}
+			} else {
+				m[k] = map[string]string{"value": val, "note": ""}
+			}
+		case bool:
+			boolStr := "No"
+			if val {
+				boolStr = "Yes"
+			}
+			m[k] = map[string]string{"value": boolStr, "note": ""}
+		}
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
+// normalizeNiche converts a "niche" field: if it's a string, convert to array format.
+// "N/A" or "" becomes []. Any other string becomes [{"label":"...","note":""}].
+func normalizeNiche(v interface{}) interface{} {
+	switch val := v.(type) {
+	case string:
+		if val == "N/A" || val == "" {
+			return []interface{}{}
+		}
+		return []map[string]string{{"label": val, "note": ""}}
+	default:
+		return v // already an array or other valid type
+	}
 }
 
 // mergeTransferPartners adds transfer_partners into the earning_rates JSON
