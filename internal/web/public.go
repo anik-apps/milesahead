@@ -1253,38 +1253,45 @@ func buildEarningRateRowsFromMaps(allMaps []map[string]json.RawMessage, numCards
 			json.Unmarshal(raw, &tp)
 			val := tp.Program
 			if tp.Count != "" {
-				val += " (" + tp.Count + " partners)"
+				val += " (" + tp.Count + ")"
 			}
-			note := ""
 			if len(tp.KeyPartners) > 0 {
-				note = strings.Join(tp.KeyPartners, ", ")
+				val += ": " + strings.Join(tp.KeyPartners, ", ")
 			}
-			cells[i] = compareCell{Value: val, Note: note}
+			cells[i] = compareCell{Value: val}
 		}
 		rows = append(rows, compareRow{Label: "Transfer Partners", Cells: cells})
 	}
 
-	// Niche earning items.
+	// Niche earning items — consolidated into a single row.
+	hasNiche := false
 	for i := 0; i < numCards; i++ {
-		raw, ok := allMaps[i]["niche"]
-		if !ok {
-			continue
+		if _, ok := allMaps[i]["niche"]; ok {
+			hasNiche = true
+			break
 		}
-		var niches []nicheEntry
-		json.Unmarshal(raw, &niches)
-		for _, n := range niches {
-			// Add a row for each niche item only if not already present.
-			cells := make([]compareCell, numCards)
-			for j := 0; j < numCards; j++ {
-				cells[j] = compareCell{Value: "-"}
+	}
+	if hasNiche {
+		cells := make([]compareCell, numCards)
+		for i := 0; i < numCards; i++ {
+			raw, ok := allMaps[i]["niche"]
+			if !ok {
+				cells[i] = compareCell{Value: "-"}
+				continue
 			}
-			v := n.Value
-			if v == "" {
-				v = "Yes"
+			var niches []nicheEntry
+			json.Unmarshal(raw, &niches)
+			var parts []string
+			for _, n := range niches {
+				v := n.Value
+				if v == "" {
+					v = "Yes"
+				}
+				parts = append(parts, n.Label+": "+v)
 			}
-			cells[i] = compareCell{Value: v, Note: n.Note}
-			rows = append(rows, compareRow{Label: n.Label, Cells: cells})
+			cells[i] = compareCell{Value: strings.Join(parts, ", ")}
 		}
+		rows = append(rows, compareRow{Label: "Niche Rates", Cells: cells})
 	}
 
 	return rows
@@ -1382,26 +1389,35 @@ func buildGenericRowsFromMaps(allMaps []map[string]json.RawMessage, numCards int
 		rows = append(rows, compareRow{Label: label, Cells: cells})
 	}
 
-	// Niche items.
+	// Niche items — consolidated into a single row.
+	hasNiche := false
 	for i := 0; i < numCards; i++ {
-		raw, ok := allMaps[i]["niche"]
-		if !ok {
-			continue
+		if _, ok := allMaps[i]["niche"]; ok {
+			hasNiche = true
+			break
 		}
-		var niches []nicheEntry
-		json.Unmarshal(raw, &niches)
-		for _, n := range niches {
-			cells := make([]compareCell, numCards)
-			for j := 0; j < numCards; j++ {
-				cells[j] = compareCell{Value: "-"}
+	}
+	if hasNiche {
+		cells := make([]compareCell, numCards)
+		for i := 0; i < numCards; i++ {
+			raw, ok := allMaps[i]["niche"]
+			if !ok {
+				cells[i] = compareCell{Value: "-"}
+				continue
 			}
-			v := n.Value
-			if v == "" {
-				v = "Yes"
+			var niches []nicheEntry
+			json.Unmarshal(raw, &niches)
+			var parts []string
+			for _, n := range niches {
+				v := n.Value
+				if v == "" {
+					v = "Yes"
+				}
+				parts = append(parts, n.Label+": "+v)
 			}
-			cells[i] = compareCell{Value: v, Note: n.Note}
-			rows = append(rows, compareRow{Label: n.Label, Cells: cells})
+			cells[i] = compareCell{Value: strings.Join(parts, ", ")}
 		}
+		rows = append(rows, compareRow{Label: "Niche Credits", Cells: cells})
 	}
 
 	return rows

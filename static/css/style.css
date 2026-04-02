@@ -2187,6 +2187,7 @@ tr.flagged { background: #fef2f2; }
     font-weight: 600;
     white-space: nowrap;
     min-width: 150px;
+    max-width: 180px;
     color: var(--text-muted);
     font-size: 0.88rem;
 }
@@ -2206,8 +2207,10 @@ tr.flagged { background: #fef2f2; }
 }
 .compare-header-select {
     font-weight: 600;
-    font-size: 0.88rem;
-    max-width: 180px;
+    font-size: 0.82rem;
+    width: 100%;
+    min-width: 200px;
+    max-width: 260px;
     margin: 0 auto;
     display: block;
 }
@@ -2263,13 +2266,31 @@ tr.flagged { background: #fef2f2; }
         left: 0;
         background: var(--bg);
         z-index: 1;
-        min-width: 120px;
+        min-width: 90px;
+        max-width: 110px;
+        font-size: 0.78rem;
+        white-space: normal;
+        word-break: break-word;
+        padding: 0.5rem 0.5rem;
     }
     .compare-table tbody tr:nth-child(even) .compare-label-col {
         background: var(--card-bg);
     }
+    .compare-table th,
+    .compare-table td {
+        padding: 0.5rem 0.5rem;
+        font-size: 0.82rem;
+    }
     .compare-card-img {
         max-width: 100px;
+    }
+    .compare-header-select {
+        font-size: 0.75rem;
+        min-width: 140px;
+        max-width: 180px;
+    }
+    .compare-card-col {
+        min-width: 150px;
     }
     .compare-selector-row {
         flex-direction: column;
