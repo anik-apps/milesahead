@@ -182,7 +182,8 @@ func parseRelatedCards(relatedJSON string) []string {
 	return cards
 }
 
-// groupArticlesByTag groups articles by their tags for template rendering.
+// groupArticlesByTag groups articles by their primary (first) tag.
+// Each article appears in exactly one group to avoid duplicates in the newsletter.
 func groupArticlesByTag(articles []db.GeneratedArticle) map[string][]articleItem {
 	groups := make(map[string][]articleItem)
 	for _, a := range articles {
@@ -193,10 +194,9 @@ func groupArticlesByTag(articles []db.GeneratedArticle) map[string][]articleItem
 			Summary: summary(a.TLDR),
 			Tags:    tags,
 		}
-		for _, tag := range tags {
-			groups[tag] = append(groups[tag], item)
-		}
-		if len(tags) == 0 {
+		if len(tags) > 0 {
+			groups[tags[0]] = append(groups[tags[0]], item)
+		} else {
 			groups["other"] = append(groups["other"], item)
 		}
 	}
@@ -331,9 +331,19 @@ func buildTemplateData(articles []db.GeneratedArticle, date, domain string) news
 }
 
 // buildWeeklyTemplateData builds template data for a weekly newsletter with tag groups.
+// The Scout's Pick article is excluded from tag groups to avoid duplication.
 func buildWeeklyTemplateData(articles []db.GeneratedArticle, date, domain string, cow *cardOfWeekData, sp *scoutsPickData) newsletterData {
 	data := buildTemplateData(articles, date, domain)
-	data.TagGroups = groupArticlesByTag(articles)
+
+	// Exclude Scout's Pick from tag-grouped articles to avoid showing it twice
+	var tagArticles []db.GeneratedArticle
+	for _, a := range articles {
+		if sp != nil && a.ID == sp.ID {
+			continue
+		}
+		tagArticles = append(tagArticles, a)
+	}
+	data.TagGroups = groupArticlesByTag(tagArticles)
 	data.CardOfWeek = cow
 	data.ScoutsPick = sp
 	return data
