@@ -404,6 +404,27 @@ If an update is needed, return ONLY a JSON object (no other text):
 If no update is needed, return ONLY: NO_UPDATE`, articleTitle, truncatedArticle, cardTitle, sectionTitle, truncatedSection)
 }
 
+// ArticleSummary is a lightweight representation of an article for ranking prompts.
+type ArticleSummary struct {
+	ID    int64
+	Title string
+	TLDR  string
+}
+
+// NewsletterPickPrompt builds a prompt asking the AI to rank articles by reader
+// value for a weekly newsletter. Returns a prompt that expects a JSON array of
+// article IDs ordered best-first.
+func NewsletterPickPrompt(articles []ArticleSummary) string {
+	var b strings.Builder
+	b.WriteString("Rank these articles by reader value for a weekly miles-and-points newsletter. ")
+	b.WriteString("Consider: actionable value (deals, deadlines), broad appeal, and timeliness.\n\n")
+	for _, a := range articles {
+		fmt.Fprintf(&b, "- ID %d: %s\n  TLDR: %s\n", a.ID, a.Title, a.TLDR)
+	}
+	b.WriteString("\nReturn ONLY a JSON array of article IDs in order, best first. Example: [5, 2, 8, 1]\n")
+	return b.String()
+}
+
 // RevisionPrompt builds a prompt for revising an article based on feedback.
 func RevisionPrompt(sources []SourceArticle, previousOutput, feedback, criticIssues string) string {
 	return fmt.Sprintf(`You are a miles-and-points content editor revising an article.

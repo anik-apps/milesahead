@@ -104,13 +104,24 @@ type ArticleVote struct {
 }
 
 type Newsletter struct {
-	ID           int64      `json:"id"`
-	Date         string     `json:"date"`
-	Subject      string     `json:"subject"`
-	HTMLContent  string     `json:"html_content"`
-	Status       string     `json:"status"`
-	ArticleCount int        `json:"article_count"`
-	SentAt       *time.Time `json:"sent_at"`
+	ID                  int64      `json:"id"`
+	Date                string     `json:"date"`
+	Subject             string     `json:"subject"`
+	HTMLContent         string     `json:"html_content"`
+	Status              string     `json:"status"`
+	ArticleCount        int        `json:"article_count"`
+	CardOfWeekID        *int64     `json:"card_of_week_id"`
+	ScoutsPickArticleID *int64     `json:"scouts_pick_article_id"`
+	SentAt              *time.Time `json:"sent_at"`
+}
+
+type NewsletterCandidate struct {
+	ID           int64     `json:"id"`
+	NewsletterID int64     `json:"newsletter_id"`
+	ArticleID    int64     `json:"article_id"`
+	Rank         int       `json:"rank"`
+	Featured     bool      `json:"featured"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Subscriber struct {

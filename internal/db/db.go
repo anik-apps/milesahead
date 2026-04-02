@@ -462,8 +462,8 @@ func (d *Database) HasVoted(articleID int64, ipHash string) (bool, error) {
 
 func (d *Database) CreateNewsletter(n *Newsletter) (int64, error) {
 	res, err := d.db.Exec(
-		`INSERT INTO newsletters (date, subject, html_content, status, article_count) VALUES (?, ?, ?, ?, ?)`,
-		n.Date, n.Subject, n.HTMLContent, n.Status, n.ArticleCount,
+		`INSERT INTO newsletters (date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		n.Date, n.Subject, n.HTMLContent, n.Status, n.ArticleCount, n.CardOfWeekID, n.ScoutsPickArticleID,
 	)
 	if err != nil {
 		return 0, err
@@ -474,8 +474,8 @@ func (d *Database) CreateNewsletter(n *Newsletter) (int64, error) {
 func (d *Database) GetNewsletterByDate(date string) (*Newsletter, error) {
 	n := &Newsletter{}
 	err := d.db.QueryRow(
-		`SELECT id, date, subject, html_content, status, article_count, sent_at FROM newsletters WHERE date = ?`, date,
-	).Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.SentAt)
+		`SELECT id, date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, sent_at FROM newsletters WHERE date = ?`, date,
+	).Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.CardOfWeekID, &n.ScoutsPickArticleID, &n.SentAt)
 	if err != nil {
 		return nil, err
 	}
@@ -490,7 +490,7 @@ func (d *Database) MarkNewsletterSent(id int64) error {
 // ListNewsletters returns all newsletters ordered by date descending.
 func (d *Database) ListNewsletters() ([]Newsletter, error) {
 	rows, err := d.db.Query(
-		`SELECT id, date, subject, html_content, status, article_count, sent_at FROM newsletters ORDER BY date DESC`,
+		`SELECT id, date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, sent_at FROM newsletters ORDER BY date DESC`,
 	)
 	if err != nil {
 		return nil, err
@@ -500,7 +500,7 @@ func (d *Database) ListNewsletters() ([]Newsletter, error) {
 	var newsletters []Newsletter
 	for rows.Next() {
 		var n Newsletter
-		if err := rows.Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.SentAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.CardOfWeekID, &n.ScoutsPickArticleID, &n.SentAt); err != nil {
 			return nil, err
 		}
 		newsletters = append(newsletters, n)
@@ -1077,4 +1077,72 @@ func (d *Database) SearchCards(query string, limit, offset int) ([]SearchResult,
 		results = append(results, r)
 	}
 	return results, rows.Err()
+}
+
+// --- Newsletter Candidate CRUD ---
+
+// CreateNewsletterCandidate inserts a newsletter candidate record.
+func (d *Database) CreateNewsletterCandidate(c *NewsletterCandidate) error {
+	_, err := d.db.Exec(
+		`INSERT INTO newsletter_candidates (newsletter_id, article_id, rank, featured) VALUES (?, ?, ?, ?)`,
+		c.NewsletterID, c.ArticleID, c.Rank, c.Featured,
+	)
+	return err
+}
+
+// ListCandidatesForNewsletter returns all candidates for a newsletter ordered by rank.
+func (d *Database) ListCandidatesForNewsletter(newsletterID int64) ([]NewsletterCandidate, error) {
+	rows, err := d.db.Query(
+		`SELECT id, newsletter_id, article_id, rank, featured, created_at FROM newsletter_candidates WHERE newsletter_id = ? ORDER BY rank ASC`,
+		newsletterID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var candidates []NewsletterCandidate
+	for rows.Next() {
+		var c NewsletterCandidate
+		if err := rows.Scan(&c.ID, &c.NewsletterID, &c.ArticleID, &c.Rank, &c.Featured, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, c)
+	}
+	return candidates, rows.Err()
+}
+
+// SetFeaturedCandidate unsets all featured flags for a newsletter, then sets the specified article as featured.
+func (d *Database) SetFeaturedCandidate(newsletterID, articleID int64) error {
+	tx, err := d.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`UPDATE newsletter_candidates SET featured = 0 WHERE newsletter_id = ?`, newsletterID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE newsletter_candidates SET featured = 1 WHERE newsletter_id = ? AND article_id = ?`, newsletterID, articleID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// UpdateNewsletterStatus updates the status of a newsletter.
+func (d *Database) UpdateNewsletterStatus(id int64, status string) error {
+	_, err := d.db.Exec(`UPDATE newsletters SET status = ? WHERE id = ?`, status, id)
+	return err
+}
+
+// UpdateNewsletterCardOfWeek sets the card_of_week_id for a newsletter.
+func (d *Database) UpdateNewsletterCardOfWeek(id int64, cardID int64) error {
+	_, err := d.db.Exec(`UPDATE newsletters SET card_of_week_id = ? WHERE id = ?`, cardID, id)
+	return err
+}
+
+// UpdateNewsletterScoutsPick sets the scouts_pick_article_id for a newsletter.
+func (d *Database) UpdateNewsletterScoutsPick(id int64, articleID int64) error {
+	_, err := d.db.Exec(`UPDATE newsletters SET scouts_pick_article_id = ? WHERE id = ?`, articleID, id)
+	return err
 }
