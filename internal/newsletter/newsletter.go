@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -84,9 +85,11 @@ type newsletterData struct {
 
 // cardOfWeekData holds card-of-the-week info for the template.
 type cardOfWeekData struct {
-	ID    int64
-	Title string
-	Slug  string
+	ID       int64
+	Title    string
+	Slug     string
+	ImageURL string
+	Verdict  string
 }
 
 // scoutsPickData holds the Scout's Pick article info for the template.
@@ -95,6 +98,7 @@ type scoutsPickData struct {
 	Title      string
 	Slug       string
 	ScoutsTake string
+	ImageURL   string
 }
 
 // excerpt returns the first ~300 characters of content, breaking at a sentence or word boundary.
@@ -208,13 +212,18 @@ func renderNewsletter(articles []db.GeneratedArticle, date, domain string) (stri
 	}
 
 	tmpl, err := template.New("newsletter").Funcs(template.FuncMap{
-		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+		"safeHTML":       func(s string) template.HTML { return template.HTML(s) },
+		"tagDisplayName": tagDisplayName,
 	}).Parse(string(tmplContent))
 	if err != nil {
 		return "", fmt.Errorf("parsing newsletter template: %w", err)
 	}
 
-	data := buildTemplateData(articles, date, domain)
+	base := buildTemplateData(articles, date, domain)
+	data := newsletterWeeklyData{
+		newsletterData:   base,
+		OrderedTagGroups: orderedTagGroups(base.TagGroups),
+	}
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
@@ -222,6 +231,40 @@ func renderNewsletter(articles []db.GeneratedArticle, date, domain string) (stri
 	}
 
 	return buf.String(), nil
+}
+
+// tagDisplayName converts a tag slug like "credit-cards" to "Credit Cards".
+func tagDisplayName(slug string) string {
+	words := strings.Split(slug, "-")
+	for i, w := range words {
+		if len(w) > 0 {
+			words[i] = strings.ToUpper(w[:1]) + w[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+// orderedTagGroups returns tag groups as an ordered slice of tag/articles pairs.
+type tagGroup struct {
+	Tag      string
+	Articles []articleItem
+}
+
+func orderedTagGroups(groups map[string][]articleItem) []tagGroup {
+	result := make([]tagGroup, 0, len(groups))
+	for tag, articles := range groups {
+		result = append(result, tagGroup{Tag: tag, Articles: articles})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Tag < result[j].Tag
+	})
+	return result
+}
+
+// newsletterWeeklyData extends newsletterData with ordered tag groups for templates.
+type newsletterWeeklyData struct {
+	newsletterData
+	OrderedTagGroups []tagGroup
 }
 
 // renderWeeklyNewsletter renders a weekly newsletter with enriched data.
@@ -233,13 +276,18 @@ func renderWeeklyNewsletter(articles []db.GeneratedArticle, date, domain string,
 	}
 
 	tmpl, err := template.New("newsletter").Funcs(template.FuncMap{
-		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+		"safeHTML":       func(s string) template.HTML { return template.HTML(s) },
+		"tagDisplayName": tagDisplayName,
 	}).Parse(string(tmplContent))
 	if err != nil {
 		return "", fmt.Errorf("parsing newsletter template: %w", err)
 	}
 
-	data := buildWeeklyTemplateData(articles, date, domain, cow, sp)
+	base := buildWeeklyTemplateData(articles, date, domain, cow, sp)
+	data := newsletterWeeklyData{
+		newsletterData:   base,
+		OrderedTagGroups: orderedTagGroups(base.TagGroups),
+	}
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
@@ -511,9 +559,11 @@ func (s *Service) loadCardOfWeekData(cardID int64) *cardOfWeekData {
 		return nil
 	}
 	return &cardOfWeekData{
-		ID:    page.ID,
-		Title: page.Title,
-		Slug:  page.Slug,
+		ID:       page.ID,
+		Title:    page.Title,
+		Slug:     page.Slug,
+		ImageURL: page.ImageURL,
+		Verdict:  page.ScoutsVerdict,
 	}
 }
 
@@ -529,6 +579,7 @@ func (s *Service) loadScoutsPickData(articleID int64) *scoutsPickData {
 		Title:      article.Title,
 		Slug:       article.Slug,
 		ScoutsTake: article.ScoutsTake,
+		ImageURL:   article.ImageURL,
 	}
 }
 

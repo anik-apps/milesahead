@@ -126,7 +126,7 @@ func TestGenerateDaily_ThreeArticles(t *testing.T) {
 	if !strings.Contains(nl.HTMLContent, "MILES AHEAD") {
 		t.Error("newsletter HTML missing masthead 'MILES AHEAD'")
 	}
-	if !strings.Contains(nl.HTMLContent, "THE DAILY POINTS") {
+	if !strings.Contains(nl.HTMLContent, "WEEKLY") {
 		t.Error("newsletter HTML missing subtitle")
 	}
 	if !strings.Contains(nl.HTMLContent, "MORE STORIES") {
