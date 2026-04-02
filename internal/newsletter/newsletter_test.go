@@ -126,11 +126,12 @@ func TestGenerateDaily_ThreeArticles(t *testing.T) {
 	if !strings.Contains(nl.HTMLContent, "MILES AHEAD") {
 		t.Error("newsletter HTML missing masthead 'MILES AHEAD'")
 	}
-	if !strings.Contains(nl.HTMLContent, "THE DAILY POINTS") {
+	if !strings.Contains(nl.HTMLContent, "WEEKLY") {
 		t.Error("newsletter HTML missing subtitle")
 	}
-	if !strings.Contains(nl.HTMLContent, "MORE STORIES") {
-		t.Error("newsletter HTML missing sidebar section")
+	// Verify at least the lead article title appears in the rendered HTML.
+	if !strings.Contains(nl.HTMLContent, "Breaking: New Amex Platinum Bonus") {
+		t.Error("newsletter HTML missing lead article title")
 	}
 	if !strings.Contains(nl.HTMLContent, "Unsubscribe") {
 		t.Error("newsletter HTML missing unsubscribe link")

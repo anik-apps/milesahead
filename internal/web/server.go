@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/article"
@@ -121,6 +122,10 @@ func (app *App) loadTemplates(dir string) error {
 			return err
 		}
 		if !info.IsDir() && filepath.Ext(path) == ".html" && filepath.Base(path) != "layout.html" {
+			// Skip email templates — they are rendered by the newsletter service, not the web server.
+			if strings.Contains(path, string(filepath.Separator)+"email"+string(filepath.Separator)) {
+				return nil
+			}
 			pageFiles = append(pageFiles, path)
 		}
 		return nil

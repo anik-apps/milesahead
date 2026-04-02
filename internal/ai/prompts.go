@@ -5,6 +5,12 @@ import (
 	"strings"
 )
 
+// ValidTags is the canonical list of topic tags used across the application.
+var ValidTags = []string{
+	"airlines", "hotels", "credit-cards", "transfer-bonuses",
+	"points-deals", "travel-deals", "loyalty-programs", "bank-bonuses",
+}
+
 // SourceArticle represents a source used to generate or verify content.
 type SourceArticle struct {
 	Name    string
@@ -332,6 +338,25 @@ Rules:
 - If the article has no links, return an empty links array.`, title, truncated)
 }
 
+// ArticleTagsPrompt builds a prompt that asks the AI to pick 1-3 topic tags
+// from a predefined list based on the article's title and content.
+func ArticleTagsPrompt(title, content string) string {
+	truncated := content
+	if len(truncated) > 2000 {
+		truncated = truncated[:2000]
+	}
+	return fmt.Sprintf(`Given this article, pick 1-3 topic tags from the list below that best describe it.
+
+ALLOWED TAGS (pick ONLY from this list):
+%s
+
+Article Title: %s
+Article Content:
+%s
+
+Return ONLY a JSON array of 1-3 tags, nothing else. Example: ["credit-cards", "points-deals"]`, strings.Join(ValidTags, ", "), title, truncated)
+}
+
 // ScoutsTakePrompt builds a prompt for generating a short, opinionated take
 // on an article. The persona is practical, direct, and slightly opinionated.
 func ScoutsTakePrompt(personaName, title, tldr, content string) string {
@@ -383,6 +408,27 @@ If an update is needed, return ONLY a JSON object (no other text):
 {"updated_content": "<the full updated section content in HTML>", "summary": "<1 sentence describing what changed>"}
 
 If no update is needed, return ONLY: NO_UPDATE`, articleTitle, truncatedArticle, cardTitle, sectionTitle, truncatedSection)
+}
+
+// ArticleSummary is a lightweight representation of an article for ranking prompts.
+type ArticleSummary struct {
+	ID    int64
+	Title string
+	TLDR  string
+}
+
+// NewsletterPickPrompt builds a prompt asking the AI to rank articles by reader
+// value for a weekly newsletter. Returns a prompt that expects a JSON array of
+// article IDs ordered best-first.
+func NewsletterPickPrompt(articles []ArticleSummary) string {
+	var b strings.Builder
+	b.WriteString("Rank these articles by reader value for a weekly miles-and-points newsletter. ")
+	b.WriteString("Consider: actionable value (deals, deadlines), broad appeal, and timeliness.\n\n")
+	for _, a := range articles {
+		fmt.Fprintf(&b, "- ID %d: %s\n  TLDR: %s\n", a.ID, a.Title, a.TLDR)
+	}
+	b.WriteString("\nReturn ONLY a JSON array of article IDs in order, best first. Example: [5, 2, 8, 1]\n")
+	return b.String()
 }
 
 // RevisionPrompt builds a prompt for revising an article based on feedback.

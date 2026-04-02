@@ -58,6 +58,7 @@ type adminArticleRow struct {
 	KeyDetails        []struct{ Label, Value string }
 	ArticleLinks      []struct{ Text, URL string }
 	ImageURL          string
+	Tags              []string
 	createdAtRaw      time.Time // for sorting only, not exposed to template
 }
 
@@ -103,6 +104,12 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("failed to parse links", "article_id", a.ID, "error", err)
 			}
 			row.ArticleLinks = links
+		}
+		if a.TagsJSON != "" && a.TagsJSON != "[]" {
+			var tags []string
+			if err := json.Unmarshal([]byte(a.TagsJSON), &tags); err == nil {
+				row.Tags = tags
+			}
 		}
 
 		if v, err := app.db.GetLatestVerification(a.ID); err == nil {
@@ -542,6 +549,18 @@ func maskString(s string) string {
 	return "********"
 }
 
+// adminCandidateRow holds a newsletter candidate with its article title for display.
+type adminCandidateRow struct {
+	db.NewsletterCandidate
+	ArticleTitle string
+}
+
+// adminCardInfo holds minimal card info for the admin dropdown.
+type adminCardInfo struct {
+	ID    int64
+	Title string
+}
+
 func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 	var previewHTML string
 	var noContent bool
@@ -554,7 +573,53 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 		errorMsg = msg
 	}
 
-	if app.newsletterSvc != nil {
+	// Try to load the current week's newsletter (most recent draft/auto_approved).
+	newsletters, _ := app.db.ListNewsletters()
+	var currentNL *db.Newsletter
+	for i := range newsletters {
+		if newsletters[i].Status != "sent" {
+			currentNL = &newsletters[i]
+			break
+		}
+	}
+	// If no unsent newsletter, use the most recent one for display.
+	if currentNL == nil && len(newsletters) > 0 {
+		currentNL = &newsletters[0]
+	}
+
+	// Load candidates for the current newsletter.
+	var candidates []adminCandidateRow
+	if currentNL != nil {
+		rawCandidates, _ := app.db.ListCandidatesForNewsletter(currentNL.ID)
+		for _, c := range rawCandidates {
+			row := adminCandidateRow{NewsletterCandidate: c}
+			if article, err := app.db.GetGeneratedArticle(c.ArticleID); err == nil {
+				row.ArticleTitle = article.Title
+			}
+			candidates = append(candidates, row)
+		}
+	}
+
+	// Load current card of the week info.
+	var currentCard *adminCardInfo
+	if currentNL != nil && currentNL.CardOfWeekID != nil {
+		if page, err := app.db.GetReferencePage(*currentNL.CardOfWeekID); err == nil {
+			currentCard = &adminCardInfo{ID: page.ID, Title: page.Title}
+		}
+	}
+
+	// Load all published cards for the dropdown.
+	var allCards []adminCardInfo
+	if pages, err := app.db.ListPublishedReferencePages(""); err == nil {
+		for _, p := range pages {
+			allCards = append(allCards, adminCardInfo{ID: p.ID, Title: p.Title})
+		}
+	}
+
+	// Use stored HTML content as preview if available.
+	if currentNL != nil && currentNL.HTMLContent != "" {
+		previewHTML = currentNL.HTMLContent
+	} else if app.newsletterSvc != nil {
 		html, err := app.newsletterSvc.PreviewNext()
 		if err != nil {
 			noContent = true
@@ -565,22 +630,99 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 		noContent = true
 	}
 
-	// Fetch newsletter history.
+	// Build history (exclude current newsletter from the history list).
 	var history []db.Newsletter
-	if newsletters, err := app.db.ListNewsletters(); err == nil {
-		history = newsletters
+	for _, nl := range newsletters {
+		if currentNL != nil && nl.ID == currentNL.ID {
+			continue
+		}
+		history = append(history, nl)
 	}
 
 	data := map[string]interface{}{
-		"Title":       "Newsletter",
-		"PreviewHTML": previewHTML,
-		"NoContent":   noContent,
-		"History":     history,
-		"Success":     successMsg,
-		"Error":       errorMsg,
-		"CSRFToken":   getCSRFToken(w, r),
+		"Title":             "Newsletter",
+		"PreviewHTML":       previewHTML,
+		"NoContent":         noContent,
+		"CurrentNewsletter": currentNL,
+		"Candidates":        candidates,
+		"CurrentCard":       currentCard,
+		"AllCards":          allCards,
+		"History":           history,
+		"Success":           successMsg,
+		"Error":             errorMsg,
+		"CSRFToken":         getCSRFToken(w, r),
 	}
 	app.renderTemplate(w, "newsletter.html", data)
+}
+
+func (app *App) handleNewsletterFeature(w http.ResponseWriter, r *http.Request) {
+	newsletterID, err := strconv.ParseInt(r.FormValue("newsletter_id"), 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/newsletter?error=Invalid+newsletter+ID", http.StatusSeeOther)
+		return
+	}
+	articleID, err := strconv.ParseInt(r.FormValue("article_id"), 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/newsletter?error=Invalid+article+ID", http.StatusSeeOther)
+		return
+	}
+
+	if err := app.db.SetFeaturedCandidate(newsletterID, articleID); err != nil {
+		slog.Error("failed to set featured candidate", "error", err)
+		http.Redirect(w, r, "/admin/newsletter?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	if err := app.db.UpdateNewsletterScoutsPick(newsletterID, articleID); err != nil {
+		slog.Error("failed to update scout's pick", "error", err)
+		http.Redirect(w, r, "/admin/newsletter?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/newsletter?success=Scout's+Pick+updated", http.StatusSeeOther)
+}
+
+func (app *App) handleNewsletterCardOverride(w http.ResponseWriter, r *http.Request) {
+	newsletterID, err := strconv.ParseInt(r.FormValue("newsletter_id"), 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/newsletter?error=Invalid+newsletter+ID", http.StatusSeeOther)
+		return
+	}
+	cardID, err := strconv.ParseInt(r.FormValue("card_id"), 10, 64)
+	if err != nil || cardID == 0 {
+		http.Redirect(w, r, "/admin/newsletter?error=Please+select+a+card", http.StatusSeeOther)
+		return
+	}
+
+	if err := app.db.UpdateNewsletterCardOfWeek(newsletterID, cardID); err != nil {
+		slog.Error("failed to override card of week", "error", err)
+		http.Redirect(w, r, "/admin/newsletter?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/newsletter?success=Card+of+the+Week+updated", http.StatusSeeOther)
+}
+
+func (app *App) handleNewsletterStatus(w http.ResponseWriter, r *http.Request) {
+	newsletterID, err := strconv.ParseInt(r.FormValue("newsletter_id"), 10, 64)
+	if err != nil {
+		http.Redirect(w, r, "/admin/newsletter?error=Invalid+newsletter+ID", http.StatusSeeOther)
+		return
+	}
+	status := r.FormValue("status")
+	validStatuses := map[string]bool{"approved": true, "hold": true, "skipped": true}
+	if !validStatuses[status] {
+		http.Redirect(w, r, "/admin/newsletter?error=Invalid+status", http.StatusSeeOther)
+		return
+	}
+
+	if err := app.db.UpdateNewsletterStatus(newsletterID, status); err != nil {
+		slog.Error("failed to update newsletter status", "error", err)
+		http.Redirect(w, r, "/admin/newsletter?error="+url.QueryEscape(err.Error()), http.StatusSeeOther)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/newsletter?success=Newsletter+status+set+to+"+status, http.StatusSeeOther)
 }
 
 func (app *App) handleNewsletterSend(w http.ResponseWriter, r *http.Request) {

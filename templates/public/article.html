@@ -21,6 +21,13 @@
         <span class="type-badge badge-{{.Article.Type}}">{{.Article.Type}}</span>
         <h1>{{.Article.Title}}</h1>
         <time class="published-date">{{.PublishedAt}}</time>
+        {{if .ArticleTags}}
+        <div class="article-tags">
+            {{range .ArticleTags}}
+            <a href="/?tag={{.Slug}}" class="tag-badge">{{.Name}}</a>
+            {{end}}
+        </div>
+        {{end}}
     </header>
 
     <div class="article-layout">

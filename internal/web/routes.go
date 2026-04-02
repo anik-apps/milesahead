@@ -63,6 +63,9 @@ func (app *App) setupRoutes() {
 
 	// Newsletter action routes.
 	adminMux.HandleFunc("POST /admin/newsletter/send", app.handleNewsletterSend)
+	adminMux.HandleFunc("POST /admin/newsletter/feature", app.handleNewsletterFeature)
+	adminMux.HandleFunc("POST /admin/newsletter/card-override", app.handleNewsletterCardOverride)
+	adminMux.HandleFunc("POST /admin/newsletter/status", app.handleNewsletterStatus)
 	adminMux.HandleFunc("GET /admin/newsletter/history", app.handleNewsletterHistory)
 
 	// Card admin routes.

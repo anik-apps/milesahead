@@ -13,6 +13,13 @@
     <a href="/?type=summary" class="tab{{if eq .TypeFilter "summary"}} active{{end}}">Summaries</a>
 </div>
 
+<div class="tag-filters">
+    <a href="/" class="tag-pill{{if not .ActiveTag}} active{{end}}">All</a>
+    {{range .Tags}}
+    <a href="/?tag={{.Slug}}" class="tag-pill{{if eq $.ActiveTag .Slug}} active{{end}}">{{.Name}}</a>
+    {{end}}
+</div>
+
 <div class="magazine-grid">
     {{if .Featured}}
     <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}"{{if .Featured.ImageURL}} style="background-image: url('{{.Featured.ImageURL}}'); background-size: cover; background-position: center;"{{end}}>
@@ -76,7 +83,9 @@
 
 {{if not .Featured}}
 <div class="empty-state">
-    {{if eq .TypeFilter ""}}
+    {{if .ActiveTag}}
+    <p>No articles tagged <strong>{{.ActiveTag}}</strong> right now — check back soon!</p>
+    {{else if eq .TypeFilter ""}}
     <p>No articles published yet. Check back soon!</p>
     {{else}}
     <p>No {{.TypeFilter}} articles right now — check back soon!</p>

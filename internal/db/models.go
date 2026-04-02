@@ -53,6 +53,7 @@ type GeneratedArticle struct {
 	ImageAttribution string     `json:"image_attribution"`
 	ScoutsTake       string     `json:"scouts_take"`
 	RelatedCardsJSON string     `json:"related_cards_json"`
+	TagsJSON         string     `json:"tags_json"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 	PublishedAt      *time.Time `json:"published_at"`
@@ -103,13 +104,24 @@ type ArticleVote struct {
 }
 
 type Newsletter struct {
-	ID           int64      `json:"id"`
-	Date         string     `json:"date"`
-	Subject      string     `json:"subject"`
-	HTMLContent  string     `json:"html_content"`
-	Status       string     `json:"status"`
-	ArticleCount int        `json:"article_count"`
-	SentAt       *time.Time `json:"sent_at"`
+	ID                  int64      `json:"id"`
+	Date                string     `json:"date"`
+	Subject             string     `json:"subject"`
+	HTMLContent         string     `json:"html_content"`
+	Status              string     `json:"status"`
+	ArticleCount        int        `json:"article_count"`
+	CardOfWeekID        *int64     `json:"card_of_week_id"`
+	ScoutsPickArticleID *int64     `json:"scouts_pick_article_id"`
+	SentAt              *time.Time `json:"sent_at"`
+}
+
+type NewsletterCandidate struct {
+	ID           int64     `json:"id"`
+	NewsletterID int64     `json:"newsletter_id"`
+	ArticleID    int64     `json:"article_id"`
+	Rank         int       `json:"rank"`
+	Featured     bool      `json:"featured"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Subscriber struct {

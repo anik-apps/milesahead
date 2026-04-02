@@ -151,6 +151,23 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 
+	// Create newsletter_candidates table.
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS newsletter_candidates (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		newsletter_id INTEGER NOT NULL REFERENCES newsletters(id),
+		article_id INTEGER NOT NULL REFERENCES generated_articles(id),
+		rank INTEGER NOT NULL,
+		featured BOOLEAN NOT NULL DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(newsletter_id, article_id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_newsletter_candidates_newsletter ON newsletter_candidates(newsletter_id);
+	`)
+	if err != nil {
+		return err
+	}
+
 	// Add new columns for structured content (idempotent).
 	alterStatements := []string{
 		`ALTER TABLE generated_articles ADD COLUMN tldr TEXT DEFAULT ''`,
@@ -162,6 +179,9 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE generated_articles ADD COLUMN scouts_take TEXT DEFAULT ''`,
 		`ALTER TABLE reference_pages ADD COLUMN apply_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE generated_articles ADD COLUMN related_cards_json TEXT DEFAULT '[]'`,
+		`ALTER TABLE generated_articles ADD COLUMN tags_json TEXT DEFAULT '[]'`,
+		`ALTER TABLE newsletters ADD COLUMN card_of_week_id INTEGER DEFAULT NULL`,
+		`ALTER TABLE newsletters ADD COLUMN scouts_pick_article_id INTEGER DEFAULT NULL`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)

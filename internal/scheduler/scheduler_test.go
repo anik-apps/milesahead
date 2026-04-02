@@ -65,18 +65,18 @@ func TestAddRevisionJob(t *testing.T) {
 	}
 }
 
-func TestAddNewsletterJob(t *testing.T) {
+func TestAddWeeklyJob(t *testing.T) {
 	s := New()
-	// Just verify it registers without panicking.
-	s.AddNewsletterJob("08:00", "America/New_York", func() {})
+	// Valid 6-field cron expression — should register without error.
+	s.AddWeeklyJob("newsletter-build", "CRON_TZ=America/New_York 0 0 20 * * 5", func() {})
 	s.Start()
 	s.Stop()
 }
 
-func TestAddNewsletterJob_InvalidTimezone(t *testing.T) {
+func TestAddWeeklyJob_InvalidExpr(t *testing.T) {
 	s := New()
-	// Invalid timezone should fall back to UTC without panicking.
-	s.AddNewsletterJob("09:30", "Invalid/Zone", func() {})
+	// Invalid cron expression — should log error but not panic.
+	s.AddWeeklyJob("bad-job", "not a cron expression", func() {})
 	s.Start()
 	s.Stop()
 }

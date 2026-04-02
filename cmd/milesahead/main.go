@@ -106,7 +106,7 @@ func main() {
 			mailSender.SendVoteAlert(cfg.Mail.SMTP.From, articleID, a.Title)
 		}
 	})
-	newsletterSvc := newsletter.NewService(database, mailSender, cfg.Newsletter)
+	newsletterSvc := newsletter.NewServiceWithAI(database, mailSender, cfg.Newsletter, hfClient, cfg.AI.CriticModel, cfg.Server.Domain)
 
 	// Scheduler
 	sched := scheduler.New()
@@ -243,6 +243,40 @@ func main() {
 				}
 			}
 
+			// Generate article tags using AI
+			tagsPrompt := ai.ArticleTagsPrompt(result.Title, result.Content)
+			tagsResp, tagsErr := hfClient.Generate(cfg.AI.CriticModel, tagsPrompt, 256)
+			if tagsErr != nil {
+				slog.Warn("article tags generation failed", "error", tagsErr)
+				result.Tags = []string{}
+			} else {
+				tagsResp = strings.TrimSpace(tagsResp)
+				if idx := strings.Index(tagsResp, "["); idx != -1 {
+					tagsResp = tagsResp[idx:]
+				}
+				if idx := strings.LastIndex(tagsResp, "]"); idx != -1 {
+					tagsResp = tagsResp[:idx+1]
+				}
+				var parsedTags []string
+				if err := json.Unmarshal([]byte(tagsResp), &parsedTags); err != nil {
+					slog.Warn("article tags parse failed", "error", err, "response", tagsResp)
+					result.Tags = []string{}
+				} else {
+					validTagSet := make(map[string]bool, len(ai.ValidTags))
+					for _, t := range ai.ValidTags {
+						validTagSet[t] = true
+					}
+					var filtered []string
+					for _, t := range parsedTags {
+						if validTagSet[t] {
+							filtered = append(filtered, t)
+						}
+					}
+					result.Tags = filtered
+					slog.Info("article tags generated", "title", result.Title, "tags", filtered)
+				}
+			}
+
 			id, err := articleMgr.CreateFromPipeline(result, rawIDs, result.Type)
 			if err != nil {
 				slog.Error("article save failed", "error", err)
@@ -262,12 +296,23 @@ func main() {
 	} else {
 		slog.Info("mail polling disabled", "reason", "IMAP not configured")
 	}
-	sched.AddNewsletterJob(cfg.Newsletter.SendTime, cfg.Newsletter.Timezone, func() {
-		slog.Info("scheduled job started", "job", "newsletter")
-		if err := newsletterSvc.SendDaily(); err != nil {
-			slog.Error("scheduled job failed", "job", "newsletter", "error", err)
-		}
-	})
+	// Friday 20:00 ET — build newsletter
+	sched.AddWeeklyJob("newsletter-build",
+		"CRON_TZ=America/New_York 0 0 20 * * 5",
+		func() {
+			if _, err := newsletterSvc.BuildWeekly(); err != nil {
+				slog.Error("newsletter build failed", "error", err)
+			}
+		})
+
+	// Saturday 08:00 ET — send newsletter
+	sched.AddWeeklyJob("newsletter-send",
+		"CRON_TZ=America/New_York 0 0 8 * * 6",
+		func() {
+			if err := newsletterSvc.SendWeekly(); err != nil {
+				slog.Error("newsletter send failed", "error", err)
+			}
+		})
 	sched.Start()
 
 	// Card update detector

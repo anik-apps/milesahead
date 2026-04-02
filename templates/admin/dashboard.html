@@ -44,6 +44,11 @@
                     {{if eq .Status "revision_requested"}}<span class="status-badge revising">Revising...</span>{{end}}
                     {{if eq .Status "unpublished"}}<span class="status-badge unpublished">Unpublished</span>{{end}}
                     {{if eq .Status "draft"}}<span class="status-badge draft">Draft</span>{{end}}
+                    {{if .Tags}}
+                    <div class="article-tags" style="margin-top:0.25rem;">
+                        {{range .Tags}}<span class="tag-badge">{{.}}</span>{{end}}
+                    </div>
+                    {{end}}
                 </td>
                 <td>{{.VerificationScore}}</td>
                 <td>{{.RevisionNumber}}</td>
