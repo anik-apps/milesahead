@@ -332,6 +332,25 @@ Rules:
 - If the article has no links, return an empty links array.`, title, truncated)
 }
 
+// ArticleTagsPrompt builds a prompt that asks the AI to pick 1-3 topic tags
+// from a predefined list based on the article's title and content.
+func ArticleTagsPrompt(title, content string) string {
+	truncated := content
+	if len(truncated) > 2000 {
+		truncated = truncated[:2000]
+	}
+	return fmt.Sprintf(`Given this article, pick 1-3 topic tags from the list below that best describe it.
+
+ALLOWED TAGS (pick ONLY from this list):
+airlines, hotels, credit-cards, transfer-bonuses, points-deals, travel-deals, loyalty-programs, bank-bonuses
+
+Article Title: %s
+Article Content:
+%s
+
+Return ONLY a JSON array of 1-3 tags, nothing else. Example: ["credit-cards", "points-deals"]`, title, truncated)
+}
+
 // ScoutsTakePrompt builds a prompt for generating a short, opinionated take
 // on an article. The persona is practical, direct, and slightly opinionated.
 func ScoutsTakePrompt(personaName, title, tldr, content string) string {

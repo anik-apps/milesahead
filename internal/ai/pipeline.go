@@ -43,6 +43,7 @@ type PipelineResult struct {
 	ImageAttribution string
 	ScoutsTake       string
 	RelatedCards     []RelatedCard
+	Tags             []string
 }
 
 // Pipeline orchestrates the generator and two critics to produce verified articles.

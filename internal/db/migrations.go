@@ -162,6 +162,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE generated_articles ADD COLUMN scouts_take TEXT DEFAULT ''`,
 		`ALTER TABLE reference_pages ADD COLUMN apply_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE generated_articles ADD COLUMN related_cards_json TEXT DEFAULT '[]'`,
+		`ALTER TABLE generated_articles ADD COLUMN tags_json TEXT DEFAULT '[]'`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)

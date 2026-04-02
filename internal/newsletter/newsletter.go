@@ -91,28 +91,7 @@ func summary(content string) string {
 // listRecentApproved fetches approved articles published in the last 24 hours.
 func (s *Service) listRecentApproved() ([]db.GeneratedArticle, error) {
 	since := time.Now().UTC().Add(-24 * time.Hour)
-	rows, err := s.db.DB().Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, created_at, updated_at, published_at
-		 FROM generated_articles
-		 WHERE status = ? AND published_at >= ?
-		 ORDER BY featured DESC, published_at DESC`,
-		db.StatusApproved, since,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("querying recent approved articles: %w", err)
-	}
-	defer rows.Close()
-
-	var articles []db.GeneratedArticle
-	for rows.Next() {
-		var a db.GeneratedArticle
-		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status,
-			&a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt); err != nil {
-			return nil, fmt.Errorf("scanning article: %w", err)
-		}
-		articles = append(articles, a)
-	}
-	return articles, rows.Err()
+	return s.db.ListApprovedArticlesSince(since)
 }
 
 // todayDate returns today's date string in YYYY-MM-DD format for the configured timezone.

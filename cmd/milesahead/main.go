@@ -243,6 +243,41 @@ func main() {
 				}
 			}
 
+			// Generate article tags using AI
+			tagsPrompt := ai.ArticleTagsPrompt(result.Title, result.Content)
+			tagsResp, tagsErr := hfClient.Generate(cfg.AI.CriticModel, tagsPrompt, 256)
+			if tagsErr != nil {
+				slog.Warn("article tags generation failed", "error", tagsErr)
+				result.Tags = []string{}
+			} else {
+				tagsResp = strings.TrimSpace(tagsResp)
+				if idx := strings.Index(tagsResp, "["); idx != -1 {
+					tagsResp = tagsResp[idx:]
+				}
+				if idx := strings.LastIndex(tagsResp, "]"); idx != -1 {
+					tagsResp = tagsResp[:idx+1]
+				}
+				var parsedTags []string
+				if err := json.Unmarshal([]byte(tagsResp), &parsedTags); err != nil {
+					slog.Warn("article tags parse failed", "error", err, "response", tagsResp)
+					result.Tags = []string{}
+				} else {
+					validTags := map[string]bool{
+						"airlines": true, "hotels": true, "credit-cards": true,
+						"transfer-bonuses": true, "points-deals": true, "travel-deals": true,
+						"loyalty-programs": true, "bank-bonuses": true,
+					}
+					var filtered []string
+					for _, t := range parsedTags {
+						if validTags[t] {
+							filtered = append(filtered, t)
+						}
+					}
+					result.Tags = filtered
+					slog.Info("article tags generated", "title", result.Title, "tags", filtered)
+				}
+			}
+
 			id, err := articleMgr.CreateFromPipeline(result, rawIDs, result.Type)
 			if err != nil {
 				slog.Error("article save failed", "error", err)
