@@ -78,6 +78,8 @@ func (app *App) setupRoutes() {
 	adminMux.HandleFunc("GET /admin/cards/{id}/edit", app.handleAdminCardEdit)
 	adminMux.HandleFunc("POST /admin/cards/{id}/edit", app.handleAdminCardUpdate)
 	adminMux.HandleFunc("POST /admin/cards/{id}/delete", app.handleAdminCardDelete)
+	adminMux.HandleFunc("POST /admin/cards/{id}/flag", app.handleFlagField)
+	adminMux.HandleFunc("POST /admin/cards/{id}/resolve-flag", app.handleResolveFlag)
 	adminMux.HandleFunc("GET /admin/cards/{id}/updates", app.handleAdminCardUpdates)
 	adminMux.HandleFunc("POST /admin/cards/{id}/updates/{uid}/approve", app.handleApproveCardUpdate)
 	adminMux.HandleFunc("POST /admin/cards/{id}/updates/{uid}/reject", app.handleRejectCardUpdate)

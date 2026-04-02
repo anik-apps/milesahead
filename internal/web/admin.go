@@ -769,8 +769,9 @@ type adminCardRow struct {
 	Issuer       string
 	Status       string
 	ImageURL     string
-	SectionCount int
-	PendingCount int
+	SectionCount  int
+	PendingCount  int
+	FlaggedCount  int
 }
 
 // adminIssuerGroup groups cards by issuer for admin display.
@@ -798,6 +799,10 @@ func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
 		if p.PendingUpdatesJSON != "" && p.PendingUpdatesJSON != "[]" {
 			json.Unmarshal([]byte(p.PendingUpdatesJSON), &pending)
 		}
+		var flagged []db.FlaggedField
+		if p.FlaggedFieldsJSON != "" && p.FlaggedFieldsJSON != "[]" {
+			json.Unmarshal([]byte(p.FlaggedFieldsJSON), &flagged)
+		}
 		row := adminCardRow{
 			ID:           p.ID,
 			Title:        p.Title,
@@ -808,6 +813,7 @@ func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
 			ImageURL:     p.ImageURL,
 			SectionCount: len(sections),
 			PendingCount: len(pending),
+			FlaggedCount: len(flagged),
 		}
 		if _, exists := issuerMap[p.Issuer]; !exists {
 			issuerOrder = append(issuerOrder, p.Issuer)
@@ -914,17 +920,26 @@ func (app *App) handleAdminCardEdit(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(page.KeywordsJSON), &keywords)
 	}
 
+	var flaggedFields []db.FlaggedField
+	if page.FlaggedFieldsJSON != "" && page.FlaggedFieldsJSON != "[]" {
+		json.Unmarshal([]byte(page.FlaggedFieldsJSON), &flaggedFields)
+	}
+	if flaggedFields == nil {
+		flaggedFields = []db.FlaggedField{}
+	}
+
 	personaName := app.cfg.Site.PersonaName
 
 	data := map[string]interface{}{
-		"Title":       "Edit: " + page.Title,
-		"IsNew":       false,
-		"Card":        page,
-		"Sections":    sections,
-		"Keywords":    strings.Join(keywords, ", "),
-		"FormAction":  fmt.Sprintf("/admin/cards/%d/edit", page.ID),
-		"PersonaName": personaName,
-		"CSRFToken":   getCSRFToken(w, r),
+		"Title":         "Edit: " + page.Title,
+		"IsNew":         false,
+		"Card":          page,
+		"Sections":      sections,
+		"Keywords":      strings.Join(keywords, ", "),
+		"FormAction":    fmt.Sprintf("/admin/cards/%d/edit", page.ID),
+		"PersonaName":   personaName,
+		"CSRFToken":     getCSRFToken(w, r),
+		"FlaggedFields": flaggedFields,
 	}
 	app.renderTemplate(w, "card-edit.html", data)
 }
@@ -990,6 +1005,49 @@ func (app *App) handleAdminCardDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/admin/cards?msg=Card+deleted", http.StatusSeeOther)
+}
+
+func (app *App) handleFlagField(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	field := strings.TrimSpace(r.FormValue("field"))
+	note := strings.TrimSpace(r.FormValue("note"))
+	if field == "" {
+		http.Error(w, "Field name is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := app.db.AppendFlaggedField(id, field, note); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to flag field: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit", id), http.StatusSeeOther)
+}
+
+func (app *App) handleResolveFlag(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	field := strings.TrimSpace(r.FormValue("field"))
+	if field == "" {
+		http.Error(w, "Field name is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := app.db.ResolveFlaggedField(id, field); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to resolve flag: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit", id), http.StatusSeeOther)
 }
 
 func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {

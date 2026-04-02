@@ -32,6 +32,7 @@
                 <th>Status</th>
                 <th>Sections</th>
                 <th>Pending</th>
+                <th>Flags</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -51,6 +52,10 @@
                 <td>
                     {{if gt .PendingCount 0}}<a href="/admin/cards/{{.ID}}/updates" style="color:#dc2626;font-weight:600;">{{.PendingCount}} pending</a>
                     {{else}}<span class="dim">0</span>{{end}}
+                </td>
+                <td>
+                    {{if gt .FlaggedCount 0}}<span style="display:inline-block;background:#dc2626;color:#fff;font-size:0.75rem;font-weight:700;padding:1px 7px;border-radius:10px;">{{.FlaggedCount}}</span>
+                    {{else}}<span class="dim">—</span>{{end}}
                 </td>
                 <td class="actions">
                     <a href="/admin/cards/{{.ID}}/edit" class="btn btn-edit" style="font-size:0.8rem;">Edit</a>
