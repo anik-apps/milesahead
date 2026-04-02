@@ -58,6 +58,7 @@ type adminArticleRow struct {
 	KeyDetails        []struct{ Label, Value string }
 	ArticleLinks      []struct{ Text, URL string }
 	ImageURL          string
+	Tags              []string
 	createdAtRaw      time.Time // for sorting only, not exposed to template
 }
 
@@ -103,6 +104,12 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 				slog.Warn("failed to parse links", "article_id", a.ID, "error", err)
 			}
 			row.ArticleLinks = links
+		}
+		if a.TagsJSON != "" && a.TagsJSON != "[]" {
+			var tags []string
+			if err := json.Unmarshal([]byte(a.TagsJSON), &tags); err == nil {
+				row.Tags = tags
+			}
 		}
 
 		if v, err := app.db.GetLatestVerification(a.ID); err == nil {

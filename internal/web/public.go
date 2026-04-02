@@ -25,6 +25,34 @@ type templateArticleLink struct {
 	URL  string
 }
 
+// tagItem holds a tag slug and display name for the tag filter UI.
+type tagItem struct {
+	Slug string
+	Name string
+}
+
+// predefinedTags is the list of tags shown as filter pills on the homepage.
+var predefinedTags = func() []tagItem {
+	slugs := []string{"airlines", "credit-cards", "hotels", "points-deals", "transfer-partners", "travel-tips"}
+	items := make([]tagItem, len(slugs))
+	for i, s := range slugs {
+		words := strings.Split(s, "-")
+		for j, w := range words {
+			if len(w) > 0 {
+				words[j] = strings.ToUpper(w[:1]) + w[1:]
+			}
+		}
+		items[i] = tagItem{Slug: s, Name: strings.Join(words, " ")}
+	}
+	return items
+}()
+
+// articleTagItem holds a tag slug and display name for article badge rendering.
+type articleTagItem struct {
+	Slug string
+	Name string
+}
+
 // publicArticleRow holds data for rendering an article card on public pages.
 type publicArticleRow struct {
 	ID               int64
@@ -50,11 +78,14 @@ type sourceInfo struct {
 
 func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	typeFilter := r.URL.Query().Get("type")
+	tagFilter := r.URL.Query().Get("tag")
 
 	var articles []db.GeneratedArticle
 	var err error
 
-	if typeFilter != "" {
+	if tagFilter != "" {
+		articles, err = app.db.ListPublishedArticlesByTag(tagFilter, 20, 0)
+	} else if typeFilter != "" {
 		articles, err = app.db.ListPublishedArticlesByType(typeFilter, 20, 0)
 	} else {
 		articles, err = app.db.ListPublishedArticles(20, 0)
@@ -135,6 +166,8 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		"Articles":        rows,
 		"TypeFilter":      typeFilter,
 		"Types":           []string{"deal", "roundup", "alert", "summary"},
+		"ActiveTag":       tagFilter,
+		"Tags":            predefinedTags,
 		"MetaDescription": "The latest miles, points, and credit card deals — curated daily.",
 		"CanonicalURL":    "https://" + domain + "/",
 		"OGType":          "website",
@@ -221,6 +254,25 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(article.RelatedCardsJSON), &relatedCards)
 	}
 
+	var articleTags []articleTagItem
+	if article.TagsJSON != "" && article.TagsJSON != "[]" {
+		var slugs []string
+		if err := json.Unmarshal([]byte(article.TagsJSON), &slugs); err == nil {
+			for _, s := range slugs {
+				words := strings.Split(s, "-")
+				for j, w := range words {
+					if len(w) > 0 {
+						words[j] = strings.ToUpper(w[:1]) + w[1:]
+					}
+				}
+				articleTags = append(articleTags, articleTagItem{
+					Slug: s,
+					Name: strings.Join(words, " "),
+				})
+			}
+		}
+	}
+
 	domain := app.cfg.Server.Domain
 	if domain == "" {
 		domain = "localhost"
@@ -248,6 +300,7 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"KeyDetails":      keyDetails,
 		"Links":           articleLinks,
 		"RelatedCards":    relatedCards,
+		"ArticleTags":     articleTags,
 		"ScoutsTake":      article.ScoutsTake,
 		"PersonaName":     app.cfg.Site.PersonaName,
 		"MetaDescription": metaDesc,
