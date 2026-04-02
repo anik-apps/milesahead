@@ -2114,7 +2114,7 @@ tr.flagged { background: #fef2f2; }
 
 /* Selector form */
 .compare-selector-form {
-    max-width: 700px;
+    max-width: 900px;
 }
 .compare-selector-row {
     display: flex;
@@ -2123,7 +2123,7 @@ tr.flagged { background: #fef2f2; }
 }
 .compare-selector-row label {
     flex: 1;
-    min-width: 200px;
+    min-width: 250px;
     font-weight: 600;
     font-size: 0.9rem;
     display: flex;
@@ -2254,6 +2254,8 @@ tr.flagged { background: #fef2f2; }
     font-size: 0.9rem;
     line-height: 1.5;
     color: var(--text-muted);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 /* Responsive: sticky first column on mobile */
@@ -2261,6 +2263,22 @@ tr.flagged { background: #fef2f2; }
     .compare-page {
         padding: 0.5rem;
     }
+
+    /* Make the table wrapper show a right-edge shadow as a scroll hint */
+    .compare-table-wrap {
+        position: relative;
+    }
+    .compare-table-wrap::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 24px;
+        height: 100%;
+        background: linear-gradient(to right, transparent, rgba(0,0,0,0.08));
+        pointer-events: none;
+    }
+
     .compare-table .compare-label-col {
         position: sticky;
         left: 0;
@@ -2281,18 +2299,54 @@ tr.flagged { background: #fef2f2; }
         padding: 0.5rem 0.5rem;
         font-size: 0.82rem;
     }
-    .compare-card-img {
-        max-width: 100px;
-    }
-    .compare-header-select {
-        font-size: 0.75rem;
-        min-width: 140px;
-        max-width: 180px;
+    .compare-table td {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
     }
     .compare-card-col {
         min-width: 150px;
+        text-align: center;
     }
+
+    /* Stack card image and select vertically; make select full-width of its column */
+    .compare-card-col {
+        display: table-cell; /* keep table cell layout */
+    }
+    .compare-card-img {
+        max-width: 90px;
+        display: block;
+        margin: 0 auto 0.4rem;
+    }
+    .compare-header-select {
+        font-size: 0.7rem;
+        min-width: 0;
+        max-width: none;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Verdict text smaller on mobile */
+    .compare-verdict {
+        font-size: 0.8rem;
+    }
+
+    /* Welcome bonus cells: prevent overflow */
+    .compare-table td {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        hyphens: auto;
+    }
+
+    /* Selector page: make dropdowns full-width on mobile */
     .compare-selector-row {
         flex-direction: column;
+    }
+    .compare-selector-row label {
+        min-width: 0;
+        width: 100%;
+    }
+    .compare-select {
+        min-width: 0;
+        width: 100%;
     }
 }

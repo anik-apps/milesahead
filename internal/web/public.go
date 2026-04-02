@@ -995,7 +995,7 @@ func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 			AnnualFeeAmount:  c.AnnualFeeAmount,
 			AnnualFeeNote:    c.AnnualFeeNote,
 			WelcomeBonusText: c.WelcomeBonusText,
-			ScoutsVerdictShort: truncate(c.ScoutsVerdict, 120),
+			ScoutsVerdictShort: truncateSentence(c.ScoutsVerdict, 250),
 		}
 		cardViews = append(cardViews, cv)
 	}
@@ -1431,6 +1431,26 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(runes[:n]) + "..."
+}
+
+// truncateSentence strips HTML tags and truncates s at the end of the last
+// complete sentence (ending in '.', '!', or '?') that fits within maxRunes.
+// If no sentence boundary is found, it falls back to a hard cut at maxRunes.
+func truncateSentence(s string, maxRunes int) string {
+	s = stripHTML(s)
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	// Walk backwards from maxRunes looking for a sentence-ending punctuation.
+	sub := runes[:maxRunes]
+	for i := len(sub) - 1; i >= 0; i-- {
+		if sub[i] == '.' || sub[i] == '!' || sub[i] == '?' {
+			return string(sub[:i+1])
+		}
+	}
+	// Fallback: hard cut with ellipsis.
+	return string(sub) + "..."
 }
 
 // stripHTML removes HTML tags from a string.
