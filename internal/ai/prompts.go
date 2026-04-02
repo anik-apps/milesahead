@@ -5,6 +5,12 @@ import (
 	"strings"
 )
 
+// ValidTags is the canonical list of topic tags used across the application.
+var ValidTags = []string{
+	"airlines", "hotels", "credit-cards", "transfer-bonuses",
+	"points-deals", "travel-deals", "loyalty-programs", "bank-bonuses",
+}
+
 // SourceArticle represents a source used to generate or verify content.
 type SourceArticle struct {
 	Name    string
@@ -342,13 +348,13 @@ func ArticleTagsPrompt(title, content string) string {
 	return fmt.Sprintf(`Given this article, pick 1-3 topic tags from the list below that best describe it.
 
 ALLOWED TAGS (pick ONLY from this list):
-airlines, hotels, credit-cards, transfer-bonuses, points-deals, travel-deals, loyalty-programs, bank-bonuses
+%s
 
 Article Title: %s
 Article Content:
 %s
 
-Return ONLY a JSON array of 1-3 tags, nothing else. Example: ["credit-cards", "points-deals"]`, title, truncated)
+Return ONLY a JSON array of 1-3 tags, nothing else. Example: ["credit-cards", "points-deals"]`, strings.Join(ValidTags, ", "), title, truncated)
 }
 
 // ScoutsTakePrompt builds a prompt for generating a short, opinionated take

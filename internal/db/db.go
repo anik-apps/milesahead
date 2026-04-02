@@ -1135,6 +1135,12 @@ func (d *Database) UpdateNewsletterStatus(id int64, status string) error {
 	return err
 }
 
+// UpdateNewsletterHTML persists rendered HTML content to the newsletter record.
+func (d *Database) UpdateNewsletterHTML(id int64, htmlContent string) error {
+	_, err := d.db.Exec(`UPDATE newsletters SET html_content = ? WHERE id = ?`, htmlContent, id)
+	return err
+}
+
 // UpdateNewsletterCardOfWeek sets the card_of_week_id for a newsletter.
 func (d *Database) UpdateNewsletterCardOfWeek(id int64, cardID int64) error {
 	_, err := d.db.Exec(`UPDATE newsletters SET card_of_week_id = ? WHERE id = ?`, cardID, id)

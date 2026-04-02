@@ -262,14 +262,13 @@ func main() {
 					slog.Warn("article tags parse failed", "error", err, "response", tagsResp)
 					result.Tags = []string{}
 				} else {
-					validTags := map[string]bool{
-						"airlines": true, "hotels": true, "credit-cards": true,
-						"transfer-bonuses": true, "points-deals": true, "travel-deals": true,
-						"loyalty-programs": true, "bank-bonuses": true,
+					validTagSet := make(map[string]bool, len(ai.ValidTags))
+					for _, t := range ai.ValidTags {
+						validTagSet[t] = true
 					}
 					var filtered []string
 					for _, t := range parsedTags {
-						if validTags[t] {
+						if validTagSet[t] {
 							filtered = append(filtered, t)
 						}
 					}

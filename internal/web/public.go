@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
@@ -31,11 +32,11 @@ type tagItem struct {
 	Name string
 }
 
-// predefinedTags is the list of tags shown as filter pills on the homepage.
+// predefinedTags is the list of tags shown as filter pills on the homepage,
+// derived from ai.ValidTags so there is a single source of truth.
 var predefinedTags = func() []tagItem {
-	slugs := []string{"airlines", "credit-cards", "hotels", "points-deals", "transfer-partners", "travel-tips"}
-	items := make([]tagItem, len(slugs))
-	for i, s := range slugs {
+	items := make([]tagItem, len(ai.ValidTags))
+	for i, s := range ai.ValidTags {
 		words := strings.Split(s, "-")
 		for j, w := range words {
 			if len(w) > 0 {

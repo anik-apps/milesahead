@@ -429,9 +429,9 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 		slog.Error("failed to render weekly newsletter", "error", err)
 	} else {
 		nl.HTMLContent = htmlContent
-		// Update the stored HTML.
-		if err := s.db.UpdateNewsletterStatus(nlID, "draft"); err != nil {
-			slog.Error("failed to update newsletter html", "error", err)
+		// Persist rendered HTML so the admin preview shows content.
+		if err := s.db.UpdateNewsletterHTML(nlID, htmlContent); err != nil {
+			slog.Error("failed to persist newsletter html", "error", err)
 		}
 	}
 
