@@ -103,6 +103,22 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+// Nav dropdown touch support
+document.addEventListener('DOMContentLoaded', function() {
+    var dropdownBtn = document.querySelector('.nav-dropdown-btn');
+    if (dropdownBtn) {
+        dropdownBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            this.parentElement.classList.toggle('open');
+        });
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.nav-dropdown')) {
+                document.querySelector('.nav-dropdown').classList.remove('open');
+            }
+        });
+    }
+});
+
 // Category Filter - highlight active tab based on URL
 document.addEventListener('DOMContentLoaded', function() {
     var tabs = document.querySelectorAll('.category-tabs .tab');

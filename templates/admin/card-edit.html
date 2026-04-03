@@ -59,6 +59,40 @@
             </div>
         </div>
 
+        <h2 style="margin-bottom:1rem;">Structured Data</h2>
+        <div class="source-form-grid" style="margin-bottom:1.5rem;">
+            <div class="form-group">
+                <label for="annual_fee_amount">Annual Fee Amount</label>
+                <input type="number" id="annual_fee_amount" name="annual_fee_amount" value="{{.Card.AnnualFeeAmount}}" placeholder="0">
+            </div>
+            <div class="form-group">
+                <label for="annual_fee_note">Annual Fee Note</label>
+                <input type="text" id="annual_fee_note" name="annual_fee_note" value="{{.Card.AnnualFeeNote}}" placeholder="e.g. Waived first year">
+            </div>
+            <div class="form-group" style="grid-column:1/-1;">
+                <label for="welcome_bonus_text">Welcome Bonus Text</label>
+                <input type="text" id="welcome_bonus_text" name="welcome_bonus_text" value="{{.Card.WelcomeBonusText}}" placeholder="e.g. 75,000 points after $4k spend in 6 months">
+            </div>
+        </div>
+        <div style="margin-bottom:1.5rem;">
+            <div class="form-group" style="margin-bottom:1rem;">
+                <label for="earning_rates_json">Earning Rates JSON</label>
+                <textarea id="earning_rates_json" name="earning_rates_json" rows="8" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"dining": {"rate": "3x", "note": ""}, ...}'>{{.Card.EarningRatesJSON}}</textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:1rem;">
+                <label for="credits_json">Credits JSON</label>
+                <textarea id="credits_json" name="credits_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"airline": {"amount": "$200/yr", "note": ""}, ...}'>{{.Card.CreditsJSON}}</textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:1rem;">
+                <label for="benefits_json">Benefits JSON</label>
+                <textarea id="benefits_json" name="benefits_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"lounge_access": {"value": "Priority Pass", "note": ""}, ...}'>{{.Card.BenefitsJSON}}</textarea>
+            </div>
+            <div class="form-group" style="margin-bottom:1rem;">
+                <label for="protections_json">Protections JSON</label>
+                <textarea id="protections_json" name="protections_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"purchase_protection": {"amount": "$10,000", "note": "120 days"}, ...}'>{{.Card.ProtectionsJSON}}</textarea>
+            </div>
+        </div>
+
         <h2 style="margin-bottom:1rem;">Sections</h2>
         <div id="sections-container">
             {{range $i, $s := .Sections}}
@@ -94,6 +128,57 @@
             <a href="/admin/cards" class="btn">Cancel</a>
         </div>
     </form>
+
+    {{if not .IsNew}}
+    <div style="margin-top:2.5rem;border-top:1px solid var(--border);padding-top:2rem;">
+        <h2 style="margin-bottom:1rem;">Flagged Fields</h2>
+
+        {{if .FlaggedFields}}
+        <table class="admin-table" style="margin-bottom:1.5rem;">
+            <thead>
+                <tr>
+                    <th>Field</th>
+                    <th>Note</th>
+                    <th>Flagged At</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .FlaggedFields}}
+                <tr>
+                    <td><code style="font-size:0.85rem;">{{.Field}}</code></td>
+                    <td>{{.Note}}</td>
+                    <td style="font-size:0.8rem;color:var(--text-muted);">{{.FlaggedAt}}</td>
+                    <td>
+                        <form method="POST" action="/admin/cards/{{$.Card.ID}}/resolve-flag" class="inline-form">
+                            {{template "csrf_field" $}}
+                            <input type="hidden" name="field" value="{{.Field}}">
+                            <button type="submit" class="btn btn-primary" style="font-size:0.8rem;background:#166534;">Resolve</button>
+                        </form>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p style="color:var(--text-muted);margin-bottom:1.5rem;">No flagged fields.</p>
+        {{end}}
+
+        <h3 style="margin-bottom:0.75rem;font-size:1rem;">Flag an Issue</h3>
+        <form method="POST" action="/admin/cards/{{.Card.ID}}/flag" style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;">
+            {{template "csrf_field" .}}
+            <div class="form-group" style="margin-bottom:0;flex:1;min-width:140px;">
+                <label for="flag_field">Field Name</label>
+                <input type="text" id="flag_field" name="field" placeholder="e.g. annual_fee_amount" required style="width:100%;">
+            </div>
+            <div class="form-group" style="margin-bottom:0;flex:2;min-width:200px;">
+                <label for="flag_note">Note</label>
+                <input type="text" id="flag_note" name="note" placeholder="Describe the issue..." style="width:100%;">
+            </div>
+            <button type="submit" class="btn" style="background:#dc2626;color:#fff;white-space:nowrap;">Flag Field</button>
+        </form>
+    </div>
+    {{end}}
 </div>
 
 <script>

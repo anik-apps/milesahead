@@ -1,0 +1,115 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="compare-page">
+    <a href="/cards/" class="back-link">&larr; All Cards</a>
+    <h1>Compare Cards</h1>
+
+    {{if .SelectorMode}}
+    <p class="compare-intro">Select 2 or 3 cards to compare side by side.</p>
+    <form class="compare-selector-form" id="compare-selector-form">
+        <div class="compare-selector-row">
+            <label>Card 1
+                <select name="card1" class="compare-select" required>
+                    <option value="">Choose a card...</option>
+                    {{range .AllCards}}<option value="{{.Slug}}">{{.Title}}</option>{{end}}
+                </select>
+            </label>
+            <label>Card 2
+                <select name="card2" class="compare-select" required>
+                    <option value="">Choose a card...</option>
+                    {{range .AllCards}}<option value="{{.Slug}}">{{.Title}}</option>{{end}}
+                </select>
+            </label>
+            <label>Card 3 <span class="dim">(optional)</span>
+                <select name="card3" class="compare-select">
+                    <option value="">Choose a card...</option>
+                    {{range .AllCards}}<option value="{{.Slug}}">{{.Title}}</option>{{end}}
+                </select>
+            </label>
+        </div>
+        <button type="submit" class="card-apply-btn" style="max-width:200px;margin-top:1rem;">Compare</button>
+    </form>
+
+    {{else}}
+
+    <div class="compare-table-wrap">
+        <table class="compare-table">
+            <thead>
+                <tr class="compare-header">
+                    <th class="compare-label-col"></th>
+                    {{range .Cards}}
+                    <th class="compare-card-col">
+                        {{if .ImageURL}}<img src="{{.ImageURL}}" alt="{{.Title}}" class="compare-card-img">{{end}}
+                        <select class="compare-select compare-header-select" data-slot="{{.Slug}}">
+                            {{range $.AllCards}}
+                            <option value="{{.Slug}}" {{if eq .Slug $.CurrentSlug}}selected{{end}}>{{.Title}}</option>
+                            {{end}}
+                        </select>
+                        <div class="compare-fee">{{if .AnnualFeeAmount}}${{.AnnualFeeAmount}}/yr{{else}}$0/yr{{end}}{{if .AnnualFeeNote}} <span class="dim" title="{{.AnnualFeeNote}}">&#9432;</span>{{end}}</div>
+                    </th>
+                    {{end}}
+                </tr>
+            </thead>
+            <tbody>
+                {{/* Welcome Bonus */}}
+                <tr>
+                    <td class="compare-label-col">Welcome Bonus</td>
+                    {{range .Cards}}<td>{{.WelcomeBonusText}}</td>{{end}}
+                </tr>
+
+                {{/* Earning Rates */}}
+                <tr class="compare-section-header" data-section="earning-rates">
+                    <td colspan="{{.ColSpan}}"><span class="compare-toggle-icon">&#9660;</span> Earning Rates</td>
+                </tr>
+                {{range .EarningRateRows}}
+                <tr class="compare-section-row section-earning-rates">
+                    <td class="compare-label-col">{{.Label}}</td>
+                    {{range .Cells}}<td>{{if .IsWinner}}<span class="compare-winner">&#9733; </span>{{end}}{{.Value}}{{if .Note}} <span class="dim" title="{{.Note}}">&#9432;</span>{{end}}</td>{{end}}
+                </tr>
+                {{end}}
+
+                {{/* Credits */}}
+                <tr class="compare-section-header" data-section="credits">
+                    <td colspan="{{.ColSpan}}"><span class="compare-toggle-icon">&#9660;</span> Credits</td>
+                </tr>
+                {{range .CreditRows}}
+                <tr class="compare-section-row section-credits">
+                    <td class="compare-label-col">{{.Label}}</td>
+                    {{range .Cells}}<td>{{if .IsWinner}}<span class="compare-winner">&#9733; </span>{{end}}{{.Value}}{{if .Note}} <span class="dim" title="{{.Note}}">&#9432;</span>{{end}}</td>{{end}}
+                </tr>
+                {{end}}
+
+                {{/* Benefits */}}
+                <tr class="compare-section-header collapsed" data-section="benefits">
+                    <td colspan="{{.ColSpan}}"><span class="compare-toggle-icon">&#9654;</span> Benefits</td>
+                </tr>
+                {{range .BenefitRows}}
+                <tr class="compare-section-row section-benefits" style="display:none;">
+                    <td class="compare-label-col">{{.Label}}</td>
+                    {{range .Cells}}<td>{{if .IsWinner}}<span class="compare-winner">&#9733; </span>{{end}}{{.Value}}{{if .Note}} <span class="dim" title="{{.Note}}">&#9432;</span>{{end}}</td>{{end}}
+                </tr>
+                {{end}}
+
+                {{/* Protections */}}
+                <tr class="compare-section-header collapsed" data-section="protections">
+                    <td colspan="{{.ColSpan}}"><span class="compare-toggle-icon">&#9654;</span> Protections</td>
+                </tr>
+                {{range .ProtectionRows}}
+                <tr class="compare-section-row section-protections" style="display:none;">
+                    <td class="compare-label-col">{{.Label}}</td>
+                    {{range .Cells}}<td>{{if .IsWinner}}<span class="compare-winner">&#9733; </span>{{end}}{{.Value}}{{if .Note}} <span class="dim" title="{{.Note}}">&#9432;</span>{{end}}</td>{{end}}
+                </tr>
+                {{end}}
+
+                {{/* Scout's Take */}}
+                <tr class="compare-scouts-take">
+                    <td class="compare-label-col">Scout's Take</td>
+                    {{range .Cards}}<td class="compare-verdict">{{.ScoutsVerdictShort}}</td>{{end}}
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {{end}}
+</div>
+<script src="/static/js/compare.js"></script>
+{{end}}

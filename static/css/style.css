@@ -91,6 +91,62 @@ nav .nav-links a:hover {
     text-decoration: none;
 }
 
+/* Nav dropdown */
+.nav-dropdown {
+    position: relative;
+}
+.nav-dropdown-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: inherit;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+}
+.nav-dropdown-btn:hover {
+    color: var(--text);
+}
+.nav-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.4rem 0;
+    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 200;
+    padding-top: 0.6rem;
+}
+/* Invisible bridge between button and menu to prevent hover gap */
+.nav-dropdown::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    height: 0.5rem;
+}
+.nav-dropdown:hover .nav-dropdown-menu,
+.nav-dropdown.open .nav-dropdown-menu {
+    display: block;
+}
+.nav-dropdown-menu a {
+    display: block;
+    padding: 0.5rem 1rem;
+    color: var(--text);
+    font-size: 0.9rem;
+    font-weight: 400;
+}
+.nav-dropdown-menu a:hover {
+    background: var(--accent-subtle, rgba(88,166,255,0.1));
+    color: var(--accent);
+}
+
 #theme-toggle {
     background: var(--card-bg);
     border: 1px solid var(--border);
@@ -2096,3 +2152,254 @@ tr.flagged { background: #fef2f2; }
 .tag-badge { padding: 0.15rem 0.5rem; border-radius: 4px; background: var(--accent-subtle);
              color: var(--accent); font-size: 0.75rem; text-decoration: none; font-weight: 500; }
 .tag-badge:hover { background: var(--accent); color: #fff; }
+
+/* ========== Compare Page ========== */
+.compare-page {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+.compare-page h1 {
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
+}
+.compare-intro {
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+}
+
+/* Selector form */
+.compare-selector-form {
+    max-width: 900px;
+}
+.compare-selector-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.compare-selector-row label {
+    flex: 1;
+    min-width: 250px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+.compare-select {
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card-bg);
+    color: var(--text);
+    font-size: 0.9rem;
+    width: 100%;
+}
+.compare-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+/* Table wrapper */
+.compare-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: 1rem;
+}
+
+/* Table */
+.compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    min-width: 600px;
+}
+.compare-table th,
+.compare-table td {
+    padding: 0.65rem 0.85rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.92rem;
+}
+
+/* Zebra striping */
+.compare-table tbody tr:nth-child(even) {
+    background: var(--card-bg);
+}
+
+/* Column tinting for 2nd and 3rd card columns */
+.compare-table th.compare-card-col:nth-child(3),
+.compare-table td:nth-child(3) {
+    background: rgba(37, 99, 235, 0.03);
+}
+[data-theme="dark"] .compare-table th.compare-card-col:nth-child(3),
+[data-theme="dark"] .compare-table td:nth-child(3) {
+    background: rgba(88, 166, 255, 0.04);
+}
+
+/* Label column — fixed narrow width, card columns share remaining space equally */
+.compare-label-col {
+    font-weight: 600;
+    white-space: nowrap;
+    width: 18%;
+    color: var(--text-muted);
+    font-size: 0.88rem;
+}
+
+/* Card column header */
+.compare-card-col {
+    text-align: center;
+    min-width: 180px;
+}
+.compare-card-img {
+    max-width: 140px;
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    margin-bottom: 0.5rem;
+}
+.compare-header-select {
+    font-weight: 600;
+    font-size: 0.82rem;
+    width: 100%;
+    display: block;
+}
+.compare-fee {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.35rem;
+}
+
+/* Winner star */
+.compare-winner {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* Section headers (collapsible) */
+.compare-section-header td {
+    font-weight: 700;
+    font-size: 0.95rem;
+    background: var(--card-bg);
+    border-bottom: 2px solid var(--border);
+    padding: 0.75rem 0.85rem;
+}
+.compare-section-header:hover td {
+    background: var(--accent-subtle);
+}
+.compare-toggle-icon {
+    display: inline-block;
+    width: 1em;
+    font-size: 0.75rem;
+    margin-right: 0.35rem;
+    vertical-align: middle;
+}
+
+/* Scout's Take row */
+.compare-scouts-take td {
+    border-top: 2px solid var(--border);
+    padding-top: 1rem;
+}
+.compare-verdict {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Responsive: sticky first column on mobile */
+@media (max-width: 768px) {
+    .compare-page {
+        padding: 0.5rem;
+    }
+
+    /* Make the table wrapper show a right-edge shadow as a scroll hint */
+    .compare-table-wrap {
+        position: relative;
+    }
+    .compare-table-wrap::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 24px;
+        height: 100%;
+        background: linear-gradient(to right, transparent, rgba(0,0,0,0.08));
+        pointer-events: none;
+    }
+
+    .compare-table .compare-label-col {
+        position: sticky;
+        left: 0;
+        background: var(--bg);
+        z-index: 1;
+        min-width: 90px;
+        max-width: 110px;
+        font-size: 0.78rem;
+        white-space: normal;
+        word-break: break-word;
+        padding: 0.5rem 0.5rem;
+    }
+    .compare-table tbody tr:nth-child(even) .compare-label-col {
+        background: var(--card-bg);
+    }
+    .compare-table th,
+    .compare-table td {
+        padding: 0.5rem 0.5rem;
+        font-size: 0.82rem;
+    }
+    .compare-table td {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+    }
+    .compare-card-col {
+        min-width: 150px;
+        text-align: center;
+    }
+
+    /* Stack card image and select vertically; make select full-width of its column */
+    .compare-card-col {
+        display: table-cell; /* keep table cell layout */
+    }
+    .compare-card-img {
+        max-width: 90px;
+        display: block;
+        margin: 0 auto 0.4rem;
+    }
+    .compare-header-select {
+        font-size: 0.7rem;
+        min-width: 0;
+        max-width: none;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Verdict text smaller on mobile */
+    .compare-verdict {
+        font-size: 0.8rem;
+    }
+
+    /* Welcome bonus cells: prevent overflow */
+    .compare-table td {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        hyphens: auto;
+    }
+
+    /* Selector page: make dropdowns full-width on mobile */
+    .compare-selector-row {
+        flex-direction: column;
+    }
+    .compare-selector-row label {
+        min-width: 0;
+        width: 100%;
+    }
+    .compare-select {
+        min-width: 0;
+        width: 100%;
+    }
+}

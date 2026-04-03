@@ -769,8 +769,9 @@ type adminCardRow struct {
 	Issuer       string
 	Status       string
 	ImageURL     string
-	SectionCount int
-	PendingCount int
+	SectionCount  int
+	PendingCount  int
+	FlaggedCount  int
 }
 
 // adminIssuerGroup groups cards by issuer for admin display.
@@ -798,6 +799,10 @@ func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
 		if p.PendingUpdatesJSON != "" && p.PendingUpdatesJSON != "[]" {
 			json.Unmarshal([]byte(p.PendingUpdatesJSON), &pending)
 		}
+		var flagged []db.FlaggedField
+		if p.FlaggedFieldsJSON != "" && p.FlaggedFieldsJSON != "[]" {
+			json.Unmarshal([]byte(p.FlaggedFieldsJSON), &flagged)
+		}
 		row := adminCardRow{
 			ID:           p.ID,
 			Title:        p.Title,
@@ -808,6 +813,7 @@ func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
 			ImageURL:     p.ImageURL,
 			SectionCount: len(sections),
 			PendingCount: len(pending),
+			FlaggedCount: len(flagged),
 		}
 		if _, exists := issuerMap[p.Issuer]; !exists {
 			issuerOrder = append(issuerOrder, p.Issuer)
@@ -879,9 +885,50 @@ func (app *App) handleAdminCardCreate(w http.ResponseWriter, r *http.Request) {
 	sectionsJSON, _ := json.Marshal(sections)
 	page.SectionsJSON = string(sectionsJSON)
 
+	// Parse structured data fields.
+	if feeStr := strings.TrimSpace(r.FormValue("annual_fee_amount")); feeStr != "" {
+		fmt.Sscanf(feeStr, "%d", &page.AnnualFeeAmount)
+	}
+	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
+	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
+	earningRatesJSON := strings.TrimSpace(r.FormValue("earning_rates_json"))
+	creditsJSON := strings.TrimSpace(r.FormValue("credits_json"))
+	benefitsJSON := strings.TrimSpace(r.FormValue("benefits_json"))
+	protectionsJSON := strings.TrimSpace(r.FormValue("protections_json"))
+
+	for _, field := range []struct{ name, value string }{
+		{"earning_rates_json", earningRatesJSON},
+		{"credits_json", creditsJSON},
+		{"benefits_json", benefitsJSON},
+		{"protections_json", protectionsJSON},
+	} {
+		if field.value != "" && !json.Valid([]byte(field.value)) {
+			http.Error(w, fmt.Sprintf("Invalid JSON in %s", field.name), http.StatusBadRequest)
+			return
+		}
+	}
+
+	page.EarningRatesJSON = earningRatesJSON
+	page.CreditsJSON = creditsJSON
+	page.BenefitsJSON = benefitsJSON
+	page.ProtectionsJSON = protectionsJSON
+
 	// Initialize empty JSON arrays.
 	page.RecentChangesJSON = "[]"
 	page.PendingUpdatesJSON = "[]"
+	if page.EarningRatesJSON == "" {
+		page.EarningRatesJSON = "{}"
+	}
+	if page.CreditsJSON == "" {
+		page.CreditsJSON = "{}"
+	}
+	if page.BenefitsJSON == "" {
+		page.BenefitsJSON = "{}"
+	}
+	if page.ProtectionsJSON == "" {
+		page.ProtectionsJSON = "{}"
+	}
+	page.FlaggedFieldsJSON = "[]"
 
 	if _, err := app.db.CreateReferencePage(page); err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create card: %v", err), http.StatusInternalServerError)
@@ -914,17 +961,26 @@ func (app *App) handleAdminCardEdit(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(page.KeywordsJSON), &keywords)
 	}
 
+	var flaggedFields []db.FlaggedField
+	if page.FlaggedFieldsJSON != "" && page.FlaggedFieldsJSON != "[]" {
+		json.Unmarshal([]byte(page.FlaggedFieldsJSON), &flaggedFields)
+	}
+	if flaggedFields == nil {
+		flaggedFields = []db.FlaggedField{}
+	}
+
 	personaName := app.cfg.Site.PersonaName
 
 	data := map[string]interface{}{
-		"Title":       "Edit: " + page.Title,
-		"IsNew":       false,
-		"Card":        page,
-		"Sections":    sections,
-		"Keywords":    strings.Join(keywords, ", "),
-		"FormAction":  fmt.Sprintf("/admin/cards/%d/edit", page.ID),
-		"PersonaName": personaName,
-		"CSRFToken":   getCSRFToken(w, r),
+		"Title":         "Edit: " + page.Title,
+		"IsNew":         false,
+		"Card":          page,
+		"Sections":      sections,
+		"Keywords":      strings.Join(keywords, ", "),
+		"FormAction":    fmt.Sprintf("/admin/cards/%d/edit", page.ID),
+		"PersonaName":   personaName,
+		"CSRFToken":     getCSRFToken(w, r),
+		"FlaggedFields": flaggedFields,
 	}
 	app.renderTemplate(w, "card-edit.html", data)
 }
@@ -950,6 +1006,44 @@ func (app *App) handleAdminCardUpdate(w http.ResponseWriter, r *http.Request) {
 	page.ApplyURL = strings.TrimSpace(r.FormValue("apply_url"))
 	page.Status = r.FormValue("status")
 	page.ScoutsVerdict = r.FormValue("scouts_verdict")
+
+	// Parse structured data fields.
+	if feeStr := strings.TrimSpace(r.FormValue("annual_fee_amount")); feeStr != "" {
+		fmt.Sscanf(feeStr, "%d", &page.AnnualFeeAmount)
+	} else {
+		page.AnnualFeeAmount = 0
+	}
+	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
+	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
+	updateEarningRatesJSON := strings.TrimSpace(r.FormValue("earning_rates_json"))
+	updateCreditsJSON := strings.TrimSpace(r.FormValue("credits_json"))
+	updateBenefitsJSON := strings.TrimSpace(r.FormValue("benefits_json"))
+	updateProtectionsJSON := strings.TrimSpace(r.FormValue("protections_json"))
+
+	for _, field := range []struct{ name, value string }{
+		{"earning_rates_json", updateEarningRatesJSON},
+		{"credits_json", updateCreditsJSON},
+		{"benefits_json", updateBenefitsJSON},
+		{"protections_json", updateProtectionsJSON},
+	} {
+		if field.value != "" && !json.Valid([]byte(field.value)) {
+			http.Error(w, fmt.Sprintf("Invalid JSON in %s", field.name), http.StatusBadRequest)
+			return
+		}
+	}
+
+	if updateEarningRatesJSON != "" {
+		page.EarningRatesJSON = updateEarningRatesJSON
+	}
+	if updateCreditsJSON != "" {
+		page.CreditsJSON = updateCreditsJSON
+	}
+	if updateBenefitsJSON != "" {
+		page.BenefitsJSON = updateBenefitsJSON
+	}
+	if updateProtectionsJSON != "" {
+		page.ProtectionsJSON = updateProtectionsJSON
+	}
 
 	if page.Title == "" || page.Slug == "" {
 		http.Error(w, "Title and slug are required", http.StatusBadRequest)
@@ -990,6 +1084,49 @@ func (app *App) handleAdminCardDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/admin/cards?msg=Card+deleted", http.StatusSeeOther)
+}
+
+func (app *App) handleFlagField(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	field := strings.TrimSpace(r.FormValue("field"))
+	note := strings.TrimSpace(r.FormValue("note"))
+	if field == "" {
+		http.Error(w, "Field name is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := app.db.AppendFlaggedField(id, field, note); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to flag field: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit", id), http.StatusSeeOther)
+}
+
+func (app *App) handleResolveFlag(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	field := strings.TrimSpace(r.FormValue("field"))
+	if field == "" {
+		http.Error(w, "Field name is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := app.db.ResolveFlaggedField(id, field); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to resolve flag: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit", id), http.StatusSeeOther)
 }
 
 func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
