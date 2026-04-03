@@ -7,3 +7,5 @@ config.yaml
 /dist/
 milesahead-linux-arm64
 .superpowers/
+docs/plans/
+docs/specs/
