@@ -1,6 +1,6 @@
 # Miles Ahead
 
-A self-hosted content aggregation platform that scans miles and points websites, generates articles using AI, and publishes them after admin review. Includes 41 curated credit card reference pages with the Scout persona.
+A self-hosted content aggregation platform that scans miles and points websites, generates articles using AI, and publishes them after admin review. Includes 52 curated credit card reference pages with the Scout persona.
 
 **Live:** [milesahead.kumaranik.com](https://milesahead.kumaranik.com)
 
@@ -9,10 +9,12 @@ A self-hosted content aggregation platform that scans miles and points websites,
 - **Automated Scanning** — RSS scraping of 6+ miles/points sources every 2-4 hours
 - **AI Pipeline** — Dual-model: Nemotron generates articles, Llama 70B verifies accuracy
 - **Image Pipeline** — 5-source search (Unsplash, Pexels, Pixabay, Openverse, Wikimedia) with vision model scoring
-- **Reference Pages** — 41 credit card guides across 6 categories with Scout persona verdicts
-- **Admin Dashboard** — Review queue with approve/reject/revise workflow
+- **Reference Pages** — 52 credit card guides across 6 categories with Scout persona verdicts
+- **Card Comparison** — Side-by-side comparison of 2-3 cards (earning rates, credits, benefits, protections, transfer partners)
+- **Article Tags** — AI-generated tags from 8 categories with tag filter pills on homepage
+- **Admin Dashboard** — Review queue with approve/reject/revise workflow, newsletter admin workflow
 - **Magazine-Style Site** — Dark/light mode, two-column articles, category filters, RSS feed
-- **Newsletter** — Daily newspaper-style email digest
+- **Newsletter** — Weekly newspaper-style email with Scout's Pick, Card of the Week, tag-grouped articles
 - **Zero Cost** — OCI free-tier compute, NVIDIA API, SQLite
 
 ## Tech Stack
@@ -34,9 +36,10 @@ go build -o milesahead ./cmd/milesahead
 ./milesahead
 ```
 
-Seed credit card reference pages:
+Seed credit card reference pages and structured comparison data:
 ```bash
 go run ./cmd/seed-cards
+go run ./cmd/seed-structured
 ```
 
 ## Documentation
