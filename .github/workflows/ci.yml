@@ -110,4 +110,5 @@ jobs:
         if: always()
         with:
           name: screenshots
+          retention-days: 7
           path: screenshots/
