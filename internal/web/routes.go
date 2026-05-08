@@ -59,6 +59,7 @@ func (app *App) setupRoutes() {
 
 	// Article action routes.
 	adminMux.HandleFunc("GET /admin/articles/{id}/cards", app.handleAdminArticleCardsGET)
+	adminMux.HandleFunc("POST /admin/articles/{id}/cards", app.handleAdminArticleCardsPOST)
 	adminMux.HandleFunc("POST /admin/articles/{id}/approve", app.handleApproveArticle)
 	adminMux.HandleFunc("POST /admin/articles/{id}/reject", app.handleRejectArticle)
 	adminMux.HandleFunc("POST /admin/articles/{id}/revise", app.handleRequestRevision)

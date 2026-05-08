@@ -1355,6 +1355,84 @@ func (app *App) handleAdminArticleCardsGET(w http.ResponseWriter, r *http.Reques
 	app.renderTemplate(w, "article-cards.html", data)
 }
 
+func (app *App) handleAdminArticleCardsPOST(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad form", http.StatusBadRequest)
+		return
+	}
+
+	// Compose the new slug list. Start with whatever was submitted in
+	// linked_slugs[] (current rows), then apply add_slug / remove_slug.
+	slugs := r.Form["linked_slugs[]"]
+	if add := r.FormValue("add_slug"); add != "" {
+		slugs = appendUnique(slugs, add)
+	}
+	if remove := r.FormValue("remove_slug"); remove != "" {
+		slugs = removeFromSlice(slugs, remove)
+	}
+
+	// Resolve titles via reference_pages.
+	type relatedRef struct {
+		Slug  string `json:"slug"`
+		Title string `json:"title"`
+	}
+	out := make([]relatedRef, 0, len(slugs))
+	for _, s := range slugs {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		page, err := app.db.GetReferencePageBySlug(s)
+		if err != nil || page == nil {
+			continue
+		}
+		out = append(out, relatedRef{Slug: page.Slug, Title: page.Title})
+	}
+	relatedJSON, _ := json.Marshal(out)
+
+	heading := strings.TrimSpace(r.FormValue("heading_override"))
+	const maxHeadingLen = 256
+	if len(heading) > maxHeadingLen {
+		http.Error(w, fmt.Sprintf("heading_override exceeds %d characters", maxHeadingLen), http.StatusBadRequest)
+		return
+	}
+
+	if err := app.db.UpdateArticleLinkedCards(id, string(relatedJSON), heading); err != nil {
+		slog.Error("update linked cards", "id", id, "err", err)
+		http.Error(w, "Failed to update", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/articles/%d/cards?msg=saved", id), http.StatusSeeOther)
+}
+
+// appendUnique appends s to slice only if not already present.
+func appendUnique(slice []string, s string) []string {
+	for _, v := range slice {
+		if v == s {
+			return slice
+		}
+	}
+	return append(slice, s)
+}
+
+// removeFromSlice returns slice with all occurrences of s removed.
+func removeFromSlice(slice []string, s string) []string {
+	out := slice[:0]
+	for _, v := range slice {
+		if v != s {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 // parseKeywords splits a comma-separated keyword string into a clean slice.
 func parseKeywords(s string) []string {
 	var result []string
