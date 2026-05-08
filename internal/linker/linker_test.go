@@ -170,6 +170,13 @@ func TestDetectMentions_BasicCount(t *testing.T) {
 			t.Errorf("%s: got count %d, want %d", dc.Slug, dc.Count, want[dc.Slug])
 		}
 	}
+	// Ordering is part of the contract: count desc, slug asc on ties.
+	if got[0].Slug != "chase-sapphire-preferred" {
+		t.Errorf("first result: got %s, want chase-sapphire-preferred", got[0].Slug)
+	}
+	if got[1].Slug != "amex-gold" {
+		t.Errorf("second result: got %s, want amex-gold", got[1].Slug)
+	}
 }
 
 func TestDetectMentions_OrderedByCountDescending(t *testing.T) {
@@ -201,13 +208,19 @@ func TestDetectMentions_CaseInsensitive(t *testing.T) {
 }
 
 func TestDetectMentions_LongerKeywordWinsFromOverlap(t *testing.T) {
+	// Longer keyword "Chase Sapphire Preferred" claims one span; a separate
+	// later occurrence of just "Sapphire Preferred" with no longer match
+	// nearby should still be counted. Total: 2 mentions for the same card.
 	cards := []db.ReferencePage{
 		{Slug: "csp", Title: "Chase Sapphire Preferred", KeywordsJSON: `["Sapphire Preferred"]`},
 	}
-	body := "The Chase Sapphire Preferred is excellent."
+	body := "The Chase Sapphire Preferred is excellent. Later, the Sapphire Preferred shines on dining."
 	got := DetectMentions(body, cards)
-	if len(got) != 1 || got[0].Count != 1 {
-		t.Errorf("expected 1 card, 1 mention; got %+v", got)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 card, got %d: %+v", len(got), got)
+	}
+	if got[0].Count != 2 {
+		t.Errorf("expected 2 mentions (1 long + 1 short non-overlapping), got %d", got[0].Count)
 	}
 }
 

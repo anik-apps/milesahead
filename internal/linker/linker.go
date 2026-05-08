@@ -17,6 +17,39 @@ type MatchedCard struct {
 	Title string
 }
 
+// cardKeyword pairs a keyword (card title or alias from KeywordsJSON) with the
+// card it identifies. Used internally by AutoLink and DetectMentions.
+type cardKeyword struct {
+	keyword string
+	card    db.ReferencePage
+}
+
+// buildCardKeywords returns all (title + KeywordsJSON aliases) keyword/card
+// pairs for the given cards, sorted by keyword length descending so longer
+// keywords match before their suffixes (e.g. "Chase Sapphire Preferred"
+// claims a span before "Sapphire Preferred" tries). Malformed KeywordsJSON
+// is tolerated — the card's title still contributes a keyword.
+func buildCardKeywords(cards []db.ReferencePage) []cardKeyword {
+	var out []cardKeyword
+	for _, card := range cards {
+		out = append(out, cardKeyword{keyword: card.Title, card: card})
+		var extraKW []string
+		if card.KeywordsJSON != "" && card.KeywordsJSON != "[]" {
+			_ = json.Unmarshal([]byte(card.KeywordsJSON), &extraKW)
+		}
+		for _, kw := range extraKW {
+			kw = strings.TrimSpace(kw)
+			if kw != "" {
+				out = append(out, cardKeyword{keyword: kw, card: card})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return len(out[i].keyword) > len(out[j].keyword)
+	})
+	return out
+}
+
 // AutoLink scans content for card name mentions and replaces the first occurrence
 // of each with a link to the card's reference page. It skips matches that are
 // already inside <a> or <code> tags. Keywords are matched longest-first to avoid
@@ -26,34 +59,7 @@ func AutoLink(content string, cards []db.ReferencePage) (string, []MatchedCard) 
 		return content, nil
 	}
 
-	// Build keyword -> card mapping. Each card contributes its title plus any
-	// keywords stored in keywords_json.
-	type cardKeyword struct {
-		keyword string
-		card    db.ReferencePage
-	}
-
-	var keywords []cardKeyword
-	for _, card := range cards {
-		keywords = append(keywords, cardKeyword{keyword: card.Title, card: card})
-
-		// Parse additional keywords from keywords_json.
-		var extraKW []string
-		if card.KeywordsJSON != "" && card.KeywordsJSON != "[]" {
-			json.Unmarshal([]byte(card.KeywordsJSON), &extraKW)
-		}
-		for _, kw := range extraKW {
-			kw = strings.TrimSpace(kw)
-			if kw != "" {
-				keywords = append(keywords, cardKeyword{keyword: kw, card: card})
-			}
-		}
-	}
-
-	// Sort by keyword length descending so longer matches take priority.
-	sort.Slice(keywords, func(i, j int) bool {
-		return len(keywords[i].keyword) > len(keywords[j].keyword)
-	})
+	keywords := buildCardKeywords(cards)
 
 	var matched []MatchedCard
 	seen := make(map[string]bool) // track by slug to link only first mention per card
@@ -109,29 +115,7 @@ func DetectMentions(content string, cards []db.ReferencePage) []DetectedCard {
 		return nil
 	}
 
-	type cardKeyword struct {
-		keyword string
-		card    db.ReferencePage
-	}
-	var keywords []cardKeyword
-	for _, card := range cards {
-		keywords = append(keywords, cardKeyword{keyword: card.Title, card: card})
-		var extraKW []string
-		if card.KeywordsJSON != "" && card.KeywordsJSON != "[]" {
-			_ = json.Unmarshal([]byte(card.KeywordsJSON), &extraKW)
-		}
-		for _, kw := range extraKW {
-			kw = strings.TrimSpace(kw)
-			if kw != "" {
-				keywords = append(keywords, cardKeyword{keyword: kw, card: card})
-			}
-		}
-	}
-	// Longest first so "Chase Sapphire Preferred" claims a span before
-	// "Sapphire Preferred" does.
-	sort.Slice(keywords, func(i, j int) bool {
-		return len(keywords[i].keyword) > len(keywords[j].keyword)
-	})
+	keywords := buildCardKeywords(cards)
 
 	// claimedRanges marks character ranges already attributed to a longer
 	// keyword. A shorter keyword that overlaps a claimed range is skipped.
