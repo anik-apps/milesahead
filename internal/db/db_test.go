@@ -676,6 +676,34 @@ func TestSubscriber(t *testing.T) {
 	}
 }
 
+func TestUpdateArticleLinkedCards(t *testing.T) {
+	d := openTestDB(t)
+	id, err := d.CreateGeneratedArticle(&GeneratedArticle{
+		Title: "T", Slug: "linked-cards-update-test", Content: "C", Type: "deal",
+		Status: StatusDraft, SourcesJSON: "[]", RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	wantJSON := `[{"slug":"amex-platinum","title":"Amex Platinum"},{"slug":"amex-gold","title":"Amex Gold"}]`
+	wantHeading := "Cards earning Membership Rewards"
+
+	if err := d.UpdateArticleLinkedCards(id, wantJSON, wantHeading); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	a, err := d.GetGeneratedArticle(id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if a.RelatedCardsJSON != wantJSON {
+		t.Errorf("RelatedCardsJSON: got %q, want %q", a.RelatedCardsJSON, wantJSON)
+	}
+	if a.LinkedCardsHeading != wantHeading {
+		t.Errorf("LinkedCardsHeading: got %q, want %q", a.LinkedCardsHeading, wantHeading)
+	}
+}
+
 // --- AdminSession ---
 
 func TestAdminSession(t *testing.T) {
