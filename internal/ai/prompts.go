@@ -30,22 +30,6 @@ func formatSources(sources []SourceArticle) string {
 	return b.String()
 }
 
-func formatSourceURLs(sources []SourceArticle) string {
-	var parts []string
-	for _, s := range sources {
-		parts = append(parts, fmt.Sprintf("- %s: %s", s.Name, s.URL))
-	}
-	return strings.Join(parts, "\n")
-}
-
-func formatSourceLinks(sources []SourceArticle) string {
-	var parts []string
-	for _, s := range sources {
-		parts = append(parts, fmt.Sprintf("[%s] = %s", s.Name, s.URL))
-	}
-	return strings.Join(parts, "\n")
-}
-
 const writingStyle = `
 WRITING STYLE — THIS IS CRITICAL:
 
@@ -78,7 +62,17 @@ BODY WRITING:
 
 FACTUAL INTEGRITY:
 - NEVER invent, fabricate, or add information not present in the provided sources. Stick strictly to what the sources say.
-- NO source article links or citation markers in the body. Do not link to TPG, OMAAT, Doctor of Credit, etc.
+- Do NOT substitute remembered facts from training data when the source says something different. If the source says "Through May 29", you write "Through May 29" — not a date you remember from a previous version of the same promotion.
+- NO source article links or citation markers in the body. The article body must NEVER link to any of these domains, in any form (full URL, anchor tag, or shortlink):
+    - thepointsguy.com
+    - onemileatatime.com
+    - doctorofcredit.com
+    - viewfromthewing.com
+    - upgradedpoints.com
+    - loyaltylobby.com
+    - frequentmiler.com
+    - liveandletsfly.com
+    - milesfromblighty.com
   Do not mention source site names UNLESS reporting an unconfirmed claim from a specific site.
   WRONG: "American Express is offering a 40% bonus [TPG]."
   WRONG: "According to The Points Guy, there is a 40% bonus."
@@ -86,6 +80,12 @@ FACTUAL INTEGRITY:
   RIGHT: "American Express is offering a 40% transfer bonus to ANA through March 31."
   EXCEPTION (unconfirmed report): When a claim can only be attributed to one source and is not officially confirmed, link the source name to their article:
   RIGHT: <a href="https://thepointsguy.com/article-url" target="_blank" rel="noopener">The Points Guy is reporting</a> that Chase may change Sapphire Reserve benefits in April — take this with a grain of salt until there's official confirmation.
+
+FORMATTING:
+- The article body is HTML. NEVER output Markdown.
+  WRONG: **bold**, *italic*, ## Header, [text](url)
+  RIGHT: <strong>bold</strong>, <em>italic</em>, <h3>Header</h3>, <a href="url">text</a>
+- Use ASCII hyphens (-) only. Do NOT use Unicode dashes (‑ – —) anywhere in the output.
 
 LINKS:
 - You SHOULD include links to the actual deal, product, or official page when helpful:
@@ -97,7 +97,8 @@ LINKS:
 
 const htmlFormat = `
 OUTPUT FORMAT:
-- Output HTML only. No Markdown.
+- Output HTML only. NEVER use Markdown (no ** for bold, no ## for headers, no [text](url) for links). See FORMATTING under WRITING STYLE.
+- Use ASCII hyphens (-) only. Do NOT use Unicode dashes (‑ – —).
 - The output must have this exact structure:
 
 Line 1: Article title (plain text, no HTML tags)
@@ -112,10 +113,10 @@ KEY_DETAILS_END
 Line: Empty line
 Line: LINKS_START
 - Link text | URL
-(include 2-4 links to actual deal pages, booking sites, or official program pages — NOT news articles)
+(0-4 links to OFFICIAL program/deal/product pages — NEVER source news sites; if no acceptable URLs, leave the section empty between LINKS_START and LINKS_END)
 LINKS_END
 Line: Empty line
-Line+: The full article body in HTML (<p>, <h3>, <ul>, <li>, <strong>, <em>)
+Line+: The full article body in HTML (<p>, <h3>, <ul>, <li>, <strong>, <em>). Wrap every paragraph in <p>...</p>.
 
 Example:
 Wyndham Points 100% Bonus Through May 1
@@ -134,9 +135,8 @@ LINKS_START
 - Wyndham Hotel Search | https://www.wyndham.com
 LINKS_END
 
-<p>If you've been eyeing a Wyndham property...</p>
+<p>Wyndham Rewards is running a 100% bonus on purchased points through May 1, dropping the effective cost to roughly 0.5 cents per point.</p>
 
-- Do NOT link to source news articles (TPG, OMAAT, etc.). DO link to actual deals, products, and official pages.
 - For ROUNDUP articles covering multiple topics: use <hr class="topic-break"> between each topic section to create clear visual separation. Each topic should have its own <h3> heading.`
 
 // DealAlertPrompt builds a prompt for a deal-alert post written in a natural,
@@ -435,13 +435,13 @@ func NewsletterPickPrompt(articles []ArticleSummary) string {
 func RevisionPrompt(sources []SourceArticle, previousOutput, feedback, criticIssues string) string {
 	return fmt.Sprintf(`You are a miles-and-points content editor revising an article.
 
-The admin has requested the following change. Implement EXACTLY what they asked — nothing more, nothing less.
+The admin has requested the following change. Implement what they asked, plus any obvious adjacent fixes implied by the feedback (e.g. if the feedback is "paragraph structuring is wrong", restructure paragraphs throughout the article, not just one).
 
 === ADMIN FEEDBACK ===
 %s
 === END FEEDBACK ===
 
-IMPORTANT: Only make the changes the admin requested. Do not add editor notes, do not add warnings, do not add disclaimers unless the admin specifically asked for them. If the admin asked for a link and you can find a URL in the sources, add it as: <a href="URL" target="_blank" rel="noopener">descriptive text</a>. If you cannot find a URL, just leave the text as-is without adding any notes about missing links.
+IMPORTANT: Address the admin feedback. Do not add editor notes, warnings, or disclaimers unless the admin specifically asked for them. If the admin asked for a link, add it as <a href="URL" target="_blank" rel="noopener">descriptive text</a> — but ONLY to OFFICIAL program/deal/product pages. The same banned-domain rule from WRITING STYLE applies: NEVER link to source news sites (thepointsguy.com, onemileatatime.com, doctorofcredit.com, viewfromthewing.com, upgradedpoints.com, loyaltylobby.com, frequentmiler.com, liveandletsfly.com, milesfromblighty.com). If you cannot find an acceptable non-news URL, leave the text without a link rather than inventing one or citing a source news site.
 
 Also fix any critic issues if present.
 %s
@@ -452,10 +452,7 @@ Previous Article:
 Critic Issues:
 %s
 
-Source article URLs (can be used as links if no better URL is available):
+Sources (for your reference only — do NOT cite or link to them):
 %s
-
-Sources (for your reference only):
-%s
-Write the revised article now.`, feedback, writingStyle, htmlFormat, previousOutput, criticIssues, formatSourceURLs(sources), formatSources(sources))
+Write the revised article now.`, feedback, writingStyle, htmlFormat, previousOutput, criticIssues, formatSources(sources))
 }

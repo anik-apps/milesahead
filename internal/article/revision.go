@@ -147,7 +147,12 @@ func (m *Manager) loadSourceArticles(articleID int64) ([]ai.SourceArticle, error
 
 	sources := make([]ai.SourceArticle, len(rawArticles))
 	for i, ra := range rawArticles {
+		name := "Unknown"
+		if src, _ := m.db.GetSource(ra.SourceID); src != nil {
+			name = src.Name
+		}
 		sources[i] = ai.SourceArticle{
+			Name:    name,
 			Title:   ra.Title,
 			URL:     ra.URL,
 			Content: ra.Content,
