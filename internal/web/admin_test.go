@@ -131,6 +131,19 @@ func setupAdminTestApp(t *testing.T) (*App, *db.Database) {
 		t.Fatalf("failed to write newsletter template: %v", err)
 	}
 
+	// Write article-cards template.
+	articleCardsContent := `{{template "layout" .}}
+{{define "content"}}
+<form method="POST">
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+{{range .Linked}}<div class="admin-row linked"><input type="hidden" name="linked_slugs[]" value="{{.Slug}}"><b>{{.Title}}</b>{{if .Count}}<span>{{.Count}}× in body</span>{{end}}</div>{{end}}
+{{range .Suggested}}<div class="admin-row suggested"><b>{{.Title}}</b><span>{{.Count}}× in body</span></div>{{end}}
+</form>
+{{end}}`
+	if err := os.WriteFile(filepath.Join(templateDir, "article-cards.html"), []byte(articleCardsContent), 0644); err != nil {
+		t.Fatalf("failed to write article-cards template: %v", err)
+	}
+
 	app, err := NewAppWithTemplateDir(cfg, database, mgr, nil, nil, nil, context.Background(), filepath.Join(tmpDir, "templates"))
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
@@ -790,6 +803,39 @@ func TestNewsletterSend_Error(t *testing.T) {
 	}
 }
 
+func TestAdminArticleCardsGET(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, _ := getSessionAndCSRF(cookies)
+
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-a", Title: "Card A",
+		Category: "credit-card", Issuer: "X", Status: "published", KeywordsJSON: `[]`})
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-b", Title: "Card B",
+		Category: "credit-card", Issuer: "Y", Status: "published", KeywordsJSON: `[]`})
+
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Test", Slug: "test-cards-get", Content: "Card A and Card A again. Also Card B.",
+		Type: "deal", Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"card-a","title":"Card A"}]`,
+	})
+
+	rec := doAdminGET(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Card A",
+		"Card B",
+		`name="linked_slugs[]"`,
+		"in body",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q from response", want)
+		}
+	}
+}
+
 func TestNewsletterHistory_ListsSentNewsletters(t *testing.T) {
 	mock := &mockNewsletterSvc{
 		previewErr: fmt.Errorf("no articles"),
@@ -829,4 +875,3 @@ func TestNewsletterHistory_ListsSentNewsletters(t *testing.T) {
 		t.Error("expected body to contain 'Daily Digest March 24'")
 	}
 }
-

@@ -58,6 +58,7 @@ func (app *App) setupRoutes() {
 	adminMux.HandleFunc("GET /admin/settings", app.handleAdminSettings)
 
 	// Article action routes.
+	adminMux.HandleFunc("GET /admin/articles/{id}/cards", app.handleAdminArticleCardsGET)
 	adminMux.HandleFunc("POST /admin/articles/{id}/approve", app.handleApproveArticle)
 	adminMux.HandleFunc("POST /admin/articles/{id}/reject", app.handleRejectArticle)
 	adminMux.HandleFunc("POST /admin/articles/{id}/revise", app.handleRequestRevision)
@@ -94,4 +95,3 @@ func (app *App) setupRoutes() {
 	// API routes.
 	app.mux.HandleFunc("POST /api/vote", app.handleVoteAPI)
 }
-
