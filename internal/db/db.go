@@ -388,7 +388,7 @@ func (d *Database) UpdateArticleContent(id int64, title, content string, revisio
 // linked_cards_heading fields, plus updated_at. The relatedCardsJSON value
 // must already be a valid JSON array string (pass "[]" for empty).
 func (d *Database) UpdateArticleLinkedCards(id int64, relatedCardsJSON, heading string) error {
-	_, err := d.DB().Exec(
+	_, err := d.db.Exec(
 		`UPDATE generated_articles SET related_cards_json = ?, linked_cards_heading = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		relatedCardsJSON, heading, id,
 	)

@@ -36,28 +36,28 @@ type RawArticle struct {
 }
 
 type GeneratedArticle struct {
-	ID             int64      `json:"id"`
-	Title          string     `json:"title"`
-	Slug           string     `json:"slug"`
-	Content        string     `json:"content"`
-	Type           string     `json:"type"`
-	Status         string     `json:"status"`
-	SourcesJSON    string     `json:"sources_json"`
-	RevisionNumber int        `json:"revision_number"`
-	Featured       bool       `json:"featured"`
-	TLDR           string     `json:"tldr"`
-	KeyDetails     string     `json:"key_details"`
-	Links          string     `json:"links"`
-	ImageURL         string     `json:"image_url"`
-	ImageThumbnail   string     `json:"image_thumbnail"`
-	ImageAttribution string     `json:"image_attribution"`
-	ScoutsTake       string     `json:"scouts_take"`
+	ID                 int64      `json:"id"`
+	Title              string     `json:"title"`
+	Slug               string     `json:"slug"`
+	Content            string     `json:"content"`
+	Type               string     `json:"type"`
+	Status             string     `json:"status"`
+	SourcesJSON        string     `json:"sources_json"`
+	RevisionNumber     int        `json:"revision_number"`
+	Featured           bool       `json:"featured"`
+	TLDR               string     `json:"tldr"`
+	KeyDetails         string     `json:"key_details"`
+	Links              string     `json:"links"`
+	ImageURL           string     `json:"image_url"`
+	ImageThumbnail     string     `json:"image_thumbnail"`
+	ImageAttribution   string     `json:"image_attribution"`
+	ScoutsTake         string     `json:"scouts_take"`
 	RelatedCardsJSON   string     `json:"related_cards_json"`
 	TagsJSON           string     `json:"tags_json"`
 	LinkedCardsHeading string     `json:"linked_cards_heading"`
 	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	PublishedAt      *time.Time `json:"published_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	PublishedAt        *time.Time `json:"published_at"`
 }
 
 type ArticleSource struct {
@@ -169,17 +169,17 @@ type PendingUpdate struct {
 
 // ReferencePage represents a curated reference page (e.g., a credit card).
 type ReferencePage struct {
-	ID                 int64     `json:"id"`
-	Slug               string    `json:"slug"`
-	Title              string    `json:"title"`
-	Category           string    `json:"category"`
-	Issuer             string    `json:"issuer"`
-	SectionsJSON       string    `json:"sections_json"`
-	RecentChangesJSON  string    `json:"recent_changes_json"`
-	PendingUpdatesJSON string    `json:"pending_updates_json"`
-	ScoutsVerdict      string    `json:"scouts_verdict"`
-	KeywordsJSON       string    `json:"keywords_json"`
-	ImageURL           string    `json:"image_url"`
+	ID                     int64      `json:"id"`
+	Slug                   string     `json:"slug"`
+	Title                  string     `json:"title"`
+	Category               string     `json:"category"`
+	Issuer                 string     `json:"issuer"`
+	SectionsJSON           string     `json:"sections_json"`
+	RecentChangesJSON      string     `json:"recent_changes_json"`
+	PendingUpdatesJSON     string     `json:"pending_updates_json"`
+	ScoutsVerdict          string     `json:"scouts_verdict"`
+	KeywordsJSON           string     `json:"keywords_json"`
+	ImageURL               string     `json:"image_url"`
 	ApplyURL               string     `json:"apply_url"`
 	AnnualFeeAmount        int        `json:"annual_fee_amount"`
 	AnnualFeeNote          string     `json:"annual_fee_note"`
@@ -191,6 +191,6 @@ type ReferencePage struct {
 	ProtectionsJSON        string     `json:"protections_json"`
 	FlaggedFieldsJSON      string     `json:"flagged_fields_json"`
 	Status                 string     `json:"status"`
-	CreatedAt          time.Time `json:"created_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
 }
