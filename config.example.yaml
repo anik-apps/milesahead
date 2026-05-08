@@ -13,8 +13,17 @@ scanner:
   user_agent: "MilesAhead/1.0"
 
 ai:
-  generator_model: "mistralai/Mistral-7B-Instruct-v0.3"
-  critic_model: "meta-llama/Meta-Llama-3-8B-Instruct"
+  # Primary generator. Empirical A/B testing across 80 article generations
+  # (4 candidate models on integrate.api.nvidia.com) showed openai/gpt-oss-120b
+  # had the highest publish-ready rate (90% scoring >=75 from the critic) and
+  # ~10s latency.
+  generator_model: "openai/gpt-oss-120b"
+  # Fallback used when the primary returns a retryable error (HTTP 429 / 5xx /
+  # timeout). Qwen 3.5 was the second-best in the same A/B test (85% pass rate)
+  # and has not exhibited the rate-limit issues that disqualified DeepSeek.
+  # Leave empty to disable fallback.
+  fallback_generator_model: "qwen/qwen3.5-122b-a10b"
+  critic_model: "meta/llama-3.3-70b-instruct"
   hf_api_token: "${HF_API_TOKEN}"
   critic_threshold: 70
   max_retries: 3

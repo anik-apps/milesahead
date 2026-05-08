@@ -37,7 +37,7 @@ func TestProcessRevision(t *testing.T) {
 		},
 	}
 
-	gen := ai.NewGenerator(mock, "test-model", nil)
+	gen := ai.NewGenerator(mock, "test-model", "", nil)
 	critic := ai.NewCritic(mock, "test-model")
 	pipeline := ai.NewPipeline(gen, critic, 80)
 
@@ -170,7 +170,7 @@ func TestProcessRevision_BelowThreshold(t *testing.T) {
 		},
 	}
 
-	gen := ai.NewGenerator(mock, "test-model", nil)
+	gen := ai.NewGenerator(mock, "test-model", "", nil)
 	critic := ai.NewCritic(mock, "test-model")
 	pipeline := ai.NewPipeline(gen, critic, 80)
 

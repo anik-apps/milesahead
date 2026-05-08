@@ -10,7 +10,7 @@ func TestPipeline_Process_AboveThreshold(t *testing.T) {
 		response: `{"score": 90, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`,
 	}
 
-	gen := NewGenerator(genMock, "mistral-7b", nil)
+	gen := NewGenerator(genMock, "mistral-7b", "", nil)
 	critic := NewCritic(criticMock, "llama-3-8b")
 	pipeline := NewPipeline(gen, critic, 80)
 
@@ -47,7 +47,7 @@ func TestPipeline_Process_BelowThreshold(t *testing.T) {
 		response: `{"score": 40, "issues": ["Missing citations", "Hallucinated data"], "factual_check": false, "attribution_check": false, "completeness_check": false, "hallucination_check": false}`,
 	}
 
-	gen := NewGenerator(genMock, "mistral-7b", nil)
+	gen := NewGenerator(genMock, "mistral-7b", "", nil)
 	critic := NewCritic(criticMock, "llama-3-8b")
 	pipeline := NewPipeline(gen, critic, 80)
 
@@ -70,7 +70,7 @@ func TestPipeline_Process_BelowThreshold(t *testing.T) {
 }
 
 func TestPipeline_Process_SingleSourceRejected(t *testing.T) {
-	gen := NewGenerator(&mockHFClient{response: "Title\nContent"}, "model", nil)
+	gen := NewGenerator(&mockHFClient{response: "Title\nContent"}, "model", "", nil)
 	critic := NewCritic(&mockHFClient{response: `{"score":90,"issues":[],"factual_check":true,"attribution_check":true,"completeness_check":true,"hallucination_check":true}`}, "model")
 	pipeline := NewPipeline(gen, critic, 80)
 
@@ -90,7 +90,7 @@ func TestPipeline_ProcessWithFeedback(t *testing.T) {
 		response: `{"score": 95, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`,
 	}
 
-	gen := NewGenerator(genMock, "mistral-7b", nil)
+	gen := NewGenerator(genMock, "mistral-7b", "", nil)
 	critic := NewCritic(criticMock, "llama-3-8b")
 	pipeline := NewPipeline(gen, critic, 80)
 

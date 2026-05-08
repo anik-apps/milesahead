@@ -80,7 +80,7 @@ func main() {
 		hfClient.BaseURL = cfg.AI.HFBaseURL
 	}
 	cache := ai.NewCache(time.Duration(cfg.AI.CacheTTL) * time.Second)
-	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cache)
+	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cfg.AI.FallbackGeneratorModel, cache)
 	critic := ai.NewCritic(hfClient, cfg.AI.CriticModel)
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
 	if cfg.AI.Critic2Model != "" {
