@@ -589,7 +589,7 @@ func TestHandleArticle_RendersCardEmbed(t *testing.T) {
 		"Cards mentioned in this article",
 		`href="/cards/chase-sapphire-preferred"`,
 		"80,000 points after $4K spend",
-		"Best $95 you'll spend.",
+		"Best $95 you&#39;ll spend.",
 		`https://example.com/csp.png`,
 		`href="https://chase.com/csp"`,
 	} {

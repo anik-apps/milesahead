@@ -43,8 +43,8 @@ type linkedCardEmbed struct {
 	Category      string
 	AnnualFee     string // formatted: "$95" or "$0 (no annual fee)"
 	WelcomeBonus  string
-	TopEarning    string        // first 2 entries from earning_rates_json, joined
-	ScoutsVerdict template.HTML // pre-escaped; data is DB-controlled
+	TopEarning    string // first 2 entries from earning_rates_json, joined
+	ScoutsVerdict string
 	ImageURL      string
 	ApplyURL      string
 }
@@ -233,7 +233,7 @@ func (app *App) buildLinkedCardEmbeds(relatedCardsJSON string) []linkedCardEmbed
 			AnnualFee:     fee,
 			WelcomeBonus:  page.WelcomeBonusText,
 			TopEarning:    formatTopEarning(page.EarningRatesJSON, 2),
-			ScoutsVerdict: template.HTML(page.ScoutsVerdict), //nolint:gosec // DB-owned, admin-controlled content
+			ScoutsVerdict: page.ScoutsVerdict,
 			ImageURL:      page.ImageURL,
 			ApplyURL:      page.ApplyURL,
 		})
