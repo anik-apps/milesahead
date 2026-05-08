@@ -68,6 +68,31 @@ func TestOpenAndMigrate_Idempotent(t *testing.T) {
 	d2.Close()
 }
 
+func TestMigration_LinkedCardsHeading(t *testing.T) {
+	d := openTestDB(t)
+	// The migration should have created the column. Test by setting + reading a value.
+	id, err := d.CreateGeneratedArticle(&GeneratedArticle{
+		Title: "T", Slug: "test-linked-heading", Content: "C", Type: "deal",
+		Status: StatusDraft, SourcesJSON: "[]", RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// Direct UPDATE of just the new column to verify it exists and persists.
+	_, err = d.DB().Exec(`UPDATE generated_articles SET linked_cards_heading = ? WHERE id = ?`,
+		"Cards earning Membership Rewards", id)
+	if err != nil {
+		t.Fatalf("update column: %v", err)
+	}
+	var heading string
+	if err := d.DB().QueryRow(`SELECT linked_cards_heading FROM generated_articles WHERE id = ?`, id).Scan(&heading); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if heading != "Cards earning Membership Rewards" {
+		t.Errorf("got %q, want %q", heading, "Cards earning Membership Rewards")
+	}
+}
+
 // --- Source CRUD ---
 
 func TestSourceCRUD(t *testing.T) {

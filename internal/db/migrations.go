@@ -180,6 +180,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE reference_pages ADD COLUMN apply_url TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE generated_articles ADD COLUMN related_cards_json TEXT DEFAULT '[]'`,
 		`ALTER TABLE generated_articles ADD COLUMN tags_json TEXT DEFAULT '[]'`,
+		`ALTER TABLE generated_articles ADD COLUMN linked_cards_heading TEXT DEFAULT ''`,
 		`ALTER TABLE newsletters ADD COLUMN card_of_week_id INTEGER DEFAULT NULL`,
 		`ALTER TABLE newsletters ADD COLUMN scouts_pick_article_id INTEGER DEFAULT NULL`,
 		`ALTER TABLE reference_pages ADD COLUMN annual_fee_amount INTEGER DEFAULT 0`,
