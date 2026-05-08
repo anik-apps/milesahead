@@ -87,7 +87,8 @@ jobs:
             user_agent: "MilesAhead/1.0"
 
           ai:
-            generator_model: "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+            generator_model: "openai/gpt-oss-120b"
+            fallback_generator_model: "qwen/qwen3.5-122b-a10b"
             critic_model: "meta/llama-3.3-70b-instruct"
             critic2_model: ""
             hf_api_token: "${NVIDIA_API_KEY}"
