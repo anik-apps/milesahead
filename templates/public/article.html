@@ -58,16 +58,6 @@
                 </ul>
             </div>
             {{end}}
-            {{if .RelatedCards}}
-            <div class="sidebar-section">
-                <h4>Related Cards</h4>
-                <ul class="related-cards">
-                    {{range .RelatedCards}}
-                    <li><a href="/cards/{{.Slug}}">&rarr; {{.Title}}</a></li>
-                    {{end}}
-                </ul>
-            </div>
-            {{end}}
         </aside>
         <div class="article-main">
             <div class="article-content">
@@ -75,6 +65,34 @@
             </div>
         </div>
     </div>
+
+    {{if .LinkedCards}}
+    <div class="card-embeds">
+        <h3 class="card-embeds-heading">
+            {{if .LinkedCardsHeading}}{{.LinkedCardsHeading}}{{else}}Cards mentioned in this article{{end}}
+        </h3>
+        {{range .LinkedCards}}
+        <div class="card-embed">
+            <div class="card-embed-top">
+                {{if .ImageURL}}<img class="card-embed-logo" src="{{.ImageURL}}" alt="">{{end}}
+                <div>
+                    <h4 class="card-embed-name"><a href="/cards/{{.Slug}}">{{.Title}}</a></h4>
+                    <span class="card-embed-issuer">{{.Issuer}} · {{.Category}} · {{.AnnualFee}}</span>
+                </div>
+            </div>
+            {{if .WelcomeBonus}}
+            <div class="card-embed-grid">
+                <div class="stat"><b>Welcome bonus</b><span>{{.WelcomeBonus}}</span></div>
+                {{if .TopEarning}}<div class="stat"><b>Top earnings</b><span>{{.TopEarning}}</span></div>{{end}}
+                <div class="stat"><b>Annual fee</b><span>{{.AnnualFee}}</span></div>
+            </div>
+            {{end}}
+            {{if .ScoutsVerdict}}<p class="card-embed-verdict">{{.ScoutsVerdict}}</p>{{end}}
+            {{if .ApplyURL}}<a href="{{.ApplyURL}}" target="_blank" rel="noopener" class="card-embed-cta">View card &rarr;</a>{{end}}
+        </div>
+        {{end}}
+    </div>
+    {{end}}
 
     {{if .ScoutsTake}}
     <div class="scouts-take">

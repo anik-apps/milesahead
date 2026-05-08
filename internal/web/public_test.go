@@ -86,7 +86,7 @@ func setupPublicTestApp(t *testing.T) (*App, *db.Database) {
 	}
 
 	articleContent := `{{template "layout" .}}
-{{define "content"}}{{if .UnderReview}}<div class="under-review">This article is currently under review.</div>{{else}}<h1>{{.Article.Title}}</h1><div class="content">{{.Article.Content}}</div>{{range .Sources}}<a class="source" href="{{.URL}}">{{.Title}}</a>{{end}}<div class="votes"><span class="upvotes">{{.Upvotes}}</span><span class="downvotes">{{.Downvotes}}</span></div>{{end}}{{end}}`
+{{define "content"}}{{if .UnderReview}}<div class="under-review">This article is currently under review.</div>{{else}}<h1>{{.Article.Title}}</h1><div class="content">{{.Article.Content}}</div>{{range .Sources}}<a class="source" href="{{.URL}}">{{.Title}}</a>{{end}}<div class="votes"><span class="upvotes">{{.Upvotes}}</span><span class="downvotes">{{.Downvotes}}</span></div>{{if .LinkedCards}}<div class="card-embeds"><h3 class="card-embeds-heading">{{if .LinkedCardsHeading}}{{.LinkedCardsHeading}}{{else}}Cards mentioned in this article{{end}}</h3>{{range .LinkedCards}}<div class="card-embed"><div class="card-embed-top">{{if .ImageURL}}<img class="card-embed-logo" src="{{.ImageURL}}" alt="">{{end}}<div><h4 class="card-embed-name"><a href="/cards/{{.Slug}}">{{.Title}}</a></h4><span class="card-embed-issuer">{{.Issuer}} · {{.Category}} · {{.AnnualFee}}</span></div></div>{{if .WelcomeBonus}}<div class="card-embed-grid"><div class="stat"><b>Welcome bonus</b><span>{{.WelcomeBonus}}</span></div>{{if .TopEarning}}<div class="stat"><b>Top earnings</b><span>{{.TopEarning}}</span></div>{{end}}<div class="stat"><b>Annual fee</b><span>{{.AnnualFee}}</span></div></div>{{end}}{{if .ScoutsVerdict}}<p class="card-embed-verdict">{{.ScoutsVerdict}}</p>{{end}}{{if .ApplyURL}}<a href="{{.ApplyURL}}" target="_blank" rel="noopener" class="card-embed-cta">View card</a>{{end}}</div>{{end}}</div>{{end}}{{end}}{{end}}`
 	if err := os.WriteFile(filepath.Join(publicDir, "article.html"), []byte(articleContent), 0644); err != nil {
 		t.Fatalf("failed to write article template: %v", err)
 	}
@@ -536,6 +536,132 @@ func TestTruncate(t *testing.T) {
 		if got != tt.expected {
 			t.Errorf("truncate(%q, %d) = %q, want %q", tt.input, tt.n, got, tt.expected)
 		}
+	}
+}
+
+func doPublicGET(t *testing.T, app *App, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest("GET", path, nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestHandleArticle_RendersCardEmbed(t *testing.T) {
+	app, _ := setupPublicTestApp(t)
+	cardID, err := app.db.CreateReferencePage(&db.ReferencePage{
+		Slug:             "chase-sapphire-preferred",
+		Title:            "Chase Sapphire Preferred",
+		Category:         "credit-card",
+		Issuer:           "Chase",
+		Status:           "published",
+		AnnualFeeAmount:  95,
+		WelcomeBonusText: "80,000 points after $4K spend",
+		ScoutsVerdict:    "Best $95 you'll spend.",
+		ImageURL:         "https://example.com/csp.png",
+		ApplyURL:         "https://chase.com/csp",
+	})
+	if err != nil {
+		t.Fatalf("create ref page: %v", err)
+	}
+	_ = cardID
+
+	_, err = app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title:            "Chase Bumps the CSP Bonus to 80K",
+		Slug:             "csp-80k",
+		Content:          "<p>The Sapphire Preferred bonus is back to 80K.</p>",
+		Type:             "deal",
+		Status:           db.StatusApproved,
+		SourcesJSON:      "[]",
+		RelatedCardsJSON: `[{"slug":"chase-sapphire-preferred","title":"Chase Sapphire Preferred"}]`,
+		RevisionNumber:   1,
+	})
+	if err != nil {
+		t.Fatalf("create article: %v", err)
+	}
+
+	rec := doPublicGET(t, app, "/article/csp-80k")
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body: %s", rec.Code, body)
+	}
+	for _, want := range []string{
+		"Cards mentioned in this article",
+		`href="/cards/chase-sapphire-preferred"`,
+		"80,000 points after $4K spend",
+		"Best $95 you'll spend.",
+		`https://example.com/csp.png`,
+		`href="https://chase.com/csp"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("response missing %q", want)
+		}
+	}
+}
+
+func TestHandleArticle_NoEmbedWhenNoLinkedCards(t *testing.T) {
+	app, _ := setupPublicTestApp(t)
+	_, err := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "no-cards", Content: "<p>body</p>", Type: "deal",
+		Status: db.StatusApproved, SourcesJSON: "[]", RelatedCardsJSON: "[]",
+		RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	rec := doPublicGET(t, app, "/article/no-cards")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), `class="card-embeds"`) {
+		t.Error("embed section rendered despite empty related_cards_json")
+	}
+}
+
+func TestHandleArticle_MalformedRelatedCardsJSON(t *testing.T) {
+	app, _ := setupPublicTestApp(t)
+	_, err := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "bad-json", Content: "<p>body</p>", Type: "deal",
+		Status: db.StatusApproved, SourcesJSON: "[]",
+		RelatedCardsJSON: `not valid json`, RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	rec := doPublicGET(t, app, "/article/bad-json")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), `class="card-embeds"`) {
+		t.Error("embed section rendered despite malformed JSON")
+	}
+}
+
+func TestHandleArticle_LinkedSlugMissingOrUnpublished(t *testing.T) {
+	app, _ := setupPublicTestApp(t)
+	_, _ = app.db.CreateReferencePage(&db.ReferencePage{
+		Slug: "real-card", Title: "Real Card", Category: "credit-card",
+		Issuer: "X", Status: "published", ImageURL: "x.png",
+	})
+	_, err := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "missing-slug", Content: "<p>body</p>", Type: "deal",
+		Status: db.StatusApproved, SourcesJSON: "[]",
+		RelatedCardsJSON: `[{"slug":"real-card","title":"Real Card"},{"slug":"deleted-card","title":"Gone"}]`,
+		RevisionNumber:   1,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	rec := doPublicGET(t, app, "/article/missing-slug")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Real Card") {
+		t.Error("expected Real Card embed to render")
+	}
+	if strings.Contains(body, "Gone") {
+		t.Error("missing-slug card should not render at all")
 	}
 }
 

@@ -2403,3 +2403,42 @@ tr.flagged { background: #fef2f2; }
         width: 100%;
     }
 }
+
+/* === Card embeds at bottom of article === */
+.card-embeds { margin-top: 32px; }
+.card-embeds-heading {
+    margin: 0 0 4px;
+    color: #666;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #e8e4dc;
+    padding-bottom: 6px;
+    font-weight: 600;
+}
+.card-embed {
+    background: #fff;
+    border: 1px solid #e8e4dc;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 16px 0;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+.card-embed-top { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
+.card-embed-logo { width: 96px; height: 60px; border-radius: 6px; flex-shrink: 0;
+    object-fit: contain; background: #f5f3ee; border: 1px solid #e8e4dc; }
+.card-embed-name { font-size: 18px; font-weight: 600; margin: 0; }
+.card-embed-name a { color: #1a1a1a; text-decoration: none; }
+.card-embed-name a:hover { color: #2a5d8f; }
+.card-embed-issuer { color: #666; font-size: 12px; }
+.card-embed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    padding: 12px 0; border-top: 1px solid #e8e4dc; border-bottom: 1px solid #e8e4dc;
+    margin-bottom: 12px; }
+.card-embed-grid .stat b { display: block; color: #666; font-weight: 500;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.card-embed-grid .stat span { font-size: 14px; font-weight: 500; }
+.card-embed-verdict { font-size: 13px; color: #1a1a1a; border-left: 3px solid #b8841a;
+    padding: 2px 12px; margin: 0 0 12px; font-style: italic; }
+.card-embed-cta { display: inline-block; background: #2a5d8f; color: #fff;
+    padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; }
+.card-embed-cta:hover { background: #1c4663; }
