@@ -226,7 +226,7 @@ func TestFullPipeline(t *testing.T) {
 	hfClient.BaseURL = hfServer.URL
 
 	cache := ai.NewCache(time.Hour)
-	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cache)
+	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cfg.AI.FallbackGeneratorModel, cache)
 	critic := ai.NewCritic(hfClient, cfg.AI.CriticModel)
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
 
@@ -371,7 +371,7 @@ func TestRevisionCycle(t *testing.T) {
 	hfClient := ai.NewHFClient("test-token", 0)
 	hfClient.BaseURL = hfServer.URL
 	cache := ai.NewCache(time.Hour)
-	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cache)
+	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cfg.AI.FallbackGeneratorModel, cache)
 	critic := ai.NewCritic(hfClient, cfg.AI.CriticModel)
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
 	mgr := article.NewManager(database, pipeline)

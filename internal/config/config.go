@@ -27,17 +27,18 @@ type ScannerConfig struct {
 }
 
 type AIConfig struct {
-	GeneratorModel string `yaml:"generator_model"`
-	CriticModel    string `yaml:"critic_model"`
-	Critic2Model   string `yaml:"critic2_model"`
-	HFAPIToken     string `yaml:"hf_api_token"`
-	HFBaseURL      string `yaml:"hf_base_url"`
-	CriticThreshold int   `yaml:"critic_threshold"`
-	MaxRetries     int    `yaml:"max_retries"`
-	CacheTTL       int    `yaml:"cache_ttl"`
-	UnsplashKey    string `yaml:"unsplash_key"`
-	PexelsKey      string `yaml:"pexels_key"`
-	PixabayKey     string `yaml:"pixabay_key"`
+	GeneratorModel         string `yaml:"generator_model"`
+	FallbackGeneratorModel string `yaml:"fallback_generator_model"`
+	CriticModel            string `yaml:"critic_model"`
+	Critic2Model           string `yaml:"critic2_model"`
+	HFAPIToken             string `yaml:"hf_api_token"`
+	HFBaseURL              string `yaml:"hf_base_url"`
+	CriticThreshold        int    `yaml:"critic_threshold"`
+	MaxRetries             int    `yaml:"max_retries"`
+	CacheTTL               int    `yaml:"cache_ttl"`
+	UnsplashKey            string `yaml:"unsplash_key"`
+	PexelsKey              string `yaml:"pexels_key"`
+	PixabayKey             string `yaml:"pixabay_key"`
 }
 
 type SMTPConfig struct {
