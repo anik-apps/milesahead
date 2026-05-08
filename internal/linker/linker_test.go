@@ -244,3 +244,36 @@ func TestDetectMentions_AfterAutoLink(t *testing.T) {
 		t.Errorf("expected 2 mentions counting both wrapped and bare, got %+v", got)
 	}
 }
+
+func TestTopByMentionCount(t *testing.T) {
+	in := []DetectedCard{
+		{Slug: "a", Title: "A", Count: 3},
+		{Slug: "b", Title: "B", Count: 2},
+		{Slug: "c", Title: "C", Count: 1},
+	}
+	tests := []struct {
+		name  string
+		input []DetectedCard
+		cap   int
+		want  []string
+	}{
+		{"cap 2 takes top 2", in, 2, []string{"a", "b"}},
+		{"cap 0 returns empty", in, 0, []string{}},
+		{"cap > len returns all", in, 5, []string{"a", "b", "c"}},
+		{"empty input", nil, 2, []string{}},
+		{"negative cap returns empty", in, -1, []string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := TopByMentionCount(tc.input, tc.cap)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len: got %d, want %d", len(got), len(tc.want))
+			}
+			for i, slug := range tc.want {
+				if got[i].Slug != slug {
+					t.Errorf("[%d]: got %s, want %s", i, got[i].Slug, slug)
+				}
+			}
+		})
+	}
+}

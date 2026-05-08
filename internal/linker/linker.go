@@ -202,3 +202,18 @@ func isInsideTag(content string, pos int) bool {
 
 	return false
 }
+
+// TopByMentionCount returns the first `cap` DetectedCards from a slice that's
+// already sorted by mention count descending (the order DetectMentions returns).
+// If cap <= 0, returns an empty slice. If cap > len(detected), returns all.
+func TopByMentionCount(detected []DetectedCard, cap int) []DetectedCard {
+	if cap <= 0 || len(detected) == 0 {
+		return []DetectedCard{}
+	}
+	if cap > len(detected) {
+		cap = len(detected)
+	}
+	out := make([]DetectedCard, cap)
+	copy(out, detected[:cap])
+	return out
+}
