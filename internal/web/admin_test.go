@@ -1048,3 +1048,85 @@ func TestAdminArticleCardsPOST_HeadingXSSEscaped(t *testing.T) {
 		t.Error("expected escaped script tag in output")
 	}
 }
+
+// TestCardCuration_EndToEnd exercises the full flow: seed cards, seed an
+// article with auto-linked top-2 cards, verify public render shows the embeds,
+// run admin POST to swap a card, verify updated public render.
+func TestCardCuration_EndToEnd(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+
+	// Seed 4 reference cards.
+	for _, c := range []db.ReferencePage{
+		{Slug: "csp", Title: "Chase Sapphire Preferred", Category: "credit-card", Issuer: "Chase",
+			Status: "published", AnnualFeeAmount: 95, WelcomeBonusText: "80K after $4K/3mo",
+			ImageURL: "https://example.com/csp.png", ApplyURL: "https://chase.com/csp"},
+		{Slug: "amex-plat", Title: "American Express Platinum", Category: "credit-card", Issuer: "Amex",
+			Status: "published", AnnualFeeAmount: 695, WelcomeBonusText: "150K after $20K/3mo",
+			ImageURL: "https://example.com/amex-plat.png"},
+		{Slug: "amex-gold", Title: "American Express Gold", Category: "credit-card", Issuer: "Amex",
+			Status: "published", AnnualFeeAmount: 325, WelcomeBonusText: "60K after $6K/6mo",
+			ImageURL: "https://example.com/amex-gold.png"},
+		{Slug: "venture-x", Title: "Capital One Venture X", Category: "credit-card", Issuer: "Capital One",
+			Status: "published", AnnualFeeAmount: 395, WelcomeBonusText: "75K after $4K/3mo",
+			ImageURL: "https://example.com/venture-x.png"},
+	} {
+		if _, err := app.db.CreateReferencePage(&c); err != nil {
+			t.Fatalf("seed %s: %v", c.Slug, err)
+		}
+	}
+
+	// Article body with reference text. Seed pre-curated state with 2 cards
+	// (CSP + amex-gold) — simulating what main.go's cap-to-2 logic would have done.
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Best Travel Cards Compared", Slug: "best-travel-cards-e2e",
+		Content: `<p>In the premium travel card segment, two standouts offer different strengths. ` +
+			`The first excels in point transfers and category flexibility, making it ideal for flexible redemptions. ` +
+			`The second focuses on dining and airline benefits for those with specific spending patterns.</p>`,
+		Type: "summary", Status: db.StatusApproved, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"csp","title":"Chase Sapphire Preferred"},{"slug":"amex-gold","title":"American Express Gold"}]`,
+	})
+
+	// 1. Public render shows the 2 currently-linked cards.
+	rec := doPublicGET(t, app, "/article/best-travel-cards-e2e")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("public article status: %d body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Cards mentioned in this article") {
+		t.Error("public render missing default heading")
+	}
+	if !strings.Contains(body, "Chase Sapphire Preferred") || !strings.Contains(body, "American Express Gold") {
+		t.Error("public render missing initially-linked cards")
+	}
+	if strings.Contains(body, "American Express Platinum") || strings.Contains(body, "Capital One Venture X") {
+		t.Error("public render shouldn't include suggested-but-not-linked cards")
+	}
+
+	// 2. Admin curation: swap amex-gold OUT, amex-plat IN, set custom heading.
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("action", "save")
+	form.Add("linked_slugs[]", "csp")
+	form.Add("linked_slugs[]", "amex-plat")
+	form.Add("heading_override", "Cards in this comparison")
+
+	rec = doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("admin POST status: %d body: %s", rec.Code, rec.Body.String())
+	}
+
+	// 3. Public render again: heading is custom, cards reflect curation.
+	rec = doPublicGET(t, app, "/article/best-travel-cards-e2e")
+	body = rec.Body.String()
+	if !strings.Contains(body, "Cards in this comparison") {
+		t.Error("custom heading missing")
+	}
+	if !strings.Contains(body, "Chase Sapphire Preferred") || !strings.Contains(body, "American Express Platinum") {
+		t.Error("public render missing post-curation cards")
+	}
+	if strings.Contains(body, "American Express Gold") {
+		t.Error("public render still showing removed card")
+	}
+}
