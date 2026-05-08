@@ -221,6 +221,9 @@ func (app *App) buildLinkedCardEmbeds(relatedCardsJSON string) []linkedCardEmbed
 		if err != nil || page == nil {
 			continue
 		}
+		if page.Status != "published" {
+			continue
+		}
 		fee := fmt.Sprintf("$%d", page.AnnualFeeAmount)
 		if page.AnnualFeeAmount == 0 {
 			fee = "$0 (no annual fee)"

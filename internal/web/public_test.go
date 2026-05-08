@@ -665,6 +665,42 @@ func TestHandleArticle_LinkedSlugMissingOrUnpublished(t *testing.T) {
 	}
 }
 
+// TestHandleArticle_LinkedSlugDraftCard ensures cards with status != "published"
+// are skipped from public render even if linked via related_cards_json.
+func TestHandleArticle_LinkedSlugDraftCard(t *testing.T) {
+	app, _ := setupPublicTestApp(t)
+	// Published card.
+	_, _ = app.db.CreateReferencePage(&db.ReferencePage{
+		Slug: "pub-card", Title: "Published Card", Category: "credit-card",
+		Issuer: "X", Status: "published", ImageURL: "p.png",
+	})
+	// Draft card.
+	_, _ = app.db.CreateReferencePage(&db.ReferencePage{
+		Slug: "draft-card", Title: "Draft Card", Category: "credit-card",
+		Issuer: "Y", Status: "draft", ImageURL: "d.png",
+	})
+	_, err := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "draft-card-test", Content: "<p>body</p>", Type: "deal",
+		Status: db.StatusApproved, SourcesJSON: "[]",
+		RelatedCardsJSON: `[{"slug":"pub-card","title":"Published Card"},{"slug":"draft-card","title":"Draft Card"}]`,
+		RevisionNumber:   1,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	rec := doPublicGET(t, app, "/article/draft-card-test")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Published Card") {
+		t.Error("published card should render")
+	}
+	if strings.Contains(body, "Draft Card") {
+		t.Error("draft card should NOT render publicly")
+	}
+}
+
 func jsonInt64(id int64) string {
 	b, _ := json.Marshal(id)
 	return string(b)

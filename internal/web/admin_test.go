@@ -1049,6 +1049,72 @@ func TestAdminArticleCardsPOST_HeadingXSSEscaped(t *testing.T) {
 	}
 }
 
+// TestAdminArticleCardsPOST_ClearAll ensures submitting the form with no
+// linked_slugs[] values clears the linked cards list. The bottom embed
+// section will then be hidden on the public page.
+func TestAdminArticleCardsPOST_ClearAll(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-a", Title: "Card A",
+		Category: "credit-card", Issuer: "X", Status: "published"})
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "post-clear-all", Content: "C", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"card-a","title":"Card A"}]`,
+	})
+
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("action", "save")
+	// Intentionally NO linked_slugs[] entries.
+
+	rec := doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status: got %d", rec.Code)
+	}
+	updated, _ := app.db.GetGeneratedArticle(id)
+	if updated.RelatedCardsJSON != "[]" {
+		t.Errorf("expected empty array, got %q", updated.RelatedCardsJSON)
+	}
+}
+
+// TestAdminArticleCardsPOST_HeadingOnlyPreservesCards ensures updating only
+// the heading override (with the form's hidden linked_slugs[] inputs)
+// preserves the existing linked cards.
+func TestAdminArticleCardsPOST_HeadingOnlyPreservesCards(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-a", Title: "Card A",
+		Category: "credit-card", Issuer: "X", Status: "published"})
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "post-heading-only", Content: "C", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"card-a","title":"Card A"}]`,
+	})
+
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("action", "save")
+	form.Add("linked_slugs[]", "card-a") // hidden input from rendered template
+	form.Add("heading_override", "Custom Heading Only")
+
+	rec := doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status: got %d", rec.Code)
+	}
+	updated, _ := app.db.GetGeneratedArticle(id)
+	if !strings.Contains(updated.RelatedCardsJSON, `"slug":"card-a"`) {
+		t.Errorf("card-a should be preserved: %s", updated.RelatedCardsJSON)
+	}
+	if updated.LinkedCardsHeading != "Custom Heading Only" {
+		t.Errorf("heading: got %q", updated.LinkedCardsHeading)
+	}
+}
+
 // TestCardCuration_EndToEnd exercises the full flow: seed cards, seed an
 // article with auto-linked top-2 cards, verify public render shows the embeds,
 // run admin POST to swap a card, verify updated public render.
