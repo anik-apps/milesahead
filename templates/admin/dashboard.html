@@ -54,6 +54,7 @@
                 <td>{{.RevisionNumber}}</td>
                 <td><span class="dim">{{.CreatedAt}}</span><br><span class="dim">Updated: {{.UpdatedAt}}</span></td>
                 <td class="actions">
+                    <a href="/admin/articles/{{.ID}}/cards" class="btn btn-primary">Linked cards</a>
                     <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
                         {{template "csrf_field" $}}
                         <button type="submit" class="btn btn-approve" onclick="return confirm('Are you sure you want to approve this article for publishing?')">Approve</button>
