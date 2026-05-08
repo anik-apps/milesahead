@@ -141,3 +141,93 @@ func TestAutoLink_Keywords(t *testing.T) {
 		t.Errorf("expected keyword link, got: %s", result)
 	}
 }
+
+func TestDetectMentions_Empty(t *testing.T) {
+	got := DetectMentions("", nil)
+	if len(got) != 0 {
+		t.Errorf("expected empty result, got %d", len(got))
+	}
+}
+
+func TestDetectMentions_BasicCount(t *testing.T) {
+	cards := []db.ReferencePage{
+		{Slug: "chase-sapphire-preferred", Title: "Chase Sapphire Preferred", KeywordsJSON: `["CSP","Sapphire Preferred"]`},
+		{Slug: "amex-gold", Title: "American Express Gold", KeywordsJSON: `["Amex Gold"]`},
+	}
+	body := "<p>The Chase Sapphire Preferred is the benchmark. The Sapphire Preferred edges out competitors. " +
+		"Compare to the American Express Gold for dining.</p>"
+
+	got := DetectMentions(body, cards)
+	want := map[string]int{
+		"chase-sapphire-preferred": 2, // matched as "Chase Sapphire Preferred" + "Sapphire Preferred"
+		"amex-gold":                1,
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d cards, want 2: %+v", len(got), got)
+	}
+	for _, dc := range got {
+		if want[dc.Slug] != dc.Count {
+			t.Errorf("%s: got count %d, want %d", dc.Slug, dc.Count, want[dc.Slug])
+		}
+	}
+}
+
+func TestDetectMentions_OrderedByCountDescending(t *testing.T) {
+	cards := []db.ReferencePage{
+		{Slug: "a", Title: "Card A"},
+		{Slug: "b", Title: "Card B"},
+		{Slug: "c", Title: "Card C"},
+	}
+	body := "Card A. Card B Card B Card B. Card C Card C."
+	got := DetectMentions(body, cards)
+	if len(got) != 3 {
+		t.Fatalf("got %d, want 3", len(got))
+	}
+	if got[0].Slug != "b" || got[1].Slug != "c" || got[2].Slug != "a" {
+		t.Errorf("expected order b,c,a; got %s,%s,%s", got[0].Slug, got[1].Slug, got[2].Slug)
+	}
+	if got[0].Count != 3 || got[1].Count != 2 || got[2].Count != 1 {
+		t.Errorf("counts wrong: %+v", got)
+	}
+}
+
+func TestDetectMentions_CaseInsensitive(t *testing.T) {
+	cards := []db.ReferencePage{{Slug: "csp", Title: "Chase Sapphire Preferred"}}
+	body := "the chase sapphire preferred is great. CHASE SAPPHIRE PREFERRED again."
+	got := DetectMentions(body, cards)
+	if len(got) != 1 || got[0].Count != 2 {
+		t.Errorf("expected 1 card with 2 mentions, got %+v", got)
+	}
+}
+
+func TestDetectMentions_LongerKeywordWinsFromOverlap(t *testing.T) {
+	cards := []db.ReferencePage{
+		{Slug: "csp", Title: "Chase Sapphire Preferred", KeywordsJSON: `["Sapphire Preferred"]`},
+	}
+	body := "The Chase Sapphire Preferred is excellent."
+	got := DetectMentions(body, cards)
+	if len(got) != 1 || got[0].Count != 1 {
+		t.Errorf("expected 1 card, 1 mention; got %+v", got)
+	}
+}
+
+// TestDetectMentions_WordBoundary ensures "Visa" doesn't match inside "Visage".
+func TestDetectMentions_WordBoundary(t *testing.T) {
+	cards := []db.ReferencePage{{Slug: "visa", Title: "Visa"}}
+	body := "She had a serene Visage. The Visa card is great."
+	got := DetectMentions(body, cards)
+	if len(got) != 1 || got[0].Count != 1 {
+		t.Errorf("expected 1 mention (only the standalone 'Visa'), got %+v", got)
+	}
+}
+
+// TestDetectMentions_AfterAutoLink simulates content that AutoLink already processed.
+func TestDetectMentions_AfterAutoLink(t *testing.T) {
+	cards := []db.ReferencePage{{Slug: "csp", Title: "Chase Sapphire Preferred"}}
+	body := `<p>The <a href="/cards/csp">Chase Sapphire Preferred</a> is great. ` +
+		`The Chase Sapphire Preferred has perks.</p>`
+	got := DetectMentions(body, cards)
+	if len(got) != 1 || got[0].Count != 2 {
+		t.Errorf("expected 2 mentions counting both wrapped and bare, got %+v", got)
+	}
+}
