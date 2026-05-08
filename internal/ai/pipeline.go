@@ -249,19 +249,52 @@ func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr st
 	return content, parsedTitle, tldr, keyDetails, links
 }
 
-// parseStructuredContent extracts sections from the generator's structured output.
+// Compiled patterns for structural-marker handling. Resilient to malformed
+// emissions where the model puts markers inline instead of on their own lines —
+// e.g. "...KEY_DETAILS_START - foo KEY_DETAILS_END LINKS_START - bar | url LINKS_END <p>body</p>".
+//
+// Production incident motivating these patterns: 14 articles had structural
+// markers leaked into the body and 16 had them in the title, all from the
+// Nemotron 49B model that emitted single-line blobs the line-equality parser
+// couldn't dissect.
+var (
+	// Span the entire KEY_DETAILS / LINKS block, lazily, across newlines.
+	keyDetailsBlockRE = regexp.MustCompile(`(?s)KEY_DETAILS_START\s*(.*?)\s*KEY_DETAILS_END`)
+	linksBlockRE      = regexp.MustCompile(`(?s)LINKS_START\s*(.*?)\s*LINKS_END`)
+	// Defensive: any standalone marker that survived block-stripping.
+	bareMarkerRE = regexp.MustCompile(`KEY_DETAILS_START|KEY_DETAILS_END|LINKS_START|LINKS_END`)
+	// Strips a TLDR: line that landed in the body. Line-anchored on purpose —
+	// canonical TLDR is extracted in parseStructuredContent, this only catches
+	// leaked copies at line starts and avoids clobbering article prose that
+	// happens to mention "TLDR:" mid-sentence.
+	bodyTLDRLineRE = regexp.MustCompile(`(?m)^\s*TLDR:[^\n]*\n?`)
+	// Truncates the title at the first leaked structural marker. Requires
+	// preceding whitespace so we don't accidentally cut a legitimate word
+	// that contains the marker as a suffix substring.
+	titleStopRE = regexp.MustCompile(`\s+(TLDR:|KEY_DETAILS_START|LINKS_START)`)
+	// Collapses excessive blank lines left by block removals.
+	blankLineCollapseRE = regexp.MustCompile(`\n{3,}`)
+)
+
+// parseStructuredContent extracts sections from the generator's structured
+// output. Tolerates malformed emissions where markers appear inline rather than
+// on dedicated lines.
 func parseStructuredContent(raw string) (title, tldr string, keyDetails []KeyDetail, links []ArticleLink, body string) {
 	lines := strings.Split(raw, "\n")
 
-	// Title: first non-empty line
+	// Title: first non-empty line, truncated at any structural marker that
+	// leaked onto the same line.
 	for _, line := range lines {
 		t := strings.TrimSpace(line)
-		if t != "" {
-			title = t
-			break
+		if t == "" {
+			continue
 		}
+		if loc := titleStopRE.FindStringIndex(t); loc != nil {
+			t = strings.TrimSpace(t[:loc[0]])
+		}
+		title = t
+		break
 	}
-	// Truncate overly long titles
 	if len(title) > 150 {
 		if idx := strings.LastIndex(title[:150], " "); idx > 50 {
 			title = title[:idx]
@@ -270,30 +303,30 @@ func parseStructuredContent(raw string) (title, tldr string, keyDetails []KeyDet
 		}
 	}
 
-	// TLDR: line starting with "TLDR:"
-	for _, line := range lines {
-		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "TLDR:") {
-			tldr = strings.TrimSpace(strings.TrimPrefix(t, "TLDR:"))
-			break
+	// TLDR: search anywhere in raw for "TLDR:" and capture until newline or next marker.
+	if loc := strings.Index(raw, "TLDR:"); loc >= 0 {
+		rest := raw[loc+len("TLDR:"):]
+		// Stop at the next newline OR the next structural marker, whichever comes first.
+		end := len(rest)
+		if i := strings.Index(rest, "\n"); i >= 0 && i < end {
+			end = i
 		}
+		// Stop at the next structural marker in case a malformed emission
+		// concatenated multiple sections without any newline (a second "TLDR:"
+		// can also occur when the model echoed itself).
+		for _, marker := range []string{"KEY_DETAILS_START", "LINKS_START", "TLDR:"} {
+			if i := strings.Index(rest, marker); i >= 0 && i < end {
+				end = i
+			}
+		}
+		tldr = strings.TrimSpace(rest[:end])
 	}
 
-	// Key details: between KEY_DETAILS_START and KEY_DETAILS_END
-	inDetails := false
-	for _, line := range lines {
-		t := strings.TrimSpace(line)
-		if t == "KEY_DETAILS_START" {
-			inDetails = true
-			continue
-		}
-		if t == "KEY_DETAILS_END" {
-			inDetails = false
-			continue
-		}
-		if inDetails && strings.HasPrefix(t, "- ") {
-			item := strings.TrimPrefix(t, "- ")
-			if idx := strings.Index(item, ": "); idx != -1 {
+	// Key details: prefer regex block match (handles inline emissions). If found,
+	// split items by line (well-formed) or fall through to inline split.
+	if m := keyDetailsBlockRE.FindStringSubmatch(raw); m != nil {
+		for _, item := range parseDashItems(m[1]) {
+			if idx := strings.Index(item, ": "); idx > 0 {
 				keyDetails = append(keyDetails, KeyDetail{
 					Label: strings.TrimSpace(item[:idx]),
 					Value: strings.TrimSpace(item[idx+2:]),
@@ -302,21 +335,10 @@ func parseStructuredContent(raw string) (title, tldr string, keyDetails []KeyDet
 		}
 	}
 
-	// Links: between LINKS_START and LINKS_END
-	inLinks := false
-	for _, line := range lines {
-		t := strings.TrimSpace(line)
-		if t == "LINKS_START" {
-			inLinks = true
-			continue
-		}
-		if t == "LINKS_END" {
-			inLinks = false
-			continue
-		}
-		if inLinks && strings.HasPrefix(t, "- ") {
-			item := strings.TrimPrefix(t, "- ")
-			if idx := strings.Index(item, " | "); idx != -1 {
+	// Links: same regex strategy.
+	if m := linksBlockRE.FindStringSubmatch(raw); m != nil {
+		for _, item := range parseDashItems(m[1]) {
+			if idx := strings.Index(item, " | "); idx > 0 {
 				links = append(links, ArticleLink{
 					Text: strings.TrimSpace(item[:idx]),
 					URL:  strings.TrimSpace(item[idx+3:]),
@@ -325,44 +347,64 @@ func parseStructuredContent(raw string) (title, tldr string, keyDetails []KeyDet
 		}
 	}
 
-	// Body: everything after LINKS_END
-	foundLinksEnd := false
-	var bodyLines []string
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "LINKS_END" {
-			foundLinksEnd = true
-			continue
-		}
-		if foundLinksEnd {
-			bodyLines = append(bodyLines, line)
-		}
-	}
-	body = strings.TrimSpace(strings.Join(bodyLines, "\n"))
-
-	// If no LINKS_END was found, fall back to everything after the title
-	if !foundLinksEnd {
+	// Body: everything after the LAST occurrence of "LINKS_END" anywhere in the
+	// raw output (substring search, so it works even when LINKS_END is mid-line).
+	if idx := strings.LastIndex(raw, "LINKS_END"); idx >= 0 {
+		body = strings.TrimSpace(raw[idx+len("LINKS_END"):])
+	} else {
+		// Fallback: skip the title line, take the rest.
 		body = raw
-		if idx := strings.Index(raw, "\n"); idx != -1 {
-			body = strings.TrimSpace(raw[idx+1:])
+		if i := strings.Index(raw, "\n"); i != -1 {
+			body = strings.TrimSpace(raw[i+1:])
 		}
 	}
 
 	return
 }
 
-// stripStructuralMarkers removes structural markers from article content.
-func stripStructuralMarkers(content string) string {
-	var clean []string
-	for _, line := range strings.Split(content, "\n") {
-		t := strings.TrimSpace(line)
-		if t == "KEY_DETAILS_START" || t == "KEY_DETAILS_END" ||
-			t == "LINKS_START" || t == "LINKS_END" ||
-			strings.HasPrefix(t, "TLDR:") {
-			continue
-		}
-		clean = append(clean, line)
+// parseDashItems splits a block of bullet-style items "- foo - bar - baz" into
+// individual items. Handles both newline-separated (well-formed) and inline
+// (malformed) layouts.
+func parseDashItems(block string) []string {
+	block = strings.TrimSpace(block)
+	if block == "" {
+		return nil
 	}
-	return strings.TrimSpace(strings.Join(clean, "\n"))
+	if strings.Contains(block, "\n") {
+		var items []string
+		for _, line := range strings.Split(block, "\n") {
+			t := strings.TrimSpace(line)
+			if strings.HasPrefix(t, "- ") {
+				items = append(items, strings.TrimSpace(strings.TrimPrefix(t, "- ")))
+			}
+		}
+		return items
+	}
+	// Inline: split on " - " between items, preserving the first one.
+	if !strings.HasPrefix(block, "- ") {
+		return nil
+	}
+	parts := strings.Split(strings.TrimPrefix(block, "- "), " - ")
+	var items []string
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			items = append(items, t)
+		}
+	}
+	return items
+}
+
+// stripStructuralMarkers removes structural markers from article body content.
+// Handles both well-formed (markers on own lines) and malformed (inline)
+// emissions by regex-stripping entire blocks first, then any bare residual
+// markers.
+func stripStructuralMarkers(content string) string {
+	content = keyDetailsBlockRE.ReplaceAllString(content, "")
+	content = linksBlockRE.ReplaceAllString(content, "")
+	content = bareMarkerRE.ReplaceAllString(content, "")
+	content = bodyTLDRLineRE.ReplaceAllString(content, "")
+	content = blankLineCollapseRE.ReplaceAllString(content, "\n\n")
+	return strings.TrimSpace(content)
 }
 
 // adjustScore enforces consistency between the score and the check results.
