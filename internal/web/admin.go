@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/linker"
 )
 
 // sem limits concurrent card update detection goroutines.
@@ -27,11 +28,11 @@ type adminSourceInfo struct {
 
 // adminCriticReport holds the critic's verification details.
 type adminCriticReport struct {
-	Score            int
-	Issues           []string
-	FactualCheck     string
-	AttributionCheck string
-	CompletenessCheck string
+	Score              int
+	Issues             []string
+	FactualCheck       string
+	AttributionCheck   string
+	CompletenessCheck  string
 	HallucinationCheck string
 }
 
@@ -162,7 +163,7 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"CSRFToken": getCSRFToken(w, r),
 		"Message":   r.URL.Query().Get("msg"),
 	}
-	app.renderTemplate(w,"dashboard.html", data)
+	app.renderTemplate(w, "dashboard.html", data)
 }
 
 func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
@@ -207,7 +208,7 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		"Articles":  rows,
 		"CSRFToken": getCSRFToken(w, r),
 	}
-	app.renderTemplate(w,"published.html", data)
+	app.renderTemplate(w, "published.html", data)
 }
 
 func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
@@ -343,7 +344,7 @@ func (app *App) handleAdminSources(w http.ResponseWriter, r *http.Request) {
 		"Sources":   sources,
 		"CSRFToken": getCSRFToken(w, r),
 	}
-	app.renderTemplate(w,"sources.html", data)
+	app.renderTemplate(w, "sources.html", data)
 }
 
 func (app *App) handleAddSource(w http.ResponseWriter, r *http.Request) {
@@ -446,7 +447,7 @@ func (app *App) handleAdminSubscribers(w http.ResponseWriter, r *http.Request) {
 		"Subscribers": subscribers,
 		"CSRFToken":   getCSRFToken(w, r),
 	}
-	app.renderTemplate(w,"subscribers.html", data)
+	app.renderTemplate(w, "subscribers.html", data)
 }
 
 func (app *App) handleExportSubscribers(w http.ResponseWriter, r *http.Request) {
@@ -538,7 +539,7 @@ func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 		"Config":   maskedConfig,
 		"Sections": []string{"Server", "Admin", "Database", "Scanner", "AI", "Mail", "Newsletter", "Votes"},
 	}
-	app.renderTemplate(w,"settings.html", data)
+	app.renderTemplate(w, "settings.html", data)
 }
 
 // maskString fully masks a sensitive string, revealing no content.
@@ -769,9 +770,9 @@ type adminCardRow struct {
 	Issuer       string
 	Status       string
 	ImageURL     string
-	SectionCount  int
-	PendingCount  int
-	FlaggedCount  int
+	SectionCount int
+	PendingCount int
+	FlaggedCount int
 }
 
 // adminIssuerGroup groups cards by issuer for admin display.
@@ -854,13 +855,13 @@ func (app *App) handleAdminCardNew(w http.ResponseWriter, r *http.Request) {
 
 func (app *App) handleAdminCardCreate(w http.ResponseWriter, r *http.Request) {
 	page := &db.ReferencePage{
-		Title:    strings.TrimSpace(r.FormValue("title")),
-		Slug:     strings.TrimSpace(r.FormValue("slug")),
-		Category: strings.TrimSpace(r.FormValue("category")),
-		Issuer:   strings.TrimSpace(r.FormValue("issuer")),
-		ImageURL: strings.TrimSpace(r.FormValue("image_url")),
-		ApplyURL: strings.TrimSpace(r.FormValue("apply_url")),
-		Status:   r.FormValue("status"),
+		Title:         strings.TrimSpace(r.FormValue("title")),
+		Slug:          strings.TrimSpace(r.FormValue("slug")),
+		Category:      strings.TrimSpace(r.FormValue("category")),
+		Issuer:        strings.TrimSpace(r.FormValue("issuer")),
+		ImageURL:      strings.TrimSpace(r.FormValue("image_url")),
+		ApplyURL:      strings.TrimSpace(r.FormValue("apply_url")),
+		Status:        r.FormValue("status"),
 		ScoutsVerdict: r.FormValue("scouts_verdict"),
 	}
 
@@ -1268,6 +1269,168 @@ func (app *App) handleRejectCardUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=Update+rejected", id), http.StatusSeeOther)
+}
+
+// adminLinkedCard is the per-row data for the curation page (combines reference
+// page metadata with optional mention count).
+type adminLinkedCard struct {
+	Slug     string
+	Title    string
+	Issuer   string
+	Category string
+	ImageURL string
+	Count    int // 0 if added manually; >0 if also auto-detected
+}
+
+func (app *App) handleAdminArticleCardsGET(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		return
+	}
+
+	article, err := app.db.GetGeneratedArticle(id)
+	if err != nil {
+		http.Error(w, "Article not found", http.StatusNotFound)
+		return
+	}
+
+	// Build "linked" rows from related_cards_json.
+	linkedSlugs := map[string]bool{}
+	var linkedSlugList []string
+	if article.RelatedCardsJSON != "" && article.RelatedCardsJSON != "[]" {
+		var rels []struct{ Slug, Title string }
+		_ = json.Unmarshal([]byte(article.RelatedCardsJSON), &rels)
+		for _, rel := range rels {
+			linkedSlugs[rel.Slug] = true
+			linkedSlugList = append(linkedSlugList, rel.Slug)
+		}
+	}
+
+	// Detect mentions to compute counts (used for both linked and suggested rows).
+	refPages, _ := app.db.ListPublishedReferencePages("")
+	detected := linker.DetectMentions(article.Content, refPages)
+	countBySlug := map[string]int{}
+	for _, dc := range detected {
+		countBySlug[dc.Slug] = dc.Count
+	}
+
+	// Build linked rows in the order they appear in related_cards_json.
+	linked := make([]adminLinkedCard, 0, len(linkedSlugList))
+	for _, slug := range linkedSlugList {
+		page, err := app.db.GetReferencePageBySlug(slug)
+		if err != nil || page == nil {
+			continue
+		}
+		linked = append(linked, adminLinkedCard{
+			Slug: page.Slug, Title: page.Title, Issuer: page.Issuer,
+			Category: page.Category, ImageURL: page.ImageURL,
+			Count: countBySlug[slug],
+		})
+	}
+
+	// Build suggested rows: detected cards NOT in linkedSlugs.
+	suggested := make([]adminLinkedCard, 0)
+	for _, dc := range detected {
+		if linkedSlugs[dc.Slug] {
+			continue
+		}
+		page, err := app.db.GetReferencePageBySlug(dc.Slug)
+		if err != nil || page == nil {
+			continue
+		}
+		suggested = append(suggested, adminLinkedCard{
+			Slug: page.Slug, Title: page.Title, Issuer: page.Issuer,
+			Category: page.Category, ImageURL: page.ImageURL,
+			Count: dc.Count,
+		})
+	}
+
+	data := map[string]any{
+		"Article":   article,
+		"Linked":    linked,
+		"Suggested": suggested,
+		"CSRFToken": getCSRFToken(w, r),
+	}
+	app.renderTemplate(w, "article-cards.html", data)
+}
+
+func (app *App) handleAdminArticleCardsPOST(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad form", http.StatusBadRequest)
+		return
+	}
+
+	// Compose the new slug list. Start with whatever was submitted in
+	// linked_slugs[] (current rows), then apply add_slug / remove_slug.
+	slugs := r.Form["linked_slugs[]"]
+	if add := r.FormValue("add_slug"); add != "" {
+		slugs = appendUnique(slugs, add)
+	}
+	if remove := r.FormValue("remove_slug"); remove != "" {
+		slugs = removeFromSlice(slugs, remove)
+	}
+
+	// Resolve titles via reference_pages.
+	type relatedRef struct {
+		Slug  string `json:"slug"`
+		Title string `json:"title"`
+	}
+	out := make([]relatedRef, 0, len(slugs))
+	for _, s := range slugs {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		page, err := app.db.GetReferencePageBySlug(s)
+		if err != nil || page == nil {
+			continue
+		}
+		out = append(out, relatedRef{Slug: page.Slug, Title: page.Title})
+	}
+	relatedJSON, _ := json.Marshal(out)
+
+	heading := strings.TrimSpace(r.FormValue("heading_override"))
+	const maxHeadingLen = 256
+	if len(heading) > maxHeadingLen {
+		http.Error(w, fmt.Sprintf("heading_override exceeds %d characters", maxHeadingLen), http.StatusBadRequest)
+		return
+	}
+
+	if err := app.db.UpdateArticleLinkedCards(id, string(relatedJSON), heading); err != nil {
+		slog.Error("update linked cards", "id", id, "err", err)
+		http.Error(w, "Failed to update", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/articles/%d/cards?msg=saved", id), http.StatusSeeOther)
+}
+
+// appendUnique appends s to slice only if not already present.
+func appendUnique(slice []string, s string) []string {
+	for _, v := range slice {
+		if v == s {
+			return slice
+		}
+	}
+	return append(slice, s)
+}
+
+// removeFromSlice returns slice with all occurrences of s removed.
+func removeFromSlice(slice []string, s string) []string {
+	out := slice[:0]
+	for _, v := range slice {
+		if v != s {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // parseKeywords splits a comma-separated keyword string into a clean slice.

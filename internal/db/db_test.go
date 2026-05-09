@@ -68,6 +68,31 @@ func TestOpenAndMigrate_Idempotent(t *testing.T) {
 	d2.Close()
 }
 
+func TestMigration_LinkedCardsHeading(t *testing.T) {
+	d := openTestDB(t)
+	// The migration should have created the column. Test by setting + reading a value.
+	id, err := d.CreateGeneratedArticle(&GeneratedArticle{
+		Title: "T", Slug: "test-linked-heading", Content: "C", Type: "deal",
+		Status: StatusDraft, SourcesJSON: "[]", RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// Direct UPDATE of just the new column to verify it exists and persists.
+	_, err = d.DB().Exec(`UPDATE generated_articles SET linked_cards_heading = ? WHERE id = ?`,
+		"Cards earning Membership Rewards", id)
+	if err != nil {
+		t.Fatalf("update column: %v", err)
+	}
+	var heading string
+	if err := d.DB().QueryRow(`SELECT linked_cards_heading FROM generated_articles WHERE id = ?`, id).Scan(&heading); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if heading != "Cards earning Membership Rewards" {
+		t.Errorf("got %q, want %q", heading, "Cards earning Membership Rewards")
+	}
+}
+
 // --- Source CRUD ---
 
 func TestSourceCRUD(t *testing.T) {
@@ -648,6 +673,34 @@ func TestSubscriber(t *testing.T) {
 	err = d.Unsubscribe("nonexistent")
 	if err == nil {
 		t.Error("expected error unsubscribing nonexistent token")
+	}
+}
+
+func TestUpdateArticleLinkedCards(t *testing.T) {
+	d := openTestDB(t)
+	id, err := d.CreateGeneratedArticle(&GeneratedArticle{
+		Title: "T", Slug: "linked-cards-update-test", Content: "C", Type: "deal",
+		Status: StatusDraft, SourcesJSON: "[]", RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	wantJSON := `[{"slug":"amex-platinum","title":"Amex Platinum"},{"slug":"amex-gold","title":"Amex Gold"}]`
+	wantHeading := "Cards earning Membership Rewards"
+
+	if err := d.UpdateArticleLinkedCards(id, wantJSON, wantHeading); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	a, err := d.GetGeneratedArticle(id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if a.RelatedCardsJSON != wantJSON {
+		t.Errorf("RelatedCardsJSON: got %q, want %q", a.RelatedCardsJSON, wantJSON)
+	}
+	if a.LinkedCardsHeading != wantHeading {
+		t.Errorf("LinkedCardsHeading: got %q, want %q", a.LinkedCardsHeading, wantHeading)
 	}
 }
 

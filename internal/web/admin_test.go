@@ -91,7 +91,7 @@ func setupAdminTestApp(t *testing.T) (*App, *db.Database) {
 
 	// Write dashboard template.
 	dashboardContent := `{{template "layout" .}}
-{{define "content"}}<h1>Dashboard</h1>{{range .Articles}}<div class="article">{{.Title}}</div>{{end}}{{end}}`
+{{define "content"}}<h1>Dashboard</h1>{{range .Articles}}<div class="article">{{.Title}}<a href="/admin/articles/{{.ID}}/cards">Linked cards</a></div>{{end}}{{end}}`
 	if err := os.WriteFile(filepath.Join(templateDir, "dashboard.html"), []byte(dashboardContent), 0644); err != nil {
 		t.Fatalf("failed to write dashboard template: %v", err)
 	}
@@ -129,6 +129,37 @@ func setupAdminTestApp(t *testing.T) (*App, *db.Database) {
 {{define "content"}}<h1>Newsletter</h1>{{if .NoContent}}<p>No articles to include</p>{{else}}<div class="preview">{{.PreviewHTML}}</div>{{end}}{{if .Success}}<div class="success">{{.Success}}</div>{{end}}{{if .Error}}<div class="error">{{.Error}}</div>{{end}}{{if .History}}{{range .History}}<div class="newsletter-row">{{.Subject}} {{.ArticleCount}}</div>{{end}}{{end}}{{end}}`
 	if err := os.WriteFile(filepath.Join(templateDir, "newsletter.html"), []byte(newsletterContent), 0644); err != nil {
 		t.Fatalf("failed to write newsletter template: %v", err)
+	}
+
+	// Write article-cards template.
+	articleCardsContent := `{{template "layout" .}}
+{{define "content"}}
+<form method="POST">
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+{{range .Linked}}<div class="admin-row linked"><input type="hidden" name="linked_slugs[]" value="{{.Slug}}"><b>{{.Title}}</b>{{if .Count}}<span>{{.Count}}× in body</span>{{end}}</div>{{end}}
+{{range .Suggested}}<div class="admin-row suggested"><b>{{.Title}}</b><span>{{.Count}}× in body</span></div>{{end}}
+</form>
+{{end}}`
+	if err := os.WriteFile(filepath.Join(templateDir, "article-cards.html"), []byte(articleCardsContent), 0644); err != nil {
+		t.Fatalf("failed to write article-cards template: %v", err)
+	}
+
+	// Write public article template (needed for XSS and render tests).
+	publicDir := filepath.Join(tmpDir, "templates", "public")
+	if err := os.MkdirAll(publicDir, 0755); err != nil {
+		t.Fatalf("failed to create public template dir: %v", err)
+	}
+	articleContent := `{{template "layout" .}}
+{{define "content"}}<h1>{{.Article.Title}}</h1><div class="content">{{.Article.Content}}</div>{{if .LinkedCards}}<div class="card-embeds"><h3 class="card-embeds-heading">{{if .LinkedCardsHeading}}{{.LinkedCardsHeading}}{{else}}Cards mentioned in this article{{end}}</h3>{{range .LinkedCards}}<div class="card-embed">{{.Title}}</div>{{end}}</div>{{end}}{{end}}`
+	if err := os.WriteFile(filepath.Join(publicDir, "article.html"), []byte(articleContent), 0644); err != nil {
+		t.Fatalf("failed to write article template: %v", err)
+	}
+
+	// Write minimal public home template to satisfy route setup.
+	homeContent := `{{template "layout" .}}
+{{define "content"}}<h1>Home</h1>{{end}}`
+	if err := os.WriteFile(filepath.Join(publicDir, "home.html"), []byte(homeContent), 0644); err != nil {
+		t.Fatalf("failed to write home template: %v", err)
 	}
 
 	app, err := NewAppWithTemplateDir(cfg, database, mgr, nil, nil, nil, context.Background(), filepath.Join(tmpDir, "templates"))
@@ -265,6 +296,12 @@ func TestAdminDashboard_Returns200WithPendingArticles(t *testing.T) {
 	}
 	if !strings.Contains(body, "Article Two") {
 		t.Error("expected body to contain 'Article Two'")
+	}
+	if !strings.Contains(body, "Linked cards") {
+		t.Error("expected body to contain 'Linked cards'")
+	}
+	if !strings.Contains(body, `href="/admin/articles/`) {
+		t.Error("expected body to contain article links")
 	}
 }
 
@@ -674,7 +711,7 @@ func setupNewsletterTestApp(t *testing.T, mock *mockNewsletterSvc) (*App, *db.Da
 	}
 
 	dashboardContent := `{{template "layout" .}}
-{{define "content"}}<h1>Dashboard</h1>{{range .Articles}}<div class="article">{{.Title}}</div>{{end}}{{end}}`
+{{define "content"}}<h1>Dashboard</h1>{{range .Articles}}<div class="article">{{.Title}}<a href="/admin/articles/{{.ID}}/cards">Linked cards</a></div>{{end}}{{end}}`
 	if err := os.WriteFile(filepath.Join(templateDir, "dashboard.html"), []byte(dashboardContent), 0644); err != nil {
 		t.Fatalf("failed to write dashboard template: %v", err)
 	}
@@ -790,6 +827,39 @@ func TestNewsletterSend_Error(t *testing.T) {
 	}
 }
 
+func TestAdminArticleCardsGET(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, _ := getSessionAndCSRF(cookies)
+
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-a", Title: "Card A",
+		Category: "credit-card", Issuer: "X", Status: "published", KeywordsJSON: `[]`})
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-b", Title: "Card B",
+		Category: "credit-card", Issuer: "Y", Status: "published", KeywordsJSON: `[]`})
+
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Test", Slug: "test-cards-get", Content: "Card A and Card A again. Also Card B.",
+		Type: "deal", Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"card-a","title":"Card A"}]`,
+	})
+
+	rec := doAdminGET(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: got %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"Card A",
+		"Card B",
+		`name="linked_slugs[]"`,
+		"in body",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q from response", want)
+		}
+	}
+}
+
 func TestNewsletterHistory_ListsSentNewsletters(t *testing.T) {
 	mock := &mockNewsletterSvc{
 		previewErr: fmt.Errorf("no articles"),
@@ -830,3 +900,299 @@ func TestNewsletterHistory_ListsSentNewsletters(t *testing.T) {
 	}
 }
 
+func TestAdminArticleCardsPOST_Save(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-a", Title: "Card A",
+		Category: "credit-card", Issuer: "X", Status: "published"})
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-b", Title: "Card B",
+		Category: "credit-card", Issuer: "Y", Status: "published"})
+
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "post-test", Content: "C", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"card-a","title":"Card A"}]`,
+	})
+
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("action", "save")
+	form.Add("linked_slugs[]", "card-a")
+	form.Add("linked_slugs[]", "card-b")
+	form.Add("heading_override", "Cards earning Membership Rewards")
+
+	rec := doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status: got %d, want 303; body: %s", rec.Code, rec.Body.String())
+	}
+
+	updated, err := app.db.GetGeneratedArticle(id)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !strings.Contains(updated.RelatedCardsJSON, `"slug":"card-a"`) ||
+		!strings.Contains(updated.RelatedCardsJSON, `"slug":"card-b"`) {
+		t.Errorf("RelatedCardsJSON missing one of the slugs: %s", updated.RelatedCardsJSON)
+	}
+	if updated.LinkedCardsHeading != "Cards earning Membership Rewards" {
+		t.Errorf("heading: got %q", updated.LinkedCardsHeading)
+	}
+}
+
+func TestAdminArticleCardsPOST_RemoveSlug(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-a", Title: "Card A",
+		Category: "credit-card", Issuer: "X", Status: "published"})
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-b", Title: "Card B",
+		Category: "credit-card", Issuer: "Y", Status: "published"})
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "post-remove", Content: "C", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"card-a","title":"Card A"},{"slug":"card-b","title":"Card B"}]`,
+	})
+
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("remove_slug", "card-a")
+	form.Add("linked_slugs[]", "card-a")
+	form.Add("linked_slugs[]", "card-b")
+
+	rec := doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status: got %d", rec.Code)
+	}
+	updated, _ := app.db.GetGeneratedArticle(id)
+	if strings.Contains(updated.RelatedCardsJSON, `"slug":"card-a"`) {
+		t.Errorf("card-a should have been removed: %s", updated.RelatedCardsJSON)
+	}
+	if !strings.Contains(updated.RelatedCardsJSON, `"slug":"card-b"`) {
+		t.Errorf("card-b should remain: %s", updated.RelatedCardsJSON)
+	}
+}
+
+func TestAdminArticleCardsPOST_AddSlug(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-a", Title: "Card A",
+		Category: "credit-card", Issuer: "X", Status: "published"})
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-b", Title: "Card B",
+		Category: "credit-card", Issuer: "Y", Status: "published"})
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "post-add", Content: "C", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"card-a","title":"Card A"}]`,
+	})
+
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("add_slug", "card-b")
+	form.Add("linked_slugs[]", "card-a")
+
+	rec := doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status: got %d", rec.Code)
+	}
+	updated, _ := app.db.GetGeneratedArticle(id)
+	if !strings.Contains(updated.RelatedCardsJSON, `"slug":"card-b"`) {
+		t.Errorf("card-b should have been added: %s", updated.RelatedCardsJSON)
+	}
+}
+
+func TestAdminArticleCardsPOST_HeadingTooLong(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "heading-len", Content: "C", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+	})
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("heading_override", strings.Repeat("a", 300)) // > 256 limit
+	rec := doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized heading, got %d", rec.Code)
+	}
+}
+
+func TestAdminArticleCardsPOST_HeadingXSSEscaped(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-a", Title: "Card A",
+		Category: "credit-card", Issuer: "X", Status: "published"})
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "heading-xss", Content: "C", Type: "deal",
+		Status: db.StatusApproved, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"card-a","title":"Card A"}]`,
+	})
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("linked_slugs[]", "card-a")
+	form.Add("heading_override", `<script>alert(1)</script>`)
+	rec := doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("save status: %d", rec.Code)
+	}
+	rec = doPublicGET(t, app, "/article/heading-xss")
+	body := rec.Body.String()
+	if strings.Contains(body, "<script>alert(1)</script>") {
+		t.Error("script tag rendered unescaped — XSS exposure")
+	}
+	if !strings.Contains(body, "&lt;script&gt;") {
+		t.Error("expected escaped script tag in output")
+	}
+}
+
+// TestAdminArticleCardsPOST_ClearAll ensures submitting the form with no
+// linked_slugs[] values clears the linked cards list. The bottom embed
+// section will then be hidden on the public page.
+func TestAdminArticleCardsPOST_ClearAll(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-a", Title: "Card A",
+		Category: "credit-card", Issuer: "X", Status: "published"})
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "post-clear-all", Content: "C", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"card-a","title":"Card A"}]`,
+	})
+
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("action", "save")
+	// Intentionally NO linked_slugs[] entries.
+
+	rec := doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status: got %d", rec.Code)
+	}
+	updated, _ := app.db.GetGeneratedArticle(id)
+	if updated.RelatedCardsJSON != "[]" {
+		t.Errorf("expected empty array, got %q", updated.RelatedCardsJSON)
+	}
+}
+
+// TestAdminArticleCardsPOST_HeadingOnlyPreservesCards ensures updating only
+// the heading override (with the form's hidden linked_slugs[] inputs)
+// preserves the existing linked cards.
+func TestAdminArticleCardsPOST_HeadingOnlyPreservesCards(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+
+	app.db.CreateReferencePage(&db.ReferencePage{Slug: "card-a", Title: "Card A",
+		Category: "credit-card", Issuer: "X", Status: "published"})
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "T", Slug: "post-heading-only", Content: "C", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"card-a","title":"Card A"}]`,
+	})
+
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("action", "save")
+	form.Add("linked_slugs[]", "card-a") // hidden input from rendered template
+	form.Add("heading_override", "Custom Heading Only")
+
+	rec := doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status: got %d", rec.Code)
+	}
+	updated, _ := app.db.GetGeneratedArticle(id)
+	if !strings.Contains(updated.RelatedCardsJSON, `"slug":"card-a"`) {
+		t.Errorf("card-a should be preserved: %s", updated.RelatedCardsJSON)
+	}
+	if updated.LinkedCardsHeading != "Custom Heading Only" {
+		t.Errorf("heading: got %q", updated.LinkedCardsHeading)
+	}
+}
+
+// TestCardCuration_EndToEnd exercises the full flow: seed cards, seed an
+// article with auto-linked top-2 cards, verify public render shows the embeds,
+// run admin POST to swap a card, verify updated public render.
+func TestCardCuration_EndToEnd(t *testing.T) {
+	app, _ := setupAdminTestApp(t)
+	cookies := loginAndGetSession(t, app)
+	session, csrf := getSessionAndCSRF(cookies)
+
+	// Seed 4 reference cards.
+	for _, c := range []db.ReferencePage{
+		{Slug: "csp", Title: "Chase Sapphire Preferred", Category: "credit-card", Issuer: "Chase",
+			Status: "published", AnnualFeeAmount: 95, WelcomeBonusText: "80K after $4K/3mo",
+			ImageURL: "https://example.com/csp.png", ApplyURL: "https://chase.com/csp"},
+		{Slug: "amex-plat", Title: "American Express Platinum", Category: "credit-card", Issuer: "Amex",
+			Status: "published", AnnualFeeAmount: 695, WelcomeBonusText: "150K after $20K/3mo",
+			ImageURL: "https://example.com/amex-plat.png"},
+		{Slug: "amex-gold", Title: "American Express Gold", Category: "credit-card", Issuer: "Amex",
+			Status: "published", AnnualFeeAmount: 325, WelcomeBonusText: "60K after $6K/6mo",
+			ImageURL: "https://example.com/amex-gold.png"},
+		{Slug: "venture-x", Title: "Capital One Venture X", Category: "credit-card", Issuer: "Capital One",
+			Status: "published", AnnualFeeAmount: 395, WelcomeBonusText: "75K after $4K/3mo",
+			ImageURL: "https://example.com/venture-x.png"},
+	} {
+		if _, err := app.db.CreateReferencePage(&c); err != nil {
+			t.Fatalf("seed %s: %v", c.Slug, err)
+		}
+	}
+
+	// Article body with reference text. Seed pre-curated state with 2 cards
+	// (CSP + amex-gold) — simulating what main.go's cap-to-2 logic would have done.
+	id, _ := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Best Travel Cards Compared", Slug: "best-travel-cards-e2e",
+		Content: `<p>In the premium travel card segment, two standouts offer different strengths. ` +
+			`The first excels in point transfers and category flexibility, making it ideal for flexible redemptions. ` +
+			`The second focuses on dining and airline benefits for those with specific spending patterns.</p>`,
+		Type: "summary", Status: db.StatusApproved, SourcesJSON: "[]", RevisionNumber: 1,
+		RelatedCardsJSON: `[{"slug":"csp","title":"Chase Sapphire Preferred"},{"slug":"amex-gold","title":"American Express Gold"}]`,
+	})
+
+	// 1. Public render shows the 2 currently-linked cards.
+	rec := doPublicGET(t, app, "/article/best-travel-cards-e2e")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("public article status: %d body: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "Cards mentioned in this article") {
+		t.Error("public render missing default heading")
+	}
+	if !strings.Contains(body, "Chase Sapphire Preferred") || !strings.Contains(body, "American Express Gold") {
+		t.Error("public render missing initially-linked cards")
+	}
+	if strings.Contains(body, "American Express Platinum") || strings.Contains(body, "Capital One Venture X") {
+		t.Error("public render shouldn't include suggested-but-not-linked cards")
+	}
+
+	// 2. Admin curation: swap amex-gold OUT, amex-plat IN, set custom heading.
+	form := url.Values{}
+	form.Add("csrf_token", csrf)
+	form.Add("action", "save")
+	form.Add("linked_slugs[]", "csp")
+	form.Add("linked_slugs[]", "amex-plat")
+	form.Add("heading_override", "Cards in this comparison")
+
+	rec = doAdminPOST(t, app, fmt.Sprintf("/admin/articles/%d/cards", id), session, csrf, form)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("admin POST status: %d body: %s", rec.Code, rec.Body.String())
+	}
+
+	// 3. Public render again: heading is custom, cards reflect curation.
+	rec = doPublicGET(t, app, "/article/best-travel-cards-e2e")
+	body = rec.Body.String()
+	if !strings.Contains(body, "Cards in this comparison") {
+		t.Error("custom heading missing")
+	}
+	if !strings.Contains(body, "Chase Sapphire Preferred") || !strings.Contains(body, "American Express Platinum") {
+		t.Error("public render missing post-curation cards")
+	}
+	if strings.Contains(body, "American Express Gold") {
+		t.Error("public render still showing removed card")
+	}
+}

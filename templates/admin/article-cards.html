@@ -1,0 +1,66 @@
+{{template "layout" .}}
+{{define "content"}}
+<div class="admin-shell">
+    <div class="crumbs">
+        <a href="/admin/dashboard">Admin</a> · <a href="/admin/dashboard">Articles</a> ·
+        <span>{{.Article.Title}}</span> · <strong>Linked cards</strong>
+    </div>
+</div>
+
+<div class="admin-form">
+    <h2>Linked cards</h2>
+    <p class="form-meta">
+        Cards selected here appear at the bottom of the article. Auto-detected cards from the body are listed below as suggestions.
+    </p>
+
+    <form method="POST" action="/admin/articles/{{.Article.ID}}/cards">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+        <h3 class="admin-section-title">Linked cards <small>{{len .Linked}} of {{len .Linked}} selected</small></h3>
+        {{if .Linked}}
+            {{range .Linked}}
+            <div class="admin-row linked">
+                <input type="hidden" name="linked_slugs[]" value="{{.Slug}}">
+                <img class="row-logo" src="{{.ImageURL}}" alt="">
+                <div class="row-info">
+                    <b>{{.Title}}</b>
+                    <small>{{.Issuer}} · {{.Category}}</small>
+                </div>
+                {{if .Count}}<span class="row-mention-count">{{.Count}}× in body</span>{{else}}<span class="row-mention-count" style="background:#eef7f0;color:#1c5638">added by admin</span>{{end}}
+                <button type="submit" name="remove_slug" value="{{.Slug}}" class="btn-icon danger">× Remove</button>
+            </div>
+            {{end}}
+        {{else}}
+            <p style="color:#666;font-size:13px">No cards linked yet.</p>
+        {{end}}
+
+        {{if .Suggested}}
+        <h3 class="admin-section-title">Auto-detected, not linked <small>{{len .Suggested}} mentioned in body but excluded</small></h3>
+        {{range .Suggested}}
+        <div class="admin-row suggested">
+            <img class="row-logo" src="{{.ImageURL}}" alt="">
+            <div class="row-info">
+                <b>{{.Title}}</b>
+                <small>{{.Issuer}} · {{.Category}}</small>
+            </div>
+            <span class="row-mention-count">{{.Count}}× in body</span>
+            <button type="submit" name="add_slug" value="{{.Slug}}" class="btn-icon success">+ Link</button>
+        </div>
+        {{end}}
+        {{end}}
+
+        <div class="admin-input-group">
+            <label for="heading-override">Section heading override</label>
+            <input id="heading-override" type="text" name="heading_override"
+                value="{{.Article.LinkedCardsHeading}}"
+                placeholder="(default: 'Cards mentioned in this article')">
+            <small>Leave blank to use the default. Use this for topical headings like "Eligible cards" or "Cards in this comparison".</small>
+        </div>
+
+        <div class="admin-actions">
+            <button type="submit" name="action" value="save" class="btn-primary">Save</button>
+            <a href="/admin/dashboard" class="btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{{end}}

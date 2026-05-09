@@ -141,3 +141,139 @@ func TestAutoLink_Keywords(t *testing.T) {
 		t.Errorf("expected keyword link, got: %s", result)
 	}
 }
+
+func TestDetectMentions_Empty(t *testing.T) {
+	got := DetectMentions("", nil)
+	if len(got) != 0 {
+		t.Errorf("expected empty result, got %d", len(got))
+	}
+}
+
+func TestDetectMentions_BasicCount(t *testing.T) {
+	cards := []db.ReferencePage{
+		{Slug: "chase-sapphire-preferred", Title: "Chase Sapphire Preferred", KeywordsJSON: `["CSP","Sapphire Preferred"]`},
+		{Slug: "amex-gold", Title: "American Express Gold", KeywordsJSON: `["Amex Gold"]`},
+	}
+	body := "<p>The Chase Sapphire Preferred is the benchmark. The Sapphire Preferred edges out competitors. " +
+		"Compare to the American Express Gold for dining.</p>"
+
+	got := DetectMentions(body, cards)
+	want := map[string]int{
+		"chase-sapphire-preferred": 2, // matched as "Chase Sapphire Preferred" + "Sapphire Preferred"
+		"amex-gold":                1,
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d cards, want 2: %+v", len(got), got)
+	}
+	for _, dc := range got {
+		if want[dc.Slug] != dc.Count {
+			t.Errorf("%s: got count %d, want %d", dc.Slug, dc.Count, want[dc.Slug])
+		}
+	}
+	// Ordering is part of the contract: count desc, slug asc on ties.
+	if got[0].Slug != "chase-sapphire-preferred" {
+		t.Errorf("first result: got %s, want chase-sapphire-preferred", got[0].Slug)
+	}
+	if got[1].Slug != "amex-gold" {
+		t.Errorf("second result: got %s, want amex-gold", got[1].Slug)
+	}
+}
+
+func TestDetectMentions_OrderedByCountDescending(t *testing.T) {
+	cards := []db.ReferencePage{
+		{Slug: "a", Title: "Card A"},
+		{Slug: "b", Title: "Card B"},
+		{Slug: "c", Title: "Card C"},
+	}
+	body := "Card A. Card B Card B Card B. Card C Card C."
+	got := DetectMentions(body, cards)
+	if len(got) != 3 {
+		t.Fatalf("got %d, want 3", len(got))
+	}
+	if got[0].Slug != "b" || got[1].Slug != "c" || got[2].Slug != "a" {
+		t.Errorf("expected order b,c,a; got %s,%s,%s", got[0].Slug, got[1].Slug, got[2].Slug)
+	}
+	if got[0].Count != 3 || got[1].Count != 2 || got[2].Count != 1 {
+		t.Errorf("counts wrong: %+v", got)
+	}
+}
+
+func TestDetectMentions_CaseInsensitive(t *testing.T) {
+	cards := []db.ReferencePage{{Slug: "csp", Title: "Chase Sapphire Preferred"}}
+	body := "the chase sapphire preferred is great. CHASE SAPPHIRE PREFERRED again."
+	got := DetectMentions(body, cards)
+	if len(got) != 1 || got[0].Count != 2 {
+		t.Errorf("expected 1 card with 2 mentions, got %+v", got)
+	}
+}
+
+func TestDetectMentions_LongerKeywordWinsFromOverlap(t *testing.T) {
+	// Longer keyword "Chase Sapphire Preferred" claims one span; a separate
+	// later occurrence of just "Sapphire Preferred" with no longer match
+	// nearby should still be counted. Total: 2 mentions for the same card.
+	cards := []db.ReferencePage{
+		{Slug: "csp", Title: "Chase Sapphire Preferred", KeywordsJSON: `["Sapphire Preferred"]`},
+	}
+	body := "The Chase Sapphire Preferred is excellent. Later, the Sapphire Preferred shines on dining."
+	got := DetectMentions(body, cards)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 card, got %d: %+v", len(got), got)
+	}
+	if got[0].Count != 2 {
+		t.Errorf("expected 2 mentions (1 long + 1 short non-overlapping), got %d", got[0].Count)
+	}
+}
+
+// TestDetectMentions_WordBoundary ensures "Visa" doesn't match inside "Visage".
+func TestDetectMentions_WordBoundary(t *testing.T) {
+	cards := []db.ReferencePage{{Slug: "visa", Title: "Visa"}}
+	body := "She had a serene Visage. The Visa card is great."
+	got := DetectMentions(body, cards)
+	if len(got) != 1 || got[0].Count != 1 {
+		t.Errorf("expected 1 mention (only the standalone 'Visa'), got %+v", got)
+	}
+}
+
+// TestDetectMentions_AfterAutoLink simulates content that AutoLink already processed.
+func TestDetectMentions_AfterAutoLink(t *testing.T) {
+	cards := []db.ReferencePage{{Slug: "csp", Title: "Chase Sapphire Preferred"}}
+	body := `<p>The <a href="/cards/csp">Chase Sapphire Preferred</a> is great. ` +
+		`The Chase Sapphire Preferred has perks.</p>`
+	got := DetectMentions(body, cards)
+	if len(got) != 1 || got[0].Count != 2 {
+		t.Errorf("expected 2 mentions counting both wrapped and bare, got %+v", got)
+	}
+}
+
+func TestTopByMentionCount(t *testing.T) {
+	in := []DetectedCard{
+		{Slug: "a", Title: "A", Count: 3},
+		{Slug: "b", Title: "B", Count: 2},
+		{Slug: "c", Title: "C", Count: 1},
+	}
+	tests := []struct {
+		name  string
+		input []DetectedCard
+		cap   int
+		want  []string
+	}{
+		{"cap 2 takes top 2", in, 2, []string{"a", "b"}},
+		{"cap 0 returns empty", in, 0, []string{}},
+		{"cap > len returns all", in, 5, []string{"a", "b", "c"}},
+		{"empty input", nil, 2, []string{}},
+		{"negative cap returns empty", in, -1, []string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := TopByMentionCount(tc.input, tc.cap)
+			if len(got) != len(tc.want) {
+				t.Fatalf("len: got %d, want %d", len(got), len(tc.want))
+			}
+			for i, slug := range tc.want {
+				if got[i].Slug != slug {
+					t.Errorf("[%d]: got %s, want %s", i, got[i].Slug, slug)
+				}
+			}
+		})
+	}
+}

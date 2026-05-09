@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -30,6 +31,22 @@ type templateArticleLink struct {
 type tagItem struct {
 	Slug string
 	Name string
+}
+
+// linkedCardEmbed is the per-card data passed to the article template for the
+// bottom card-embed section. Joined from generated_articles.related_cards_json
+// and reference_pages.
+type linkedCardEmbed struct {
+	Slug          string
+	Title         string
+	Issuer        string
+	Category      string
+	AnnualFee     string // formatted: "$95" or "$0 (no annual fee)"
+	WelcomeBonus  string
+	TopEarning    string // first 2 entries from earning_rates_json, joined
+	ScoutsVerdict string
+	ImageURL      string
+	ApplyURL      string
 }
 
 // predefinedTags is the list of tags shown as filter pills on the homepage,
@@ -187,6 +204,78 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	app.renderTemplate(w, "home.html", data)
 }
 
+// buildLinkedCardEmbeds joins related_cards_json (slug list) to reference_pages
+// rows and shapes the result for the article template.
+func (app *App) buildLinkedCardEmbeds(relatedCardsJSON string) []linkedCardEmbed {
+	if relatedCardsJSON == "" || relatedCardsJSON == "[]" {
+		return nil
+	}
+	var refs []ai.RelatedCard
+	if err := json.Unmarshal([]byte(relatedCardsJSON), &refs); err != nil {
+		slog.Warn("buildLinkedCardEmbeds: unmarshal", "err", err)
+		return nil
+	}
+	out := make([]linkedCardEmbed, 0, len(refs))
+	for _, r := range refs {
+		page, err := app.db.GetReferencePageBySlug(r.Slug)
+		if err != nil || page == nil {
+			continue
+		}
+		if page.Status != "published" {
+			continue
+		}
+		fee := fmt.Sprintf("$%d", page.AnnualFeeAmount)
+		if page.AnnualFeeAmount == 0 {
+			fee = "$0 (no annual fee)"
+		}
+		out = append(out, linkedCardEmbed{
+			Slug:          page.Slug,
+			Title:         page.Title,
+			Issuer:        page.Issuer,
+			Category:      page.Category,
+			AnnualFee:     fee,
+			WelcomeBonus:  page.WelcomeBonusText,
+			TopEarning:    formatTopEarning(page.EarningRatesJSON, 2),
+			ScoutsVerdict: page.ScoutsVerdict,
+			ImageURL:      page.ImageURL,
+			ApplyURL:      page.ApplyURL,
+		})
+	}
+	return out
+}
+
+// formatTopEarning returns up to n earning categories formatted as
+// "5x Dining · 4x Travel". Reuses the existing rateEntry type and
+// earningRateCategories slice defined elsewhere in this package.
+func formatTopEarning(earningRatesJSON string, n int) string {
+	if earningRatesJSON == "" || earningRatesJSON == "{}" {
+		return ""
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(earningRatesJSON), &raw); err != nil {
+		return ""
+	}
+	parts := make([]string, 0, n)
+	for _, meta := range earningRateCategories {
+		if len(parts) >= n {
+			break
+		}
+		val, ok := raw[meta.Key]
+		if !ok {
+			continue
+		}
+		var entry rateEntry
+		if err := json.Unmarshal(val, &entry); err != nil {
+			continue
+		}
+		if entry.Rate == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s %s", entry.Rate, meta.Label))
+	}
+	return strings.Join(parts, " · ")
+}
+
 func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 
@@ -290,24 +379,26 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
-		"Title":           article.Title,
-		"Article":         article,
-		"Sources":         sources,
-		"Upvotes":         upvotes,
-		"Downvotes":       downvotes,
-		"PublishedAt":     publishedAt,
-		"UnderReview":     false,
-		"TLDR":            article.TLDR,
-		"KeyDetails":      keyDetails,
-		"Links":           articleLinks,
-		"RelatedCards":    relatedCards,
-		"ArticleTags":     articleTags,
-		"ScoutsTake":      article.ScoutsTake,
-		"PersonaName":     app.cfg.Site.PersonaName,
-		"MetaDescription": metaDesc,
-		"CanonicalURL":    canonicalURL,
-		"OGType":          "article",
-		"OGImage":         article.ImageURL,
+		"Title":              article.Title,
+		"Article":            article,
+		"Sources":            sources,
+		"Upvotes":            upvotes,
+		"Downvotes":          downvotes,
+		"PublishedAt":        publishedAt,
+		"UnderReview":        false,
+		"TLDR":               article.TLDR,
+		"KeyDetails":         keyDetails,
+		"Links":              articleLinks,
+		"RelatedCards":       relatedCards,
+		"ArticleTags":        articleTags,
+		"LinkedCards":        app.buildLinkedCardEmbeds(article.RelatedCardsJSON),
+		"LinkedCardsHeading": article.LinkedCardsHeading,
+		"ScoutsTake":         article.ScoutsTake,
+		"PersonaName":        app.cfg.Site.PersonaName,
+		"MetaDescription":    metaDesc,
+		"CanonicalURL":       canonicalURL,
+		"OGType":             "article",
+		"OGImage":            article.ImageURL,
 		"JSONLD": buildJSONLD(articleLDData{
 			Context:       "https://schema.org",
 			Type:          "Article",
@@ -782,10 +873,10 @@ type compareCardView struct {
 // earningRate represents one row in the earning_rates_json array.
 // earningRate holds parsed earning rate data for a single category.
 type earningRate struct {
-	Category    string
-	DirectRate  string
-	PortalRate  string
-	Note        string
+	Category   string
+	DirectRate string
+	PortalRate string
+	Note       string
 }
 
 // genericItem holds a parsed credit/benefit/protection row.
@@ -973,14 +1064,14 @@ func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 	var cardViews []compareCardView
 	for _, c := range cards {
 		cv := compareCardView{
-			ID:               c.ID,
-			Slug:             c.Slug,
-			Title:            c.Title,
-			Issuer:           c.Issuer,
-			ImageURL:         c.ImageURL,
-			AnnualFeeAmount:  c.AnnualFeeAmount,
-			AnnualFeeNote:    c.AnnualFeeNote,
-			WelcomeBonusText: c.WelcomeBonusText,
+			ID:                 c.ID,
+			Slug:               c.Slug,
+			Title:              c.Title,
+			Issuer:             c.Issuer,
+			ImageURL:           c.ImageURL,
+			AnnualFeeAmount:    c.AnnualFeeAmount,
+			AnnualFeeNote:      c.AnnualFeeNote,
+			WelcomeBonusText:   c.WelcomeBonusText,
 			ScoutsVerdictShort: truncateSentence(c.ScoutsVerdict, 250),
 		}
 		cardViews = append(cardViews, cv)
@@ -1472,9 +1563,9 @@ type jsonLDOrg struct {
 }
 
 type jsonLDSearchAction struct {
-	Type        string `json:"@type"`
-	Target      string `json:"target"`
-	QueryInput  string `json:"query-input"`
+	Type       string `json:"@type"`
+	Target     string `json:"target"`
+	QueryInput string `json:"query-input"`
 }
 
 type websiteLDData struct {

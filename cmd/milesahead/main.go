@@ -17,10 +17,10 @@ import (
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/cardupdate"
 	"github.com/kumaranik/milesahead/internal/cluster"
-	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/images"
+	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/mail"
 	"github.com/kumaranik/milesahead/internal/metrics"
 	"github.com/kumaranik/milesahead/internal/newsletter"
@@ -220,26 +220,39 @@ func main() {
 						slog.Info("image selected", "url", scored[0].URL, "score", scored[0].Score, "source", scored[0].Source)
 					} else {
 						topScore := float64(0)
-						if len(scored) > 0 { topScore = scored[0].Score }
+						if len(scored) > 0 {
+							topScore = scored[0].Score
+						}
 						metrics.ImageSelectedTotal.WithLabelValues("no_match").Inc()
 						slog.Info("no suitable image found", "top_score", topScore)
 					}
 				}
 			}
 
-			// Auto-link card mentions in article content.
+			// Auto-link card mentions: insert inline <a> tags for first mention
+			// of each card, cap RelatedCards to top 2 by mention count. Articles
+			// with 3+ mentioned cards rely on admin curation via
+			// /admin/articles/{id}/cards.
 			refPages, _ := database.ListPublishedReferencePages("")
 			if len(refPages) > 0 {
-				linkedContent, matchedCards := linker.AutoLink(result.Content, refPages)
+				linkedContent, _ := linker.AutoLink(result.Content, refPages)
 				result.Content = linkedContent
-				for _, mc := range matchedCards {
+
+				detected := linker.DetectMentions(result.Content, refPages)
+				const autoLinkCap = 2
+				top := linker.TopByMentionCount(detected, autoLinkCap)
+				for _, dc := range top {
 					result.RelatedCards = append(result.RelatedCards, ai.RelatedCard{
-						Slug:  mc.Slug,
-						Title: mc.Title,
+						Slug:  dc.Slug,
+						Title: dc.Title,
 					})
 				}
-				if len(matchedCards) > 0 {
-					slog.Info("auto-linked card mentions", "title", result.Title, "cards", len(matchedCards))
+				if len(detected) > 0 {
+					slog.Info("auto-linked card mentions",
+						"title", result.Title,
+						"detected", len(detected),
+						"linked", len(top),
+					)
 				}
 			}
 
