@@ -109,6 +109,31 @@ func TestCardPage_WithVideoIssuesNoThirdPartyRequest(t *testing.T) {
 	}
 }
 
+// The page must not advertise captions it does not have. YouTube auto-generated
+// (ASR) captions do not count as captions for this purpose.
+func TestCardPage_CaptionsClaimedOnlyWhenPresent(t *testing.T) {
+	data := baseCardData()
+	data["VideoPoster"] = "/static/img/video-poster-amex-platinum.jpg"
+
+	data["Video"] = cardVideo{ID: "abc", Heading: "Watch", Duration: "3:30", Captions: false}
+	out := renderRealCardTemplate(t, data)
+	if strings.Contains(out, "captions available") {
+		t.Error("must not claim captions when none have been uploaded")
+	}
+	if strings.Contains(out, `data-captions="1"`) {
+		t.Error("must not ask the player to force captions on when none exist")
+	}
+
+	data["Video"] = cardVideo{ID: "abc", Heading: "Watch", Duration: "3:30", Captions: true}
+	out = renderRealCardTemplate(t, data)
+	if !strings.Contains(out, "captions available") {
+		t.Error("should advertise captions once a reviewed track exists")
+	}
+	if !strings.Contains(out, `data-captions="1"`) {
+		t.Error("should ask the player to force captions on when a track exists")
+	}
+}
+
 // A noindex page must not also advertise a canonical URL: Google may consolidate
 // the two and propagate the noindex to the canonical target, deindexing the real page.
 func TestCardPage_NoindexOmitsCanonical(t *testing.T) {

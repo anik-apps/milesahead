@@ -13,6 +13,7 @@
     <div class="card-video" id="card-video">
         <h2 class="card-video-heading">{{.Video.Heading}}</h2>
         <button type="button" class="card-video-facade" data-video-id="{{.Video.ID}}"
+                data-captions="{{if .Video.Captions}}1{{else}}0{{end}}"
                 aria-label="Play video: {{.Video.Heading}} ({{.Video.Duration}})">
             <img src="{{.VideoPoster}}" alt="" fetchpriority="high" width="1280" height="720">
             <span class="card-video-play" aria-hidden="true">&#9654;</span>
@@ -20,7 +21,7 @@
         <noscript>
             <p class="card-video-caption"><a href="https://youtu.be/{{.Video.ID}}" target="_blank" rel="noopener noreferrer">Watch this video on YouTube</a> &mdash; the in-page player needs JavaScript.</p>
         </noscript>
-        <p class="card-video-caption">{{.Video.Duration}} &middot; captions available</p>
+        <p class="card-video-caption">{{.Video.Duration}}{{if .Video.Captions}} &middot; captions available{{end}}</p>
     </div>
     {{end}}
 

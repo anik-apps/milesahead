@@ -8,6 +8,11 @@ type cardVideo struct {
 	ID       string // YouTube video ID
 	Heading  string
 	Duration string
+	// Captions is true only once a reviewed caption track has been uploaded to
+	// YouTube. Auto-generated (ASR) captions do not count: this video's substance
+	// is dollar amounts and brand names, which ASR routinely garbles, and
+	// advertising captions we have not checked is worse than not advertising them.
+	Captions bool
 }
 
 // cardVideos maps a reference-page slug to its video. Adding a card is a
@@ -18,5 +23,6 @@ var cardVideos = map[string]cardVideo{
 		ID:       "jmcufDcHZwE",
 		Heading:  "Watch: is the $895 fee worth it?",
 		Duration: "3:30",
+		Captions: false, // only ASR on YouTube today; flip when a reviewed track is uploaded
 	},
 }
