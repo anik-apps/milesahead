@@ -198,6 +198,14 @@ jobs:
           scp deploy/alloy-config.alloy $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/alloy-config.alloy
           $SSH "sudo systemctl restart alloy 2>/dev/null || true"
 
+          # Install/refresh the DB backup script and its timer. Idempotent, and
+          # placed in the deploy job (not setup) so it cannot drift uninstalled --
+          # setup only runs on a manual full_setup dispatch.
+          scp deploy/backup.sh $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/backup.sh
+          $SSH "chmod +x ${{ env.APP_DIR }}/backup.sh"
+          scp deploy/milesahead-backup.service deploy/milesahead-backup.timer $OCI_USER@$OCI_HOST:/tmp/
+          $SSH "sudo mv /tmp/milesahead-backup.service /tmp/milesahead-backup.timer /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now milesahead-backup.timer"
+
           # Atomic swap and restart
           $SSH "mv ${{ env.APP_DIR }}/milesahead.new ${{ env.APP_DIR }}/milesahead && sudo systemctl restart milesahead"
 

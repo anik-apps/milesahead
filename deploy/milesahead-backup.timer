@@ -1,0 +1,12 @@
+[Unit]
+Description=Miles Ahead - Daily SQLite Database Backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+# Run on next boot if the machine was off at 03:30 -- a skipped day is a
+# silently missing backup, which is the failure mode this whole unit exists for.
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

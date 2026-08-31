@@ -1,0 +1,9 @@
+[Unit]
+Description=Miles Ahead - SQLite Database Backup
+After=network.target milesahead.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/milesahead
+ExecStart=/opt/milesahead/backup.sh
