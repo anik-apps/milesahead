@@ -3,6 +3,24 @@
 <article class="card-page">
     <a href="/cards/" class="back-link">&larr; All Cards</a>
 
+    {{/* Single page H1, shared by both breakpoints, above the video hero */}}
+    <header class="card-title-block">
+        <span class="issuer-badge">{{.Card.Issuer}}</span>
+        <h1>{{.Card.Title}}</h1>
+    </header>
+
+    {{if .Video}}
+    <div class="card-video" id="card-video">
+        <h2 class="card-video-heading">{{.Video.Heading}}</h2>
+        <button type="button" class="card-video-facade" data-video-id="{{.Video.ID}}"
+                aria-label="Play video: {{.Video.Heading}} ({{.Video.Duration}})">
+            <img src="{{.VideoPoster}}" alt="" loading="lazy" width="1280" height="720">
+            <span class="card-video-play" aria-hidden="true">&#9654;</span>
+        </button>
+        <p class="card-video-caption">{{.Video.Duration}} &middot; captions available</p>
+    </div>
+    {{end}}
+
     <div class="card-layout">
         {{if .Sections}}
         <aside class="card-sidebar">
@@ -13,6 +31,9 @@
             {{end}}
             <nav class="card-toc">
                 <ul>
+                    {{if $.Video}}
+                    <li><a href="#card-video">Watch the video ({{$.Video.Duration}})</a></li>
+                    {{end}}
                     {{range .Sections}}
                     <li><a href="#section-{{.Key}}">{{.Title}}</a></li>
                     {{end}}
@@ -53,8 +74,6 @@
                     <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}">
                 </div>
                 {{end}}
-                <span class="issuer-badge">{{.Card.Issuer}}</span>
-                <h1>{{.Card.Title}}</h1>
                 {{if .Card.ApplyURL}}
                 <a href="{{.Card.ApplyURL}}" target="_blank" rel="noopener noreferrer" class="card-apply-btn">Card Details &rarr;</a>
                 {{end}}
@@ -63,6 +82,9 @@
             {{/* Mobile-only pill nav */}}
             {{if .Sections}}
             <div class="card-mobile-pills">
+                {{if $.Video}}
+                <a href="#card-video">Watch ({{$.Video.Duration}})</a>
+                {{end}}
                 {{range .Sections}}
                 <a href="#section-{{.Key}}">{{.Title}}</a>
                 {{end}}
@@ -71,12 +93,6 @@
                 {{end}}
             </div>
             {{end}}
-
-            {{/* Desktop title */}}
-            <div class="card-desktop-title">
-                <span class="issuer-badge">{{.Card.Issuer}}</span>
-                <h1>{{.Card.Title}}</h1>
-            </div>
 
             <div class="card-sections">
                 {{range .Sections}}
@@ -117,4 +133,5 @@
         </div>
     </div>
 </article>
+{{if .Video}}<script src="/static/js/card-video.js"></script>{{end}}
 {{end}}

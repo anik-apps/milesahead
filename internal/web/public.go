@@ -728,6 +728,18 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 			Brand:       jsonLDBrand{Type: "Brand", Name: page.Issuer},
 		}),
 	}
+
+	// Video embed is beta-gated: it renders only with ?beta=1 so it can be
+	// reviewed on the live site before going public. Noindex keeps the beta
+	// variant out of search results, since canonical alone is only a hint.
+	if r.URL.Query().Get("beta") == "1" {
+		if v, ok := cardVideos[page.Slug]; ok && v.ID != "" {
+			data["Video"] = v
+			data["VideoPoster"] = "/static/img/video-poster-" + page.Slug + ".jpg"
+			data["Noindex"] = true
+		}
+	}
+
 	app.renderTemplate(w, "card.html", data)
 }
 

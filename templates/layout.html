@@ -18,6 +18,8 @@
     {{if .MetaDescription}}<meta name="twitter:description" content="{{.MetaDescription}}">{{end}}
     {{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{end}}
     {{if .JSONLD}}{{.JSONLD}}{{end}}
+    {{if .Noindex}}<meta name="robots" content="noindex, nofollow">{{end}}
+    {{block "head" .}}{{end}}
 </head>
 <body>
     <nav>

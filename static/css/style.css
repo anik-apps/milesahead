@@ -1813,11 +1813,13 @@ tr.flagged { background: #fef2f2; }
     background: rgba(88,166,255,0.1);
 }
 
-/* Desktop title (hidden on mobile) */
-.card-desktop-title h1 {
+/* Page title — single H1, above the video hero, shared by both breakpoints */
+.card-title-block {
+    margin-bottom: 1rem;
+}
+.card-title-block h1 {
     font-size: 1.75rem;
-    margin-top: 0.5rem;
-    margin-bottom: 1.5rem;
+    margin-top: 0.4rem;
     line-height: 1.2;
 }
 
@@ -1938,8 +1940,11 @@ tr.flagged { background: #fef2f2; }
     .card-sidebar {
         display: none;
     }
-    .card-desktop-title {
-        display: none;
+    .card-title-block {
+        text-align: center;
+    }
+    .card-title-block h1 {
+        font-size: 1.35rem;
     }
     .card-mobile-header {
         display: block;
@@ -1959,11 +1964,6 @@ tr.flagged { background: #fef2f2; }
         height: auto;
         border-radius: 8px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    }
-    .card-mobile-header h1 {
-        font-size: 1.2rem;
-        margin-top: 0.4rem;
-        line-height: 1.2;
     }
     .card-mobile-pills {
         display: flex;
@@ -2482,3 +2482,19 @@ tr.flagged { background: #fef2f2; }
 .admin-actions .btn-primary:hover { filter: brightness(0.92); }
 .btn-secondary { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border);
     padding: 10px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; text-decoration: none; }
+
+/* Card video — click-to-load YouTube facade */
+.card-video { margin: 0 0 24px; }
+.card-video-heading { font-size: 1.1rem; margin-bottom: 10px; }
+.card-video-facade, .card-video-frame { width: 100%; aspect-ratio: 16 / 9; display: block;
+    border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 2px 6px var(--shadow); }
+.card-video-facade { background: #000; cursor: pointer; position: relative; padding: 0; overflow: hidden; }
+.card-video-facade img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card-video-play { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 76px; height: 76px; border-radius: 50%; padding-left: 6px;
+    background: rgba(0,0,0,0.55); border: 2px solid rgba(255,255,255,0.85);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.9rem; color: #fff; transition: background 0.15s, transform 0.15s; }
+.card-video-facade:hover .card-video-play { background: rgba(0,0,0,0.78); transform: translate(-50%, -50%) scale(1.06); }
+.card-video-facade:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.card-video-caption { color: var(--text-muted); font-size: 0.85rem; margin-top: 8px; }
