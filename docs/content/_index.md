@@ -39,7 +39,7 @@ title: Miles Ahead
   >}}
   {{< hextra/feature-card
     title="Reference Pages"
-    subtitle="41 curated credit card pages across 6 categories with structured sections, Scout's Verdict, and automatic cross-linking from articles."
+    subtitle="52 curated credit card pages across 6 categories with structured sections, Scout's Verdict, and automatic cross-linking from articles."
     icon="book-open"
   >}}
   {{< hextra/feature-card

@@ -12,7 +12,7 @@ Miles Ahead runs on a single OCI ARM instance with automated CI/CD via GitHub Ac
 | Server | OCI ARM (free tier) | Ampere A1, Ubuntu |
 | Reverse Proxy | Caddy | Shared via Docker Compose (`/opt/fynans/caddy-sites/`) |
 | Process Manager | systemd | `milesahead.service` |
-| CI/CD | GitHub Actions | `ci.yml` (test) + `deploy.yml` (build + deploy) |
+| CI/CD | GitHub Actions | `ci.yml` (test) + `deploy.yml` (build + deploy) + `backup.yml` (daily off-box DB backup) |
 | Observability | Grafana Cloud | Metrics via Alloy (Prometheus + Loki) |
 | Database | SQLite | WAL mode, stored at `/opt/milesahead/data/milesahead.db` |
 
