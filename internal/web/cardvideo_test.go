@@ -3,6 +3,9 @@ package web
 import (
 	"bytes"
 	"html/template"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -83,19 +86,60 @@ func TestCardPage_WithVideoRendersFacade(t *testing.T) {
 	}
 }
 
-// The whole point of the click-to-load facade is that no third-party reference
-// reaches the browser until the visitor opts in. The YouTube URL must live only
-// in card-video.js, never in the delivered HTML.
-func TestCardPage_WithVideoMakesNoThirdPartyReference(t *testing.T) {
+// The point of the click-to-load facade is that the browser makes no third-party
+// *request* until the visitor opts in. A plain <noscript> link is fine — it loads
+// nothing — but any element that fetches a YouTube resource on page load is not.
+func TestCardPage_WithVideoIssuesNoThirdPartyRequest(t *testing.T) {
 	data := baseCardData()
 	data["Video"] = cardVideo{ID: "jmcufDcHZwE", Heading: "Watch", Duration: "3:30"}
 	data["VideoPoster"] = "/static/img/video-poster-amex-platinum.jpg"
 
 	out := strings.ToLower(renderRealCardTemplate(t, data))
 
-	for _, host := range []string{"youtube", "ytimg", "youtu.be"} {
-		if strings.Contains(out, host) {
-			t.Errorf("delivered HTML must not reference %q before the visitor clicks play", host)
+	if strings.Contains(out, "<iframe") {
+		t.Error("no iframe may be present before the visitor clicks play")
+	}
+	// Catch any resource-loading attribute pointing at a third-party host.
+	for _, attr := range []string{"src", "srcset", "poster"} {
+		for _, host := range []string{"youtube", "ytimg", "youtu.be"} {
+			if regexp.MustCompile(attr + `="[^"]*` + host).MatchString(out) {
+				t.Errorf("%s= must not load from %q on page load", attr, host)
+			}
+		}
+	}
+}
+
+// A noindex page must not also advertise a canonical URL: Google may consolidate
+// the two and propagate the noindex to the canonical target, deindexing the real page.
+func TestCardPage_NoindexOmitsCanonical(t *testing.T) {
+	data := baseCardData()
+	if out := renderRealCardTemplate(t, data); !strings.Contains(out, `rel="canonical"`) {
+		t.Error("a normal card page should still emit a canonical link")
+	}
+
+	data["Noindex"] = true
+	out := renderRealCardTemplate(t, data)
+	if strings.Contains(out, `rel="canonical"`) {
+		t.Error("a noindexed page must not also emit a canonical link")
+	}
+	if !strings.Contains(out, `content="noindex, nofollow"`) {
+		t.Error("expected the robots noindex meta tag")
+	}
+}
+
+// Every configured video needs its poster committed, or the page renders a broken
+// image inside a black button with no error anywhere at runtime.
+func TestCardVideos_HaveCommittedPosters(t *testing.T) {
+	for slug, v := range cardVideos {
+		if v.ID == "" {
+			t.Errorf("cardVideos[%q] has an empty video ID", slug)
+		}
+		if v.Heading == "" || v.Duration == "" {
+			t.Errorf("cardVideos[%q] is missing Heading or Duration", slug)
+		}
+		poster := filepath.Join("..", "..", "static", "img", "video-poster-"+slug+".jpg")
+		if _, err := os.Stat(poster); err != nil {
+			t.Errorf("cardVideos[%q] has no committed poster at %s: %v", slug, poster, err)
 		}
 	}
 }

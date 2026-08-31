@@ -7,7 +7,8 @@
     <link rel="stylesheet" href="/static/css/style.css">
     <link rel="icon" href="/static/img/logo.svg" type="image/svg+xml">
     {{if .MetaDescription}}<meta name="description" content="{{.MetaDescription}}">{{end}}
-    {{if .CanonicalURL}}<link rel="canonical" href="{{.CanonicalURL}}">{{end}}
+    {{/* Never pair canonical with noindex: Google may propagate the noindex to the canonical target. */}}
+    {{if and .CanonicalURL (not .Noindex)}}<link rel="canonical" href="{{.CanonicalURL}}">{{end}}
     <meta property="og:title" content="{{if .Title}}{{.Title}} - {{end}}Miles Ahead">
     {{if .MetaDescription}}<meta property="og:description" content="{{.MetaDescription}}">{{end}}
     {{if .CanonicalURL}}<meta property="og:url" content="{{.CanonicalURL}}">{{end}}
@@ -19,7 +20,6 @@
     {{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{end}}
     {{if .JSONLD}}{{.JSONLD}}{{end}}
     {{if .Noindex}}<meta name="robots" content="noindex, nofollow">{{end}}
-    {{block "head" .}}{{end}}
 </head>
 <body>
     <nav>
