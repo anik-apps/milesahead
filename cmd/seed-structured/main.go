@@ -19,22 +19,31 @@ import (
 )
 
 type cardData struct {
-	Slug                string          `json:"slug"`
-	AnnualFeeAmount     int             `json:"annual_fee_amount"`
-	AnnualFeeNote       string          `json:"annual_fee_note"`
-	WelcomeBonusText    string          `json:"welcome_bonus_text"`
-	EarningRates        json.RawMessage `json:"earning_rates"`
-	Credits             json.RawMessage `json:"credits"`
-	Benefits            json.RawMessage `json:"benefits"`
-	Protections         json.RawMessage `json:"protections"`
-	TransferPartners    json.RawMessage `json:"transfer_partners"`
+	Slug             string          `json:"slug"`
+	AnnualFeeAmount  int             `json:"annual_fee_amount"`
+	AnnualFeeNote    string          `json:"annual_fee_note"`
+	WelcomeBonusText string          `json:"welcome_bonus_text"`
+	EarningRates     json.RawMessage `json:"earning_rates"`
+	Credits          json.RawMessage `json:"credits"`
+	Benefits         json.RawMessage `json:"benefits"`
+	Protections      json.RawMessage `json:"protections"`
+	TransferPartners json.RawMessage `json:"transfer_partners"`
 }
 
 func main() {
 	dbPath := flag.String("db", "./data/milesahead.db", "path to SQLite database")
 	force := flag.Bool("force", false, "overwrite existing structured data")
 	dryRun := flag.Bool("dry-run", false, "preview without writing")
+	only := flag.String("slug", "", "comma-separated slugs to limit seeding to (default: all cards)")
 	flag.Parse()
+
+	// -force rewrites structured data for every card; -slug scopes it to named ones.
+	onlySlugs := map[string]bool{}
+	for _, s := range strings.Split(*only, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			onlySlugs[s] = true
+		}
+	}
 
 	// Find structured-data.json next to binary or source file
 	exe, _ := os.Executable()
@@ -63,6 +72,9 @@ func main() {
 	updated, skipped, notFound := 0, 0, 0
 
 	for _, c := range cards {
+		if len(onlySlugs) > 0 && !onlySlugs[c.Slug] {
+			continue
+		}
 		page, err := database.GetReferencePageBySlug(c.Slug)
 		if err != nil {
 			fmt.Printf("  ? %s — not found in DB\n", c.Slug)
