@@ -70,7 +70,7 @@ Or use any online bcrypt generator and paste the hash into `config.yaml` under `
 
 ## Seeding Reference Pages
 
-The project ships with 41 credit card reference pages in `cmd/seed-cards/cards.json`. Seed them into the database:
+The project ships with 52 credit card reference pages in `cmd/seed-cards/cards.json`. Seed them into the database:
 
 ```bash
 go run ./cmd/seed-cards -db ./data/milesahead.db
@@ -80,6 +80,9 @@ Use `-force` to overwrite existing cards:
 
 ```bash
 go run ./cmd/seed-cards -db ./data/milesahead.db -force
+
+# Overwrite only named cards -- -force alone rewrites all 52
+go run ./cmd/seed-cards -db ./data/milesahead.db -force -slug amex-platinum,amex-green
 ```
 
 ## Adding Sources

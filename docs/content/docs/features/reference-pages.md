@@ -7,15 +7,15 @@ Reference pages are curated, evergreen guides for credit cards. They provide str
 
 ## Card Coverage
 
-The project ships with 41 credit cards across 6 categories:
+The project ships with 52 credit cards across 6 categories:
 
 | Category | Count | Examples |
 |----------|-------|----------|
+| Airline | 14 | Delta SkyMiles Reserve, United Club Infinite, Alaska Visa Signature |
 | Travel | 10 | Amex Platinum, Chase Sapphire Reserve, Capital One Venture X |
 | Cash-back | 9 | Citi Double Cash, Chase Freedom Flex, Discover it Cash Back |
-| Airline | 6 | Delta SkyMiles Reserve, United Club Infinite |
-| Business | 5 | Amex Business Platinum, Chase Ink Business Preferred |
-| Hotel | 5 | Hilton Aspire, Marriott Bonvoy Brilliant |
+| Hotel | 7 | Hilton Aspire, Marriott Bonvoy Brilliant, World of Hyatt |
+| Business | 6 | Amex Business Platinum, Chase Ink Business Preferred |
 | Rewards | 6 | Bilt Mastercard, Bank of America Premium Rewards Elite |
 
 ## Page Structure
@@ -66,6 +66,9 @@ go run ./cmd/seed-cards -db ./data/milesahead.db
 
 # Overwrite all cards with seed data
 go run ./cmd/seed-cards -db ./data/milesahead.db -force
+
+# Overwrite only named cards
+go run ./cmd/seed-cards -db ./data/milesahead.db -force -slug amex-platinum,amex-green
 ```
 
 The seed script:
@@ -73,6 +76,45 @@ The seed script:
 - Checks each slug against the database
 - Inserts new cards or updates existing ones (with `-force`)
 - Reports counts: inserted, updated, skipped
+
+Skipping existing slugs by default is what makes the deploy pipeline's seed step
+safe to run on every push -- it can add a new card but can never silently revert
+an edit made through the admin dashboard.
+
+That also means correcting seed data does **not** reach production on its own; a
+`-force` run is required. Prefer `-slug` for corrections: production diverges
+from `cards.json` over time as cards are edited in the admin UI, so a bare
+`-force` can rewrite far more than intended. `-slug` scopes the rewrite to the
+cards you actually mean to change.
+
+`cmd/seed-structured` works the same way and takes the same flags, but populates
+the structured comparison columns (`earning_rates_json`, `credits_json`,
+`benefits_json`, `protections_json`) used by the comparison tool. It skips cards
+that already have structured data unless forced.
+
+## Video Embeds
+
+A card page can carry a YouTube explainer video, rendered as a full-width hero
+above the article grid.
+
+Videos are declared in `internal/web/cardvideos.go`, which maps a card slug to
+its video ID plus the per-card heading, duration and whether a reviewed caption
+track exists:
+
+```go
+var cardVideos = map[string]cardVideo{
+    "amex-platinum": {ID: "...", Heading: "...", Duration: "3:30", Captions: true},
+}
+```
+
+The player is a **click-to-load facade**: the page ships a poster image from
+`static/img/video-poster-<slug>.jpg` and a play button, and `static/js/card-video.js`
+only injects the `youtube-nocookie` iframe on click. No request reaches YouTube
+until a visitor opts in, which keeps roughly 700 KB of third-party player code
+off the page.
+
+Embeds are gated on `?beta=1` so a video can be reviewed on the live site before
+release; beta responses are also `noindex` and omit their canonical link.
 
 ## Admin Management
 

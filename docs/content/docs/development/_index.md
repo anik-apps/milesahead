@@ -10,9 +10,12 @@ milesahead/
 ├── cmd/
 │   ├── milesahead/          # Main application entry point
 │   │   └── main.go
-│   └── seed-cards/          # Reference page seed tool
+│   ├── seed-cards/          # Reference page seed tool
+│   │   ├── main.go
+│   │   └── cards.json       # 52 credit card definitions
+│   └── seed-structured/     # Structured comparison data seed tool
 │       ├── main.go
-│       └── cards.json       # 41 credit card definitions
+│       └── structured-data.json
 ├── internal/
 │   ├── ai/                  # AI pipeline (generator, critic, prompts, cache)
 │   ├── article/             # Article manager and revision handling
