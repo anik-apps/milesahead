@@ -1,7 +1,8 @@
 // seed-cards loads credit card reference pages from cards.json into the database.
-// Usage: go run ./cmd/seed-cards [-db path/to/milesahead.db] [-force]
+// Usage: go run ./cmd/seed-cards [-db path/to/milesahead.db] [-force] [-slug a,b]
 //
-// By default, skips cards whose slug already exists. Use -force to overwrite.
+// By default, skips cards whose slug already exists. Use -force to overwrite, and
+// -slug to scope a forced rewrite to named cards instead of all 52.
 package main
 
 import (
@@ -13,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -39,7 +41,17 @@ type Card struct {
 func main() {
 	dbPath := flag.String("db", "./data/milesahead.db", "path to SQLite database")
 	force := flag.Bool("force", false, "overwrite existing cards")
+	only := flag.String("slug", "", "comma-separated slugs to limit seeding to (default: all cards)")
 	flag.Parse()
+
+	// -force rewrites every section of every card, which is far more blast
+	// radius than a targeted correction needs. -slug scopes it to named cards.
+	onlySlugs := map[string]bool{}
+	for _, s := range strings.Split(*only, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			onlySlugs[s] = true
+		}
+	}
 
 	// Find cards.json: next to the binary, or relative to source (for go run).
 	exe, _ := os.Executable()
@@ -69,6 +81,9 @@ func main() {
 	inserted, updated, skipped := 0, 0, 0
 
 	for _, card := range cards {
+		if len(onlySlugs) > 0 && !onlySlugs[card.Slug] {
+			continue
+		}
 		sectionsJSON, _ := json.Marshal(card.Sections)
 		keywordsJSON, _ := json.Marshal(card.Keywords)
 

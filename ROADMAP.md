@@ -43,7 +43,9 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 - [ ] **Compare `<select>` has no accessible name** (`card.html`, WCAG 4.1.2 A) and navigates on change (3.2.2 A). *Fix:* `<h4>` → `<label for>`; replace `onchange="window.location"` with a submit button.
 - [ ] **No binary rollback on deploy** — `deploy.yml:185,202` overwrites without keeping the previous binary. *Fix:* `cp milesahead milesahead.prev` before the swap.
 - [ ] **CI Go version pin is inert** — workflows pin `1.22` while `go.mod` needs `1.26.1`, so `GOTOOLCHAIN=auto` re-downloads the toolchain six times per push. *Fix:* bump `setup-go` to `1.26.x`.
-- [ ] **Card data refresh** — CLEAR+ credit is $219 as of 2026-07-01 (DB says $209, verified 2026-04-02); the $100 Saks credit was removed 2026-07-01 but is still listed as active; the $300 Equinox credit is in the DB but absent from the page prose.
+- [x] **Card data refresh** — CLEAR+ raised to $219 on 2026-07-01 (verified against Amex's own benefits page, which lists $219 for all five eligible cards), so all four cards carrying it were stale at $209; Amex Green's derived "pays them $59/year" was recomputed to $69. The $100 Saks credit ended 2026-07-01 and was removed. The seed prose also carried a duplicated Equinox `<li>` that would have rendered twice. Seeders gained a `-slug` filter so a corrective `-force` touches only the named cards — a bare `-force` would have rewritten prose on 30 of 52.
+- [ ] **Apply the card data refresh to production** — the seeders skip existing rows, so a deploy will not pick this up. Run once against prod (after confirming a backup exists):
+      `seed-cards -force -slug amex-platinum,amex-business-platinum,hilton-honors-amex-aspire,amex-green` and the same flags for `seed-structured`. Verified on a copy of prod: changes exactly those 4 cards, leaves the other 48 byte-identical.
 
 ## Up Next
 
