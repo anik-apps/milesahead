@@ -61,7 +61,30 @@ For first-time deployment, trigger the workflow with `full_setup: true`. This:
 | `deploy/milesahead.caddy` | Caddy site configuration (reverse proxy) |
 | `deploy/alloy-config.alloy` | Grafana Alloy config for metrics and logs |
 | `deploy/alloy.service` | systemd unit for Alloy with Grafana credentials |
-| `deploy/backup.sh` | Database backup script |
+| `deploy/backup.sh` | Database backup script — WAL-safe `VACUUM INTO` snapshot, verified, gzipped, 30-day local retention |
+| `deploy/milesahead-backup.service` | systemd oneshot unit that runs `backup.sh` |
+| `deploy/milesahead-backup.timer` | Daily 03:30 timer for the backup unit (`Persistent=true`) |
+
+## Backups
+
+The database is the only thing on the server that cannot be rebuilt from git and
+GitHub secrets, so it is the only thing backed up.
+
+Two layers, both automated:
+
+- **On the server**, `milesahead-backup.timer` runs `backup.sh` daily at 03:30.
+  It snapshots via `VACUUM INTO` rather than copying the file — the database runs
+  in WAL mode, so a plain `cp` silently drops committed pages still in the WAL.
+  The snapshot is checked with `PRAGMA integrity_check` before it is compressed,
+  and 30 days are retained locally (~32 MB each).
+- **Off the server**, `.github/workflows/backup.yml` runs daily, triggers the same
+  script over SSH, pulls the archive back, verifies it restores, and uploads it to
+  the `db-backups` release, keeping the 14 most recent. Shipping from a GitHub
+  runner means no object-storage credential has to exist on the VM — which matters,
+  since the VM is what the backup protects against losing.
+
+To restore: download an asset from the `db-backups` release, `gunzip` it, and put
+it at `/opt/milesahead/data/milesahead.db` with the service stopped.
 
 ## Observability
 

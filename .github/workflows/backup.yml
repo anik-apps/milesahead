@@ -1,0 +1,93 @@
+name: Database Backup
+
+# Runs the on-server backup, then pulls a copy off the box into a GitHub
+# release. The VM is the thing we are protecting against losing, so a copy that
+# only exists on the VM is not a backup -- but shipping it from a GitHub runner
+# means no object-storage credential has to live on the server either.
+
+on:
+  schedule:
+    - cron: '17 8 * * *' # 08:17 UTC daily, after the 03:30 local timer run
+  workflow_dispatch:
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # required for `gh release upload`
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.OCI_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan ${{ secrets.OCI_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Run backup on server and fetch it
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          SSH="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no $OCI_USER@$OCI_HOST"
+
+          $SSH "/opt/milesahead/backup.sh"
+
+          NEWEST=$($SSH "ls -1t /opt/milesahead/backups/milesahead_*.db.gz | head -1")
+          if [ -z "$NEWEST" ]; then
+            echo "::error::backup script produced no archive"
+            exit 1
+          fi
+          echo "Fetching $NEWEST"
+          scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+            "$OCI_USER@$OCI_HOST:$NEWEST" ./backup.db.gz
+
+          echo "ARCHIVE_NAME=$(basename "$NEWEST")" >> "$GITHUB_ENV"
+
+      - name: Verify the fetched archive restores
+        run: |
+          gunzip -c backup.db.gz > restored.db
+          python3 - <<'PY'
+          import sqlite3
+          con = sqlite3.connect("restored.db")
+          if con.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+              raise SystemExit("restored copy failed integrity_check")
+          for table in ("generated_articles", "reference_pages", "subscribers"):
+              n = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+              print(f"{table}: {n}")
+          # generated_articles is never empty in practice; an empty one means we
+          # backed up the wrong file or a truncated transfer.
+          if con.execute("SELECT count(*) FROM generated_articles").fetchone()[0] == 0:
+              raise SystemExit("restored copy has no articles -- refusing to publish it")
+          con.close()
+          PY
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mv backup.db.gz "$ARCHIVE_NAME"
+          gh release view db-backups >/dev/null 2>&1 || \
+            gh release create db-backups --title "Database backups" \
+              --notes "Rolling off-box SQLite backups. Automated; do not delete the latest asset." \
+              --latest=false
+          gh release upload db-backups "$ARCHIVE_NAME" --clobber
+          echo "Uploaded $ARCHIVE_NAME"
+
+      - name: Prune old release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Keep the 14 most recent off-box copies; the server keeps 30 days locally.
+          gh release view db-backups --json assets \
+            --jq '.assets | sort_by(.createdAt) | reverse | .[14:] | .[].name' \
+            | while read -r old; do
+                [ -n "$old" ] || continue
+                echo "Deleting old asset $old"
+                gh release delete-asset db-backups "$old" --yes
+              done
