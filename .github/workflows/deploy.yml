@@ -190,13 +190,26 @@ jobs:
 
           # Update Caddy config
           $SSH "mkdir -p ${{ env.CADDY_SITES_DIR }}"
+          # Validate before installing. This file lands in a directory shared with
+          # four other sites, and the reload previously swallowed its own errors --
+          # so a syntax error would sit on disk undetected until the next container
+          # restart, then take every site in that directory down with it.
           scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:/tmp/milesahead.caddy
+          $SSH "docker cp /tmp/milesahead.caddy fynans-caddy-1:/tmp/milesahead.caddy"
+          if ! $SSH "docker exec fynans-caddy-1 caddy validate --adapter caddyfile --config /tmp/milesahead.caddy"; then
+            echo "::error title=Caddy config invalid::deploy/milesahead.caddy failed validation; not installing it."
+            exit 1
+          fi
           $SSH "sudo cp /tmp/milesahead.caddy ${{ env.CADDY_SITES_DIR }}/milesahead.caddy"
-          $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
+          if ! $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile"; then
+            echo "::error title=Caddy reload failed::Config is installed but not live. Check the shared Caddyfile before the container restarts."
+            exit 1
+          fi
 
           # Update Alloy config
           scp deploy/alloy-config.alloy $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/alloy-config.alloy
-          $SSH "sudo systemctl restart alloy 2>/dev/null || true"
+          # Observability is not worth failing a deploy over, but it is worth knowing about.
+          $SSH "sudo systemctl restart alloy" || echo "::warning title=Alloy restart failed::Metrics/logs shipping may be down; deployment itself succeeded."
 
           # Install/refresh the DB backup script and its timer. Idempotent, and
           # placed in the deploy job (not setup) so it cannot drift uninstalled --
@@ -266,6 +279,7 @@ jobs:
           GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
           GRAFANA_DS_UID: ${{ secrets.GRAFANA_DS_UID }}
         run: |
+          SKIPPED=0
           if [ -n "$GRAFANA_URL" ] && [ -n "$GRAFANA_API_KEY" ]; then
             for DASH in deploy/grafana-dashboard-*.json; do
               DASH_NAME=$(basename "$DASH" .json)
@@ -275,6 +289,17 @@ jobs:
                 -H "Content-Type: application/json" \
                 -d @"/tmp/$DASH_NAME.json")
               if [ "$HTTP_CODE" -ne 200 ]; then
+                # Grafana Cloud suspends free-tier instances after inactivity and
+                # answers 503 with {"code":"Loading"} until someone wakes it in the
+                # UI. That is not a deployment failure -- the app has already
+                # shipped by this point -- and failing here trains us to ignore red
+                # deploys. Warn and move on; every other failure still exits 1.
+                if [ "$HTTP_CODE" -eq 503 ] && grep -q '"code":"Loading"' /tmp/dash-response.json; then
+                  echo "::warning title=Grafana dashboards not updated::Instance is hibernating or still waking (HTTP 503). Dashboards are unchanged; wake it in the Grafana UI and re-run this job."
+                  cat /tmp/dash-response.json
+                  SKIPPED=1
+                  continue
+                fi
                 echo "Dashboard deploy failed for $DASH_NAME (HTTP $HTTP_CODE):"
                 cat /tmp/dash-response.json
                 exit 1
@@ -283,4 +308,7 @@ jobs:
             done
           else
             echo "Skipping dashboard deploy — secrets not set"
+          fi
+          if [ "$SKIPPED" -eq 1 ]; then
+            echo "Dashboards skipped: Grafana instance unavailable. Deployment itself succeeded." >> "$GITHUB_STEP_SUMMARY"
           fi
