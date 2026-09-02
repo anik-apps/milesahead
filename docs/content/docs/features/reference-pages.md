@@ -116,6 +116,18 @@ off the page.
 Embeds are gated on `?beta=1` so a video can be reviewed on the live site before
 release; beta responses are also `noindex` and omit their canonical link.
 
+### Heading convention
+
+The heading should not promise an answer the video does not give. Where a video
+concludes the credits outweigh the fee, "Watch: is the $895 fee worth it?" is
+fair. Where it concludes they do not — the Strata Elite works out at -$85 a year
+on credits alone — the heading asks whether the credits cover the fee instead,
+so a reader is not set up for a verdict that never arrives.
+
+That means phrasing varies with the verdict rather than following one template.
+It is a deliberate trade of uniformity for honesty, and is worth revisiting once
+there are enough videos to see how the variation reads.
+
 ## Admin Management
 
 Reference pages can be managed through the admin dashboard:
