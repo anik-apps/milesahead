@@ -50,7 +50,8 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 
 ## Up Next
 
-- [ ] Card explainer videos — YouTube-hosted, embedded per card page (Amex Platinum first)
+- [ ] Card explainer videos — YouTube-hosted, embedded per card page (Amex Platinum, Sapphire Reserve, Strata Elite so far)
+- [ ] **Revisit video heading framing** — headings currently vary with the verdict: positive cards ask "is the $X fee worth it?", while the Strata Elite asks "do the credits cover the $595 fee?" because that video concludes they do not. Deliberate, so a heading never promises an answer the video does not give — but it means the phrasing is not uniform across cards. Worth a look once there are enough videos to judge whether the inconsistency reads as considered or as sloppy.
 - [ ] Additional model providers (Groq, Gemini) — reduce dependency on NVIDIA API
 - [ ] OAuth/SSO login — replace single bcrypt password with Google OAuth
 - [ ] Affiliate link integration — monetize card reference pages
