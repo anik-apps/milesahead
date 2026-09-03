@@ -38,6 +38,15 @@ CATEGORIES = {
 # Sections that quote OTHER cards' rates, where disagreement is expected.
 COMPARISON_SECTIONS = {"competitor_comparison"}
 
+# A rate inside one of these is being described as gone, hypothetical, or as a
+# rival's -- not claimed as this card's own. e.g. "the cards no longer earn 2x on
+# Rapid Rewards Hotels" is a statement that the category was removed.
+NEGATED = re.compile(
+    r"no longer|used to|previously|removed|discontinued|dropped|until \d{4}|"
+    r"before the|prior to|would have|instead of|compared (?:to|with)|versus|vs\.?\s",
+    re.I,
+)
+
 
 def segments(html: str):
     """Split prose into block-level segments before matching.
@@ -55,6 +64,8 @@ def prose_rates(sections):
     found = defaultdict(list)
     for s in sections:
         for text in segments(s.get("content", "")):
+            if NEGATED.search(text):
+                continue
             for cat, (kw, _) in CATEGORIES.items():
                 for m in re.finditer(rf"(\d+)x[^.;]{{0,60}}?(?:{kw})", text, re.I):
                     found[cat].append((f"{m.group(1)}x", s.get("key", "?"), m.group(0).strip()[:70]))
