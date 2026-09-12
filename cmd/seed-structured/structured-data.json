@@ -230,7 +230,7 @@
         "note": ""
       },
       "hotels_portal": {
-        "rate": "2x",
+        "rate": "5x",
         "note": "Prepaid via Amex Travel"
       },
       "car_rental_direct": {
@@ -5820,7 +5820,7 @@
     "annual_fee_note": "Increased from $149 in 2025; $75 travel credit eliminated after Dec 31, 2025",
     "welcome_bonus_text": "Earn 60,000 bonus points after $2,000 spend in 3 months.",
     "earning_rates": {
-      "dining": "1x Rapid Rewards points",
+      "dining": "2x Rapid Rewards points at restaurants",
       "groceries": "1x Rapid Rewards points",
       "gas": "2x Rapid Rewards points",
       "airlines_direct": "4x Rapid Rewards points on Southwest purchases",
