@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
@@ -45,11 +46,18 @@ func testDB(t *testing.T) *db.Database {
 	return d
 }
 
+// seedCounter keeps slugs unique; the column has a UNIQUE constraint, so a
+// fixed slug makes any test that seeds more than one article fail.
+var seedCounter atomic.Int64
+
 func seedArticle(t *testing.T, d *db.Database) int64 {
 	t.Helper()
+	n := seedCounter.Add(1)
 	id, err := d.CreateGeneratedArticle(&db.GeneratedArticle{
-		Title: "Citi adds JAL", Slug: "citi-jal", Content: "Body text about transfers.",
-		Type: "deal", Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		Title:   fmt.Sprintf("Citi adds JAL %d", n),
+		Slug:    fmt.Sprintf("citi-jal-%d", n),
+		Content: "Body text about transfers.",
+		Type:    "deal", Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
 	})
 	if err != nil {
 		t.Fatalf("seed: %v", err)
@@ -233,4 +241,67 @@ func (c *blockingClient) Generate(model, prompt string, maxTokens int) (string, 
 	c.once.Do(func() { close(c.started) })
 	<-c.release
 	return "", fmt.Errorf("released")
+}
+
+// TestRun_StopsAtDeadline verifies a pass bounds itself.
+//
+// Without this, a pass on a degraded provider runs until it finishes — which
+// can be many times its own interval — and every tick in that window is
+// skipped. The reconciler then appears idle rather than stuck.
+func TestRun_StopsAtDeadline(t *testing.T) {
+	d := testDB(t)
+	for i := 0; i < 5; i++ {
+		seedArticle(t, d)
+	}
+
+	client := &slowClient{delay: 60 * time.Millisecond}
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.Pace = 0
+	s.BatchSize = 5
+	s.MaxDuration = 100 * time.Millisecond
+
+	start := time.Now()
+	s.Run()
+	elapsed := time.Since(start)
+
+	// Five articles x several fields x 60ms would far exceed the deadline if
+	// the pass ran to completion.
+	if elapsed > 2*time.Second {
+		t.Errorf("pass ran %v; the deadline should have cut it short", elapsed)
+	}
+
+	// Articles it never reached must keep their attempt budget intact, so the
+	// next pass picks them up rather than charging them for work never done.
+	var untouched int
+	if err := d.DB().QueryRow(
+		"SELECT count(*) FROM generated_articles WHERE enrichment_attempts = 0").Scan(&untouched); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if untouched == 0 {
+		t.Error("every article was charged an attempt; the deadline did not abandon any")
+	}
+}
+
+// TestRun_EmptyBacklogCountsAsLiveness verifies an idle reconciler still proves
+// it is alive. Otherwise the liveness timestamp would go stale on a perfectly
+// healthy system with nothing to do, and the alert built on it would cry wolf.
+func TestRun_EmptyBacklogCountsAsLiveness(t *testing.T) {
+	d := testDB(t)
+	// No articles at all, so nothing needs enrichment.
+	client := &scriptedClient{}
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.Pace = 0
+
+	s.Run()
+
+	if len(client.calls) != 0 {
+		t.Errorf("expected no model calls on an empty backlog, got %d", len(client.calls))
+	}
+}
+
+type slowClient struct{ delay time.Duration }
+
+func (c *slowClient) Generate(model, prompt string, maxTokens int) (string, error) {
+	time.Sleep(c.delay)
+	return "", fmt.Errorf("slow and failing")
 }

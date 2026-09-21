@@ -77,13 +77,17 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       `key_details` uses the literal string `'null'`, not NULL). Worth surfacing
       `enrichment_attempts >= max` distinctly as "given up" rather than "pending", and
       offering a per-article retry that resets the counter.
-- [ ] **Enrichment has no pass-level deadline or liveness signal** — `Service.Run` holds an
-      `atomic.Bool` guard for the whole pass, but a pass has no deadline of its own. On a
-      degraded provider every later tick logs `enrichment pass skipped` at INFO and
-      returns, and `milesahead_articles_degraded` is only written at the END of a pass, so
-      the gauge freezes at its last healthy value. Same invisible-failure shape as the
-      outage this work was meant to end. *Fix:* bound the pass, count skips, export a
-      `last successful pass` timestamp to alert on.
+- [x] **Enrichment has no pass-level deadline or liveness signal** — a pass had no bound
+      of its own, so on a degraded provider it could outlast its interval many times over;
+      every later tick then logged a skip and `milesahead_articles_degraded` froze at its
+      last value, making a stalled reconciler indistinguishable from an idle one. Passes
+      are now bounded by `enrichment_max_duration` (checked between articles), skips and
+      deadline hits are counted in `milesahead_enrichment_passes_total{outcome}`, the
+      degraded gauge refreshes on every outcome rather than only on success, and
+      `milesahead_enrichment_last_success_timestamp_seconds` gives a liveness signal that
+      goes stale when passes stop completing. A Grafana rule alerts when it has not
+      advanced in an hour against a 15-minute interval.
+
 - [ ] **No failure memory across model calls** — `TryModels` and `callWithFallback` are
       stateless, so a timing-out model burns its full retry budget on every field of every
       article: worst case 10 articles x 4 fields x 2 models x 4 attempts = 320 attempts

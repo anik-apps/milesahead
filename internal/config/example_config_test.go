@@ -38,6 +38,18 @@ func TestExampleConfigLoads(t *testing.T) {
 		t.Errorf("fallback chain is %d deep; configure at least two so one "+
 			"retirement cannot stop publication", n)
 	}
+	// A pass with no bound can outlast its own interval, at which point every
+	// later tick is skipped and the reconciler looks idle rather than stuck.
+	if cfg.AI.EnrichmentMaxDuration <= 0 {
+		t.Error("enrichment_max_duration must be set; an unbounded pass cannot " +
+			"be distinguished from a stalled one")
+	}
+	if cfg.AI.EnrichmentInterval > 0 &&
+		cfg.AI.EnrichmentMaxDuration > cfg.AI.EnrichmentInterval {
+		t.Errorf("enrichment_max_duration (%dm) exceeds enrichment_interval (%dm); "+
+			"passes would routinely overlap and be skipped",
+			cfg.AI.EnrichmentMaxDuration, cfg.AI.EnrichmentInterval)
+	}
 	if cfg.AI.RequestTimeout <= 0 {
 		t.Error("request_timeout must be set explicitly; the default can be " +
 			"shorter than the primary model's real latency")
