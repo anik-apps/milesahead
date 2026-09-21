@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func makeChatResponse(content string) chatResponse {
@@ -63,6 +64,7 @@ func TestHFClient_RateLimit(t *testing.T) {
 
 	client := NewHFClient("test-token", 3)
 	client.BaseURL = ts.URL
+	client.SetBackoff(time.Millisecond) // keep the suite fast; see TestHFClient_BackoffOutlastsAProviderBlip
 
 	result, err := client.Generate("test-model", "prompt", 500)
 	if err != nil {
@@ -70,5 +72,28 @@ func TestHFClient_RateLimit(t *testing.T) {
 	}
 	if result != "Success after retry." {
 		t.Errorf("unexpected: %s", result)
+	}
+}
+
+// TestHFClient_BackoffOutlastsAProviderBlip pins the production retry budget.
+//
+// The original schedule was 100ms/200ms/400ms: 700ms of total patience. On
+// 2026-09-21 a provider-side degradation lasting tens of seconds blew through
+// all three attempts for four separate enrichment calls, and the article was
+// published missing its key details, Scout's Take and image. The identical
+// prompts succeeded on the same model minutes later, so the model was fine --
+// the client simply gave up almost immediately.
+func TestHFClient_BackoffOutlastsAProviderBlip(t *testing.T) {
+	const wantMinimumPatience = 10 * time.Second
+
+	c := NewHFClient("token", 3)
+	total, d := time.Duration(0), c.backoff
+	for i := 0; i < 3; i++ {
+		total += d
+		d *= 2
+	}
+	if total < wantMinimumPatience {
+		t.Errorf("3 retries wait %v in total; a provider blip needs at least %v "+
+			"of patience to ride out", total, wantMinimumPatience)
 	}
 }
