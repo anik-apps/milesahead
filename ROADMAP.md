@@ -72,12 +72,22 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       (`== 0`) would NOT have caught it: the counter is a CounterVec, so during the
       outage its series was absent rather than zero, which is why the drought rule
       treats NoData as firing. Runbook at `docs/runbooks/generation-drought.md`.
+- [ ] **Deduplicate across clusters, not just within them** — the raw-ID dedupe
+      (`HasArticleForRawIDs`) can only catch a cluster reusing a source article. When one
+      story lands in two disjoint clusters, the clusters share no sources by construction
+      and the check correctly passes, so the site publishes the same story twice
+      (articles 1030 and 1031, 2026-09-21). Lowering the clustering threshold fixed that
+      case, but the class remains: a title-similarity check against recently generated
+      articles would close it properly.
 - [ ] **Enrichment failures are invisible** — `extract details`, `scouts take`, image
       query generation and image scoring all log WARN and continue, so a transient
       provider blip publishes an article with no key-details table, no Scout's Take and
       no image, and nothing reports it. Article 1030 shipped that way on 2026-09-21.
       *Fix:* count them (`milesahead_enrichment_failures_total{step}`) and alert on a
       sustained rate, or mark such articles for re-enrichment rather than accepting them.
+      Measured 2026-09-21, this is chronic rather than a one-off: Scout's Take is empty on
+      **99 of 801** articles (12%), key details on 68 (8%), images on 64 (7%) — and the
+      rate jumped from ~0% through June to 28% in July and 18% in August, which nobody saw.
 - [ ] **Audit remaining hardcoded models** — `meta/llama-3.2-90b-vision-instruct` was
       hardcoded in `main.go` and times out on every call, so each scored image burned the
       full 300s client timeout. Now configurable via `vision_model`. Direct

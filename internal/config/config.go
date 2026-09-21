@@ -22,8 +22,11 @@ type DBConfig struct {
 }
 
 type ScannerConfig struct {
-	DefaultInterval int    `yaml:"default_interval"`
-	UserAgent       string `yaml:"user_agent"`
+	DefaultInterval int `yaml:"default_interval"`
+	// ClusterThreshold is the minimum title similarity for two scanned articles
+	// to be treated as the same story (0-1). 0 uses the built-in default.
+	ClusterThreshold float64 `yaml:"cluster_threshold"`
+	UserAgent        string  `yaml:"user_agent"`
 }
 
 type AIConfig struct {

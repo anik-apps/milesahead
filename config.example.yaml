@@ -10,6 +10,10 @@ db:
 
 scanner:
   default_interval: 180  # minutes
+  # Minimum title similarity for two scanned articles to be treated as the
+  # same story. Was effectively 0.5, which split one announcement across
+  # several clusters and published it twice. 0 uses cluster.DefaultThreshold.
+  cluster_threshold: 0.30
   user_agent: "MilesAhead/1.0"
 
 ai:

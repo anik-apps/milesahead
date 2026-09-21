@@ -93,6 +93,13 @@ func main() {
 		visionModel = "meta/llama-3.2-11b-vision-instruct"
 	}
 
+	// Title-similarity threshold for treating two scanned articles as the same
+	// story. See cluster.DefaultThreshold for why it is not 0.5 any more.
+	clusterThreshold := cfg.Scanner.ClusterThreshold
+	if clusterThreshold <= 0 {
+		clusterThreshold = cluster.DefaultThreshold
+	}
+
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
 	if cfg.AI.Critic2Model != "" {
 		critic2 := ai.NewCritic(hfClient, cfg.AI.Critic2Model)
@@ -175,7 +182,7 @@ func main() {
 			return
 		}
 
-		clusters := cluster.Cluster(clusterArticles, 0.5)
+		clusters := cluster.Cluster(clusterArticles, clusterThreshold)
 		slog.Info("clustering complete", "articles", len(clusterArticles), "clusters", len(clusters))
 
 		// Filter to multi-source clusters and generate
