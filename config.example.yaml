@@ -56,6 +56,14 @@ ai:
   # previous hardcoded 300s could have timed out a healthy-but-slow generation
   # and silently demoted it to the fallback.
   request_timeout: 900
+  # Enrichment (Scout's Take, key details, tags, image queries) runs as a
+  # background reconciliation pass, not inline in article creation. Deliberately
+  # a different model from critic_model: those calls used to reuse it, so a
+  # degraded critic backend silently cost every article in that window its
+  # fields. Comma-separated, tried in order.
+  enrichment_model: "mistralai/mistral-nemotron,openai/gpt-oss-20b"
+  enrichment_interval: 15        # minutes
+  enrichment_max_attempts: 3     # passes before an article is left alone
   hf_api_token: "${HF_API_TOKEN}"
   critic_threshold: 70
   max_retries: 3

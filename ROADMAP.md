@@ -79,15 +79,18 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       (articles 1030 and 1031, 2026-09-21). Lowering the clustering threshold fixed that
       case, but the class remains: a title-similarity check against recently generated
       articles would close it properly.
-- [ ] **Enrichment failures are invisible** — `extract details`, `scouts take`, image
-      query generation and image scoring all log WARN and continue, so a transient
-      provider blip publishes an article with no key-details table, no Scout's Take and
-      no image, and nothing reports it. Article 1030 shipped that way on 2026-09-21.
-      *Fix:* count them (`milesahead_enrichment_failures_total{step}`) and alert on a
-      sustained rate, or mark such articles for re-enrichment rather than accepting them.
-      Measured 2026-09-21, this is chronic rather than a one-off: Scout's Take is empty on
-      **99 of 801** articles (12%), key details on 68 (8%), images on 64 (7%) — and the
-      rate jumped from ~0% through June to 28% in July and 18% in August, which nobody saw.
+- [x] **Enrichment failures are invisible** — `extract details`, `scouts take`, image
+      query generation and image scoring were five best-effort inline calls in the
+      article-creation loop, each logging WARN and continuing, so a transient provider
+      problem permanently cost the article a field. Root cause found in the production
+      journal: from 2026-07-01 the provider's latency crossed the client timeout on ~24%
+      of calls, and transport errors were never retried at all — the retry loop only
+      handled HTTP status codes. Enrichment now runs as a scheduled reconciliation pass
+      (`internal/enrich`) against its own model chain, bounded by `enrichment_attempts`,
+      with `milesahead_enrichment_failures_total{step}` and `milesahead_articles_degraded`
+      to make the gap visible. A missed field is now retried on the next pass instead of
+      being lost, and the ~62 historical articles are picked up automatically.
+
 - [ ] **Audit remaining hardcoded models** — `meta/llama-3.2-90b-vision-instruct` was
       hardcoded in `main.go` and times out on every call, so each scored image burned the
       full 300s client timeout. Now configurable via `vision_model`. Direct

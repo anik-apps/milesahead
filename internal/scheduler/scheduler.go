@@ -46,6 +46,12 @@ func (s *Scheduler) AddRevisionJob(interval time.Duration, revisionFunc func()) 
 	s.cron.AddFunc(fmt.Sprintf("@every %s", interval), revisionFunc)
 }
 
+// AddEnrichmentJob adds the periodic pass that fills in article fields
+// generation left empty.
+func (s *Scheduler) AddEnrichmentJob(interval time.Duration, enrichFunc func()) {
+	s.cron.AddFunc(fmt.Sprintf("@every %s", interval), enrichFunc)
+}
+
 // Start begins running all scheduled jobs.
 func (s *Scheduler) Start() {
 	s.cron.Start()

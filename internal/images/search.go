@@ -223,8 +223,8 @@ type unsplashResponse struct {
 		User struct {
 			Name string `json:"name"`
 		} `json:"user"`
-		Description    string   `json:"description"`
-		AltDescription string   `json:"alt_description"`
+		Description    string `json:"description"`
+		AltDescription string `json:"alt_description"`
 		Tags           []struct {
 			Title string `json:"title"`
 		} `json:"tags"`
@@ -339,11 +339,11 @@ func (s *Searcher) searchPexels(query string) ([]ImageCandidate, error) {
 // pixabayResponse represents the Pixabay API response.
 type pixabayResponse struct {
 	Hits []struct {
-		LargeImageURL  string `json:"largeImageURL"`
-		WebformatURL   string `json:"webformatURL"`
-		Tags           string `json:"tags"`
-		User           string `json:"user"`
-		PageURL        string `json:"pageURL"`
+		LargeImageURL string `json:"largeImageURL"`
+		WebformatURL  string `json:"webformatURL"`
+		Tags          string `json:"tags"`
+		User          string `json:"user"`
+		PageURL       string `json:"pageURL"`
 	} `json:"hits"`
 }
 
@@ -385,12 +385,12 @@ func (s *Searcher) searchPixabay(query string) ([]ImageCandidate, error) {
 // openverseResponse represents the Openverse API response.
 type openverseResponse struct {
 	Results []struct {
-		Title      string `json:"title"`
-		URL        string `json:"url"`
-		Thumbnail  string `json:"thumbnail"`
-		Creator    string `json:"creator"`
-		Source     string `json:"source"`
-		Tags       []struct {
+		Title     string `json:"title"`
+		URL       string `json:"url"`
+		Thumbnail string `json:"thumbnail"`
+		Creator   string `json:"creator"`
+		Source    string `json:"source"`
+		Tags      []struct {
 			Name string `json:"name"`
 		} `json:"tags"`
 	} `json:"results"`

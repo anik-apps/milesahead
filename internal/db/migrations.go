@@ -192,6 +192,13 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE reference_pages ADD COLUMN benefits_json TEXT DEFAULT '{}'`,
 		`ALTER TABLE reference_pages ADD COLUMN protections_json TEXT DEFAULT '{}'`,
 		`ALTER TABLE reference_pages ADD COLUMN flagged_fields_json TEXT DEFAULT '[]'`,
+		// Enrichment bookkeeping. Without these, a reconciler cannot tell
+		// "never attempted" from "attempted and the model returned nothing",
+		// so it would either retry a hopeless article forever or skip a
+		// recoverable one. They also make "how many articles are degraded"
+		// a query rather than a guess.
+		`ALTER TABLE generated_articles ADD COLUMN enrichment_attempts INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE generated_articles ADD COLUMN enrichment_last_at DATETIME DEFAULT NULL`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)

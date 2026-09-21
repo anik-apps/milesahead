@@ -9,16 +9,16 @@ func TestSyncArticleFTS(t *testing.T) {
 
 	// Create an article.
 	a := &GeneratedArticle{
-		Title:          "Test Article About <b>Travel</b> Rewards",
-		Slug:           "test-travel-rewards",
-		Content:        "<p>Earn points on every purchase with this card.</p>",
-		Type:           "article",
-		Status:         StatusApproved,
-		SourcesJSON:    "[]",
-		RevisionNumber: 1,
-		TLDR:           "Great travel card for beginners",
-		KeyDetails:     "[]",
-		Links:          "[]",
+		Title:            "Test Article About <b>Travel</b> Rewards",
+		Slug:             "test-travel-rewards",
+		Content:          "<p>Earn points on every purchase with this card.</p>",
+		Type:             "article",
+		Status:           StatusApproved,
+		SourcesJSON:      "[]",
+		RevisionNumber:   1,
+		TLDR:             "Great travel card for beginners",
+		KeyDetails:       "[]",
+		Links:            "[]",
 		RelatedCardsJSON: "[]",
 	}
 	id, err := d.CreateGeneratedArticle(a)
@@ -42,16 +42,16 @@ func TestSearchArticles_StatusFilter(t *testing.T) {
 
 	// Create an approved article.
 	approved := &GeneratedArticle{
-		Title:          "Chase Sapphire Preferred Review",
-		Slug:           "chase-sapphire-preferred",
-		Content:        "The Chase Sapphire Preferred is a top travel card.",
-		Type:           "article",
-		Status:         StatusApproved,
-		SourcesJSON:    "[]",
-		RevisionNumber: 1,
-		TLDR:           "Great mid-tier travel card",
-		KeyDetails:     "[]",
-		Links:          "[]",
+		Title:            "Chase Sapphire Preferred Review",
+		Slug:             "chase-sapphire-preferred",
+		Content:          "The Chase Sapphire Preferred is a top travel card.",
+		Type:             "article",
+		Status:           StatusApproved,
+		SourcesJSON:      "[]",
+		RevisionNumber:   1,
+		TLDR:             "Great mid-tier travel card",
+		KeyDetails:       "[]",
+		Links:            "[]",
 		RelatedCardsJSON: "[]",
 	}
 	_, err := d.CreateGeneratedArticle(approved)
@@ -61,16 +61,16 @@ func TestSearchArticles_StatusFilter(t *testing.T) {
 
 	// Create a draft article with similar content.
 	draft := &GeneratedArticle{
-		Title:          "Chase Freedom Unlimited Review",
-		Slug:           "chase-freedom-unlimited",
-		Content:        "The Chase Freedom Unlimited offers great cash back.",
-		Type:           "article",
-		Status:         StatusDraft,
-		SourcesJSON:    "[]",
-		RevisionNumber: 1,
-		TLDR:           "Solid cash back card from Chase",
-		KeyDetails:     "[]",
-		Links:          "[]",
+		Title:            "Chase Freedom Unlimited Review",
+		Slug:             "chase-freedom-unlimited",
+		Content:          "The Chase Freedom Unlimited offers great cash back.",
+		Type:             "article",
+		Status:           StatusDraft,
+		SourcesJSON:      "[]",
+		RevisionNumber:   1,
+		TLDR:             "Solid cash back card from Chase",
+		KeyDetails:       "[]",
+		Links:            "[]",
 		RelatedCardsJSON: "[]",
 	}
 	_, err = d.CreateGeneratedArticle(draft)
@@ -137,16 +137,16 @@ func TestDeleteArticleFTS(t *testing.T) {
 	d := openTestDB(t)
 
 	a := &GeneratedArticle{
-		Title:          "Article to Delete",
-		Slug:           "article-to-delete",
-		Content:        "This article will be removed from FTS.",
-		Type:           "article",
-		Status:         StatusApproved,
-		SourcesJSON:    "[]",
-		RevisionNumber: 1,
-		TLDR:           "Temporary article",
-		KeyDetails:     "[]",
-		Links:          "[]",
+		Title:            "Article to Delete",
+		Slug:             "article-to-delete",
+		Content:          "This article will be removed from FTS.",
+		Type:             "article",
+		Status:           StatusApproved,
+		SourcesJSON:      "[]",
+		RevisionNumber:   1,
+		TLDR:             "Temporary article",
+		KeyDetails:       "[]",
+		Links:            "[]",
 		RelatedCardsJSON: "[]",
 	}
 	id, err := d.CreateGeneratedArticle(a)

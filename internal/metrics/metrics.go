@@ -34,6 +34,23 @@ var (
 		Buckets: []float64{1, 5, 10, 30, 60, 120, 300},
 	})
 
+	// EnrichmentFailuresTotal counts per-step enrichment failures. Before this
+	// existed, a failed step logged WARN and the article published with a hole
+	// in it -- 24% of articles for two and a half months, with no metric that
+	// would have shown it.
+	EnrichmentFailuresTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_enrichment_failures_total",
+		Help: "Enrichment step failures by step",
+	}, []string{"step"})
+
+	// ArticlesDegraded is the current number of articles missing at least one
+	// enrichment field, split into those the reconciler will retry and those
+	// it has given up on.
+	ArticlesDegraded = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "milesahead_articles_degraded",
+		Help: "Articles missing enrichment, by whether retries remain",
+	}, []string{"state"})
+
 	AIAPIErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "milesahead_ai_api_errors_total",
 		Help: "Total AI API final failures",
@@ -104,6 +121,7 @@ var (
 func Init() {
 	prometheus.MustRegister(
 		ScansTotal, ArticlesGeneratedTotal, ArticlesApprovedTotal,
+		EnrichmentFailuresTotal, ArticlesDegraded,
 		ArticlesRejectedTotal, RevisionsTotal, AIAPIDuration,
 		AIAPIErrorsTotal, CriticScore, VotesTotal,
 		HTTPRequestsTotal, HTTPDuration,

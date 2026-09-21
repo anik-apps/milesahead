@@ -340,6 +340,25 @@ Rules:
 
 // ArticleTagsPrompt builds a prompt that asks the AI to pick 1-3 topic tags
 // from a predefined list based on the article's title and content.
+// ImageQueriesPrompt asks for stock-photo search terms for an article.
+//
+// Moved here from cmd/milesahead/main.go so the enrichment reconciler and the
+// generation path build the same prompt rather than drifting apart.
+func ImageQueriesPrompt(title, tldr string) string {
+	return fmt.Sprintf(`Given this article title and summary, generate exactly 3 image search queries for stock photo sites (Unsplash, Pexels).
+
+Title: %s
+Summary: %s
+
+Rules:
+- Query 1: The specific brand/company/airline/hotel name + what it is (e.g., "United Airlines plane", "Wyndham hotel resort", "Delta Airlines aircraft")
+- Query 2: The specific subject or product (e.g., "airplane lie-flat economy seat", "hotel loyalty points card", "airport lounge")
+- Query 3: A broader visual scene related to the topic (e.g., "tropical beach resort", "business class cabin", "Tokyo skyline")
+
+Reply with ONLY a JSON array of 3 strings, nothing else:
+["query 1", "query 2", "query 3"]`, title, tldr)
+}
+
 func ArticleTagsPrompt(title, content string) string {
 	truncated := content
 	if len(truncated) > 2000 {

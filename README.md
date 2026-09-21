@@ -65,6 +65,21 @@ The app also runs a startup preflight against every configured model and logs
 `ERROR` if nothing can generate, so a retired model surfaces at boot rather than
 as articles quietly never appearing.
 
+### Enrichment
+
+Scout's Take, key details, tags and the article image are **not** produced during
+article generation. They run as a background reconciliation pass
+(`internal/enrich`) on `enrichment_interval`, against `enrichment_model` — a
+separate chain from the critic, so a degraded critic backend cannot take them
+down with it.
+
+This matters because inline they were best-effort: a single slow response
+permanently cost the article a field, and for two and a half months roughly a
+quarter of articles published with one missing. Reconciled, a miss is simply
+picked up next pass. `enrichment_max_attempts` bounds how long an article keeps
+being retried, and `milesahead_articles_degraded` reports how many are still
+missing something.
+
 ## Documentation
 
 Full documentation is built with [Hugo](https://gohugo.io/) using the [Hextra](https://imfing.github.io/hextra/) theme.
