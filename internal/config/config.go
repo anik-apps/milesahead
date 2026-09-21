@@ -35,15 +35,24 @@ type AIConfig struct {
 	CriticModel            string `yaml:"critic_model"`
 	VisionModel            string `yaml:"vision_model"`
 	RequestTimeout         int    `yaml:"request_timeout"` // seconds; 0 = client default
-	Critic2Model           string `yaml:"critic2_model"`
-	HFAPIToken             string `yaml:"hf_api_token"`
-	HFBaseURL              string `yaml:"hf_base_url"`
-	CriticThreshold        int    `yaml:"critic_threshold"`
-	MaxRetries             int    `yaml:"max_retries"`
-	CacheTTL               int    `yaml:"cache_ttl"`
-	UnsplashKey            string `yaml:"unsplash_key"`
-	PexelsKey              string `yaml:"pexels_key"`
-	PixabayKey             string `yaml:"pixabay_key"`
+	// EnrichmentModel is used for Scout's Take, key details, tags and image
+	// queries. Deliberately separate from critic_model: those calls used to
+	// reuse it, so a degraded critic backend took the enrichment down with it.
+	// Comma-separated; tried in order.
+	EnrichmentModel string `yaml:"enrichment_model"`
+	// EnrichmentInterval is how often the reconciler runs, in minutes.
+	EnrichmentInterval int `yaml:"enrichment_interval"`
+	// EnrichmentMaxAttempts bounds passes per article before it is left alone.
+	EnrichmentMaxAttempts int    `yaml:"enrichment_max_attempts"`
+	Critic2Model          string `yaml:"critic2_model"`
+	HFAPIToken            string `yaml:"hf_api_token"`
+	HFBaseURL             string `yaml:"hf_base_url"`
+	CriticThreshold       int    `yaml:"critic_threshold"`
+	MaxRetries            int    `yaml:"max_retries"`
+	CacheTTL              int    `yaml:"cache_ttl"`
+	UnsplashKey           string `yaml:"unsplash_key"`
+	PexelsKey             string `yaml:"pexels_key"`
+	PixabayKey            string `yaml:"pixabay_key"`
 }
 
 type SMTPConfig struct {

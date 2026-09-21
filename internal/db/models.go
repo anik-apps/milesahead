@@ -55,6 +55,8 @@ type GeneratedArticle struct {
 	RelatedCardsJSON   string     `json:"related_cards_json"`
 	TagsJSON           string     `json:"tags_json"`
 	LinkedCardsHeading string     `json:"linked_cards_heading"`
+	EnrichmentAttempts int        `json:"enrichment_attempts"`
+	EnrichmentLastAt   *time.Time `json:"enrichment_last_at"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 	PublishedAt        *time.Time `json:"published_at"`

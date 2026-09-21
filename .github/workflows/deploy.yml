@@ -158,6 +158,9 @@ jobs:
             critic_model: "mistralai/mistral-nemotron"
             vision_model: "meta/llama-3.2-11b-vision-instruct"
             request_timeout: 900
+            enrichment_model: "mistralai/mistral-nemotron,openai/gpt-oss-20b"
+            enrichment_interval: 15
+            enrichment_max_attempts: 3
             critic2_model: ""
             hf_api_token: "${NVIDIA_API_KEY}"
             hf_base_url: "https://integrate.api.nvidia.com/v1"

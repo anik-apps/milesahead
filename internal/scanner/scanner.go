@@ -11,10 +11,10 @@ import (
 
 // ScanResult holds the outcome of scanning a single source.
 type ScanResult struct {
-	SourceID   int64
-	SourceName string
+	SourceID    int64
+	SourceName  string
 	NewArticles int
-	Errors     []error
+	Errors      []error
 }
 
 // Scanner orchestrates RSS fetching and HTML scraping to populate raw_articles.

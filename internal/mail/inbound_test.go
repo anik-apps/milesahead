@@ -128,12 +128,12 @@ func TestExtractToken(t *testing.T) {
 
 // mockArticleManager records calls for verification.
 type mockArticleManager struct {
-	approveCalls          []int64
-	rejectCalls           []int64
-	unpublishCalls        []int64
-	requestRevisionCalls  []revisionCall
-	unpublishReviseCalls  []revisionCall
-	err                   error
+	approveCalls         []int64
+	rejectCalls          []int64
+	unpublishCalls       []int64
+	requestRevisionCalls []revisionCall
+	unpublishReviseCalls []revisionCall
+	err                  error
 }
 
 type revisionCall struct {
