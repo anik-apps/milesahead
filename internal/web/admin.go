@@ -225,7 +225,9 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 
 	// Trigger card update detection in the background.
 	if app.cardDetector != nil {
+		app.bg.Add(1)
 		go func() {
+			defer app.bg.Done()
 			defer func() {
 				if r := recover(); r != nil {
 					slog.Error("card update detection panicked", "article_id", id, "panic", r)
@@ -275,9 +277,19 @@ func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger AI regeneration immediately in the background.
+	// Trigger AI regeneration immediately in the background. Tracked on the
+	// WaitGroup so it cannot outlive the process (or, in tests, the database
+	// it is about to query). Panic recovery matches the card-detection
+	// goroutine below: an unrecovered panic here would kill the whole server.
 	if app.articleManager != nil {
+		app.bg.Add(1)
 		go func() {
+			defer app.bg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("revision processing panicked", "article_id", id, "panic", r)
+				}
+			}()
 			if err := app.articleManager.ProcessRevision(id); err != nil {
 				slog.Error("revision processing failed", "article_id", id, "error", err)
 			}

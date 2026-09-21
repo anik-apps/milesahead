@@ -65,6 +65,18 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       it afterwards, meaning even the manual path applied config only by luck of timing.
       Config now has its own ungated job that `deploy` depends on, so the restart always
       follows the write.
+- [ ] **Per-article pipeline status in the admin view** — show, for every article, which
+      steps are done, in progress, or failed: generated, critic-verified, key details
+      extracted, Scout's Take written, image selected, tags assigned, cards auto-linked.
+      Today an editor cannot tell a thin article apart from one still being worked on, and
+      the only way to find degraded articles is a SQL query. That blindness is what let
+      24% of articles publish with missing fields for two and a half months.
+      The data now exists to build it: `enrichment_attempts` and `enrichment_last_at` give
+      progress and staleness, `milesahead_enrichment_failures_total{step}` gives per-step
+      failure counts, and each field's emptiness is directly queryable (noting
+      `key_details` uses the literal string `'null'`, not NULL). Worth surfacing
+      `enrichment_attempts >= max` distinctly as "given up" rather than "pending", and
+      offering a per-article retry that resets the counter.
 - [ ] **Enrichment has no pass-level deadline or liveness signal** — `Service.Run` holds an
       `atomic.Bool` guard for the whole pass, but a pass has no deadline of its own. On a
       degraded provider every later tick logs `enrichment pass skipped` at INFO and
