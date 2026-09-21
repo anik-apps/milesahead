@@ -26,7 +26,13 @@ ai:
   # (429 / 5xx / timeout) OR a permanently gone model (404 / 410). Leave empty
   # to disable. gpt-oss-20b is the only other model that both generates and
   # honours the critic JSON contract.
-  fallback_generator_model: "openai/gpt-oss-20b"
+  # Kept deliberately more than one deep: the outage happened because the
+  # primary AND the single configured fallback were retired in the same window.
+  # gpt-oss-20b is verified to generate and to honour the critic contract;
+  # nemotron-3-super-120b-a12b is a last resort only -- it answers quickly but
+  # returns 503 intermittently and leaks reasoning preamble, so it is placed
+  # after a model that does neither.
+  fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
   # Critic must return parseable JSON: Critic.Verify runs replies through
   # extractJSON, so reasoning-style models that answer in prose disqualify
   # themselves regardless of judgement quality (glm-5.3-flash failed 3 of 4).
@@ -42,6 +48,10 @@ ai:
   # Vision model for image scoring. The 90b variant this replaced times out on
   # every call, so each candidate image burned the full 300s client timeout.
   vision_model: "meta/llama-3.2-11b-vision-instruct"
+  # Seconds per model call. The primary takes 105-510s per article, so the
+  # previous hardcoded 300s could have timed out a healthy-but-slow generation
+  # and silently demoted it to the fallback.
+  request_timeout: 900
   hf_api_token: "${HF_API_TOKEN}"
   critic_threshold: 70
   max_retries: 3

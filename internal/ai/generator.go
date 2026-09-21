@@ -2,6 +2,7 @@ package ai
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -26,13 +27,17 @@ func NewGenerator(client HFClientInterface, model, fallbackModels string, cache 
 	return &Generator{
 		client:    client,
 		model:     model,
-		fallbacks: splitModels(fallbackModels),
+		fallbacks: SplitModels(fallbackModels),
 		cache:     cache,
 	}
 }
 
-// splitModels parses a comma-separated model list, ignoring blanks.
-func splitModels(s string) []string {
+// SplitModels parses a comma-separated model list, trimming whitespace and
+// ignoring blanks. Exported so callers parse the chain exactly as the Generator
+// does: main.go once used a bare strings.Split, so "a, b" made preflight probe
+// " b" (404, a false "model no longer exists" alarm) while the Generator called
+// "b" perfectly happily.
+func SplitModels(s string) []string {
 	var out []string
 	for _, p := range strings.Split(s, ",") {
 		if p = strings.TrimSpace(p); p != "" {
@@ -97,10 +102,12 @@ func (g *Generator) callWithFallback(prompt string, maxTokens int) (string, erro
 		return "", err
 	}
 
-	firstErr := err
+	primaryErr := err
+	tried := 0
 	for _, fb := range g.fallbacks {
 		slog.Warn("generator model failed, trying next in chain",
 			"failed", g.model, "next", fb, "err", err)
+		tried++
 		result, err = g.client.Generate(fb, prompt, maxTokens)
 		if err == nil {
 			slog.Info("generator fallback succeeded", "model", fb, "primary", g.model)
@@ -110,8 +117,11 @@ func (g *Generator) callWithFallback(prompt string, maxTokens int) (string, erro
 			break
 		}
 	}
-	return "", fmt.Errorf("primary %q failed (%v); all %d fallback(s) failed, last: %w",
-		g.model, firstErr, len(g.fallbacks), err)
+	// The primary error is usually the diagnostically interesting one, so it is
+	// the one wrapped; the last fallback error is rendered for context. "tried"
+	// rather than len(fallbacks) because the loop can stop early.
+	return "", fmt.Errorf("primary %q failed; %d of %d fallback(s) tried, last error %v: %w",
+		g.model, tried, len(g.fallbacks), err, primaryErr)
 }
 
 // shouldTryAnotherModel reports whether a different model might succeed where
@@ -126,35 +136,32 @@ func shouldTryAnotherModel(err error) bool {
 // answer 410 Gone (or 404) forever after; that is precisely the case a fallback
 // exists for, even though it is a permanent 4xx rather than a transient fault.
 func isModelUnavailableError(err error) bool {
-	if err == nil {
-		return false
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.ModelGone()
 	}
-	msg := err.Error()
-	return strings.Contains(msg, "status 410") || strings.Contains(msg, "status 404")
+	return false
 }
 
 // isRetryableModelError reports whether a model error looks like a transient
-// upstream failure worth retrying against a different model. Matches on the
-// error strings produced by HFClient.Generate (rate-limit exhaustion, 5xx,
-// network/timeout, top-level retry exhaustion).
+// upstream failure worth retrying against a different model.
+//
+// Errors carrying an *APIError are classified on its status code. Anything else
+// reaching here came from outside HFClient -- a transport failure wrapped by
+// http.Client, say -- so only those few shapes are matched textually. Note that
+// the provider's response body is deliberately NOT consulted: it is attacker-
+// adjacent free text, and matching "status 404" inside it once caused a plain
+// 400 to burn the entire fallback chain.
 func isRetryableModelError(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
-	switch {
-	case strings.Contains(msg, "rate limited after"): // legacy wording, kept for safety
-		return true
-	case strings.Contains(msg, "status 429"): // throttled, retries exhausted
-		return true
-	case strings.Contains(msg, "max retries exceeded"):
-		return true
-	case strings.Contains(msg, "http request:"): // network/timeout from http.Client.Do
-		return true
-	case strings.Contains(msg, "status 5"): // any 5xx
-		return true
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Transient()
 	}
-	return false
+	// Network/timeout from http.Client.Do, which never becomes an APIError.
+	return strings.Contains(err.Error(), "http request:")
 }
 
 func (g *Generator) selectPrompt(articleType string, sources []SourceArticle) (string, error) {

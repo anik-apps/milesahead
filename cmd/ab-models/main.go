@@ -36,14 +36,14 @@ import (
 )
 
 type run struct {
-	Model    string
-	Topic    string
-	Score    int
-	Latency  time.Duration
-	Chars    int
-	Err      string
-	Issues   []string
-	Checks   [4]bool
+	Model   string
+	Topic   string
+	Score   int
+	Latency time.Duration
+	Chars   int
+	Err     string
+	Issues  []string
+	Checks  [4]bool
 }
 
 func main() {
@@ -228,19 +228,19 @@ func dumpFullArticles(client *ai.HFClient, genModel string, critic *ai.Critic,
 	pipeline := ai.NewPipeline(ai.NewGenerator(client, genModel, "", nil), critic, threshold)
 
 	type dumped struct {
-		Topic      string            `json:"topic"`
-		Model      string            `json:"model"`
-		Seconds    float64           `json:"seconds"`
-		Title      string            `json:"title"`
-		TLDR       string            `json:"tldr"`
-		Content    string            `json:"content"`
-		KeyDetails []ai.KeyDetail    `json:"key_details"`
-		Links      []ai.ArticleLink  `json:"links"`
-		Score      int               `json:"score"`
-		Passed     bool              `json:"passed"`
-		Issues     []string          `json:"issues"`
+		Topic      string             `json:"topic"`
+		Model      string             `json:"model"`
+		Seconds    float64            `json:"seconds"`
+		Title      string             `json:"title"`
+		TLDR       string             `json:"tldr"`
+		Content    string             `json:"content"`
+		KeyDetails []ai.KeyDetail     `json:"key_details"`
+		Links      []ai.ArticleLink   `json:"links"`
+		Score      int                `json:"score"`
+		Passed     bool               `json:"passed"`
+		Issues     []string           `json:"issues"`
 		Sources    []ai.SourceArticle `json:"sources"`
-		Err        string            `json:"err,omitempty"`
+		Err        string             `json:"err,omitempty"`
 	}
 
 	var out []dumped
@@ -298,7 +298,10 @@ func loadTopics(dbPath string, days, want int) []topic {
 	}
 	defer rows.Close()
 
-	type raw struct{ id, sourceID int64; title, url, content, source string }
+	type raw struct {
+		id, sourceID                int64
+		title, url, content, source string
+	}
 	var all []raw
 	for rows.Next() {
 		var r raw

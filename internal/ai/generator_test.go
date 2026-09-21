@@ -8,11 +8,11 @@ import (
 
 // mockHFClient records calls and returns a canned response.
 type mockHFClient struct {
-	callCount int
-	lastModel string
+	callCount  int
+	lastModel  string
 	lastPrompt string
-	response  string
-	err       error
+	response   string
+	err        error
 }
 
 func (m *mockHFClient) Generate(model, prompt string, maxTokens int) (string, error) {
@@ -170,7 +170,7 @@ func sources1() []SourceArticle {
 // secondary model when the primary returns a rate-limit-exhaustion error.
 func TestGenerator_FallbackOnRateLimit(t *testing.T) {
 	mock := &perModelMockHFClient{
-		errs:      map[string]error{"primary": fmt.Errorf("rate limited after 3 retries: too many requests")},
+		errs:      map[string]error{"primary": error(&APIError{StatusCode: 429, Body: "too many requests", Retries: 3})},
 		responses: map[string]string{"fallback": "Fallback Article\nBody"},
 	}
 	gen := NewGenerator(mock, "primary", "fallback", nil)
@@ -190,7 +190,7 @@ func TestGenerator_FallbackOnRateLimit(t *testing.T) {
 // TestGenerator_FallbackOn5xx verifies fallback triggers on upstream 5xx.
 func TestGenerator_FallbackOn5xx(t *testing.T) {
 	mock := &perModelMockHFClient{
-		errs:      map[string]error{"primary": fmt.Errorf("HF API error (status 502): bad gateway")},
+		errs:      map[string]error{"primary": error(&APIError{StatusCode: 502, Body: "bad gateway", Retries: 3})},
 		responses: map[string]string{"fallback": "Recovered\nContent"},
 	}
 	gen := NewGenerator(mock, "primary", "fallback", nil)
@@ -239,7 +239,7 @@ func TestGenerator_FallbackOnNetworkTimeout(t *testing.T) {
 // still short-circuit.
 func TestGenerator_NoFallbackOn4xx(t *testing.T) {
 	mock := &perModelMockHFClient{
-		errs:      map[string]error{"primary": fmt.Errorf("HF API error (status 400): malformed request")},
+		errs:      map[string]error{"primary": error(&APIError{StatusCode: 400, Body: "malformed request"})},
 		responses: map[string]string{"fallback": "Should not be used"},
 	}
 	gen := NewGenerator(mock, "primary", "fallback", nil)
@@ -277,7 +277,7 @@ func TestGenerator_NoFallbackWhenPrimarySucceeds(t *testing.T) {
 // preserved when fallback is empty: errors from primary propagate directly.
 func TestGenerator_NoFallbackWhenUnconfigured(t *testing.T) {
 	mock := &perModelMockHFClient{
-		errs: map[string]error{"primary": fmt.Errorf("rate limited after 3 retries")},
+		errs: map[string]error{"primary": error(&APIError{StatusCode: 429, Body: "too many requests", Retries: 3})},
 	}
 	gen := NewGenerator(mock, "primary", "", nil) // no fallback
 
@@ -294,7 +294,7 @@ func TestGenerator_NoFallbackWhenUnconfigured(t *testing.T) {
 // revision codepath, not just fresh generation.
 func TestGenerator_FallbackInRevision(t *testing.T) {
 	mock := &perModelMockHFClient{
-		errs:      map[string]error{"primary": fmt.Errorf("rate limited after 3 retries")},
+		errs:      map[string]error{"primary": error(&APIError{StatusCode: 429, Body: "too many requests", Retries: 3})},
 		responses: map[string]string{"fallback": "Revised\nBody"},
 	}
 	gen := NewGenerator(mock, "primary", "fallback", nil)
@@ -313,7 +313,7 @@ func TestGenerator_FallbackInRevision(t *testing.T) {
 func TestGenerator_BothFail(t *testing.T) {
 	mock := &perModelMockHFClient{
 		errs: map[string]error{
-			"primary":  fmt.Errorf("rate limited after 3 retries"),
+			"primary":  error(&APIError{StatusCode: 429, Body: "too many requests", Retries: 3}),
 			"fallback": fmt.Errorf("HF API error (status 503): unavailable"),
 		},
 	}
@@ -334,8 +334,8 @@ func TestGenerator_BothFail(t *testing.T) {
 // unfixable and skipped the fallback entirely, so the site published nothing
 // for 26 days while a working fallback sat in the config.
 func TestGenerator_FallbackOnRetiredModel(t *testing.T) {
-	gone := fmt.Errorf("generator: HF API error (status 410): " +
-		`{"detail":"The model 'openai/gpt-oss-120b' has reached its end of life"}`)
+	gone := error(&APIError{StatusCode: 410, Model: "openai/gpt-oss-120b",
+		Body: `{"detail":"The model 'openai/gpt-oss-120b' has reached its end of life"}`})
 	mock := &perModelMockHFClient{
 		errs:      map[string]error{"primary": gone},
 		responses: map[string]string{"fallback": "Recovered\nContent"},
@@ -358,7 +358,7 @@ func TestGenerator_FallbackOnRetiredModel(t *testing.T) {
 // returns for most of the models its own catalogue advertises.
 func TestGenerator_FallbackOnMissingModel(t *testing.T) {
 	mock := &perModelMockHFClient{
-		errs:      map[string]error{"primary": fmt.Errorf("HF API error (status 404): Not Found")},
+		errs:      map[string]error{"primary": error(&APIError{StatusCode: 404, Body: "Not Found"})},
 		responses: map[string]string{"fallback": "Recovered\nContent"},
 	}
 	gen := NewGenerator(mock, "primary", "fallback", nil)
@@ -375,9 +375,9 @@ func TestGenerator_FallbackOnMissingModel(t *testing.T) {
 // rather than stopping at the first fallback. Both the primary and the single
 // configured fallback were dead simultaneously in the real incident.
 func TestGenerator_WalksWholeFallbackChain(t *testing.T) {
-	gone := fmt.Errorf("HF API error (status 410): gone")
+	gone := error(&APIError{StatusCode: 410, Body: "gone"})
 	mock := &perModelMockHFClient{
-		errs: map[string]error{"primary": gone, "fb1": gone, "fb2": gone},
+		errs:      map[string]error{"primary": gone, "fb1": gone, "fb2": gone},
 		responses: map[string]string{"fb3": "Third\nFallback"},
 	}
 	gen := NewGenerator(mock, "primary", "fb1, fb2, fb3", nil)
@@ -405,7 +405,7 @@ func TestGenerator_WalksWholeFallbackChain(t *testing.T) {
 // four more models just multiplies the failed calls.
 func TestGenerator_NoFallbackOnAuthError(t *testing.T) {
 	mock := &perModelMockHFClient{
-		errs:      map[string]error{"primary": fmt.Errorf("HF API error (status 401): Invalid username or password")},
+		errs:      map[string]error{"primary": error(&APIError{StatusCode: 401, Body: "Invalid username or password"})},
 		responses: map[string]string{"fallback": "should not be used"},
 	}
 	gen := NewGenerator(mock, "primary", "fallback", nil)
@@ -424,7 +424,7 @@ func TestPreflight_FlagsRetiredModel(t *testing.T) {
 	mock := &perModelMockHFClient{
 		errs: map[string]error{
 			"dead-primary": fmt.Errorf("HF API error (status 410): end of life"),
-			"dead-fb":      fmt.Errorf("HF API error (status 404): Not Found"),
+			"dead-fb":      error(&APIError{StatusCode: 404, Body: "Not Found"}),
 		},
 		responses: map[string]string{"live-critic": "OK"},
 	}
@@ -448,7 +448,7 @@ func TestPreflight_FlagsRetiredModel(t *testing.T) {
 // case: the primary is gone but the chain can still publish.
 func TestPreflight_ViableWhenOnlyFallbackLives(t *testing.T) {
 	mock := &perModelMockHFClient{
-		errs:      map[string]error{"dead-primary": fmt.Errorf("HF API error (status 410): gone")},
+		errs:      map[string]error{"dead-primary": &APIError{StatusCode: 410, Body: "gone"}},
 		responses: map[string]string{"live-fb": "OK", "live-critic": "OK"},
 	}
 	results := Preflight(mock, "dead-primary", []string{"live-fb"}, "live-critic")
@@ -457,54 +457,88 @@ func TestPreflight_ViableWhenOnlyFallbackLives(t *testing.T) {
 	}
 }
 
-// TestIsRetryableModelError_MatchesRealClientStrings guards the coupling between
-// HFClient's error wording and the classifier that reads it. These strings are
-// copied from the formats HFClient.Generate actually produces; a reword there
-// that silently stops triggering fallback is the bug this catches. The older
-// hand-written tests above could not catch it, because they invent their own
-// error text rather than using the client's.
-func TestIsRetryableModelError_MatchesRealClientStrings(t *testing.T) {
+// TestClassifyAPIError covers every failure shape HFClient.Generate can return,
+// by status code rather than by prose. Two of these were silently unclassified
+// when classification was done by substring-matching the formatted message, and
+// both would have reproduced the 26-day outage:
+//   - a retirement announced as HTTP 200 with an error body (StatusCode 0)
+//   - a model returning empty content, which is not an API error at all
+func TestClassifyAPIError(t *testing.T) {
 	cases := []struct {
-		name string
-		err  error
-		want bool
+		name          string
+		err           *APIError
+		wantGone      bool
+		wantTransient bool
 	}{
-		{"throttled, retries exhausted",
-			fmt.Errorf("HF API error (status 429) after 3 retries: too many requests"), true},
-		{"upstream 500 after retries",
-			fmt.Errorf("HF API error (status 500) after 3 retries: internal server error"), true},
-		{"upstream 502",
-			fmt.Errorf("HF API error (status 502): bad gateway"), true},
-		{"network failure",
-			fmt.Errorf("http request: dial tcp: i/o timeout"), true},
-		{"legacy rate-limit wording",
-			fmt.Errorf("rate limited after 3 retries: slow down"), true},
-		{"auth failure is not retryable",
-			fmt.Errorf("HF API error (status 401): Invalid username or password"), false},
-		{"malformed request is not retryable",
-			fmt.Errorf("HF API error (status 400): bad request"), false},
+		{"retired model", &APIError{StatusCode: 410, Body: "end of life"}, true, false},
+		{"missing model", &APIError{StatusCode: 404, Body: "Not Found"}, true, false},
+		{"throttled", &APIError{StatusCode: 429, Body: "slow down", Retries: 3}, false, true},
+		{"upstream 500", &APIError{StatusCode: 500, Body: "internal", Retries: 3}, false, true},
+		{"upstream 502", &APIError{StatusCode: 502, Body: "bad gateway", Retries: 3}, false, true},
+		{"not implemented is permanent", &APIError{StatusCode: 501, Body: "nope"}, false, false},
+		{"auth failure", &APIError{StatusCode: 401, Body: "bad token"}, false, false},
+		{"malformed request", &APIError{StatusCode: 400, Body: "bad request"}, false, false},
+
+		// HTTP 200 with an error object: no status to switch on.
+		{"200-with-error naming retirement",
+			&APIError{Body: "The model has reached its end of life"}, true, false},
+		{"200-with-error, cause unknown",
+			&APIError{Body: "internal routing failure"}, false, true},
+		{"empty content from a reasoning model",
+			&APIError{Body: "model returned empty content (token budget may have gone to reasoning)"},
+			false, true},
+
+		// The response body is untrusted free text and must never drive
+		// classification: this 400 previously read as a retired model and burned
+		// the whole fallback chain.
+		{"400 whose body mentions status 404",
+			&APIError{StatusCode: 400, Body: `{"detail":"upstream returns status 404"}`}, false, false},
+		{"403 whose body mentions status 500",
+			&APIError{StatusCode: 403, Body: "quota exceeded, see docs status 500"}, false, false},
 	}
 	for _, tc := range cases {
-		if got := isRetryableModelError(tc.err); got != tc.want {
-			t.Errorf("%s: isRetryableModelError = %v, want %v (err: %v)",
-				tc.name, got, tc.want, tc.err)
+		if got := isModelUnavailableError(tc.err); got != tc.wantGone {
+			t.Errorf("%s: ModelGone = %v, want %v", tc.name, got, tc.wantGone)
 		}
+		if got := isRetryableModelError(tc.err); got != tc.wantTransient {
+			t.Errorf("%s: Transient = %v, want %v", tc.name, got, tc.wantTransient)
+		}
+		wantTry := tc.wantGone || tc.wantTransient
+		if got := shouldTryAnotherModel(tc.err); got != wantTry {
+			t.Errorf("%s: shouldTryAnotherModel = %v, want %v", tc.name, got, wantTry)
+		}
+	}
+}
+
+// TestClassifyNonAPIError covers failures raised outside HFClient, where there
+// is no status code to read.
+func TestClassifyNonAPIError(t *testing.T) {
+	if !isRetryableModelError(fmt.Errorf("http request: dial tcp: i/o timeout")) {
+		t.Error("a transport failure should be retried against another model")
+	}
+	if isRetryableModelError(fmt.Errorf("some unrelated failure")) {
+		t.Error("an unrecognised error must not burn the fallback chain")
+	}
+	// Wrapped APIErrors must still classify, since Generate wraps them.
+	wrapped := fmt.Errorf("generator: %w", &APIError{StatusCode: 410, Body: "gone"})
+	if !isModelUnavailableError(wrapped) {
+		t.Error("errors.As must see through wrapping")
 	}
 }
 
 // TestShouldTryAnotherModel_RetiredAndMissing pins the two statuses that caused
 // the 26-day outage, using the provider's real response wording.
 func TestShouldTryAnotherModel_RetiredAndMissing(t *testing.T) {
-	retired := fmt.Errorf(`HF API error (status 410): {"title":"Gone","status":410,` +
-		`"detail":"The model 'openai/gpt-oss-120b' has reached its end of life"}`)
-	missing := fmt.Errorf(`HF API error (status 404): {"status":404,"title":"Not Found"}`)
+	retired := error(&APIError{StatusCode: 410, Model: "openai/gpt-oss-120b",
+		Body: `{"detail":"The model 'openai/gpt-oss-120b' has reached its end of life"}`})
+	missing := error(&APIError{StatusCode: 404, Body: `{"title":"Not Found"}`})
 	if !shouldTryAnotherModel(retired) {
 		t.Error("a retired model (410) must fall through to the next model")
 	}
 	if !shouldTryAnotherModel(missing) {
 		t.Error("a missing model (404) must fall through to the next model")
 	}
-	if shouldTryAnotherModel(fmt.Errorf("HF API error (status 401): bad token")) {
+	if shouldTryAnotherModel(&APIError{StatusCode: 401, Body: "bad token"}) {
 		t.Error("auth errors must not burn the fallback chain")
 	}
 }

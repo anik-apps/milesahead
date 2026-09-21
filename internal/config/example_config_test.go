@@ -32,4 +32,14 @@ func TestExampleConfigLoads(t *testing.T) {
 	if cfg.AI.CriticThreshold <= 0 || cfg.AI.CriticThreshold > 100 {
 		t.Errorf("critic_threshold %d out of range", cfg.AI.CriticThreshold)
 	}
+	// The incident was the primary AND its only fallback dying together, so a
+	// one-deep chain is no more resilient than the config that failed.
+	if n := len(strings.Split(cfg.AI.FallbackGeneratorModel, ",")); n < 2 {
+		t.Errorf("fallback chain is %d deep; configure at least two so one "+
+			"retirement cannot stop publication", n)
+	}
+	if cfg.AI.RequestTimeout <= 0 {
+		t.Error("request_timeout must be set explicitly; the default can be " +
+			"shorter than the primary model's real latency")
+	}
 }

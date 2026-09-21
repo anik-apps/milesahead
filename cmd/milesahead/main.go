@@ -79,9 +79,20 @@ func main() {
 	if cfg.AI.HFBaseURL != "" {
 		hfClient.BaseURL = cfg.AI.HFBaseURL
 	}
+	hfClient.SetRequestTimeout(time.Duration(cfg.AI.RequestTimeout) * time.Second)
 	cache := ai.NewCache(time.Duration(cfg.AI.CacheTTL) * time.Second)
 	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cfg.AI.FallbackGeneratorModel, cache)
 	critic := ai.NewCritic(hfClient, cfg.AI.CriticModel)
+	// Was hardcoded to meta/llama-3.2-90b-vision-instruct, which now times out
+	// on every call (120s+, reproducible) -- so each image scored burned the
+	// client's full request timeout before failing. Configurable now, so the
+	// next retirement is a config edit rather than a release. Declared here so
+	// the preflight below can probe it too.
+	visionModel := cfg.AI.VisionModel
+	if visionModel == "" {
+		visionModel = "meta/llama-3.2-11b-vision-instruct"
+	}
+
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
 	if cfg.AI.Critic2Model != "" {
 		critic2 := ai.NewCritic(hfClient, cfg.AI.Critic2Model)
@@ -92,30 +103,28 @@ func main() {
 	// calling them every three hours. A retired model answers 410 forever, and
 	// without this the only symptom is articles quietly never appearing.
 	go func() {
-		results := ai.Preflight(hfClient, cfg.AI.GeneratorModel,
-			strings.Split(cfg.AI.FallbackGeneratorModel, ","),
-			cfg.AI.CriticModel, cfg.AI.Critic2Model)
-		if ai.GenerationViable(results) {
+		results := ai.PreflightAll(hfClient, cfg.AI.GeneratorModel,
+			ai.SplitModels(cfg.AI.FallbackGeneratorModel),
+			[]string{cfg.AI.CriticModel, cfg.AI.Critic2Model},
+			[]string{visionModel})
+		switch {
+		case ai.PublishingViable(results):
 			slog.Info("ai preflight complete", "summary", ai.PreflightSummary(results))
-			return
+		case ai.GenerationViable(results):
+			slog.Error("ai preflight: no CRITIC is reachable - articles will be "+
+				"generated but every one will fail verification and none will publish",
+				"summary", ai.PreflightSummary(results))
+		default:
+			slog.Error("ai preflight: NO generator model is reachable - "+
+				"article generation cannot run until config is fixed",
+				"summary", ai.PreflightSummary(results))
 		}
-		slog.Error("ai preflight: NO generator model is reachable - "+
-			"article generation cannot run until config is fixed",
-			"summary", ai.PreflightSummary(results))
 	}()
 
 	// Image search and scoring
 	imageSearcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey, cfg.AI.PixabayKey)
 	imageScorer := images.NewScorer(hfClient, cfg.AI.CriticModel)
 	if cfg.AI.HFBaseURL != "" {
-		// Was hardcoded to meta/llama-3.2-90b-vision-instruct, which now times
-		// out on every call (120s+, reproducible) -- so each image scored burned
-		// the client's full 300s timeout before failing. Configurable now, so
-		// the next retirement is a config edit rather than a release.
-		visionModel := cfg.AI.VisionModel
-		if visionModel == "" {
-			visionModel = "meta/llama-3.2-11b-vision-instruct"
-		}
 		imageScorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, visionModel)
 	}
 

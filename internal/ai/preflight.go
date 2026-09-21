@@ -28,6 +28,13 @@ type PreflightResult struct {
 // independent of generation, and refusing to boot would turn a content outage
 // into a site outage.
 func Preflight(client HFClientInterface, generator string, fallbacks []string, critics ...string) []PreflightResult {
+	return PreflightAll(client, generator, fallbacks, critics, nil)
+}
+
+// PreflightAll additionally probes auxiliary models such as the vision model
+// used for image scoring. That model was hardcoded and silently dead, timing
+// out on every call -- the one failure the original preflight would have missed.
+func PreflightAll(client HFClientInterface, generator string, fallbacks, critics, others []string) []PreflightResult {
 	var out []PreflightResult
 
 	check := func(model, role string) {
@@ -41,12 +48,16 @@ func Preflight(client HFClientInterface, generator string, fallbacks []string, c
 		switch {
 		case err == nil:
 			slog.Info("preflight ok", "role", role, "model", model)
-		case isModelUnavailableError(err):
-			slog.Error("preflight FAILED: model no longer exists",
-				"role", role, "model", model, "err", err)
 		default:
-			slog.Warn("preflight inconclusive (model may be temporarily unavailable)",
-				"role", role, "model", model, "err", err)
+			// Every configured model is load-bearing: a dead critic stops
+			// publication just as completely as a dead generator, because
+			// Pipeline.Process returns an error when verification fails. So
+			// this is ERROR regardless of role and regardless of whether the
+			// cause looks permanent -- WARN-level reporting is what let the
+			// previous outage run for 26 days.
+			slog.Error("preflight FAILED: configured model did not answer",
+				"role", role, "model", model, "permanent", isModelUnavailableError(err),
+				"err", err)
 		}
 		out = append(out, r)
 	}
@@ -57,6 +68,9 @@ func Preflight(client HFClientInterface, generator string, fallbacks []string, c
 	}
 	for _, c := range critics {
 		check(c, "critic")
+	}
+	for _, o := range others {
+		check(o, "vision")
 	}
 	return out
 }
@@ -70,6 +84,23 @@ func GenerationViable(results []PreflightResult) bool {
 		}
 	}
 	return false
+}
+
+// PublishingViable reports whether the pipeline can complete end to end.
+//
+// Generation alone is not enough: Pipeline.Process verifies every article and
+// returns an error if the critic call fails, so a live generator with a dead
+// critic publishes exactly nothing. The critic is also the one role with no
+// fallback chain, which makes it the most fragile link, and it was one of the
+// three models retired in the incident this check exists to catch.
+func PublishingViable(results []PreflightResult) bool {
+	critic := false
+	for _, r := range results {
+		if r.OK && r.Role == "critic" {
+			critic = true
+		}
+	}
+	return GenerationViable(results) && critic
 }
 
 // PreflightSummary renders results for a single log line.

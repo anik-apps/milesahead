@@ -29,13 +29,30 @@ type HFClient struct {
 	httpClient *http.Client
 }
 
+// DefaultRequestTimeout bounds a single model call.
+//
+// Worth tuning with the model: generation latency varies by more than an order
+// of magnitude between models (~10s for a small one, 105-510s for a 550B
+// reasoning model), and a timeout below the primary's real latency is
+// indistinguishable from the model being dead -- it would silently demote every
+// article to the fallback.
+const DefaultRequestTimeout = 300 * time.Second
+
 // NewHFClient creates a new HFClient with the given token and retry limit.
 func NewHFClient(token string, maxRetries int) *HFClient {
 	return &HFClient{
 		token:      token,
 		maxRetries: maxRetries,
 		BaseURL:    defaultBaseURL,
-		httpClient: &http.Client{Timeout: 300 * time.Second},
+		httpClient: &http.Client{Timeout: DefaultRequestTimeout},
+	}
+}
+
+// SetRequestTimeout overrides the per-call timeout. A non-positive value keeps
+// the current one.
+func (c *HFClient) SetRequestTimeout(d time.Duration) {
+	if d > 0 {
+		c.httpClient.Timeout = d
 	}
 }
 
@@ -134,7 +151,10 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 		// Retry throttling and any 5xx. Previously only 429 and 503 were
 		// retried, so a single transient 500 or 502 from the provider killed
 		// the request outright even though the next attempt would have worked.
-		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+		// Retry throttling and transient 5xx. 501/505 are permanent by
+		// definition, so retrying them only multiplies failed calls.
+		if resp.StatusCode == 429 ||
+			(resp.StatusCode >= 500 && resp.StatusCode != 501 && resp.StatusCode != 505) {
 			if attempt < c.maxRetries {
 				slog.Warn("ai api retry", "model", model, "attempt", attempt, "status", resp.StatusCode)
 				time.Sleep(backoff)
@@ -143,14 +163,14 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 			}
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", fmt.Errorf("HF API error (status %d) after %d retries: %s",
-				resp.StatusCode, c.maxRetries, string(respBody))
+			return "", &APIError{StatusCode: resp.StatusCode, Model: model,
+				Body: string(respBody), Retries: c.maxRetries}
 		}
 
 		if resp.StatusCode != http.StatusOK {
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", fmt.Errorf("HF API error (status %d): %s", resp.StatusCode, string(respBody))
+			return "", &APIError{StatusCode: resp.StatusCode, Model: model, Body: string(respBody)}
 		}
 
 		var chatResp chatResponse
@@ -160,21 +180,37 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 			return "", fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
 		}
 
+		// HTTP 200 carrying an error object. This is how an OpenAI-compatible
+		// gateway can announce a retired model without ever using a 4xx, so it
+		// must stay classifiable -- StatusCode 0 means "we do not know", and
+		// APIError inspects the body for retirement wording.
 		if chatResp.Error != nil {
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", fmt.Errorf("HF API error: %s", chatResp.Error.Message)
+			return "", &APIError{Model: model, Body: chatResp.Error.Message}
 		}
 
 		if len(chatResp.Choices) == 0 {
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", fmt.Errorf("empty response from HF API")
+			return "", &APIError{Model: model, Body: "no choices in response"}
 		}
 
 		content := chatResp.Choices[0].Message.Content
 		// Strip <think>...</think> blocks from reasoning models (DeepSeek R1, etc.)
 		content = stripThinkingTags(content)
+
+		// A reasoning model can spend its whole token budget thinking and return
+		// no answer. That arrives as HTTP 200 with empty content, so without
+		// this it was a silent success: no fallback, and the empty string cached
+		// against that prompt for the whole cache TTL.
+		if strings.TrimSpace(content) == "" {
+			metrics.AIAPIErrorsTotal.Inc()
+			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
+			return "", &APIError{Model: model,
+				Body: "model returned empty content (token budget may have gone to reasoning)"}
+		}
+
 		metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 		return content, nil
 	}
