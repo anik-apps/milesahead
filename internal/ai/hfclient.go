@@ -43,10 +43,19 @@ const initialBackoff = 2 * time.Second
 // than generation. Scout's Take, tags and image queries all ask for 256.
 const smallCallTokens = 512
 
-// SmallCallTimeout bounds those enrichment calls. Generous next to their real
-// latency (seconds), short enough that a hung one fails and retries instead of
-// blocking the article behind it.
-const SmallCallTimeout = 90 * time.Second
+// SmallCallTimeout bounds those enrichment calls.
+//
+// Was 90s, which is ~7x the slowest healthy response measured (2.0-12.5s) and
+// far too patient once a fallback chain exists. With 3 retries that is 6.2
+// minutes of waiting on a degraded model BEFORE the chain even tries a healthy
+// one -- observed in production on 2026-09-21, where a single enrichment pass
+// spent minutes per field retrying a model that was timing out while a working
+// alternative sat unused.
+//
+// Retrying hard is right when there is no alternative. When there is one,
+// failing over quickly beats waiting. 30s is still 2.4x the slowest healthy
+// response.
+const SmallCallTimeout = 30 * time.Second
 
 // DefaultRequestTimeout bounds a single model call.
 //
