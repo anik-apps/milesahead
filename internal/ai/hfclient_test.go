@@ -4,22 +4,20 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
 
 func makeChatResponse(content string) chatResponse {
-	return chatResponse{
-		Choices: []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		}{
-			{Message: struct {
-				Content string `json:"content"`
-			}{Content: content}},
-		},
-	}
+	return makeChatResponseWithFinish(content, "stop")
+}
+
+func makeChatResponseWithFinish(content, finishReason string) chatResponse {
+	var c chatChoice
+	c.Message.Content = content
+	c.FinishReason = finishReason
+	return chatResponse{Choices: []chatChoice{c}}
 }
 
 func TestHFClient_Generate(t *testing.T) {
@@ -229,5 +227,90 @@ func TestStripThinkingTags_TerminatesOnMalformedInput(t *testing.T) {
 				t.Fatalf("stripThinkingTags(%q) did not terminate", tc.in)
 			}
 		})
+	}
+}
+
+// TestHFClient_RetriesTruncatedResponse guards against storing a half-sentence.
+//
+// A response cut off by max_tokens comes back HTTP 200 with NON-EMPTY content,
+// so an emptiness check cannot see it. Measured on this provider at the 256
+// token budget the enrichment calls use, nvidia/nemotron-3-super-120b-a12b
+// returns fragments like "...if you carry one of those cards" — which would be
+// stored verbatim as the article's Scout's Take.
+func TestHFClient_RetriesTruncatedResponse(t *testing.T) {
+	attempts := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			json.NewEncoder(w).Encode(
+				makeChatResponseWithFinish("...if you carry one of those cards", "length"))
+			return
+		}
+		json.NewEncoder(w).Encode(makeChatResponse("A complete, properly finished take."))
+	}))
+	defer ts.Close()
+
+	client := NewHFClient("token", 3)
+	client.BaseURL = ts.URL
+	client.SetBackoff(time.Millisecond)
+
+	result, err := client.Generate("test-model", "prompt", 256)
+	if err != nil {
+		t.Fatalf("a truncated response should be retried, got: %v", err)
+	}
+	if result != "A complete, properly finished take." {
+		t.Errorf("stored the truncated fragment instead of retrying: %q", result)
+	}
+}
+
+// TestHFClient_RetriesEmptyContent covers the other unusable 200: a reasoning
+// model spending its whole budget thinking and answering with nothing.
+func TestHFClient_RetriesEmptyContent(t *testing.T) {
+	attempts := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			json.NewEncoder(w).Encode(makeChatResponse(""))
+			return
+		}
+		json.NewEncoder(w).Encode(makeChatResponse("Recovered."))
+	}))
+	defer ts.Close()
+
+	client := NewHFClient("token", 3)
+	client.BaseURL = ts.URL
+	client.SetBackoff(time.Millisecond)
+
+	if _, err := client.Generate("test-model", "prompt", 256); err != nil {
+		t.Fatalf("empty content should be retried, got: %v", err)
+	}
+	if attempts != 3 {
+		t.Errorf("expected 3 attempts, got %d", attempts)
+	}
+}
+
+// TestHFClient_GivesUpOnPersistentlyUnusableResponse verifies the retries are
+// bounded: a model that always truncates must surface an error, not loop.
+func TestHFClient_GivesUpOnPersistentlyUnusableResponse(t *testing.T) {
+	attempts := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		json.NewEncoder(w).Encode(makeChatResponseWithFinish("half a sen", "length"))
+	}))
+	defer ts.Close()
+
+	client := NewHFClient("token", 2)
+	client.BaseURL = ts.URL
+	client.SetBackoff(time.Millisecond)
+
+	_, err := client.Generate("test-model", "prompt", 256)
+	if err == nil {
+		t.Fatal("expected an error after exhausting retries")
+	}
+	if attempts != 3 { // initial + 2 retries
+		t.Errorf("expected 3 attempts, got %d", attempts)
+	}
+	if !strings.Contains(err.Error(), "truncated") {
+		t.Errorf("error should name truncation, got: %v", err)
 	}
 }

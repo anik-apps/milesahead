@@ -136,13 +136,21 @@ type chatMessage struct {
 }
 
 // chatResponse is the OpenAI-compatible response format.
+// chatChoice is named rather than anonymous so tests construct it the same way
+// production parses it. As an inline literal, every test that built a response
+// had to mirror the field list exactly, and adding a field broke them all.
+type chatChoice struct {
+	Message struct {
+		Content string `json:"content"`
+	} `json:"message"`
+	// FinishReason is "length" when max_tokens cut the answer off. Without
+	// reading it, a half-sentence is indistinguishable from a short answer.
+	FinishReason string `json:"finish_reason"`
+}
+
 type chatResponse struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Error *struct {
+	Choices []chatChoice `json:"choices"`
+	Error   *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
 }
@@ -315,15 +323,34 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 		// Strip <think>...</think> blocks from reasoning models (DeepSeek R1, etc.)
 		content = stripThinkingTags(content)
 
-		// A reasoning model can spend its whole token budget thinking and return
-		// no answer. That arrives as HTTP 200 with empty content, so without
-		// this it was a silent success: no fallback, and the empty string cached
-		// against that prompt for the whole cache TTL.
-		if strings.TrimSpace(content) == "" {
+		// Two ways a 200 can still be a failure, both worth another attempt.
+		//
+		// Empty content: a reasoning model can spend the whole token budget
+		// thinking and return no answer. Measured on this provider at 256
+		// tokens, openai/gpt-oss-20b does exactly that.
+		//
+		// Truncated content: finish_reason "length" means max_tokens cut the
+		// answer off mid-sentence. That is the more dangerous of the two,
+		// because the result is NON-empty and would otherwise be stored
+		// verbatim -- nvidia/nemotron-3-super-120b-a12b at 256 tokens returns
+		// things like "...if you carry one of those cards" and nothing
+		// downstream would ever notice.
+		finish := chatResp.Choices[0].FinishReason
+		if strings.TrimSpace(content) == "" || finish == "length" {
+			why := "model returned empty content (token budget may have gone to reasoning)"
+			if finish == "length" {
+				why = "model output truncated at max_tokens (finish_reason=length)"
+			}
+			if attempt < c.maxRetries {
+				slog.Warn("ai api unusable response, retrying",
+					"model", model, "attempt", attempt, "reason", why)
+				time.Sleep(backoff)
+				backoff *= 2
+				continue
+			}
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", &APIError{Model: model,
-				Body: "model returned empty content (token budget may have gone to reasoning)"}
+			return "", &APIError{Model: model, Body: why}
 		}
 
 		metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
