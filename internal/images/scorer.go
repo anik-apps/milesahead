@@ -7,7 +7,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -137,6 +139,70 @@ type visionMessage struct {
 	Content json.RawMessage `json:"content"`
 }
 
+// visionScorePattern finds a score stated in prose, for models that will not
+// hold to the JSON contract.
+//
+// Anchored deliberately: an unanchored "first number" would read "Japan
+// Airlines 787" as a score of 787. Only forms that actually assert a score
+// count, and the value is range-checked afterwards.
+var visionScorePattern = regexp.MustCompile(
+	`(?i)(?:"?score"?\s*[:=]\s*|\bscore\s+(?:of\s+|is\s+)?|\brate[ds]?\s+(?:it\s+)?(?:a[ns]?\s+)?)(\d{1,2}(?:\.\d)?)|\b(\d{1,2}(?:\.\d)?)\s*(?:/|out of)\s*10\b`)
+
+// parseVisionScore reads a 1-10 score from a model reply, preferring the JSON
+// contract and falling back to prose.
+//
+// The fallback exists because a model that narrates its judgement is still
+// giving a usable judgement; discarding it meant the image took a penalty for
+// the model's verbosity rather than for being a bad image.
+func parseVisionScore(content string) (score float64, reason string, ok bool) {
+	content = strings.TrimSpace(content)
+
+	if start := strings.Index(content, "{"); start != -1 {
+		if end := strings.LastIndex(content, "}"); end > start {
+			var parsed struct {
+				Score  float64 `json:"score"`
+				Reason string  `json:"reason"`
+			}
+			if err := json.Unmarshal([]byte(content[start:end+1]), &parsed); err == nil {
+				if parsed.Score >= 1 && parsed.Score <= 10 {
+					return parsed.Score, parsed.Reason, true
+				}
+			}
+		}
+	}
+
+	m := visionScorePattern.FindStringSubmatch(content)
+	if m == nil {
+		return 0, "", false
+	}
+	raw := m[1]
+	if raw == "" {
+		raw = m[2]
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil || v < 1 || v > 10 {
+		return 0, "", false
+	}
+	return v, truncateForLog(content), true
+}
+
+// truncateForLog keeps a model reply readable in a log line.
+func truncateForLog(s string) string {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
+	if len(s) > 160 {
+		return s[:160] + "..."
+	}
+	return s
+}
+
+// visionMaxTokens bounds a vision reply.
+//
+// Was 200, which truncated any model that narrates before answering -- the
+// reply got cut off mid-explanation, the JSON was never reached, and the
+// candidate took a scoring penalty for the model's verbosity rather than the
+// image's relevance. Observed with meta/llama-3.2-11b-vision-instruct.
+const visionMaxTokens = 512
+
 // visionScore sends actual images to a vision model for scoring.
 // If ALL vision calls fail, restores original text scores (no penalty).
 func (s *Scorer) visionScore(title, tldr string, candidates []ImageCandidate) []ImageCandidate {
@@ -156,15 +222,18 @@ func (s *Scorer) visionScore(title, tldr string, candidates []ImageCandidate) []
 	}()
 	for i, c := range candidates {
 		prompt := fmt.Sprintf(
-			`Look at this image. The article is titled: "%s". Summary: "%s".
+			`Reply with ONLY this JSON object and nothing before or after it:
+{"score": N, "reason": "brief reason"}
+
+Do not explain your reasoning before the JSON. Start your reply with "{".
+
+Look at this image. The article is titled: "%s". Summary: "%s".
 
 Score this image 1-10 for how specifically it represents this topic.
 9-10: Shows the exact brand, product, or place mentioned
 7-8: Closely related (correct type of thing but not the specific one)
 5-6: Generic but relevant category
-1-4: Wrong or irrelevant
-
-Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
+1-4: Wrong or irrelevant`, title, tldr)
 
 		contentParts := []interface{}{
 			map[string]string{"type": "text", "text": prompt},
@@ -185,7 +254,7 @@ Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 			Messages: []visionMessage{
 				{Role: "user", Content: json.RawMessage(contentJSON)},
 			},
-			MaxTokens: 200,
+			MaxTokens: visionMaxTokens,
 		}
 		reqBody, err := json.Marshal(vReq)
 		if err != nil {
@@ -236,24 +305,17 @@ Reply ONLY with JSON: {"score": N, "reason": "brief reason"}`, title, tldr)
 			continue
 		}
 
-		content := chatResp.Choices[0].Message.Content
-		content = strings.TrimSpace(content)
-		if idx := strings.Index(content, "{"); idx != -1 {
-			content = content[idx:]
-		}
-		if idx := strings.LastIndex(content, "}"); idx != -1 {
-			content = content[:idx+1]
-		}
-
-		var result struct {
-			Score  float64 `json:"score"`
-			Reason string  `json:"reason"`
-		}
-		if err := json.Unmarshal([]byte(content), &result); err != nil {
-			slog.Warn("vision score parse failed", "index", i, "response", content)
+		score, reason, ok := parseVisionScore(chatResp.Choices[0].Message.Content)
+		if !ok {
+			slog.Warn("vision score parse failed", "index", i,
+				"response", truncateForLog(chatResp.Choices[0].Message.Content))
 			candidates[i].Score = candidates[i].Score * 0.6
 			continue
 		}
+		result := struct {
+			Score  float64
+			Reason string
+		}{Score: score, Reason: reason}
 
 		candidates[i].Score = result.Score
 		visionSuccesses++
