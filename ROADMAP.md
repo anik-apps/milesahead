@@ -72,6 +72,12 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       (`== 0`) would NOT have caught it: the counter is a CounterVec, so during the
       outage its series was absent rather than zero, which is why the drought rule
       treats NoData as firing. Runbook at `docs/runbooks/generation-drought.md`.
+- [ ] **Enrichment failures are invisible** — `extract details`, `scouts take`, image
+      query generation and image scoring all log WARN and continue, so a transient
+      provider blip publishes an article with no key-details table, no Scout's Take and
+      no image, and nothing reports it. Article 1030 shipped that way on 2026-09-21.
+      *Fix:* count them (`milesahead_enrichment_failures_total{step}`) and alert on a
+      sustained rate, or mark such articles for re-enrichment rather than accepting them.
 - [ ] **Audit remaining hardcoded models** — `meta/llama-3.2-90b-vision-instruct` was
       hardcoded in `main.go` and times out on every call, so each scored image burned the
       full 300s client timeout. Now configurable via `vision_model`. Direct
