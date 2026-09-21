@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+// preflightMaxTokens bounds the probe response. See the note in Preflight's
+// check function: too small a budget makes reasoning models look dead.
+const preflightMaxTokens = 512
+
 // PreflightResult reports whether one configured model actually answers.
 type PreflightResult struct {
 	Model string
@@ -41,9 +45,14 @@ func PreflightAll(client HFClientInterface, generator string, fallbacks, critics
 		if strings.TrimSpace(model) == "" {
 			return
 		}
-		// One token is enough: we are asking "does this model exist", not
-		// "is it any good".
-		_, err := client.Generate(model, "Reply with the single word: OK", 16)
+		// The budget has to leave room for a reasoning model to think before it
+		// answers. At 16 tokens openai/gpt-oss-20b spends the whole allowance
+		// reasoning and returns empty content, which this check then reports as
+		// a dead model -- a false alarm on a model that generates articles
+		// perfectly well. Measured on that model: 16 tokens empty, 128 and
+		// above returns "OK". 512 leaves a wide margin without being a
+		// meaningful cost once per boot.
+		_, err := client.Generate(model, "Reply with the single word: OK", preflightMaxTokens)
 		r := PreflightResult{Model: model, Role: role, OK: err == nil, Err: err}
 		switch {
 		case err == nil:
