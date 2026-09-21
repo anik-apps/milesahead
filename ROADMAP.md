@@ -65,10 +65,13 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       it afterwards, meaning even the manual path applied config only by luck of timing.
       Config now has its own ungated job that `deploy` depends on, so the restart always
       follows the write.
-- [ ] **Alert on generation drought** — `ArticlesGeneratedTotal` and `AIAPIErrorsTotal`
+- [x] **Alert on generation drought** — `ArticlesGeneratedTotal` and `AIAPIErrorsTotal`
       were already being scraped into Grafana Cloud throughout the outage; no alert was
-      wired to them. One rule (`increase(articles_generated_total[24h]) == 0`) would have
-      caught this on day one. *This is the fix that actually prevents a recurrence.*
+      wired to them. Two rules now ship from `deploy/grafana-alerts.json` with stable
+      UIDs, deployed idempotently alongside the dashboards. Note the obvious rule
+      (`== 0`) would NOT have caught it: the counter is a CounterVec, so during the
+      outage its series was absent rather than zero, which is why the drought rule
+      treats NoData as firing. Runbook at `docs/runbooks/generation-drought.md`.
 - [ ] **Audit remaining hardcoded models** — `meta/llama-3.2-90b-vision-instruct` was
       hardcoded in `main.go` and times out on every call, so each scored image burned the
       full 300s client timeout. Now configurable via `vision_model`. Direct
