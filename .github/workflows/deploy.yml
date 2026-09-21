@@ -378,27 +378,27 @@ jobs:
           " > /tmp/alert-uids.txt
 
           FAILED=0
-          while read -r UID; do
-            [ -z "$UID" ] && continue
+          while read -r RULE_UID; do
+            [ -z "$RULE_UID" ] && continue
             # X-Disable-Provenance keeps the rules editable in the Grafana UI;
             # without it provisioned rules are read-only and cannot be silenced
             # or tuned during an incident.
-            CODE=$(curl -sS -o /tmp/alert-resp.json -w "%{http_code}"               -X PUT "$GRAFANA_URL/api/v1/provisioning/alert-rules/$UID"               -H "Authorization: Bearer $GRAFANA_API_KEY"               -H "Content-Type: application/json"               -H "X-Disable-Provenance: true"               -d @"/tmp/alert-$UID.json")
+            CODE=$(curl -sS -o /tmp/alert-resp.json -w "%{http_code}"               -X PUT "$GRAFANA_URL/api/v1/provisioning/alert-rules/$RULE_UID"               -H "Authorization: Bearer $GRAFANA_API_KEY"               -H "Content-Type: application/json"               -H "X-Disable-Provenance: true"               -d @"/tmp/alert-$RULE_UID.json")
 
             if [ "$CODE" = "404" ]; then
-              CODE=$(curl -sS -o /tmp/alert-resp.json -w "%{http_code}"                 -X POST "$GRAFANA_URL/api/v1/provisioning/alert-rules"                 -H "Authorization: Bearer $GRAFANA_API_KEY"                 -H "Content-Type: application/json"                 -H "X-Disable-Provenance: true"                 -d @"/tmp/alert-$UID.json")
+              CODE=$(curl -sS -o /tmp/alert-resp.json -w "%{http_code}"                 -X POST "$GRAFANA_URL/api/v1/provisioning/alert-rules"                 -H "Authorization: Bearer $GRAFANA_API_KEY"                 -H "Content-Type: application/json"                 -H "X-Disable-Provenance: true"                 -d @"/tmp/alert-$RULE_UID.json")
             fi
 
             case "$CODE" in
               200|201|202)
-                echo "Deployed alert rule $UID"
+                echo "Deployed alert rule $RULE_UID"
                 ;;
               503)
                 # Same hibernating-instance case the dashboard step tolerates.
-                echo "::warning title=Alert rule not updated::$UID skipped, Grafana returned 503 (instance hibernating). Wake it and re-run."
+                echo "::warning title=Alert rule not updated::$RULE_UID skipped, Grafana returned 503 (instance hibernating). Wake it and re-run."
                 ;;
               *)
-                echo "Alert rule $UID failed (HTTP $CODE):"
+                echo "Alert rule $RULE_UID failed (HTTP $CODE):"
                 cat /tmp/alert-resp.json
                 FAILED=1
                 ;;
