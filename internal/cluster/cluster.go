@@ -19,6 +19,26 @@ type ArticleCluster struct {
 	Articles []Article
 }
 
+// DefaultThreshold is the minimum average title similarity for an article to
+// join a cluster.
+//
+// It was 0.5, which split one story across several clusters. On 2026-09-21 five
+// posts about Citi adding Japan Airlines as a transfer partner formed two
+// separate clusters, and the site published both as separate articles. The raw
+// ID dedupe could not help: the clusters were disjoint by construction, so no
+// source article was reused and the check correctly passed.
+//
+// Measured on those exact five titles plus two unrelated stories:
+//
+//	0.50 -> 5 clusters [2 2 1 1 1]   the split that shipped duplicates
+//	0.40 -> 4 clusters [2 3 1 1]
+//	0.30 -> 3 clusters [5 1 1]       one story, unrelated posts still apart
+//	0.15 -> 3 clusters [5 1 1]       unchanged all the way down
+//
+// 0.30 sits in the middle of a plateau rather than on an edge, so it has margin
+// in both directions.
+const DefaultThreshold = 0.30
+
 // Cluster groups articles by title similarity using TF-IDF cosine similarity
 // and greedy agglomerative clustering. The threshold controls the minimum
 // average similarity required to join an existing cluster (0.0-1.0).

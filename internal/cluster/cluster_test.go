@@ -47,3 +47,48 @@ func TestClusterSingleArticle(t *testing.T) {
 		t.Error("expected single article in cluster")
 	}
 }
+
+// TestDefaultThreshold_GroupsOneStoryFromManySites is the regression test for
+// the duplicate articles published on 2026-09-21.
+//
+// Five sites covered the same Citi/JAL announcement. At the old 0.5 threshold
+// they formed two separate clusters, so the pipeline generated two articles
+// about one story -- and the raw-ID dedupe could not catch it, because disjoint
+// clusters share no source article by construction. Deduplication has to happen
+// at clustering time or not at all.
+func TestDefaultThreshold_GroupsOneStoryFromManySites(t *testing.T) {
+	sameStory := []string{
+		"Citi Adds Japan Airlines Mileage Bank as Transfer Partner",
+		"Japan Airlines Mileage Bank Added As Citi ThankYou Transfer Partner, Plus A 30% Bonus",
+		"Citi Adds Japan Airlines As 1:1 Transfer Partner (Limited 30% Transfer Bonus)",
+		"Citi adds Japan Airlines as a 1:1 partner, launches 30% transfer bonus",
+		"Another One: Citi Adds Japan Airlines as Transfer Partner (With a 30% Bonus)",
+	}
+	unrelated := []string{
+		"Hyatt Announces 12 New Hotels Opening in 2027",
+		"Delta SkyMiles Adds New Award Chart Region",
+	}
+
+	var arts []Article
+	for i, title := range append(append([]string{}, sameStory...), unrelated...) {
+		arts = append(arts, Article{ID: int64(i + 1), Title: title, SourceID: int64(i + 1)})
+	}
+
+	clusters := Cluster(arts, DefaultThreshold)
+
+	biggest := 0
+	for _, c := range clusters {
+		if len(c.Articles) > biggest {
+			biggest = len(c.Articles)
+		}
+	}
+	if biggest != len(sameStory) {
+		t.Errorf("largest cluster holds %d articles, want all %d covering one story; "+
+			"got %d clusters total", biggest, len(sameStory), len(clusters))
+	}
+	// The unrelated stories must not be swept in by a looser threshold.
+	if len(clusters) != 1+len(unrelated) {
+		t.Errorf("got %d clusters, want %d (one story + %d unrelated)",
+			len(clusters), 1+len(unrelated), len(unrelated))
+	}
+}

@@ -147,6 +147,7 @@ jobs:
 
           scanner:
             default_interval: 180
+            cluster_threshold: 0.30
             user_agent: "MilesAhead/1.0"
 
           ai:
