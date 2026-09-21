@@ -1,0 +1,114 @@
+[
+  {
+    "uid": "milesahead-no-articles",
+    "title": "Miles Ahead — no articles generated in 24h",
+    "ruleGroup": "milesahead-content",
+    "folderUID": "ffh46waaplbswe",
+    "condition": "C",
+    "for": "1h",
+    "isPaused": false,
+    "orgID": 1,
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": { "from": 86400, "to": 0 },
+        "datasourceUid": "DS_PLACEHOLDER",
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "sum(increase(milesahead_articles_generated_total[24h]))",
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "reducer": "last",
+          "expression": "A",
+          "settings": { "mode": "replaceNN", "replaceWithValue": 0 }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            { "evaluator": { "type": "lt", "params": [1] } }
+          ]
+        }
+      }
+    ],
+    "noDataState": "Alerting",
+    "execErrState": "Alerting",
+    "labels": { "severity": "critical", "service": "milesahead" },
+    "annotations": {
+      "summary": "Miles Ahead has published no articles in 24 hours",
+      "description": "sum(increase(milesahead_articles_generated_total[24h])) is below 1. Scanning can look perfectly healthy while this fires: in the 2026-08-26 incident raw_articles kept filling for 26 days while every generation failed with 410 Gone, because the provider had retired the generator, the critic and the only fallback. NoData counts as firing on purpose — the counter is a CounterVec, so its series does not exist at all until the first article, which is exactly the state an outage leaves it in.",
+      "runbook_url": "https://github.com/anik-apps/milesahead/blob/main/docs/runbooks/generation-drought.md"
+    }
+  },
+  {
+    "uid": "milesahead-ai-api-errors",
+    "title": "Miles Ahead — AI API failures sustained",
+    "ruleGroup": "milesahead-content",
+    "folderUID": "ffh46waaplbswe",
+    "condition": "C",
+    "for": "30m",
+    "isPaused": false,
+    "orgID": 1,
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": { "from": 21600, "to": 0 },
+        "datasourceUid": "DS_PLACEHOLDER",
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "sum(increase(milesahead_ai_api_errors_total[6h]))",
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "reducer": "last",
+          "expression": "A",
+          "settings": { "mode": "replaceNN", "replaceWithValue": 0 }
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            { "evaluator": { "type": "gt", "params": [30] } }
+          ]
+        }
+      }
+    ],
+    "noDataState": "OK",
+    "execErrState": "OK",
+    "labels": { "severity": "warning", "service": "milesahead" },
+    "annotations": {
+      "summary": "Miles Ahead AI API failures are elevated",
+      "description": "More than 30 final AI API failures in 6 hours. This is the earlier, noisier signal — the drought alert is the reliable one. Threshold is set above a whole scan cycle failing (~10-20 topics per 3h cycle) so a single bad cycle does not page, but a persistent condition does. NoData is OK here: no errors recorded is the healthy state.",
+      "runbook_url": "https://github.com/anik-apps/milesahead/blob/main/docs/runbooks/generation-drought.md"
+    }
+  }
+]

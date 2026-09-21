@@ -352,3 +352,60 @@ jobs:
           if [ "$SKIPPED" -eq 1 ]; then
             echo "Dashboards skipped: Grafana instance unavailable. Deployment itself succeeded." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Deploy Grafana alert rules
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_API_KEY: ${{ secrets.GRAFANA_API_KEY }}
+          GRAFANA_DS_UID: ${{ secrets.GRAFANA_DS_UID }}
+        run: |
+          if [ -z "$GRAFANA_URL" ] || [ -z "$GRAFANA_API_KEY" ]; then
+            echo "Skipping alert deploy — secrets not set"
+            exit 0
+          fi
+
+          # Rules carry stable UIDs, so PUT updates in place and POST only runs
+          # the first time. Without that, every deploy would create a duplicate
+          # rule and the alert would fire N times per incident.
+          python3 -c "
+          import json, os, sys
+          rules = json.load(open('deploy/grafana-alerts.json'))
+          ds = os.environ.get('GRAFANA_DS_UID') or 'grafanacloud-prom'
+          for r in rules:
+              body = json.dumps(r).replace('DS_PLACEHOLDER', ds)
+              open('/tmp/alert-' + r['uid'] + '.json', 'w').write(body)
+              print(r['uid'])
+          " > /tmp/alert-uids.txt
+
+          FAILED=0
+          while read -r UID; do
+            [ -z "$UID" ] && continue
+            # X-Disable-Provenance keeps the rules editable in the Grafana UI;
+            # without it provisioned rules are read-only and cannot be silenced
+            # or tuned during an incident.
+            CODE=$(curl -sS -o /tmp/alert-resp.json -w "%{http_code}"               -X PUT "$GRAFANA_URL/api/v1/provisioning/alert-rules/$UID"               -H "Authorization: Bearer $GRAFANA_API_KEY"               -H "Content-Type: application/json"               -H "X-Disable-Provenance: true"               -d @"/tmp/alert-$UID.json")
+
+            if [ "$CODE" = "404" ]; then
+              CODE=$(curl -sS -o /tmp/alert-resp.json -w "%{http_code}"                 -X POST "$GRAFANA_URL/api/v1/provisioning/alert-rules"                 -H "Authorization: Bearer $GRAFANA_API_KEY"                 -H "Content-Type: application/json"                 -H "X-Disable-Provenance: true"                 -d @"/tmp/alert-$UID.json")
+            fi
+
+            case "$CODE" in
+              200|201|202)
+                echo "Deployed alert rule $UID"
+                ;;
+              503)
+                # Same hibernating-instance case the dashboard step tolerates.
+                echo "::warning title=Alert rule not updated::$UID skipped, Grafana returned 503 (instance hibernating). Wake it and re-run."
+                ;;
+              *)
+                echo "Alert rule $UID failed (HTTP $CODE):"
+                cat /tmp/alert-resp.json
+                FAILED=1
+                ;;
+            esac
+          done < /tmp/alert-uids.txt
+
+          if [ "$FAILED" -eq 1 ]; then
+            echo "::error title=Alert rules not deployed::The generation-drought alert is the control that catches a silent content outage. Fix before relying on it."
+            exit 1
+          fi
