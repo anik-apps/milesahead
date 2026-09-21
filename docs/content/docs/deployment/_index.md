@@ -110,7 +110,6 @@ The following secrets are configured in GitHub Actions:
 | `ADMIN_PASSWORD_HASH` | bcrypt hash of admin password |
 | `UNSPLASH_KEY` | Unsplash API key |
 | `PEXELS_KEY` | Pexels API key |
-| `PIXABAY_KEY` | Pixabay API key |
 | `GRAFANA_API_KEY` | Grafana Cloud API key |
 | `GRAFANA_PROM_URL` | Grafana Cloud Prometheus endpoint |
 | `GRAFANA_PROM_USER` | Grafana Cloud Prometheus user |

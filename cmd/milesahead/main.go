@@ -128,7 +128,7 @@ func main() {
 	}()
 
 	// Image search and scoring
-	imageSearcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey, cfg.AI.PixabayKey)
+	imageSearcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey)
 	imageScorer := images.NewScorer(hfClient, cfg.AI.CriticModel)
 	if cfg.AI.HFBaseURL != "" {
 		imageScorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, visionModel)

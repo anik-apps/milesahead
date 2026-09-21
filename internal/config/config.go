@@ -52,7 +52,6 @@ type AIConfig struct {
 	CacheTTL              int    `yaml:"cache_ttl"`
 	UnsplashKey           string `yaml:"unsplash_key"`
 	PexelsKey             string `yaml:"pexels_key"`
-	PixabayKey            string `yaml:"pixabay_key"`
 }
 
 type SMTPConfig struct {

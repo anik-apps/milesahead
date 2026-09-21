@@ -141,6 +141,16 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       `hfClient.Generate(cfg.AI.CriticModel, ...)` calls in `main.go` still bypass the
       fallback chain entirely.
 
+- [x] **Homepage thumbnails rotted away** — 46 of the 80 approved articles with an image
+      pointed at a URL a browser could no longer fetch. Openverse's `/thumb/` proxy 424s
+      whenever its upstream fetch fails, and Pixabay's signed hotlinks 400 once they
+      expire ("This URL is invalid or has expired") — the API terms require downloading
+      rather than hotlinking. Openverse rows already held the provider's own stable CDN
+      link in `image_url`, so it is promoted to `image_thumbnail`; Pixabay is dropped as a
+      source and its rows cleared for the enrichment reconciler to re-pick. Newly chosen
+      images are now liveness-probed before they are stored, so a dead URL is caught at
+      pick time instead of on the homepage.
+
 ## Up Next
 
 - [ ] Card explainer videos — YouTube-hosted, embedded per card page (Amex Platinum, Sapphire Reserve, Strata Elite so far)
