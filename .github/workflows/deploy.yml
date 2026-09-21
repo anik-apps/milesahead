@@ -8,6 +8,14 @@ on:
         description: 'Run full initial setup (systemd, config, caddy)'
         type: boolean
         default: false
+      reseed_slugs:
+        description: 'Comma-separated card slugs to FORCE-reseed (overwrites live prose). Leave empty for a normal deploy.'
+        type: string
+        default: ''
+      reseed_structured:
+        description: 'Also force-reseed structured comparison data for those slugs'
+        type: boolean
+        default: true
 
 env:
   APP_DIR: /opt/milesahead
@@ -303,8 +311,34 @@ jobs:
           scp cmd/seed-structured/structured-data.json $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/structured-data.json
           $SSH "chmod +x ${{ env.APP_DIR }}/seed-structured"
 
-          # Seed card reference pages (skips existing)
+          # Seed card reference pages (skips existing).
           $SSH "${{ env.APP_DIR }}/seed-cards -db ${{ env.APP_DIR }}/data/milesahead.db"
+
+          # Corrections to a card already in the database are invisible to the
+          # step above: it skips rows that exist, by design, so it never
+          # clobbers live prose. Applying a fix therefore needs -force, and a
+          # bare -force would rewrite every card -- 30 of 52 last time it was
+          # measured. So corrections are dispatched explicitly, scoped to named
+          # slugs, and they take a verified backup first.
+          RESEED="${{ inputs.reseed_slugs }}"
+          if [ -n "$RESEED" ]; then
+            echo "::notice title=Scoped reseed::Force-reseeding: $RESEED"
+
+            # VACUUM INTO, not cp: a plain copy of a WAL-mode database loses
+            # whatever is still in the write-ahead log. That cost 25 rows once.
+            $SSH "cd ${{ env.APP_DIR }} && ./backup.sh" \
+              || { echo "::error title=Backup failed::Refusing to force-reseed without a verified backup."; exit 1; }
+
+            $SSH "${{ env.APP_DIR }}/seed-cards -db ${{ env.APP_DIR }}/data/milesahead.db -force -slug '$RESEED'" \
+              || { echo "::error title=Reseed failed::seed-cards -force did not complete."; exit 1; }
+
+            if [ "${{ inputs.reseed_structured }}" = "true" ]; then
+              $SSH "${{ env.APP_DIR }}/seed-structured -db ${{ env.APP_DIR }}/data/milesahead.db -force -slug '$RESEED'" \
+                || { echo "::error title=Reseed failed::seed-structured -force did not complete."; exit 1; }
+            fi
+
+            echo "Force-reseeded: $RESEED" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           # Seed structured comparison data (skips cards that already have data)
           $SSH "${{ env.APP_DIR }}/seed-structured -db ${{ env.APP_DIR }}/data/milesahead.db"
