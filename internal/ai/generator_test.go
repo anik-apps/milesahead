@@ -542,3 +542,26 @@ func TestShouldTryAnotherModel_RetiredAndMissing(t *testing.T) {
 		t.Error("auth errors must not burn the fallback chain")
 	}
 }
+
+// TestPreflight_AllowsReasoningModelsRoomToAnswer guards the probe's token
+// budget. A reasoning model emits its thinking first, so too small a budget
+// returns empty content and the model is reported dead -- which happened in
+// production to openai/gpt-oss-20b, a model that generates articles fine.
+func TestPreflight_AllowsReasoningModelsRoomToAnswer(t *testing.T) {
+	var gotTokens int
+	mock := &tokenRecordingClient{onCall: func(maxTokens int) { gotTokens = maxTokens }}
+
+	Preflight(mock, "some-model", nil)
+
+	if gotTokens < 128 {
+		t.Errorf("preflight probed with max_tokens=%d; measured minimum for a "+
+			"reasoning model to answer at all is 128", gotTokens)
+	}
+}
+
+type tokenRecordingClient struct{ onCall func(int) }
+
+func (c *tokenRecordingClient) Generate(model, prompt string, maxTokens int) (string, error) {
+	c.onCall(maxTokens)
+	return "OK", nil
+}
