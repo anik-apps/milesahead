@@ -39,14 +39,34 @@ type HFClient struct {
 // initialBackoff is the first retry delay; it doubles per attempt.
 const initialBackoff = 2 * time.Second
 
-// smallCallTokens is the budget below which a call counts as enrichment rather
-// than generation. Scout's Take, tags and image queries all ask for 256.
-const smallCallTokens = 512
+// shortCallTokens separates short, interactive calls from article generation.
+//
+// Every short call in the codebase asks for 2048 or fewer; generation and
+// criticism ask for 4096. The threshold sits between them with a 2x margin on
+// each side, rather than on top of a call site.
+//
+// It was 512, which is exactly what Scout's Take, tags and image queries ask
+// for -- so those three were capped only by an <= comparison, and one extra
+// token would silently have restored the 30x-longer generation timeout. Worse,
+// the three calls it did NOT cover are the expensive ones: key details (1024),
+// image text-scoring (2048) and card-update detection (1024) all inherited the
+// 900s generation timeout, so the "fail over faster" intent missed its biggest
+// targets entirely. TestTimeoutFor_ClassifiesEveryRealCallSite pins this.
+const shortCallTokens = 2048
 
-// SmallCallTimeout bounds those enrichment calls. Generous next to their real
-// latency (seconds), short enough that a hung one fails and retries instead of
-// blocking the article behind it.
-const SmallCallTimeout = 90 * time.Second
+// ShortCallTimeout bounds those short calls.
+//
+// Was 90s, which is ~7x the slowest healthy response measured (2.0-12.5s) and
+// far too patient once a fallback chain exists. With 3 retries that is 6.2
+// minutes of waiting on a degraded model BEFORE the chain even tries a healthy
+// one -- observed in production on 2026-09-21, where a single enrichment pass
+// spent minutes per field retrying a model that was timing out while a working
+// alternative sat unused.
+//
+// Retrying hard is right when there is no alternative. When there is one,
+// failing over quickly beats waiting. 30s is still 2.4x the slowest healthy
+// response.
+const ShortCallTimeout = 30 * time.Second
 
 // DefaultRequestTimeout bounds a single model call.
 //
@@ -88,8 +108,8 @@ func (c *HFClient) timeoutFor(maxTokens int) time.Duration {
 	if t <= 0 {
 		t = DefaultRequestTimeout
 	}
-	if maxTokens <= smallCallTokens && t > SmallCallTimeout {
-		return SmallCallTimeout
+	if maxTokens <= shortCallTokens && t > ShortCallTimeout {
+		return ShortCallTimeout
 	}
 	return t
 }
@@ -116,13 +136,21 @@ type chatMessage struct {
 }
 
 // chatResponse is the OpenAI-compatible response format.
+// chatChoice is named rather than anonymous so tests construct it the same way
+// production parses it. As an inline literal, every test that built a response
+// had to mirror the field list exactly, and adding a field broke them all.
+type chatChoice struct {
+	Message struct {
+		Content string `json:"content"`
+	} `json:"message"`
+	// FinishReason is "length" when max_tokens cut the answer off. Without
+	// reading it, a half-sentence is indistinguishable from a short answer.
+	FinishReason string `json:"finish_reason"`
+}
+
 type chatResponse struct {
-	Choices []struct {
-		Message struct {
-			Content string `json:"content"`
-		} `json:"message"`
-	} `json:"choices"`
-	Error *struct {
+	Choices []chatChoice `json:"choices"`
+	Error   *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
 }
@@ -130,18 +158,29 @@ type chatResponse struct {
 // stripThinkingTags removes <think>...</think> blocks from model responses.
 // Some reasoning models (DeepSeek R1, QwQ) include thinking chains in their output.
 func stripThinkingTags(s string) string {
+	const open, close = "<think>", "</think>"
 	for {
-		start := strings.Index(s, "<think>")
+		start := strings.Index(s, open)
 		if start == -1 {
 			break
 		}
-		end := strings.Index(s, "</think>")
-		if end == -1 {
-			// Unclosed think tag — remove everything from <think> onward
+		// Search for the closer AFTER the opener. Searching the whole string
+		// finds a stray "</think>" that precedes it, giving end < start, and
+		// then s[:start] + s[end+8:] reassembles the identical string -- the
+		// loop makes no progress and spins forever at 100% CPU.
+		//
+		// That is not hypothetical: the caller holds the enrichment pass guard,
+		// so a single such reply permanently wedges enrichment (every later
+		// pass logs "skipped: previous pass still running") and blocks graceful
+		// shutdown until systemd SIGKILLs the process.
+		rel := strings.Index(s[start:], close)
+		if rel == -1 {
+			// Unclosed think tag — remove everything from <think> onward.
 			s = strings.TrimSpace(s[:start])
 			break
 		}
-		s = s[:start] + s[end+len("</think>"):]
+		end := start + rel
+		s = s[:start] + s[end+len(close):]
 	}
 	return strings.TrimSpace(s)
 }
@@ -284,15 +323,34 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 		// Strip <think>...</think> blocks from reasoning models (DeepSeek R1, etc.)
 		content = stripThinkingTags(content)
 
-		// A reasoning model can spend its whole token budget thinking and return
-		// no answer. That arrives as HTTP 200 with empty content, so without
-		// this it was a silent success: no fallback, and the empty string cached
-		// against that prompt for the whole cache TTL.
-		if strings.TrimSpace(content) == "" {
+		// Two ways a 200 can still be a failure, both worth another attempt.
+		//
+		// Empty content: a reasoning model can spend the whole token budget
+		// thinking and return no answer. Measured on this provider at 256
+		// tokens, openai/gpt-oss-20b does exactly that.
+		//
+		// Truncated content: finish_reason "length" means max_tokens cut the
+		// answer off mid-sentence. That is the more dangerous of the two,
+		// because the result is NON-empty and would otherwise be stored
+		// verbatim -- nvidia/nemotron-3-super-120b-a12b at 256 tokens returns
+		// things like "...if you carry one of those cards" and nothing
+		// downstream would ever notice.
+		finish := chatResp.Choices[0].FinishReason
+		if strings.TrimSpace(content) == "" || finish == "length" {
+			why := "model returned empty content (token budget may have gone to reasoning)"
+			if finish == "length" {
+				why = "model output truncated at max_tokens (finish_reason=length)"
+			}
+			if attempt < c.maxRetries {
+				slog.Warn("ai api unusable response, retrying",
+					"model", model, "attempt", attempt, "reason", why)
+				time.Sleep(backoff)
+				backoff *= 2
+				continue
+			}
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", &APIError{Model: model,
-				Body: "model returned empty content (token budget may have gone to reasoning)"}
+			return "", &APIError{Model: model, Body: why}
 		}
 
 		metrics.AIAPIDuration.Observe(time.Since(start).Seconds())

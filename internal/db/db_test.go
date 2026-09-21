@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -745,5 +746,56 @@ func TestAdminSession(t *testing.T) {
 	got, err = d.GetSession("session-token-abc")
 	if err != nil {
 		t.Errorf("GetSession after cleanup: %v", err)
+	}
+}
+
+// TestOpen_AppliesPragmasToEveryConnection guards a subtle pooling bug.
+//
+// busy_timeout and foreign_keys are PER-CONNECTION. They used to be set with
+// conn.Exec("PRAGMA ..."), which runs on whichever pooled connection is free —
+// configuring exactly one and leaving the rest at defaults. A probe of two
+// connections from the same pool previously reported foreign_keys 1 and 0.
+//
+// busy_timeout mattered most: at 0 a second concurrent writer fails instantly
+// with SQLITE_BUSY instead of waiting, and if that lands on the ALTER TABLE in
+// migrate() the service refuses to start, reporting a transient lock as a fatal
+// schema error.
+func TestOpen_AppliesPragmasToEveryConnection(t *testing.T) {
+	d := openTestDB(t)
+
+	// Force several distinct connections to be open simultaneously, so the
+	// checks below cannot all land on the same one.
+	var conns []*sql.Conn
+	for i := 0; i < 3; i++ {
+		c, err := d.DB().Conn(context.Background())
+		if err != nil {
+			t.Fatalf("conn %d: %v", i, err)
+		}
+		t.Cleanup(func() { c.Close() })
+		conns = append(conns, c)
+	}
+
+	for i, c := range conns {
+		var busy, fk int
+		var journal string
+		if err := c.QueryRowContext(context.Background(), "PRAGMA busy_timeout").Scan(&busy); err != nil {
+			t.Fatalf("conn %d busy_timeout: %v", i, err)
+		}
+		if err := c.QueryRowContext(context.Background(), "PRAGMA foreign_keys").Scan(&fk); err != nil {
+			t.Fatalf("conn %d foreign_keys: %v", i, err)
+		}
+		if err := c.QueryRowContext(context.Background(), "PRAGMA journal_mode").Scan(&journal); err != nil {
+			t.Fatalf("conn %d journal_mode: %v", i, err)
+		}
+		if busy <= 0 {
+			t.Errorf("conn %d: busy_timeout = %d; a concurrent writer will fail "+
+				"instantly instead of waiting", i, busy)
+		}
+		if fk != 1 {
+			t.Errorf("conn %d: foreign_keys = %d, want 1", i, fk)
+		}
+		if journal != "wal" {
+			t.Errorf("conn %d: journal_mode = %q, want wal", i, journal)
+		}
 	}
 }

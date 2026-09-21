@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/article"
@@ -63,9 +64,21 @@ type App struct {
 	newsletterSvc  NewsletterService
 	cardDetector   CardUpdateDetector
 	shutdownCtx    context.Context
-	templates      map[string]*template.Template
-	mux            *http.ServeMux
-	startedAt      time.Time
+	// bg tracks fire-and-forget background work started by handlers, so both
+	// shutdown and tests can wait for it. Without it these goroutines outlive
+	// the request AND their database: in tests they ran on after t.Cleanup had
+	// closed the DB and removed the temp dir, producing "sql: database is
+	// closed" and a flaky "directory not empty" cleanup failure.
+	bg        sync.WaitGroup
+	templates map[string]*template.Template
+	mux       *http.ServeMux
+	startedAt time.Time
+}
+
+// WaitBackground blocks until handler-started background work finishes.
+// Used by graceful shutdown and by tests before their fixtures are torn down.
+func (app *App) WaitBackground() {
+	app.bg.Wait()
 }
 
 // NewApp creates a new App, loads templates, and sets up routes.

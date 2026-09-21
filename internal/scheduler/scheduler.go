@@ -3,6 +3,7 @@ package scheduler
 import (
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -11,12 +12,37 @@ import (
 // Scheduler wraps a cron scheduler and manages periodic background jobs.
 type Scheduler struct {
 	cron *cron.Cron
+	// stopCh is closed by Stop so work scheduled outside cron -- currently the
+	// delayed startup pass -- can abandon its wait instead of waking up after
+	// the database has been closed.
+	stopCh   chan struct{}
+	stopOnce sync.Once
+	// offCron tracks that same work, so Stop can join it rather than leaving a
+	// goroutine running past shutdown.
+	offCron sync.WaitGroup
+	// startupDelay is how long after registration the first enrichment pass
+	// runs. A field rather than a constant so tests can exercise the cancel and
+	// join paths -- at the production value a test would have to wait 90s, and
+	// a test that skips instead is coverage in name only.
+	startupDelay time.Duration
 }
 
 // New creates a new Scheduler.
+//
+// Recover is explicit because cron does NOT install it by default, despite its
+// own doc comment claiming "a chain that recovers panics" -- cron.New sets
+// chain: NewChain() with zero wrappers (cron.go:116, chain.go:20). Without it a
+// panic in any scheduled job unwinds to the goroutine top and kills the whole
+// process, taking the website down with it. Restart=on-failure then brings it
+// back, so a panic that reproduces on a particular article becomes a crash loop.
 func New() *Scheduler {
 	return &Scheduler{
-		cron: cron.New(cron.WithSeconds()),
+		cron: cron.New(
+			cron.WithSeconds(),
+			cron.WithChain(cron.Recover(cron.DefaultLogger)),
+		),
+		stopCh:       make(chan struct{}),
+		startupDelay: startupEnrichmentDelay,
 	}
 }
 
@@ -47,10 +73,51 @@ func (s *Scheduler) AddRevisionJob(interval time.Duration, revisionFunc func()) 
 }
 
 // AddEnrichmentJob adds the periodic pass that fills in article fields
-// generation left empty.
+// generation left empty, and runs one pass shortly after startup.
+//
+// The startup pass matters because "@every 15m" fires first 15 minutes AFTER
+// start, not immediately -- and every deploy restarts the service, so each
+// deploy pushed the first reconciliation another 15 minutes out. Articles
+// created in that window sit visibly incomplete, and a busy deploy day could
+// postpone reconciliation indefinitely.
+//
+// It is delayed rather than immediate so it does not contend with the scan job,
+// which robfig/cron fires straight away on Start.
 func (s *Scheduler) AddEnrichmentJob(interval time.Duration, enrichFunc func()) {
 	s.cron.AddFunc(fmt.Sprintf("@every %s", interval), enrichFunc)
+
+	// cron.WithChain only wraps jobs cron itself runs. This goroutine calls
+	// enrichFunc directly, so it needs the same Recover wrapper applied
+	// explicitly -- otherwise a panic in the very first pass after boot still
+	// kills the process, which is precisely what the chain was added to stop.
+	startupJob := cron.Recover(cron.DefaultLogger)(cron.FuncJob(enrichFunc))
+
+	s.offCron.Add(1)
+	go func() {
+		defer s.offCron.Done()
+		timer := time.NewTimer(s.startupDelay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			startupJob.Run()
+		case <-s.stopCh:
+			// Shutdown began before the pass was due. Waking up here would run
+			// a full pass against a database main is about to close.
+			slog.Info("startup enrichment pass cancelled by shutdown")
+		}
+	}()
 }
+
+// SetStartupDelay overrides the delay before the first enrichment pass.
+// Intended for tests; a non-positive value is ignored.
+func (s *Scheduler) SetStartupDelay(d time.Duration) {
+	if d > 0 {
+		s.startupDelay = d
+	}
+}
+
+// startupEnrichmentDelay is how long after boot the first reconciliation runs.
+const startupEnrichmentDelay = 90 * time.Second
 
 // Start begins running all scheduled jobs.
 func (s *Scheduler) Start() {
@@ -59,6 +126,10 @@ func (s *Scheduler) Start() {
 
 // Stop stops the scheduler, waiting for running jobs to complete.
 func (s *Scheduler) Stop() {
+	// Signal non-cron work first, so it can abandon its wait while cron drains.
+	s.stopOnce.Do(func() { close(s.stopCh) })
+
 	ctx := s.cron.Stop()
 	<-ctx.Done() // Wait for running jobs to finish
+	s.offCron.Wait()
 }

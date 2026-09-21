@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/kumaranik/milesahead/internal/ai"
@@ -179,4 +181,56 @@ func (c *failFirstModelClient) Generate(model, prompt string, maxTokens int) (st
 		return `["transfer-bonuses"]`, nil
 	}
 	return `{"key_details":[{"label":"Bonus","value":"30%"}],"links":[]}`, nil
+}
+
+// TestRun_SkipsOverlappingPass guards against passes piling up.
+//
+// robfig/cron's "@every" does not skip a tick when the previous run is still
+// going, and a pass can outlast its interval whenever the provider is degraded
+// — observed in production, where one field spent minutes retrying a timing-out
+// model. Overlapping passes would multiply load on an already-struggling
+// provider and race each other's attempt counters.
+func TestRun_SkipsOverlappingPass(t *testing.T) {
+	d := testDB(t)
+	seedArticle(t, d)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	client := &blockingClient{started: started, release: release}
+
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.Pace = 0
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.Run()
+	}()
+	<-started // first pass is now inside a model call
+
+	s.Run() // second pass must return immediately, not queue behind the first
+
+	if got := client.calls.Load(); got != 1 {
+		t.Errorf("overlapping pass made extra model calls: %d, want 1", got)
+	}
+
+	// Join before returning. testDB closes the database in t.Cleanup, and a
+	// pass still in flight would query it after teardown -- the same "goroutine
+	// outlives its database" bug this change fixes in the web handlers.
+	close(release)
+	<-done
+}
+
+type blockingClient struct {
+	started chan struct{}
+	release chan struct{}
+	calls   atomic.Int32
+	once    sync.Once
+}
+
+func (c *blockingClient) Generate(model, prompt string, maxTokens int) (string, error) {
+	c.calls.Add(1)
+	c.once.Do(func() { close(c.started) })
+	<-c.release
+	return "", fmt.Errorf("released")
 }

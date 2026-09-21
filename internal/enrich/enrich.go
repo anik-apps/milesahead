@@ -18,6 +18,7 @@ package enrich
 import (
 	"encoding/json"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
@@ -48,6 +49,13 @@ type Service struct {
 	// Pace is the delay between articles. The inline path had none, which is
 	// part of why several calls in a row failed together.
 	Pace time.Duration
+
+	// running guards against overlapping passes. robfig/cron's "@every" does
+	// NOT skip a tick when the previous run is still going, and a pass can
+	// outlast its interval when the provider is degraded -- each field may
+	// retry for minutes. Without this, passes pile up, multiply load on an
+	// already-struggling provider, and race each other's attempt counters.
+	running atomic.Bool
 }
 
 // New builds a reconciler. models is tried in order, so pass the preferred
@@ -70,6 +78,12 @@ func New(database *db.Database, client ai.HFClientInterface, models []string,
 // Run reconciles one batch. It is safe to call on a schedule; each pass picks
 // up whatever is still missing.
 func (s *Service) Run() {
+	if !s.running.CompareAndSwap(false, true) {
+		slog.Info("enrichment pass skipped: previous pass still running")
+		return
+	}
+	defer s.running.Store(false)
+
 	articles, err := s.db.ListArticlesNeedingEnrichment(s.MaxAttempts, s.BatchSize)
 	if err != nil {
 		slog.Error("enrichment: could not list articles", "error", err)
@@ -158,7 +172,14 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment) (filled, failed int) 
 	}
 
 	if err := s.db.ApplyEnrichment(a.ID, u); err != nil {
-		slog.Error("enrichment: could not save", "article_id", a.ID, "error", err)
+		// The attempt counter lives in this same UPDATE, so a failure here
+		// means the work is discarded AND the article is not charged an
+		// attempt -- it comes back next pass and the model calls are paid for
+		// again, forever, with MaxAttempts providing no ceiling. Retrying a
+		// transient lock is right; doing so invisibly is not, so it is counted.
+		metrics.EnrichmentFailuresTotal.WithLabelValues("save").Inc()
+		slog.Error("enrichment: could not save, work discarded and attempt not counted",
+			"article_id", a.ID, "fields_filled", filled, "error", err)
 		return filled, failed
 	}
 	slog.Info("enrichment applied", "article_id", a.ID, "was_missing", a.Missing(),

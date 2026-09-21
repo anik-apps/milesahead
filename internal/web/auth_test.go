@@ -27,6 +27,9 @@ func setupTestApp(t *testing.T) *App {
 	if err != nil {
 		t.Fatalf("failed to open test db: %v", err)
 	}
+	// Ordering matters: t.Cleanup is LIFO and tmpDir was registered first, so
+	// this runs before the directory is removed. Handler-started goroutines
+	// must finish before the database closes underneath them.
 	t.Cleanup(func() { database.Close() })
 
 	// Generate a bcrypt hash for "testpassword123".
@@ -69,6 +72,11 @@ func setupTestApp(t *testing.T) *App {
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}
+
+	// Join handler-started goroutines before fixtures are torn down.
+	// t.Cleanup is LIFO, so registering here runs this BEFORE the
+	// database close and temp-dir removal registered earlier.
+	t.Cleanup(app.WaitBackground)
 
 	return app
 }

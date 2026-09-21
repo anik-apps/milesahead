@@ -100,3 +100,105 @@ func TestMultipleJobs(t *testing.T) {
 		t.Error("poll job was not called")
 	}
 }
+
+// TestAddEnrichmentJob_RunsSoonAfterStartup guards the startup pass.
+//
+// robfig/cron's "@every d" schedules the FIRST run one interval after start,
+// not immediately. Since every deploy restarts the service, without a startup
+// pass each deploy pushed the first reconciliation another full interval out,
+// and articles created in that window stayed visibly incomplete.
+func TestAddEnrichmentJob_RunsSoonAfterStartup(t *testing.T) {
+	if startupEnrichmentDelay > 5*time.Minute {
+		t.Fatalf("startup delay %v is too long to be useful after a deploy",
+			startupEnrichmentDelay)
+	}
+	if startupEnrichmentDelay <= 0 {
+		t.Fatal("startup pass must be delayed, not immediate, to avoid " +
+			"contending with the scan job cron fires on Start")
+	}
+}
+
+// TestStop_CancelsPendingStartupPass verifies shutdown during the startup delay
+// abandons the pass instead of waking into a closed database.
+//
+// cron.WithChain only wraps jobs cron runs; the startup pass calls its function
+// directly, so it needs both the Recover wrapper and a cancellation path of its
+// own. Without the latter, Stop returned while this goroutine was still
+// sleeping, and it then ran a full enrichment pass against a database main was
+// about to close.
+func TestStop_CancelsPendingStartupPass(t *testing.T) {
+	s := New()
+	s.SetStartupDelay(10 * time.Second) // long enough that Stop lands first
+	var ran atomic.Bool
+	s.AddEnrichmentJob(time.Hour, func() { ran.Store(true) })
+	s.Start()
+
+	s.Stop() // shutdown begins well before the pass is due
+
+	if ran.Load() {
+		t.Error("startup pass ran despite shutdown beginning before it was due")
+	}
+}
+
+// TestStop_JoinsStartupPass verifies Stop waits rather than racing: once the
+// pass has begun, shutdown must not return until it finishes, or it would run
+// on against a database main is about to close.
+func TestStop_JoinsStartupPass(t *testing.T) {
+	s := New()
+	s.SetStartupDelay(time.Millisecond)
+
+	started := make(chan struct{})
+	var finished atomic.Bool
+	s.AddEnrichmentJob(time.Hour, func() {
+		close(started)
+		time.Sleep(200 * time.Millisecond)
+		finished.Store(true)
+	})
+	s.Start()
+
+	<-started // the pass is now running
+	s.Stop()
+
+	if !finished.Load() {
+		t.Error("Stop returned while the startup pass was still running")
+	}
+}
+
+// TestStartupPass_PanicDoesNotKillProcess covers a gap that cron.WithChain
+// leaves open.
+//
+// cron.Recover only wraps jobs cron itself runs. The startup pass calls its
+// function directly from a goroutine, so without an explicit wrapper a panic
+// there unwinds to the goroutine top and terminates the whole process — taking
+// the website down and, with Restart=on-failure, turning a reproducible panic
+// into a crash loop.
+//
+// A panic in a goroutine cannot be recovered by the caller, so if the wrapper
+// were missing this test binary would die outright rather than fail.
+func TestStartupPass_PanicDoesNotKillProcess(t *testing.T) {
+	s := New()
+	s.SetStartupDelay(time.Millisecond)
+
+	panicked := make(chan struct{})
+	s.AddEnrichmentJob(time.Hour, func() {
+		close(panicked)
+		panic("enrichment pass exploded")
+	})
+	s.Start()
+
+	select {
+	case <-panicked:
+	case <-time.After(2 * time.Second):
+		t.Fatal("startup pass never ran")
+	}
+
+	// Stop must still join cleanly; the panicking goroutine has to have
+	// completed rather than left the WaitGroup permanently held.
+	done := make(chan struct{})
+	go func() { s.Stop(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop hung after a panicking startup pass")
+	}
+}
