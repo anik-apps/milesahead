@@ -70,6 +70,69 @@ jobs:
           $SSH "sudo mkdir -p ${{ env.APP_DIR }}/data ${{ env.APP_DIR }}/templates ${{ env.APP_DIR }}/static"
           $SSH "sudo chown -R ubuntu:ubuntu ${{ env.APP_DIR }}"
 
+
+          # Deploy systemd service (needs sudo for /etc/systemd)
+          scp deploy/milesahead.service $OCI_USER@$OCI_HOST:/tmp/milesahead.service
+          $SSH "sudo mv /tmp/milesahead.service /etc/systemd/system/milesahead.service && sudo systemctl daemon-reload && sudo systemctl enable milesahead"
+
+          # Deploy Caddy config to shared sites directory
+          $SSH "mkdir -p ${{ env.CADDY_SITES_DIR }}"
+          scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:/tmp/milesahead.caddy
+          $SSH "sudo cp /tmp/milesahead.caddy ${{ env.CADDY_SITES_DIR }}/milesahead.caddy"
+
+          # Reload Caddy
+          $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || echo 'Caddy reload skipped — restart fynans stack to pick up new site'"
+
+          # Install Grafana Alloy if not present
+          $SSH "which alloy || (curl -fsSL https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg && echo 'deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main' | sudo tee /etc/apt/sources.list.d/grafana.list && sudo apt-get update && sudo apt-get install -y alloy)"
+
+          # Deploy Alloy config
+          scp deploy/alloy-config.alloy $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/alloy-config.alloy
+
+          # Deploy Alloy systemd service with Grafana credentials
+          scp deploy/alloy.service $OCI_USER@$OCI_HOST:/tmp/alloy.service
+          $SSH "sudo sed -i 's|Environment=GRAFANA_API_KEY=|Environment=GRAFANA_API_KEY=${{ secrets.GRAFANA_API_KEY }}|' /tmp/alloy.service"
+          $SSH "sudo sed -i 's|Environment=GRAFANA_PROM_URL=|Environment=GRAFANA_PROM_URL=${{ secrets.GRAFANA_PROM_URL }}|' /tmp/alloy.service"
+          $SSH "sudo sed -i 's|Environment=GRAFANA_PROM_USER=|Environment=GRAFANA_PROM_USER=${{ secrets.GRAFANA_PROM_USER }}|' /tmp/alloy.service"
+          $SSH "sudo sed -i 's|Environment=GRAFANA_LOKI_URL=|Environment=GRAFANA_LOKI_URL=${{ secrets.GRAFANA_LOKI_URL }}|' /tmp/alloy.service"
+          $SSH "sudo sed -i 's|Environment=GRAFANA_LOKI_USER=|Environment=GRAFANA_LOKI_USER=${{ secrets.GRAFANA_LOKI_USER }}|' /tmp/alloy.service"
+          $SSH "sudo mv /tmp/alloy.service /etc/systemd/system/alloy.service && sudo systemctl daemon-reload && sudo systemctl enable alloy && sudo systemctl restart alloy"
+
+  config:
+    # Writes config.yaml on every deploy, and deploy depends on it so the
+    # service restart always happens AFTER the new config is in place.
+    #
+    # This used to live in the `setup` job, gated on a manual
+    # full_setup dispatch, so a normal push never updated config.yaml at
+    # all -- model names changed in this repo silently did not reach
+    # production. And because `setup` and `deploy` both only needed
+    # `build`, they raced: `deploy` restarts milesahead while `setup`
+    # writes the config, and nothing restarts it afterwards, so even the
+    # manual path applied config only by luck of timing.
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.OCI_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan ${{ secrets.OCI_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Write application config
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
+          UNSPLASH_KEY: ${{ secrets.UNSPLASH_KEY }}
+          PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
+          PIXABAY_KEY: ${{ secrets.PIXABAY_KEY }}
+        run: |
+          SSH="ssh $OCI_USER@$OCI_HOST"
+
           # Deploy config file (via /tmp to avoid permission issues)
           cat > /tmp/config.yaml << CONFIGEOF
           server:
@@ -131,35 +194,8 @@ jobs:
           scp /tmp/config.yaml $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/config.yaml
           $SSH "chmod 600 ${{ env.APP_DIR }}/config.yaml"
 
-          # Deploy systemd service (needs sudo for /etc/systemd)
-          scp deploy/milesahead.service $OCI_USER@$OCI_HOST:/tmp/milesahead.service
-          $SSH "sudo mv /tmp/milesahead.service /etc/systemd/system/milesahead.service && sudo systemctl daemon-reload && sudo systemctl enable milesahead"
-
-          # Deploy Caddy config to shared sites directory
-          $SSH "mkdir -p ${{ env.CADDY_SITES_DIR }}"
-          scp deploy/milesahead.caddy $OCI_USER@$OCI_HOST:/tmp/milesahead.caddy
-          $SSH "sudo cp /tmp/milesahead.caddy ${{ env.CADDY_SITES_DIR }}/milesahead.caddy"
-
-          # Reload Caddy
-          $SSH "docker exec fynans-caddy-1 caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || echo 'Caddy reload skipped — restart fynans stack to pick up new site'"
-
-          # Install Grafana Alloy if not present
-          $SSH "which alloy || (curl -fsSL https://apt.grafana.com/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg && echo 'deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main' | sudo tee /etc/apt/sources.list.d/grafana.list && sudo apt-get update && sudo apt-get install -y alloy)"
-
-          # Deploy Alloy config
-          scp deploy/alloy-config.alloy $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/alloy-config.alloy
-
-          # Deploy Alloy systemd service with Grafana credentials
-          scp deploy/alloy.service $OCI_USER@$OCI_HOST:/tmp/alloy.service
-          $SSH "sudo sed -i 's|Environment=GRAFANA_API_KEY=|Environment=GRAFANA_API_KEY=${{ secrets.GRAFANA_API_KEY }}|' /tmp/alloy.service"
-          $SSH "sudo sed -i 's|Environment=GRAFANA_PROM_URL=|Environment=GRAFANA_PROM_URL=${{ secrets.GRAFANA_PROM_URL }}|' /tmp/alloy.service"
-          $SSH "sudo sed -i 's|Environment=GRAFANA_PROM_USER=|Environment=GRAFANA_PROM_USER=${{ secrets.GRAFANA_PROM_USER }}|' /tmp/alloy.service"
-          $SSH "sudo sed -i 's|Environment=GRAFANA_LOKI_URL=|Environment=GRAFANA_LOKI_URL=${{ secrets.GRAFANA_LOKI_URL }}|' /tmp/alloy.service"
-          $SSH "sudo sed -i 's|Environment=GRAFANA_LOKI_USER=|Environment=GRAFANA_LOKI_USER=${{ secrets.GRAFANA_LOKI_USER }}|' /tmp/alloy.service"
-          $SSH "sudo mv /tmp/alloy.service /etc/systemd/system/alloy.service && sudo systemctl daemon-reload && sudo systemctl enable alloy && sudo systemctl restart alloy"
-
   deploy:
-    needs: build
+    needs: [build, config]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
