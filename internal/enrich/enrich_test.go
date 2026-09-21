@@ -10,7 +10,10 @@ import (
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
+	dto "github.com/prometheus/client_model/go"
+
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // scriptedClient answers by prompt content, so one mock can serve the several
@@ -304,4 +307,56 @@ type slowClient struct{ delay time.Duration }
 func (c *slowClient) Generate(model, prompt string, maxTokens int) (string, error) {
 	time.Sleep(c.delay)
 	return "", fmt.Errorf("slow and failing")
+}
+
+// TestRun_SkippedPassStillRefreshesGauge covers the path a stall actually takes.
+//
+// The skip branch returns before the deferred gauge refresh is registered, so
+// without an explicit refresh here milesahead_articles_degraded would freeze
+// for exactly as long as the reconciler was wedged — reproducing, on the one
+// path that matters, the staleness this change exists to remove.
+func TestRun_SkippedPassStillRefreshesGauge(t *testing.T) {
+	d := testDB(t)
+	seedArticle(t, d)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	client := &blockingClient{started: started, release: release}
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.Pace = 0
+
+	go s.Run()
+	<-started // a pass is in flight, so the next call must skip
+
+	// Add a second degraded article while the first pass is blocked, so a
+	// refreshed gauge would observe a different backlog than the pass saw.
+	seedArticle(t, d)
+
+	before := testutilGaugeValue(t)
+	s.Run() // skips
+	after := testutilGaugeValue(t)
+
+	if before == after && after == 0 {
+		t.Error("gauge was never populated on the skip path")
+	}
+	if after < 2 {
+		t.Errorf("gauge reports %v degraded articles; the skip path should have "+
+			"observed both seeded articles", after)
+	}
+
+	close(release)
+}
+
+// testutilGaugeValue reads the pending-degraded gauge.
+func testutilGaugeValue(t *testing.T) float64 {
+	t.Helper()
+	var m dto.Metric
+	g, err := metrics.ArticlesDegraded.GetMetricWithLabelValues("pending")
+	if err != nil {
+		t.Fatalf("gauge lookup: %v", err)
+	}
+	if err := g.Write(&m); err != nil {
+		t.Fatalf("gauge read: %v", err)
+	}
+	return m.GetGauge().GetValue()
 }

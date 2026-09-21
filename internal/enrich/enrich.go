@@ -97,6 +97,12 @@ func New(database *db.Database, client ai.HFClientInterface, models []string,
 func (s *Service) Run() {
 	if !s.running.CompareAndSwap(false, true) {
 		metrics.EnrichmentPassesTotal.WithLabelValues("skipped").Inc()
+		// Refresh the gauge here too. This branch returns before the deferred
+		// refresh below is even registered, and a run of skips is exactly when
+		// the backlog most needs reporting -- leaving it frozen on the skip path
+		// would reproduce, on the one path a stall actually takes, the staleness
+		// this change exists to remove.
+		s.refreshDegradedGauge()
 		// WARN, not INFO. A skip is not routine -- it means the previous pass
 		// has outlasted a whole interval, which is the shape a stall takes.
 		slog.Warn("enrichment pass skipped: previous pass still running",
