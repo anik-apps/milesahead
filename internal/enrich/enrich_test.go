@@ -201,7 +201,11 @@ func TestRun_SkipsOverlappingPass(t *testing.T) {
 	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
 	s.Pace = 0
 
-	go s.Run()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.Run()
+	}()
 	<-started // first pass is now inside a model call
 
 	s.Run() // second pass must return immediately, not queue behind the first
@@ -209,7 +213,12 @@ func TestRun_SkipsOverlappingPass(t *testing.T) {
 	if got := client.calls.Load(); got != 1 {
 		t.Errorf("overlapping pass made extra model calls: %d, want 1", got)
 	}
+
+	// Join before returning. testDB closes the database in t.Cleanup, and a
+	// pass still in flight would query it after teardown -- the same "goroutine
+	// outlives its database" bug this change fixes in the web handlers.
 	close(release)
+	<-done
 }
 
 type blockingClient struct {
