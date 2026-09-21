@@ -57,6 +57,14 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       only 429/503, so a transient 500 killed a request outright. Fallback is now a
       chain, model-gone triggers it, all 5xx retry, and a startup preflight probes
       every configured model. Models re-selected empirically with `cmd/ab-models`.
+- [x] **Config changes never reached production** — `config.yaml` was written only by
+      the `setup` job, gated behind `if: github.event.inputs.full_setup == 'true'`, so a
+      normal push never updated it: model names changed in this repo silently did not
+      deploy. Worse, `setup` and `deploy` both only needed `build`, so they raced —
+      `deploy` restarts milesahead while `setup` writes the config, and nothing restarts
+      it afterwards, meaning even the manual path applied config only by luck of timing.
+      Config now has its own ungated job that `deploy` depends on, so the restart always
+      follows the write.
 - [ ] **Alert on generation drought** — `ArticlesGeneratedTotal` and `AIAPIErrorsTotal`
       were already being scraped into Grafana Cloud throughout the outage; no alert was
       wired to them. One rule (`increase(articles_generated_total[24h]) == 0`) would have
