@@ -88,11 +88,35 @@ func main() {
 		pipeline.SetCritic2(critic2)
 	}
 
+	// Confirm the configured models still exist before the scheduler starts
+	// calling them every three hours. A retired model answers 410 forever, and
+	// without this the only symptom is articles quietly never appearing.
+	go func() {
+		results := ai.Preflight(hfClient, cfg.AI.GeneratorModel,
+			strings.Split(cfg.AI.FallbackGeneratorModel, ","),
+			cfg.AI.CriticModel, cfg.AI.Critic2Model)
+		if ai.GenerationViable(results) {
+			slog.Info("ai preflight complete", "summary", ai.PreflightSummary(results))
+			return
+		}
+		slog.Error("ai preflight: NO generator model is reachable - "+
+			"article generation cannot run until config is fixed",
+			"summary", ai.PreflightSummary(results))
+	}()
+
 	// Image search and scoring
 	imageSearcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey, cfg.AI.PixabayKey)
 	imageScorer := images.NewScorer(hfClient, cfg.AI.CriticModel)
 	if cfg.AI.HFBaseURL != "" {
-		imageScorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, "meta/llama-3.2-90b-vision-instruct")
+		// Was hardcoded to meta/llama-3.2-90b-vision-instruct, which now times
+		// out on every call (120s+, reproducible) -- so each image scored burned
+		// the client's full 300s timeout before failing. Configurable now, so
+		// the next retirement is a config edit rather than a release.
+		visionModel := cfg.AI.VisionModel
+		if visionModel == "" {
+			visionModel = "meta/llama-3.2-11b-vision-instruct"
+		}
+		imageScorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, visionModel)
 	}
 
 	// Services

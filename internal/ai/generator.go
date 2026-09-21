@@ -8,19 +8,38 @@ import (
 )
 
 // Generator uses an HF model to produce articles from source material.
-// If a fallback model is configured, retryable errors (rate limit, 5xx,
-// network/timeout) on the primary trigger one retry against the fallback.
+// Transient errors (rate limit, 5xx, network/timeout) AND permanent
+// model-unavailable errors (404/410) on the primary fall through to the next
+// model in the fallback chain.
 type Generator struct {
-	client   HFClientInterface
-	model    string
-	fallback string
-	cache    *Cache
+	client    HFClientInterface
+	model     string
+	fallbacks []string
+	cache     *Cache
 }
 
-// NewGenerator creates a new Generator. fallbackModel may be empty to disable
-// fallback behavior.
-func NewGenerator(client HFClientInterface, model, fallbackModel string, cache *Cache) *Generator {
-	return &Generator{client: client, model: model, fallback: fallbackModel, cache: cache}
+// NewGenerator creates a new Generator. fallbackModels is a comma-separated
+// list, tried left to right; empty disables fallback. A list rather than a
+// single model because the site once ran 26 days without publishing when the
+// primary AND the lone fallback were retired upstream in the same window.
+func NewGenerator(client HFClientInterface, model, fallbackModels string, cache *Cache) *Generator {
+	return &Generator{
+		client:    client,
+		model:     model,
+		fallbacks: splitModels(fallbackModels),
+		cache:     cache,
+	}
+}
+
+// splitModels parses a comma-separated model list, ignoring blanks.
+func splitModels(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // Generate produces an article of the given type from the provided sources.
@@ -64,25 +83,54 @@ func (g *Generator) GenerateWithFeedback(sources []SourceArticle, previousOutput
 	return result, nil
 }
 
-// callWithFallback runs the primary model and, on a retryable error, retries
-// once against the fallback model if one is configured. Errors that aren't
-// retryable (e.g. 4xx config errors like model-not-found) propagate directly
-// without trying the fallback, since the fallback can't fix them.
+// callWithFallback runs the primary model and, when the failure is one another
+// model could plausibly survive, walks the fallback chain in order.
+//
+// Genuine configuration errors (401 auth, 400 malformed) still propagate
+// immediately, since every model in the chain would fail them identically.
 func (g *Generator) callWithFallback(prompt string, maxTokens int) (string, error) {
 	result, err := g.client.Generate(g.model, prompt, maxTokens)
 	if err == nil {
 		return result, nil
 	}
-	if g.fallback == "" || !isRetryableModelError(err) {
+	if len(g.fallbacks) == 0 || !shouldTryAnotherModel(err) {
 		return "", err
 	}
-	slog.Warn("primary generator model failed, trying fallback",
-		"primary", g.model, "fallback", g.fallback, "err", err)
-	result, fbErr := g.client.Generate(g.fallback, prompt, maxTokens)
-	if fbErr != nil {
-		return "", fmt.Errorf("primary failed (%v); fallback %q also failed: %w", err, g.fallback, fbErr)
+
+	firstErr := err
+	for _, fb := range g.fallbacks {
+		slog.Warn("generator model failed, trying next in chain",
+			"failed", g.model, "next", fb, "err", err)
+		result, err = g.client.Generate(fb, prompt, maxTokens)
+		if err == nil {
+			slog.Info("generator fallback succeeded", "model", fb, "primary", g.model)
+			return result, nil
+		}
+		if !shouldTryAnotherModel(err) {
+			break
+		}
 	}
-	return result, nil
+	return "", fmt.Errorf("primary %q failed (%v); all %d fallback(s) failed, last: %w",
+		g.model, firstErr, len(g.fallbacks), err)
+}
+
+// shouldTryAnotherModel reports whether a different model might succeed where
+// this one failed -- either a transient upstream fault, or this model being
+// permanently gone.
+func shouldTryAnotherModel(err error) bool {
+	return isRetryableModelError(err) || isModelUnavailableError(err)
+}
+
+// isModelUnavailableError reports whether the model itself is gone rather than
+// the request being bad. Providers retire models on their own schedule and
+// answer 410 Gone (or 404) forever after; that is precisely the case a fallback
+// exists for, even though it is a permanent 4xx rather than a transient fault.
+func isModelUnavailableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "status 410") || strings.Contains(msg, "status 404")
 }
 
 // isRetryableModelError reports whether a model error looks like a transient
@@ -95,7 +143,9 @@ func isRetryableModelError(err error) bool {
 	}
 	msg := err.Error()
 	switch {
-	case strings.Contains(msg, "rate limited after"):
+	case strings.Contains(msg, "rate limited after"): // legacy wording, kept for safety
+		return true
+	case strings.Contains(msg, "status 429"): // throttled, retries exhausted
 		return true
 	case strings.Contains(msg, "max retries exceeded"):
 		return true

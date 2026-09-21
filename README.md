@@ -42,6 +42,29 @@ go run ./cmd/seed-cards
 go run ./cmd/seed-structured
 ```
 
+### Choosing AI models
+
+Providers retire models without warning, and the catalogue endpoint is not a
+liveness signal — of 81 models it advertised, only 9 answered. Verify any change
+to `generator_model`, `fallback_generator_model` or `critic_model` by measuring
+it against real source material rather than trusting the listing:
+
+```bash
+# Which models answer at all, and do they honour the critic's JSON contract?
+go run ./cmd/ab-models -critic-candidates "model-a,model-b" -generators model-a
+
+# Score candidate generators on real clusters, using one fixed critic
+go run ./cmd/ab-models -topics 5 -generators "model-a,model-b" -critic model-c
+
+# Dump whole articles for human review, then render them side by side
+go run ./cmd/ab-models -full -generators model-a -critic model-c -out a.json
+python3 scripts/render_article_review.py a.json b.json > compare.html
+```
+
+The app also runs a startup preflight against every configured model and logs
+`ERROR` if nothing can generate, so a retired model surfaces at boot rather than
+as articles quietly never appearing.
+
 ## Documentation
 
 Full documentation is built with [Hugo](https://gohugo.io/) using the [Hextra](https://imfing.github.io/hextra/) theme.

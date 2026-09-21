@@ -131,7 +131,10 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 			return "", fmt.Errorf("read response: %w", err)
 		}
 
-		if resp.StatusCode == 429 || resp.StatusCode == 503 {
+		// Retry throttling and any 5xx. Previously only 429 and 503 were
+		// retried, so a single transient 500 or 502 from the provider killed
+		// the request outright even though the next attempt would have worked.
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
 			if attempt < c.maxRetries {
 				slog.Warn("ai api retry", "model", model, "attempt", attempt, "status", resp.StatusCode)
 				time.Sleep(backoff)
@@ -140,7 +143,8 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 			}
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", fmt.Errorf("rate limited after %d retries: %s", c.maxRetries, string(respBody))
+			return "", fmt.Errorf("HF API error (status %d) after %d retries: %s",
+				resp.StatusCode, c.maxRetries, string(respBody))
 		}
 
 		if resp.StatusCode != http.StatusOK {

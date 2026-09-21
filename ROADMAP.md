@@ -48,6 +48,25 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 - [x] **Apply the card data refresh to production** — applied 2026-08-31 with the scoped `-slug` reseed after taking a verified backup. Live pages now show CLEAR+ at $219 on all four cards, no active Saks credit, and the Equinox credit present in the Platinum prose. `recent_changes_json` was untouched, so the historical "Saks credit to be removed" changelog entry correctly survives.
 - [ ] **Stale cross-card comparison data** — `chase-sapphire-reserve`'s `competitor_comparison` still describes the Amex Platinum with pre-September-2025-refresh figures: "$200 hotel + $240 digital entertainment + $100 Saks + ... ($1,500+)". Hotel is now $600, digital entertainment $300, Saks is gone, and the credits total is roughly $3,000. `citi-strata-elite` also cites Saks as an example of Platinum's scattered merchant credits. Both need verifying against Amex before rewriting, like the main refresh did.
 
+- [x] **Article generation stopped for 26 days, silently** — the provider retired
+      `openai/gpt-oss-120b` (generator), `meta/llama-3.3-70b-instruct` (critic) and
+      `qwen/qwen3.5-122b-a10b` (the fallback) within the same window; every run since
+      2026-08-26 failed with `410 Gone` at WARN level with nothing alerting on it.
+      Three compounding bugs, all fixed: 410/404 were classified non-retryable so the
+      fallback never fired; the lone fallback was itself dead; and `HFClient` retried
+      only 429/503, so a transient 500 killed a request outright. Fallback is now a
+      chain, model-gone triggers it, all 5xx retry, and a startup preflight probes
+      every configured model. Models re-selected empirically with `cmd/ab-models`.
+- [ ] **Alert on generation drought** — `ArticlesGeneratedTotal` and `AIAPIErrorsTotal`
+      were already being scraped into Grafana Cloud throughout the outage; no alert was
+      wired to them. One rule (`increase(articles_generated_total[24h]) == 0`) would have
+      caught this on day one. *This is the fix that actually prevents a recurrence.*
+- [ ] **Audit remaining hardcoded models** — `meta/llama-3.2-90b-vision-instruct` was
+      hardcoded in `main.go` and times out on every call, so each scored image burned the
+      full 300s client timeout. Now configurable via `vision_model`. Direct
+      `hfClient.Generate(cfg.AI.CriticModel, ...)` calls in `main.go` still bypass the
+      fallback chain entirely.
+
 ## Up Next
 
 - [ ] Card explainer videos — YouTube-hosted, embedded per card page (Amex Platinum, Sapphire Reserve, Strata Elite so far)
