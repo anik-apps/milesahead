@@ -65,6 +65,38 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       it afterwards, meaning even the manual path applied config only by luck of timing.
       Config now has its own ungated job that `deploy` depends on, so the restart always
       follows the write.
+- [ ] **Enrichment has no pass-level deadline or liveness signal** — `Service.Run` holds an
+      `atomic.Bool` guard for the whole pass, but a pass has no deadline of its own. On a
+      degraded provider every later tick logs `enrichment pass skipped` at INFO and
+      returns, and `milesahead_articles_degraded` is only written at the END of a pass, so
+      the gauge freezes at its last healthy value. Same invisible-failure shape as the
+      outage this work was meant to end. *Fix:* bound the pass, count skips, export a
+      `last successful pass` timestamp to alert on.
+- [ ] **No failure memory across model calls** — `TryModels` and `callWithFallback` are
+      stateless, so a timing-out model burns its full retry budget on every field of every
+      article: worst case 10 articles x 4 fields x 2 models x 4 attempts = 320 attempts
+      against a provider already known degraded. *Fix:* per-model failure counter with a
+      cooldown, scoped to the pass at minimum.
+- [ ] **Retries are invisible in metrics** — `AIAPIErrorsTotal` only increments on terminal
+      failure and `AIAPIDuration` measures the whole retry chain including backoff, so a
+      call that fails three times then succeeds looks like one slow success. No metric
+      would have shown "a quarter of calls are timing out" — the exact condition that ran
+      unnoticed for 2.5 months.
+- [ ] **Shutdown cannot interrupt AI work** — `Generate` takes no `context.Context`, its
+      backoff `time.Sleep` is uninterruptible, and the `errors.Is(err, context.Canceled)`
+      guard is dead code since the context is created internally from `Background()`.
+      Separately the 90s startup enrichment goroutine is registered with neither cron nor
+      `main`'s context, so `Stop()` neither waits for nor cancels it: a SIGTERM at ~85s
+      lets it wake and run a pass against a closed database.
+- [ ] **Overlap guard is per-process only** — `atomic.Bool` cannot serialise across a
+      deploy, so a restart mid-pass gives two reconcilers on the same rows, each
+      incrementing `enrichment_attempts`. *Fix:* a DB-level lease.
+- [ ] **408 is not classified transient**, and a per-model 400 aborts the whole fallback
+      chain instead of trying the next model (`Generate` always sends `temperature: 0.7`,
+      which some models reject).
+- [ ] **Enrichment scope is unbounded by status** — the reconciler enriches all `pending`
+      and `draft` articles, not just approved: ~226 degraded rows, up to ~900 model calls,
+      for articles that may never publish. Worth an explicit cost decision.
 - [x] **Alert on generation drought** — `ArticlesGeneratedTotal` and `AIAPIErrorsTotal`
       were already being scraped into Grafana Cloud throughout the outage; no alert was
       wired to them. Two rules now ship from `deploy/grafana-alerts.json` with stable
