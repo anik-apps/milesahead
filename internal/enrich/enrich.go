@@ -172,7 +172,14 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment) (filled, failed int) 
 	}
 
 	if err := s.db.ApplyEnrichment(a.ID, u); err != nil {
-		slog.Error("enrichment: could not save", "article_id", a.ID, "error", err)
+		// The attempt counter lives in this same UPDATE, so a failure here
+		// means the work is discarded AND the article is not charged an
+		// attempt -- it comes back next pass and the model calls are paid for
+		// again, forever, with MaxAttempts providing no ceiling. Retrying a
+		// transient lock is right; doing so invisibly is not, so it is counted.
+		metrics.EnrichmentFailuresTotal.WithLabelValues("save").Inc()
+		slog.Error("enrichment: could not save, work discarded and attempt not counted",
+			"article_id", a.ID, "fields_filled", filled, "error", err)
 		return filled, failed
 	}
 	slog.Info("enrichment applied", "article_id", a.ID, "was_missing", a.Missing(),

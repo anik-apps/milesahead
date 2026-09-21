@@ -17,23 +17,41 @@ type Database struct {
 	db *sql.DB
 }
 
+// dsn builds a connection string carrying the per-connection PRAGMAs.
+//
+// journal_mode is persisted in the database file itself so it only has to be
+// set once, but it is harmless and clearer to state it alongside the others.
+func dsn(path string) string {
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + strings.Join([]string{
+		"_pragma=busy_timeout(5000)",
+		"_pragma=journal_mode(WAL)",
+		"_pragma=foreign_keys(1)",
+	}, "&")
+}
+
 // Open opens a SQLite database at the given path, enables WAL mode, and runs migrations.
 func Open(path string) (*Database, error) {
-	conn, err := sql.Open("sqlite", path)
+	// PRAGMAs go in the DSN, not in Exec calls.
+	//
+	// busy_timeout and foreign_keys are PER-CONNECTION settings, and Exec runs
+	// on whichever pooled connection happens to be free -- so setting them that
+	// way configured exactly one connection and left every other one at the
+	// defaults. Verified: two connections from the same pool reported
+	// foreign_keys 1 and 0 respectively. In the DSN the driver applies them to
+	// every connection it opens.
+	//
+	// busy_timeout was therefore 0, meaning a second concurrent writer failed
+	// instantly with SQLITE_BUSY rather than waiting. With enrichment UPDATEs,
+	// article INSERTs and web handlers all writing, that is a real collision --
+	// and if it hits the ALTER TABLE in migrate() the service refuses to boot,
+	// reporting a transient lock as a fatal schema error.
+	conn, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
 		return nil, fmt.Errorf("opening database: %w", err)
-	}
-
-	// Enable WAL mode for concurrent reads.
-	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("enabling WAL mode: %w", err)
-	}
-
-	// Enable foreign keys.
-	if _, err := conn.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("enabling foreign keys: %w", err)
 	}
 
 	if err := migrate(conn); err != nil {

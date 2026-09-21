@@ -14,9 +14,19 @@ type Scheduler struct {
 }
 
 // New creates a new Scheduler.
+//
+// Recover is explicit because cron does NOT install it by default, despite its
+// own doc comment claiming "a chain that recovers panics" -- cron.New sets
+// chain: NewChain() with zero wrappers (cron.go:116, chain.go:20). Without it a
+// panic in any scheduled job unwinds to the goroutine top and kills the whole
+// process, taking the website down with it. Restart=on-failure then brings it
+// back, so a panic that reproduces on a particular article becomes a crash loop.
 func New() *Scheduler {
 	return &Scheduler{
-		cron: cron.New(cron.WithSeconds()),
+		cron: cron.New(
+			cron.WithSeconds(),
+			cron.WithChain(cron.Recover(cron.DefaultLogger)),
+		),
 	}
 }
 
