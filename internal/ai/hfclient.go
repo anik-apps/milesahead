@@ -2,7 +2,9 @@ package ai
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -30,10 +32,21 @@ type HFClient struct {
 	// backoff is the first retry delay, doubling per attempt. Injectable so
 	// tests exercise the retry path without sleeping for real.
 	backoff time.Duration
+	// requestTimeout bounds one attempt; see timeoutFor.
+	requestTimeout time.Duration
 }
 
 // initialBackoff is the first retry delay; it doubles per attempt.
 const initialBackoff = 2 * time.Second
+
+// smallCallTokens is the budget below which a call counts as enrichment rather
+// than generation. Scout's Take, tags and image queries all ask for 256.
+const smallCallTokens = 512
+
+// SmallCallTimeout bounds those enrichment calls. Generous next to their real
+// latency (seconds), short enough that a hung one fails and retries instead of
+// blocking the article behind it.
+const SmallCallTimeout = 90 * time.Second
 
 // DefaultRequestTimeout bounds a single model call.
 //
@@ -47,11 +60,12 @@ const DefaultRequestTimeout = 300 * time.Second
 // NewHFClient creates a new HFClient with the given token and retry limit.
 func NewHFClient(token string, maxRetries int) *HFClient {
 	return &HFClient{
-		token:      token,
-		maxRetries: maxRetries,
-		BaseURL:    defaultBaseURL,
-		httpClient: &http.Client{Timeout: DefaultRequestTimeout},
-		backoff:    initialBackoff,
+		token:          token,
+		maxRetries:     maxRetries,
+		BaseURL:        defaultBaseURL,
+		httpClient:     &http.Client{},
+		backoff:        initialBackoff,
+		requestTimeout: DefaultRequestTimeout,
 	}
 }
 
@@ -62,11 +76,29 @@ func (c *HFClient) SetBackoff(d time.Duration) {
 	}
 }
 
+// timeoutFor sizes a call's deadline to the work it asks for.
+//
+// One timeout for every call cannot fit both: the generator writes 4096 tokens
+// and legitimately takes minutes, while enrichment calls ask for 256 and should
+// answer in seconds. Sharing the generator's budget means a hung 256-token call
+// sits there for the full generator timeout before failing -- and since the
+// scheduler runs articles back to back, that stalls everything behind it.
+func (c *HFClient) timeoutFor(maxTokens int) time.Duration {
+	t := c.requestTimeout
+	if t <= 0 {
+		t = DefaultRequestTimeout
+	}
+	if maxTokens <= smallCallTokens && t > SmallCallTimeout {
+		return SmallCallTimeout
+	}
+	return t
+}
+
 // SetRequestTimeout overrides the per-call timeout. A non-positive value keeps
 // the current one.
 func (c *HFClient) SetRequestTimeout(d time.Duration) {
 	if d > 0 {
-		c.httpClient.Timeout = d
+		c.requestTimeout = d
 	}
 }
 
@@ -152,8 +184,10 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 	}
 
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
-		req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+		ctx, cancel := context.WithTimeout(context.Background(), c.timeoutFor(maxTokens))
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 		if err != nil {
+			cancel()
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 			return "", fmt.Errorf("create request: %w", err)
@@ -163,6 +197,27 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
+			cancel()
+			// A timeout or a dropped connection is exactly what a retry is for,
+			// yet this returned immediately for years: the loop below only ever
+			// retried HTTP STATUS CODES, so a transport failure never got a
+			// second attempt and the caller saw a hard error on the first blip.
+			//
+			// That is what broke article enrichment for two and a half months.
+			// From 2026-07-01 the provider's latency crossed the client timeout
+			// on roughly a quarter of calls; every one of those failed as
+			// "context deadline exceeded", was never retried, and silently cost
+			// the article its Scout's Take, key details or image.
+			//
+			// Context cancellation is excluded: that is our own shutdown, and
+			// retrying it would just delay the exit.
+			if attempt < c.maxRetries && !errors.Is(err, context.Canceled) {
+				slog.Warn("ai api transport error, retrying",
+					"model", model, "attempt", attempt, "err", err)
+				time.Sleep(backoff)
+				backoff *= 2
+				continue
+			}
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
 			return "", fmt.Errorf("http request: %w", err)
@@ -170,6 +225,7 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 
 		respBody, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		cancel()
 		if err != nil {
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
