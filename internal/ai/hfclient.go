@@ -27,7 +27,13 @@ type HFClient struct {
 	maxRetries int
 	BaseURL    string
 	httpClient *http.Client
+	// backoff is the first retry delay, doubling per attempt. Injectable so
+	// tests exercise the retry path without sleeping for real.
+	backoff time.Duration
 }
+
+// initialBackoff is the first retry delay; it doubles per attempt.
+const initialBackoff = 2 * time.Second
 
 // DefaultRequestTimeout bounds a single model call.
 //
@@ -45,6 +51,14 @@ func NewHFClient(token string, maxRetries int) *HFClient {
 		maxRetries: maxRetries,
 		BaseURL:    defaultBaseURL,
 		httpClient: &http.Client{Timeout: DefaultRequestTimeout},
+		backoff:    initialBackoff,
+	}
+}
+
+// SetBackoff overrides the first retry delay. A non-positive value is ignored.
+func (c *HFClient) SetBackoff(d time.Duration) {
+	if d > 0 {
+		c.backoff = d
 	}
 }
 
@@ -121,7 +135,21 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	backoff := 100 * time.Millisecond
+	// Retries have to outlast a provider hiccup, not just a packet loss. The
+	// old schedule was 100ms/200ms/400ms -- 700ms of total patience across all
+	// three attempts -- and a degraded window of a few seconds on the provider
+	// side blew straight through it. Observed 2026-09-21: four enrichment calls
+	// (key details, Scout's Take, image query, image scoring) all returned
+	// "500 after 3 retries" inside one 52-second window, and the identical
+	// prompts succeeded on the same model minutes later. The article was still
+	// published, silently missing its key-details table, Scout's Take and image.
+	//
+	// 2s/4s/8s is 14s of patience, which is nothing against generation runs
+	// measured in minutes.
+	backoff := c.backoff
+	if backoff <= 0 {
+		backoff = initialBackoff
+	}
 
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
