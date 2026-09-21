@@ -17,6 +17,17 @@ on:
         type: boolean
         default: true
 
+# Deploys share one target host and one staging path, so they must not overlap.
+# Two merges minutes apart raced: each scp'd its binary to milesahead.new and
+# each tried to mv it, so the second mv found nothing and failed. The binary
+# that survived was whichever scp landed last, which is not necessarily the
+# newer commit -- the pipeline could quietly install older code and report
+# success. Queue instead of cancelling: a deploy that has already copied files
+# to the server should be allowed to finish rather than be killed mid-swap.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 env:
   APP_DIR: /opt/milesahead
   APP_USER: milesahead

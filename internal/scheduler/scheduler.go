@@ -47,10 +47,26 @@ func (s *Scheduler) AddRevisionJob(interval time.Duration, revisionFunc func()) 
 }
 
 // AddEnrichmentJob adds the periodic pass that fills in article fields
-// generation left empty.
+// generation left empty, and runs one pass shortly after startup.
+//
+// The startup pass matters because "@every 15m" fires first 15 minutes AFTER
+// start, not immediately -- and every deploy restarts the service, so each
+// deploy pushed the first reconciliation another 15 minutes out. Articles
+// created in that window sit visibly incomplete, and a busy deploy day could
+// postpone reconciliation indefinitely.
+//
+// It is delayed rather than immediate so it does not contend with the scan job,
+// which robfig/cron fires straight away on Start.
 func (s *Scheduler) AddEnrichmentJob(interval time.Duration, enrichFunc func()) {
 	s.cron.AddFunc(fmt.Sprintf("@every %s", interval), enrichFunc)
+	go func() {
+		time.Sleep(startupEnrichmentDelay)
+		enrichFunc()
+	}()
 }
+
+// startupEnrichmentDelay is how long after boot the first reconciliation runs.
+const startupEnrichmentDelay = 90 * time.Second
 
 // Start begins running all scheduled jobs.
 func (s *Scheduler) Start() {

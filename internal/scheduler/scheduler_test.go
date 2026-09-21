@@ -100,3 +100,20 @@ func TestMultipleJobs(t *testing.T) {
 		t.Error("poll job was not called")
 	}
 }
+
+// TestAddEnrichmentJob_RunsSoonAfterStartup guards the startup pass.
+//
+// robfig/cron's "@every d" schedules the FIRST run one interval after start,
+// not immediately. Since every deploy restarts the service, without a startup
+// pass each deploy pushed the first reconciliation another full interval out,
+// and articles created in that window stayed visibly incomplete.
+func TestAddEnrichmentJob_RunsSoonAfterStartup(t *testing.T) {
+	if startupEnrichmentDelay > 5*time.Minute {
+		t.Fatalf("startup delay %v is too long to be useful after a deploy",
+			startupEnrichmentDelay)
+	}
+	if startupEnrichmentDelay <= 0 {
+		t.Fatal("startup pass must be delayed, not immediate, to avoid " +
+			"contending with the scan job cron fires on Start")
+	}
+}
