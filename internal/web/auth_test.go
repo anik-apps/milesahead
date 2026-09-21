@@ -73,11 +73,9 @@ func setupTestApp(t *testing.T) *App {
 		t.Fatalf("failed to create test app: %v", err)
 	}
 
-	// Registered last, so LIFO cleanup runs it FIRST — before database.Close()
-	// and before t.TempDir removes the directory. Handlers start background
-	// goroutines that query the database and write SQLite WAL files; without
-	// this they ran on after teardown, logging "sql: database is closed" and
-	// intermittently failing the temp-dir cleanup with "directory not empty".
+	// Join handler-started goroutines before fixtures are torn down.
+	// t.Cleanup is LIFO, so registering here runs this BEFORE the
+	// database close and temp-dir removal registered earlier.
 	t.Cleanup(app.WaitBackground)
 
 	return app

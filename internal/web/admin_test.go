@@ -167,6 +167,11 @@ func setupAdminTestApp(t *testing.T) (*App, *db.Database) {
 		t.Fatalf("failed to create test app: %v", err)
 	}
 
+	// Join handler-started goroutines before fixtures are torn down.
+	// t.Cleanup is LIFO, so registering here runs this BEFORE the
+	// database close and temp-dir removal registered earlier.
+	t.Cleanup(app.WaitBackground)
+
 	return app, database
 }
 
@@ -726,6 +731,11 @@ func setupNewsletterTestApp(t *testing.T, mock *mockNewsletterSvc) (*App, *db.Da
 	if err != nil {
 		t.Fatalf("failed to create test app: %v", err)
 	}
+
+	// Join handler-started goroutines before fixtures are torn down.
+	// t.Cleanup is LIFO, so registering here runs this BEFORE the
+	// database close and temp-dir removal registered earlier.
+	t.Cleanup(app.WaitBackground)
 
 	return app, database
 }
