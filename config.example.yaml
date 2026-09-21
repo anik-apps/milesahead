@@ -13,17 +13,45 @@ scanner:
   user_agent: "MilesAhead/1.0"
 
 ai:
-  # Primary generator. Empirical A/B testing across 80 article generations
-  # (4 candidate models on integrate.api.nvidia.com) showed openai/gpt-oss-120b
-  # had the highest publish-ready rate (90% scoring >=75 from the critic) and
-  # ~10s latency.
-  generator_model: "openai/gpt-oss-120b"
-  # Fallback used when the primary returns a retryable error (HTTP 429 / 5xx /
-  # timeout). Qwen 3.5 was the second-best in the same A/B test (85% pass rate)
-  # and has not exhibited the rate-limit issues that disqualified DeepSeek.
-  # Leave empty to disable fallback.
-  fallback_generator_model: "qwen/qwen3.5-122b-a10b"
-  critic_model: "meta/llama-3.3-70b-instruct"
+  # Primary generator. Re-selected 2026-09-21 after the previous primary
+  # (openai/gpt-oss-120b), its fallback and the critic were ALL retired upstream,
+  # stopping publication for 26 days. Verify any change here with cmd/ab-models:
+  # the provider's own /v1/models catalogue is not a liveness signal -- of 81
+  # models listed, 49 looked chat-capable and only 9 answered.
+  #
+  # nemotron-3-ultra-550b-a55b scored 95 on 4 of 5 real clusters (threshold 75).
+  # Slower than the old primary: 105-510s per article versus ~10s.
+  generator_model: "nvidia/nemotron-3-ultra-550b-a55b"
+  # Fallback chain, comma-separated, tried left to right on a retryable error
+  # (429 / 5xx / timeout) OR a permanently gone model (404 / 410). Leave empty
+  # to disable. gpt-oss-20b is the only other model that both generates and
+  # honours the critic JSON contract.
+  # Kept deliberately more than one deep: the outage happened because the
+  # primary AND the single configured fallback were retired in the same window.
+  # gpt-oss-20b is verified to generate and to honour the critic contract;
+  # nemotron-3-super-120b-a12b is a last resort only -- it answers quickly but
+  # returns 503 intermittently and leaks reasoning preamble, so it is placed
+  # after a model that does neither.
+  fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
+  # Critic must return parseable JSON: Critic.Verify runs replies through
+  # extractJSON, so reasoning-style models that answer in prose disqualify
+  # themselves regardless of judgement quality (glm-5.3-flash failed 3 of 4).
+  # mistral-nemotron answers directly, so no reasoning competes for the token
+  # budget. It CANNOT be used as a generator -- it returns 500 on the article
+  # prompt, reproducibly, while handling 16k chars of ordinary prose fine.
+  #
+  # Deliberately a different model from the generator: self-grading is not a
+  # quality gate. Scores on one shared article were mistral 92 / 550b 82 /
+  # gpt-oss-20b 45, so this choice moves the publish bar materially -- watch
+  # the approval rate after changing it.
+  critic_model: "mistralai/mistral-nemotron"
+  # Vision model for image scoring. The 90b variant this replaced times out on
+  # every call, so each candidate image burned the full 300s client timeout.
+  vision_model: "meta/llama-3.2-11b-vision-instruct"
+  # Seconds per model call. The primary takes 105-510s per article, so the
+  # previous hardcoded 300s could have timed out a healthy-but-slow generation
+  # and silently demoted it to the fallback.
+  request_timeout: 900
   hf_api_token: "${HF_API_TOKEN}"
   critic_threshold: 70
   max_retries: 3

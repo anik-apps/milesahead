@@ -30,6 +30,8 @@ type AIConfig struct {
 	GeneratorModel         string `yaml:"generator_model"`
 	FallbackGeneratorModel string `yaml:"fallback_generator_model"`
 	CriticModel            string `yaml:"critic_model"`
+	VisionModel            string `yaml:"vision_model"`
+	RequestTimeout         int    `yaml:"request_timeout"` // seconds; 0 = client default
 	Critic2Model           string `yaml:"critic2_model"`
 	HFAPIToken             string `yaml:"hf_api_token"`
 	HFBaseURL              string `yaml:"hf_base_url"`

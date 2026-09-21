@@ -87,9 +87,13 @@ jobs:
             user_agent: "MilesAhead/1.0"
 
           ai:
-            generator_model: "openai/gpt-oss-120b"
-            fallback_generator_model: "qwen/qwen3.5-122b-a10b"
-            critic_model: "meta/llama-3.3-70b-instruct"
+            # See config.example.yaml for why these three models, and for the
+            # warning that the provider catalogue lists models that do not work.
+            generator_model: "nvidia/nemotron-3-ultra-550b-a55b"
+            fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
+            critic_model: "mistralai/mistral-nemotron"
+            vision_model: "meta/llama-3.2-11b-vision-instruct"
+            request_timeout: 900
             critic2_model: ""
             hf_api_token: "${NVIDIA_API_KEY}"
             hf_base_url: "https://integrate.api.nvidia.com/v1"
