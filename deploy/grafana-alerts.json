@@ -1,7 +1,7 @@
 [
   {
     "uid": "milesahead-no-articles",
-    "title": "Miles Ahead — no articles generated in 24h",
+    "title": "Miles Ahead \u2014 no articles generated in 24h",
     "ruleGroup": "milesahead-content",
     "folderUID": "ffh46waaplbswe",
     "condition": "C",
@@ -11,7 +11,10 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 86400, "to": 0 },
+        "relativeTimeRange": {
+          "from": 86400,
+          "to": 0
+        },
         "datasourceUid": "DS_PLACEHOLDER",
         "model": {
           "refId": "A",
@@ -30,7 +33,10 @@
           "type": "reduce",
           "reducer": "last",
           "expression": "A",
-          "settings": { "mode": "replaceNN", "replaceWithValue": 0 }
+          "settings": {
+            "mode": "replaceNN",
+            "replaceWithValue": 0
+          }
         }
       },
       {
@@ -41,23 +47,33 @@
           "type": "threshold",
           "expression": "B",
           "conditions": [
-            { "evaluator": { "type": "lt", "params": [1] } }
+            {
+              "evaluator": {
+                "type": "lt",
+                "params": [
+                  1
+                ]
+              }
+            }
           ]
         }
       }
     ],
     "noDataState": "Alerting",
     "execErrState": "Alerting",
-    "labels": { "severity": "critical", "service": "milesahead" },
+    "labels": {
+      "severity": "critical",
+      "service": "milesahead"
+    },
     "annotations": {
       "summary": "Miles Ahead has published no articles in 24 hours",
-      "description": "sum(increase(milesahead_articles_generated_total[24h])) is below 1. Scanning can look perfectly healthy while this fires: in the 2026-08-26 incident raw_articles kept filling for 26 days while every generation failed with 410 Gone, because the provider had retired the generator, the critic and the only fallback. NoData counts as firing on purpose — the counter is a CounterVec, so its series does not exist at all until the first article, which is exactly the state an outage leaves it in.",
+      "description": "sum(increase(milesahead_articles_generated_total[24h])) is below 1. Scanning can look perfectly healthy while this fires: in the 2026-08-26 incident raw_articles kept filling for 26 days while every generation failed with 410 Gone, because the provider had retired the generator, the critic and the only fallback. NoData counts as firing on purpose \u2014 the counter is a CounterVec, so its series does not exist at all until the first article, which is exactly the state an outage leaves it in.",
       "runbook_url": "https://github.com/anik-apps/milesahead/blob/main/docs/runbooks/generation-drought.md"
     }
   },
   {
     "uid": "milesahead-ai-api-errors",
-    "title": "Miles Ahead — AI API failures sustained",
+    "title": "Miles Ahead \u2014 AI API failures sustained",
     "ruleGroup": "milesahead-content",
     "folderUID": "ffh46waaplbswe",
     "condition": "C",
@@ -67,7 +83,10 @@
     "data": [
       {
         "refId": "A",
-        "relativeTimeRange": { "from": 21600, "to": 0 },
+        "relativeTimeRange": {
+          "from": 21600,
+          "to": 0
+        },
         "datasourceUid": "DS_PLACEHOLDER",
         "model": {
           "refId": "A",
@@ -86,7 +105,10 @@
           "type": "reduce",
           "reducer": "last",
           "expression": "A",
-          "settings": { "mode": "replaceNN", "replaceWithValue": 0 }
+          "settings": {
+            "mode": "replaceNN",
+            "replaceWithValue": 0
+          }
         }
       },
       {
@@ -97,17 +119,95 @@
           "type": "threshold",
           "expression": "B",
           "conditions": [
-            { "evaluator": { "type": "gt", "params": [30] } }
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  30
+                ]
+              }
+            }
           ]
         }
       }
     ],
     "noDataState": "OK",
     "execErrState": "OK",
-    "labels": { "severity": "warning", "service": "milesahead" },
+    "labels": {
+      "severity": "warning",
+      "service": "milesahead"
+    },
     "annotations": {
       "summary": "Miles Ahead AI API failures are elevated",
-      "description": "More than 30 final AI API failures in 6 hours. This is the earlier, noisier signal — the drought alert is the reliable one. Threshold is set above a whole scan cycle failing (~10-20 topics per 3h cycle) so a single bad cycle does not page, but a persistent condition does. NoData is OK here: no errors recorded is the healthy state.",
+      "description": "More than 30 final AI API failures in 6 hours. This is the earlier, noisier signal \u2014 the drought alert is the reliable one. Threshold is set above a whole scan cycle failing (~10-20 topics per 3h cycle) so a single bad cycle does not page, but a persistent condition does. NoData is OK here: no errors recorded is the healthy state.",
+      "runbook_url": "https://github.com/anik-apps/milesahead/blob/main/docs/runbooks/generation-drought.md"
+    }
+  },
+  {
+    "uid": "milesahead-enrichment-stalled",
+    "title": "Miles Ahead \u2014 enrichment reconciler has stalled",
+    "ruleGroup": "milesahead-content",
+    "folderUID": "ffh46waaplbswe",
+    "condition": "C",
+    "for": "15m",
+    "isPaused": false,
+    "orgID": 1,
+    "data": [
+      {
+        "refId": "A",
+        "relativeTimeRange": {
+          "from": 10800,
+          "to": 0
+        },
+        "datasourceUid": "DS_PLACEHOLDER",
+        "model": {
+          "refId": "A",
+          "instant": true,
+          "editorMode": "code",
+          "expr": "time() - milesahead_enrichment_last_success_timestamp_seconds",
+          "intervalMs": 60000,
+          "maxDataPoints": 43200
+        }
+      },
+      {
+        "refId": "B",
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "B",
+          "type": "reduce",
+          "reducer": "last",
+          "expression": "A"
+        }
+      },
+      {
+        "refId": "C",
+        "datasourceUid": "__expr__",
+        "model": {
+          "refId": "C",
+          "type": "threshold",
+          "expression": "B",
+          "conditions": [
+            {
+              "evaluator": {
+                "type": "gt",
+                "params": [
+                  3600
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "noDataState": "NoData",
+    "execErrState": "OK",
+    "labels": {
+      "severity": "warning",
+      "service": "milesahead"
+    },
+    "annotations": {
+      "summary": "Enrichment has not completed a pass in over an hour",
+      "description": "milesahead_enrichment_last_success_timestamp_seconds has not advanced for more than an hour, against a 15-minute interval. This is the signal milesahead_articles_degraded cannot give: that gauge looks identical whether the reconciler is idle with nothing to do or wedged mid-pass, because a stalled pass simply stops updating it. Check milesahead_enrichment_passes_total{outcome} \u2014 a rising \"skipped\" or \"deadline\" count means passes are overrunning their interval rather than failing outright. NoData is NOT treated as firing here: unlike the article-drought rule, this metric is a plain Gauge and is exported from process start, so its absence means the app is down, which the service alerts already cover.",
       "runbook_url": "https://github.com/anik-apps/milesahead/blob/main/docs/runbooks/generation-drought.md"
     }
   }

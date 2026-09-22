@@ -51,6 +51,31 @@ var (
 		Help: "Articles missing enrichment, by whether retries remain",
 	}, []string{"state"})
 
+	// EnrichmentPassesTotal counts reconciliation passes by how they ended.
+	// "skipped" is the important one: it means the previous pass was still
+	// running, which on a degraded provider is how enrichment stalls without
+	// anything looking wrong.
+	EnrichmentPassesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_enrichment_passes_total",
+		Help: "Enrichment passes by outcome (completed, deadline, skipped, error)",
+	}, []string{"outcome"})
+
+	// EnrichmentLastSuccessTimestamp is the liveness signal. A gauge of
+	// "articles still degraded" cannot distinguish a healthy idle system from a
+	// stalled one -- both look static. This goes stale instead, so
+	// time() - this > threshold is alertable.
+	EnrichmentLastSuccessTimestamp = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "milesahead_enrichment_last_success_timestamp_seconds",
+		Help: "Unix time of the last enrichment pass that ran to completion",
+	})
+
+	// EnrichmentPassDuration shows how close passes run to their deadline.
+	EnrichmentPassDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "milesahead_enrichment_pass_duration_seconds",
+		Help:    "Wall-clock duration of an enrichment pass",
+		Buckets: []float64{10, 30, 60, 120, 300, 600, 1200},
+	})
+
 	AIAPIErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "milesahead_ai_api_errors_total",
 		Help: "Total AI API final failures",
@@ -122,6 +147,7 @@ func Init() {
 	prometheus.MustRegister(
 		ScansTotal, ArticlesGeneratedTotal, ArticlesApprovedTotal,
 		EnrichmentFailuresTotal, ArticlesDegraded,
+		EnrichmentPassesTotal, EnrichmentLastSuccessTimestamp, EnrichmentPassDuration,
 		ArticlesRejectedTotal, RevisionsTotal, AIAPIDuration,
 		AIAPIErrorsTotal, CriticScore, VotesTotal,
 		HTTPRequestsTotal, HTTPDuration,

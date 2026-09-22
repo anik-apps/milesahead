@@ -149,6 +149,9 @@ func main() {
 	if cfg.AI.EnrichmentMaxAttempts > 0 {
 		enricher.MaxAttempts = cfg.AI.EnrichmentMaxAttempts
 	}
+	if cfg.AI.EnrichmentMaxDuration > 0 {
+		enricher.MaxDuration = time.Duration(cfg.AI.EnrichmentMaxDuration) * time.Minute
+	}
 
 	// Services
 	scnr := scanner.NewScanner(database, cfg.Scanner.UserAgent)

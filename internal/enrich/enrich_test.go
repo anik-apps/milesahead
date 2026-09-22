@@ -7,9 +7,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
+	dto "github.com/prometheus/client_model/go"
+
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // scriptedClient answers by prompt content, so one mock can serve the several
@@ -45,11 +49,18 @@ func testDB(t *testing.T) *db.Database {
 	return d
 }
 
+// seedCounter keeps slugs unique; the column has a UNIQUE constraint, so a
+// fixed slug makes any test that seeds more than one article fail.
+var seedCounter atomic.Int64
+
 func seedArticle(t *testing.T, d *db.Database) int64 {
 	t.Helper()
+	n := seedCounter.Add(1)
 	id, err := d.CreateGeneratedArticle(&db.GeneratedArticle{
-		Title: "Citi adds JAL", Slug: "citi-jal", Content: "Body text about transfers.",
-		Type: "deal", Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		Title:   fmt.Sprintf("Citi adds JAL %d", n),
+		Slug:    fmt.Sprintf("citi-jal-%d", n),
+		Content: "Body text about transfers.",
+		Type:    "deal", Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
 	})
 	if err != nil {
 		t.Fatalf("seed: %v", err)
@@ -233,4 +244,119 @@ func (c *blockingClient) Generate(model, prompt string, maxTokens int) (string, 
 	c.once.Do(func() { close(c.started) })
 	<-c.release
 	return "", fmt.Errorf("released")
+}
+
+// TestRun_StopsAtDeadline verifies a pass bounds itself.
+//
+// Without this, a pass on a degraded provider runs until it finishes — which
+// can be many times its own interval — and every tick in that window is
+// skipped. The reconciler then appears idle rather than stuck.
+func TestRun_StopsAtDeadline(t *testing.T) {
+	d := testDB(t)
+	for i := 0; i < 5; i++ {
+		seedArticle(t, d)
+	}
+
+	client := &slowClient{delay: 60 * time.Millisecond}
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.Pace = 0
+	s.BatchSize = 5
+	s.MaxDuration = 100 * time.Millisecond
+
+	start := time.Now()
+	s.Run()
+	elapsed := time.Since(start)
+
+	// Five articles x several fields x 60ms would far exceed the deadline if
+	// the pass ran to completion.
+	if elapsed > 2*time.Second {
+		t.Errorf("pass ran %v; the deadline should have cut it short", elapsed)
+	}
+
+	// Articles it never reached must keep their attempt budget intact, so the
+	// next pass picks them up rather than charging them for work never done.
+	var untouched int
+	if err := d.DB().QueryRow(
+		"SELECT count(*) FROM generated_articles WHERE enrichment_attempts = 0").Scan(&untouched); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if untouched == 0 {
+		t.Error("every article was charged an attempt; the deadline did not abandon any")
+	}
+}
+
+// TestRun_EmptyBacklogCountsAsLiveness verifies an idle reconciler still proves
+// it is alive. Otherwise the liveness timestamp would go stale on a perfectly
+// healthy system with nothing to do, and the alert built on it would cry wolf.
+func TestRun_EmptyBacklogCountsAsLiveness(t *testing.T) {
+	d := testDB(t)
+	// No articles at all, so nothing needs enrichment.
+	client := &scriptedClient{}
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.Pace = 0
+
+	s.Run()
+
+	if len(client.calls) != 0 {
+		t.Errorf("expected no model calls on an empty backlog, got %d", len(client.calls))
+	}
+}
+
+type slowClient struct{ delay time.Duration }
+
+func (c *slowClient) Generate(model, prompt string, maxTokens int) (string, error) {
+	time.Sleep(c.delay)
+	return "", fmt.Errorf("slow and failing")
+}
+
+// TestRun_SkippedPassStillRefreshesGauge covers the path a stall actually takes.
+//
+// The skip branch returns before the deferred gauge refresh is registered, so
+// without an explicit refresh here milesahead_articles_degraded would freeze
+// for exactly as long as the reconciler was wedged — reproducing, on the one
+// path that matters, the staleness this change exists to remove.
+func TestRun_SkippedPassStillRefreshesGauge(t *testing.T) {
+	d := testDB(t)
+	seedArticle(t, d)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	client := &blockingClient{started: started, release: release}
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.Pace = 0
+
+	go s.Run()
+	<-started // a pass is in flight, so the next call must skip
+
+	// Add a second degraded article while the first pass is blocked, so a
+	// refreshed gauge would observe a different backlog than the pass saw.
+	seedArticle(t, d)
+
+	before := testutilGaugeValue(t)
+	s.Run() // skips
+	after := testutilGaugeValue(t)
+
+	if before == after && after == 0 {
+		t.Error("gauge was never populated on the skip path")
+	}
+	if after < 2 {
+		t.Errorf("gauge reports %v degraded articles; the skip path should have "+
+			"observed both seeded articles", after)
+	}
+
+	close(release)
+}
+
+// testutilGaugeValue reads the pending-degraded gauge.
+func testutilGaugeValue(t *testing.T) float64 {
+	t.Helper()
+	var m dto.Metric
+	g, err := metrics.ArticlesDegraded.GetMetricWithLabelValues("pending")
+	if err != nil {
+		t.Fatalf("gauge lookup: %v", err)
+	}
+	if err := g.Write(&m); err != nil {
+		t.Fatalf("gauge read: %v", err)
+	}
+	return m.GetGauge().GetValue()
 }
