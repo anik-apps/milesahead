@@ -35,11 +35,15 @@
 
     <div class="sidebar-stack">
         {{range .Sidebar}}
-        <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}">
+        <div class="article-card{{if or .Infographic .ImageThumbnail}} has-thumb{{end}}">
             <a href="/article/{{.Slug}}">
-                {{if .ImageThumbnail}}
+                {{if .Infographic}}
+                <div class="card-thumb card-thumb-svg" role="img" aria-label="{{.InfographicTitle}}">
+                    {{.Infographic}}
+                </div>
+                {{else if .ImageThumbnail}}
                 <div class="card-thumb">
-                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}">
+                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}" loading="lazy">
                 </div>
                 {{end}}
                 <div class="card-body">
@@ -59,11 +63,15 @@
 {{if .Grid}}
 <div class="bottom-grid">
     {{range .Grid}}
-    <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}">
+    <div class="article-card{{if or .Infographic .ImageThumbnail}} has-thumb{{end}}">
         <a href="/article/{{.Slug}}">
-            {{if .ImageThumbnail}}
+            {{if .Infographic}}
+            <div class="card-thumb card-thumb-svg" role="img" aria-label="{{.InfographicTitle}}">
+                {{.Infographic}}
+            </div>
+            {{else if .ImageThumbnail}}
             <div class="card-thumb">
-                <img src="{{.ImageThumbnail}}" alt="{{.Title}}">
+                <img src="{{.ImageThumbnail}}" alt="{{.Title}}" loading="lazy">
             </div>
             {{end}}
             <div class="card-body">

@@ -86,6 +86,8 @@ type publicArticleRow struct {
 	ImageURL         string
 	ImageThumbnail   string
 	ImageAttribution string
+	Infographic      template.HTML
+	InfographicTitle string
 }
 
 // sourceInfo holds source data for article detail pages.
@@ -127,6 +129,8 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 			ImageURL:         a.ImageURL,
 			ImageThumbnail:   a.ImageThumbnail,
 			ImageAttribution: a.ImageAttribution,
+			Infographic:      infographicHTML(a.InfographicSVG),
+			InfographicTitle: infographicTitle(a.InfographicSVG),
 		}
 		if a.PublishedAt != nil {
 			row.PublishedAt = a.PublishedAt.Format("Jan 2, 2006")
@@ -394,6 +398,8 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"LinkedCards":        app.buildLinkedCardEmbeds(article.RelatedCardsJSON),
 		"LinkedCardsHeading": article.LinkedCardsHeading,
 		"ScoutsTake":         article.ScoutsTake,
+		"Infographic":        infographicHTML(article.InfographicSVG),
+		"InfographicTitle":   infographicTitle(article.InfographicSVG),
 		"PersonaName":        app.cfg.Site.PersonaName,
 		"MetaDescription":    metaDesc,
 		"CanonicalURL":       canonicalURL,

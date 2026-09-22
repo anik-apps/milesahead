@@ -50,6 +50,7 @@ type GeneratedArticle struct {
 	Links              string     `json:"links"`
 	ImageURL           string     `json:"image_url"`
 	ImageThumbnail     string     `json:"image_thumbnail"`
+	InfographicSVG     string     `json:"infographic_svg"`
 	ImageAttribution   string     `json:"image_attribution"`
 	ScoutsTake         string     `json:"scouts_take"`
 	RelatedCardsJSON   string     `json:"related_cards_json"`

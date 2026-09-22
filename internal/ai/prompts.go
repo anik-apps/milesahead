@@ -475,3 +475,42 @@ Sources (for your reference only — do NOT cite or link to them):
 %s
 Write the revised article now.`, feedback, writingStyle, htmlFormat, previousOutput, criticIssues, formatSources(sources))
 }
+
+// InfographicPrompt asks for an SVG diagram of an article's key numbers.
+//
+// The constraints are not stylistic. Everything the prompt forbids is
+// something internal/svg drops anyway, so asking for it up front is the
+// difference between a usable diagram and a sanitised husk -- a model that
+// leans on <defs> gradients and CSS gets its fills stripped and returns flat
+// grey boxes. Well-formed XML is demanded explicitly because the sanitiser
+// parses strictly and rejects the whole document on a single unquoted
+// attribute, which HTML habits produce constantly.
+func InfographicPrompt(title, tldr, keyDetailsJSON string) string {
+	return fmt.Sprintf(`You are an information designer. Produce a single SVG infographic that lets a reader grasp this article's numbers at a glance.
+
+ARTICLE
+Title: %s
+Summary: %s
+Key details (JSON): %s
+
+WHAT TO DRAW
+Pick the one comparison that carries the article and draw it. Usually that is a horizontal bar chart comparing two to five labelled amounts, but use a simple timeline if the story is about dates, or a small grid of stat cards if the numbers do not compare to each other.
+- Every number you draw must appear in the article above. Do not invent, round, or extrapolate figures.
+- Label every bar or row with both its name and its value. A chart nobody can read the numbers off is useless.
+- Include a short headline at the top and a one-line takeaway at the bottom.
+- If the article has no comparable numbers at all, output exactly: NO_INFOGRAPHIC
+
+STRICT OUTPUT RULES
+- Output ONLY the SVG. No prose, no markdown fences, no explanation.
+- Root element: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450"> with no width or height attributes.
+- The first child must be <title>…</title> giving the diagram an accessible name.
+- Allowed elements ONLY: svg, title, desc, g, rect, circle, ellipse, line, polyline, polygon, path, text, tspan.
+- Allowed styling ONLY via presentation attributes: fill, stroke, stroke-width, opacity, font-family, font-size, font-weight, text-anchor, transform.
+- Forbidden and silently discarded: style attributes, <style>, <defs>, gradients, filters, <image>, <use>, <script>, <foreignObject>, class-based CSS, external fonts, url(...) values of any kind.
+- Colours must be literal hex (#1f6feb) or the keyword currentColor. Use currentColor for all body text and axis lines so the diagram follows the reader's light or dark theme; use hex only for the data marks themselves.
+- font-family must be: sans-serif
+- Must be well-formed XML: quote every attribute value, close every tag (<rect ... /> or <text ...>…</text>), and escape & as &amp;.
+- Keep it under 60 elements and stay inside the 800x450 viewBox. Nothing outside it is rendered.
+- Leave a 60px margin inside the right edge: end the longest bar at x=700 at most, so the value label that follows it still fits. A label starting past x=740 is clipped and its number is lost -- which defeats the diagram.
+- Left-hand row labels need room too: start the bars at x=200 or further right, and right-align those labels against the axis.`, title, tldr, keyDetailsJSON)
+}

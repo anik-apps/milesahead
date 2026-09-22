@@ -2498,3 +2498,48 @@ tr.flagged { background: #fef2f2; }
 .card-video-facade:hover .card-video-play { background: rgba(0,0,0,0.78); transform: translate(-50%, -50%) scale(1.06); }
 .card-video-facade:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .card-video-caption { color: var(--text-muted); font-size: 0.85rem; margin-top: 8px; }
+
+/* ---- Article infographic (model-drawn, inline SVG) ---------------------- */
+/* The SVG carries no width or height -- the sanitiser strips them -- so the
+   viewBox plus these rules decide the size. currentColor inside the diagram
+   picks up the surrounding text colour, which is what makes one diagram work
+   in both themes without generating two. */
+.infographic {
+    margin: 0 0 24px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--card-bg);
+    color: var(--text);
+}
+.infographic .infographic-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 60vh;
+}
+.infographic figcaption {
+    margin-top: 10px;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-align: center;
+}
+/* On a card the diagram stands in for the photo, so it has to fill the same
+   box a cropped <img> would. */
+.card-thumb-svg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--card-bg);
+    overflow: hidden;
+    padding: 6px;
+    color: var(--text);
+}
+.card-thumb-svg .infographic-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+@media (prefers-reduced-motion: no-preference) {
+    .infographic .infographic-svg { transition: opacity .2s ease; }
+}

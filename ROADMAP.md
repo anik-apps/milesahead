@@ -141,6 +141,18 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       `hfClient.Generate(cfg.AI.CriticModel, ...)` calls in `main.go` still bypass the
       fallback chain entirely.
 
+- [x] **Article infographics** — a reasoning model draws each article's key details as a bar
+      chart, timeline or stat grid in SVG. No text-to-image model is reachable from this
+      project's credentials (the chat catalogue has none, `ai.api.nvidia.com/v1/genai/*`
+      rejects the token, and the Vertex gateway key is scoped to a video model), so the
+      diagram is vector markup authored by a text model rather than a raster image. That
+      turns out to be the better fit anyway: ~2 KB, sharp at any size, `currentColor` makes
+      one diagram work in both themes, the text is selectable and indexable, and it is
+      served from our own origin so it cannot rot the way the stock photos did. Inlining
+      model-written markup is an XSS surface, so `internal/svg` re-serialises it through a
+      strict allowlist and the web layer refuses anything not carrying the sanitiser's
+      signature.
+
 ## Up Next
 
 - [ ] Card explainer videos — YouTube-hosted, embedded per card page (Amex Platinum, Sapphire Reserve, Strata Elite so far)

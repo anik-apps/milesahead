@@ -95,3 +95,43 @@ The selected image is stored on the `generated_articles` record:
 | `image_url` | Full-size image URL for the article page |
 | `image_thumbnail` | Smaller image URL for homepage cards |
 | `image_attribution` | Credit line (e.g. "Photo by X on Unsplash") |
+
+## Article Infographics
+
+Separately from photo search, the enrichment reconciler asks a text model to draw each
+article's `key_details` as an SVG diagram — usually a horizontal bar chart, sometimes a
+timeline or a grid of stat cards.
+
+There is no raster image model available to this project: the chat catalogue at
+`integrate.api.nvidia.com` contains none, the NIM endpoints at `ai.api.nvidia.com/v1/genai/*`
+reject the token, and the internal Vertex gateway key is scoped to a video model. Vector
+markup from a text model turns out to suit the job better regardless — it is roughly 2 KB,
+stays sharp at any size, uses `currentColor` so one diagram renders correctly in both light
+and dark themes, keeps its text selectable and indexable, and is served from our own origin
+rather than a third-party CDN that can expire the link.
+
+### Why the sanitiser is not optional
+
+The diagram is inlined into the page rather than loaded through `<img>`, so it executes in
+the site's own origin — a single `<script>` or `onload=` inside it would be same-origin XSS
+with reach into an admin session. The model that writes it is prompted with article text
+scraped from third-party sites, so its output is attacker-influenced.
+
+`internal/svg` handles this by allowlist and re-serialisation: elements and attributes not on
+the list are dropped, dropped elements take their children with them, and everything that
+survives is written out by the package's own encoder, so the result can only contain
+constructs it knows how to emit. `<script>`, `<foreignObject>`, `<use>`, `<image>`, `<style>`,
+`<a>`, animation elements, namespaced attributes, `style=`, and any `url(...)` value are all
+removed. Root `width`/`height` are stripped so CSS controls the size.
+
+The web layer then refuses to inline anything that does not begin with the exact opening tag
+the sanitiser emits — not a second security boundary, but a check that the first one was
+actually crossed before the markup reaches a page.
+
+### Outcomes
+
+A pass has three distinct results. A drawing is stored; a model error leaves the column empty
+so a later pass retries; and an article with no comparable numbers gets the sentinel `none`,
+which stops it being asked again. Without that sentinel an unchartable article would spend a
+model call every pass, forever, and burn its whole enrichment attempt budget on the one field
+it can never have.

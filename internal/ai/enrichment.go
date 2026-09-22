@@ -2,9 +2,12 @@ package ai
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+
+	"github.com/kumaranik/milesahead/internal/svg"
 )
 
 // Token budgets for the enrichment calls.
@@ -19,7 +22,19 @@ const (
 	ScoutsTakeTokens = 512
 	TagsTokens       = 512
 	KeyDetailTokens  = 1024
+
+	// InfographicTokens is an order of magnitude larger because the answer is
+	// markup, not a sentence: a labelled bar chart runs 2-4 KB, and a
+	// reasoning model spends its budget on layout arithmetic before it emits
+	// the first tag. Truncation here is total -- the sanitiser rejects an
+	// unterminated document outright -- so the ceiling is set well clear.
+	InfographicTokens = 6144
 )
+
+// ErrNoInfographic means the model judged the article to have nothing worth
+// charting. That is a legitimate answer for a story with no numbers in it, and
+// is distinguished from failure so callers do not log it as one.
+var ErrNoInfographic = errors.New("article has no chartable numbers")
 
 // TryModels runs a prompt against each model in turn, moving on when the
 // failure is one another model might survive.
@@ -148,4 +163,25 @@ func GenerateImageQueries(client HFClientInterface, models []string, title, tldr
 		return nil, fmt.Errorf("no image queries returned")
 	}
 	return queries, nil
+}
+
+// GenerateInfographic asks a model to draw the article's numbers, and returns
+// markup that has been through the allowlist sanitiser.
+//
+// Nothing here trusts the model's output: it is generated markup that will be
+// inlined into a page, so svg.Sanitize is the boundary, not a tidy-up step.
+func GenerateInfographic(client HFClientInterface, models []string, title, tldr, keyDetailsJSON string) (string, error) {
+	raw, err := TryModels(client, models,
+		InfographicPrompt(title, tldr, keyDetailsJSON), InfographicTokens)
+	if err != nil {
+		return "", err
+	}
+	if strings.Contains(raw, "NO_INFOGRAPHIC") && !strings.Contains(raw, "<svg") {
+		return "", ErrNoInfographic
+	}
+	clean, err := svg.Sanitize(raw)
+	if err != nil {
+		return "", fmt.Errorf("sanitising infographic: %w", err)
+	}
+	return clean, nil
 }

@@ -34,11 +34,11 @@ func TestListArticlesNeedingEnrichment_DetectsNullKeyDetails(t *testing.T) {
 
 	complete := makeArticle(t, d, "complete")
 	setFields(t, d, complete,
-		"scouts_take = 'take', key_details = '[{\"Label\":\"a\"}]', image_url = 'u', tags_json = '[\"deals\"]'")
+		"scouts_take = 'take', key_details = '[{\"Label\":\"a\"}]', image_url = 'u', tags_json = '[\"deals\"]', infographic_svg = '<svg/>'")
 
 	nullDetails := makeArticle(t, d, "null-details")
 	setFields(t, d, nullDetails,
-		"scouts_take = 'take', key_details = 'null', image_url = 'u', tags_json = '[\"deals\"]'")
+		"scouts_take = 'take', key_details = 'null', image_url = 'u', tags_json = '[\"deals\"]', infographic_svg = '<svg/>'")
 
 	got, err := d.ListArticlesNeedingEnrichment(3, 10)
 	if err != nil {

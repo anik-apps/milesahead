@@ -15,15 +15,21 @@ type ArticleNeedingEnrichment struct {
 	Content  string
 	Attempts int
 
-	MissingScoutsTake bool
-	MissingKeyDetails bool
-	MissingImage      bool
-	MissingTags       bool
+	MissingScoutsTake  bool
+	MissingKeyDetails  bool
+	MissingImage       bool
+	MissingTags        bool
+	MissingInfographic bool
+
+	// KeyDetails is the chart's only source of numbers, so an article that
+	// still lacks it cannot have an infographic drawn yet.
+	KeyDetails string
 }
 
 // AnyMissing reports whether there is anything left to fill.
 func (a ArticleNeedingEnrichment) AnyMissing() bool {
-	return a.MissingScoutsTake || a.MissingKeyDetails || a.MissingImage || a.MissingTags
+	return a.MissingScoutsTake || a.MissingKeyDetails || a.MissingImage || a.MissingTags ||
+		a.MissingInfographic
 }
 
 // Missing names the gaps, for logging.
@@ -41,6 +47,9 @@ func (a ArticleNeedingEnrichment) Missing() string {
 	if a.MissingTags {
 		m = append(m, "tags")
 	}
+	if a.MissingInfographic {
+		m = append(m, "infographic")
+	}
 	return strings.Join(m, ",")
 }
 
@@ -53,6 +62,14 @@ const emptyKeyDetails = `(key_details IS NULL OR key_details IN ('', '[]', 'null
 
 const emptyTags = `(tags_json IS NULL OR tags_json IN ('', '[]', 'null'))`
 
+// NoInfographic is written to infographic_svg when a model has looked at an
+// article and found nothing worth charting. It distinguishes "asked, and the
+// answer was no" from "not asked yet", which is the difference between one
+// model call and one per pass forever.
+const NoInfographic = "none"
+
+const emptyInfographic = `(infographic_svg IS NULL OR infographic_svg = '')`
+
 // ListArticlesNeedingEnrichment returns articles with at least one enrichment
 // field missing that have not yet exhausted their attempts.
 //
@@ -61,10 +78,12 @@ const emptyTags = `(tags_json IS NULL OR tags_json IN ('', '[]', 'null'))`
 func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]ArticleNeedingEnrichment, error) {
 	query := fmt.Sprintf(`
 		SELECT id, title, COALESCE(tldr,''), content, enrichment_attempts,
+		       COALESCE(key_details,''),
 		       (scouts_take IS NULL OR scouts_take = '') AS need_take,
 		       %s AS need_details,
 		       (image_url IS NULL OR image_url = '') AS need_image,
-		       %s AS need_tags
+		       %s AS need_tags,
+		       %s AS need_infographic
 		FROM generated_articles
 		WHERE status != ?
 		  AND enrichment_attempts < ?
@@ -73,9 +92,11 @@ func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]Arti
 		     OR %s
 		     OR (image_url IS NULL OR image_url = '')
 		     OR %s
+		     OR %s
 		  )
 		ORDER BY created_at DESC
-		LIMIT ?`, emptyKeyDetails, emptyTags, emptyKeyDetails, emptyTags)
+		LIMIT ?`, emptyKeyDetails, emptyTags, emptyInfographic,
+		emptyKeyDetails, emptyTags, emptyInfographic)
 
 	rows, err := d.db.Query(query, StatusRejected, maxAttempts, limit)
 	if err != nil {
@@ -86,8 +107,9 @@ func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]Arti
 	var out []ArticleNeedingEnrichment
 	for rows.Next() {
 		var a ArticleNeedingEnrichment
-		if err := rows.Scan(&a.ID, &a.Title, &a.TLDR, &a.Content, &a.Attempts,
-			&a.MissingScoutsTake, &a.MissingKeyDetails, &a.MissingImage, &a.MissingTags); err != nil {
+		if err := rows.Scan(&a.ID, &a.Title, &a.TLDR, &a.Content, &a.Attempts, &a.KeyDetails,
+			&a.MissingScoutsTake, &a.MissingKeyDetails, &a.MissingImage, &a.MissingTags,
+			&a.MissingInfographic); err != nil {
 			return nil, fmt.Errorf("scanning article needing enrichment: %w", err)
 		}
 		out = append(out, a)
@@ -105,6 +127,7 @@ type EnrichmentUpdate struct {
 	ImageThumbnail   *string
 	ImageAttribution *string
 	TagsJSON         *string
+	InfographicSVG   *string
 }
 
 // ApplyEnrichment writes whatever was produced and always records the attempt.
@@ -131,6 +154,7 @@ func (d *Database) ApplyEnrichment(id int64, u EnrichmentUpdate) error {
 	add("image_thumbnail", u.ImageThumbnail)
 	add("image_attribution", u.ImageAttribution)
 	add("tags_json", u.TagsJSON)
+	add("infographic_svg", u.InfographicSVG)
 
 	// updated_at is deliberately NOT touched. It is used to tell when an
 	// article's content last changed, and a background enrichment pass is not
@@ -158,6 +182,12 @@ func (d *Database) CountDegradedArticles(maxAttempts int) (pending, exhausted in
 		     OR %s
 		     OR (image_url IS NULL OR image_url = '')
 		     OR %s )`, emptyKeyDetails, emptyTags)
+	// The infographic is deliberately absent from this list even though
+	// ListArticlesNeedingEnrichment includes it. "Degraded" drives an alert,
+	// and every article written before the feature existed lacks one -- so
+	// counting it would take the gauge from a handful to the entire archive
+	// overnight and page someone about a backfill that is working as intended.
+	// An article without a chart is complete; one without a Scout's Take is not.
 
 	var p, e sql.NullInt64
 	if err := d.db.QueryRow(query, maxAttempts, maxAttempts, StatusRejected).Scan(&p, &e); err != nil {

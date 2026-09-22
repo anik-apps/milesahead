@@ -197,6 +197,7 @@ func migrate(db *sql.DB) error {
 		// so it would either retry a hopeless article forever or skip a
 		// recoverable one. They also make "how many articles are degraded"
 		// a query rather than a guess.
+		`ALTER TABLE generated_articles ADD COLUMN infographic_svg TEXT DEFAULT ''`,
 		`ALTER TABLE generated_articles ADD COLUMN enrichment_attempts INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE generated_articles ADD COLUMN enrichment_last_at DATETIME DEFAULT NULL`,
 	}

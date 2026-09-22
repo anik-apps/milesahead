@@ -17,6 +17,7 @@ package enrich
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -171,6 +172,18 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment) (filled, failed int) 
 		}
 	}
 
+	if a.MissingInfographic {
+		switch ok, err := s.drawInfographic(&u, a); {
+		case err != nil:
+			s.recordFailure("infographic", a.ID, err)
+			failed++
+		case ok:
+			filled++
+		}
+		// Neither filled nor failed when the article simply has nothing to
+		// chart: a sentinel was written, so it will not be asked again.
+	}
+
 	if err := s.db.ApplyEnrichment(a.ID, u); err != nil {
 		// The attempt counter lives in this same UPDATE, so a failure here
 		// means the work is discarded AND the article is not charged an
@@ -223,6 +236,44 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 	u.ImageThumbnail = &scored[0].Thumbnail
 	u.ImageAttribution = &scored[0].Attribution
 	return true
+}
+
+// drawInfographic asks a model to chart the article's key details.
+//
+// It runs after the key-details step in the same pass, so an article whose
+// details were just extracted can be charted immediately -- but only from the
+// value that was actually written, never from a half-filled row.
+//
+// The three outcomes are distinct on purpose. An error is a failure worth
+// retrying; a drawing is a fill; and "this article has no numbers in it" is
+// neither. That last case writes a sentinel rather than leaving the column
+// empty, because otherwise every pass would pay for a model call to be told
+// the same thing again, and an article that is otherwise complete would burn
+// through its whole attempt budget on the one field it can never have.
+func (s *Service) drawInfographic(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichment) (bool, error) {
+	details := a.KeyDetails
+	if u.KeyDetails != nil {
+		details = *u.KeyDetails
+	}
+	if details == "" || details == "[]" || details == "null" {
+		// Nothing to chart from yet. Leave the column empty so the article
+		// comes back once key details exist.
+		return false, nil
+	}
+
+	markup, err := ai.GenerateInfographic(s.client, s.models, a.Title, a.TLDR, details)
+	if errors.Is(err, ai.ErrNoInfographic) {
+		slog.Info("enrichment: article has nothing chartable",
+			"article_id", a.ID)
+		sentinel := db.NoInfographic
+		u.InfographicSVG = &sentinel
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	u.InfographicSVG = &markup
+	return true, nil
 }
 
 func (s *Service) recordFailure(step string, articleID int64, err error) {

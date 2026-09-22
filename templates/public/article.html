@@ -60,6 +60,12 @@
             {{end}}
         </aside>
         <div class="article-main">
+            {{if .Infographic}}
+            <figure class="infographic" role="group" aria-label="Infographic: {{.InfographicTitle}}">
+                {{.Infographic}}
+                <figcaption>{{.InfographicTitle}} &middot; generated from this article's key details</figcaption>
+            </figure>
+            {{end}}
             <div class="article-content">
                 {{.Article.Content | safeHTML}}
             </div>
