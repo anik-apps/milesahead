@@ -43,7 +43,9 @@ type AIConfig struct {
 	// EnrichmentInterval is how often the reconciler runs, in minutes.
 	EnrichmentInterval int `yaml:"enrichment_interval"`
 	// EnrichmentMaxAttempts bounds passes per article before it is left alone.
-	EnrichmentMaxAttempts int    `yaml:"enrichment_max_attempts"`
+	EnrichmentMaxAttempts int `yaml:"enrichment_max_attempts"`
+	// EnrichmentMaxDuration bounds a single pass, in minutes.
+	EnrichmentMaxDuration int    `yaml:"enrichment_max_duration"`
 	Critic2Model          string `yaml:"critic2_model"`
 	HFAPIToken            string `yaml:"hf_api_token"`
 	HFBaseURL             string `yaml:"hf_base_url"`
@@ -52,7 +54,6 @@ type AIConfig struct {
 	CacheTTL              int    `yaml:"cache_ttl"`
 	UnsplashKey           string `yaml:"unsplash_key"`
 	PexelsKey             string `yaml:"pexels_key"`
-	PixabayKey            string `yaml:"pixabay_key"`
 }
 
 type SMTPConfig struct {

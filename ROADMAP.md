@@ -77,13 +77,17 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       `key_details` uses the literal string `'null'`, not NULL). Worth surfacing
       `enrichment_attempts >= max` distinctly as "given up" rather than "pending", and
       offering a per-article retry that resets the counter.
-- [ ] **Enrichment has no pass-level deadline or liveness signal** — `Service.Run` holds an
-      `atomic.Bool` guard for the whole pass, but a pass has no deadline of its own. On a
-      degraded provider every later tick logs `enrichment pass skipped` at INFO and
-      returns, and `milesahead_articles_degraded` is only written at the END of a pass, so
-      the gauge freezes at its last healthy value. Same invisible-failure shape as the
-      outage this work was meant to end. *Fix:* bound the pass, count skips, export a
-      `last successful pass` timestamp to alert on.
+- [x] **Enrichment has no pass-level deadline or liveness signal** — a pass had no bound
+      of its own, so on a degraded provider it could outlast its interval many times over;
+      every later tick then logged a skip and `milesahead_articles_degraded` froze at its
+      last value, making a stalled reconciler indistinguishable from an idle one. Passes
+      are now bounded by `enrichment_max_duration` (checked between articles), skips and
+      deadline hits are counted in `milesahead_enrichment_passes_total{outcome}`, the
+      degraded gauge refreshes on every outcome rather than only on success, and
+      `milesahead_enrichment_last_success_timestamp_seconds` gives a liveness signal that
+      goes stale when passes stop completing. A Grafana rule alerts when it has not
+      advanced in an hour against a 15-minute interval.
+
 - [ ] **No failure memory across model calls** — `TryModels` and `callWithFallback` are
       stateless, so a timing-out model burns its full retry budget on every field of every
       article: worst case 10 articles x 4 fields x 2 models x 4 attempts = 320 attempts
@@ -141,6 +145,15 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       `hfClient.Generate(cfg.AI.CriticModel, ...)` calls in `main.go` still bypass the
       fallback chain entirely.
 
+- [x] **Homepage thumbnails rotted away** — 46 of the 80 approved articles with an image
+      pointed at a URL a browser could no longer fetch. Openverse's `/thumb/` proxy 424s
+      whenever its upstream fetch fails, and Pixabay's signed hotlinks 400 once they
+      expire ("This URL is invalid or has expired") — the API terms require downloading
+      rather than hotlinking. Openverse rows already held the provider's own stable CDN
+      link in `image_url`, so it is promoted to `image_thumbnail`; Pixabay is dropped as a
+      source and its rows cleared for the enrichment reconciler to re-pick. Newly chosen
+      images are now liveness-probed before they are stored, so a dead URL is caught at
+      pick time instead of on the homepage.
 - [x] **Article infographics** — a reasoning model draws each article's key details as a bar
       chart, timeline or stat grid in SVG. No text-to-image model is reachable from this
       project's credentials (the chat catalogue has none, `ai.api.nvidia.com/v1/genai/*`
@@ -150,8 +163,8 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       one diagram work in both themes, the text is selectable and indexable, and it is
       served from our own origin so it cannot rot the way the stock photos did. Inlining
       model-written markup is an XSS surface, so `internal/svg` re-serialises it through a
-      strict allowlist and the web layer refuses anything not carrying the sanitiser's
-      signature.
+      strict allowlist and the web layer re-runs that same sanitiser at render, so a row
+      edited directly in the database still cannot inject.
 
 ## Up Next
 

@@ -51,6 +51,22 @@ type Service struct {
 	// part of why several calls in a row failed together.
 	Pace time.Duration
 
+	// MaxDuration bounds one pass. Without it a pass has no limit of its own:
+	// on a degraded provider each field can burn its full retry budget across
+	// the model chain, and a batch of ten articles can outlast its interval
+	// many times over. The guard below then turns that into silence -- every
+	// later tick is skipped, and the degraded gauge stays frozen at whatever it
+	// last read, so a stalled reconciler is indistinguishable from an idle one.
+	//
+	// The bound is checked between articles, so the true ceiling is MaxDuration
+	// plus one article's worst case. Bounding mid-article needs a context
+	// threaded through Generate, which it does not take yet.
+	MaxDuration time.Duration
+
+	// startedAt records when the in-flight pass began, so a skip can report how
+	// long the pass it is yielding to has been running.
+	startedAt atomic.Int64
+
 	// running guards against overlapping passes. robfig/cron's "@every" does
 	// NOT skip a tick when the previous run is still going, and a pass can
 	// outlast its interval when the provider is degraded -- each field may
@@ -73,6 +89,7 @@ func New(database *db.Database, client ai.HFClientInterface, models []string,
 		MaxAttempts: 3,
 		BatchSize:   10,
 		Pace:        2 * time.Second,
+		MaxDuration: 10 * time.Minute,
 	}
 }
 
@@ -80,41 +97,94 @@ func New(database *db.Database, client ai.HFClientInterface, models []string,
 // up whatever is still missing.
 func (s *Service) Run() {
 	if !s.running.CompareAndSwap(false, true) {
-		slog.Info("enrichment pass skipped: previous pass still running")
+		metrics.EnrichmentPassesTotal.WithLabelValues("skipped").Inc()
+		// Refresh the gauge here too. This branch returns before the deferred
+		// refresh below is even registered, and a run of skips is exactly when
+		// the backlog most needs reporting -- leaving it frozen on the skip path
+		// would reproduce, on the one path a stall actually takes, the staleness
+		// this change exists to remove.
+		s.refreshDegradedGauge()
+		// WARN, not INFO. A skip is not routine -- it means the previous pass
+		// has outlasted a whole interval, which is the shape a stall takes.
+		slog.Warn("enrichment pass skipped: previous pass still running",
+			"previous_running_for", time.Since(time.Unix(s.startedAt.Load(), 0)).Round(time.Second))
 		return
 	}
 	defer s.running.Store(false)
 
+	start := time.Now()
+	s.startedAt.Store(start.Unix())
+	deadline := start.Add(s.maxDuration())
+
+	// Always refresh the degraded gauge and the pass duration, whatever the
+	// outcome. Updating them only on the success path is what let the gauge sit
+	// frozen at a healthy-looking value while nothing was actually progressing.
+	defer func() {
+		metrics.EnrichmentPassDuration.Observe(time.Since(start).Seconds())
+		s.refreshDegradedGauge()
+	}()
+
 	articles, err := s.db.ListArticlesNeedingEnrichment(s.MaxAttempts, s.BatchSize)
 	if err != nil {
+		metrics.EnrichmentPassesTotal.WithLabelValues("error").Inc()
 		slog.Error("enrichment: could not list articles", "error", err)
 		return
 	}
 	if len(articles) == 0 {
-		if pending, exhausted, err := s.db.CountDegradedArticles(s.MaxAttempts); err == nil {
-			metrics.ArticlesDegraded.WithLabelValues("pending").Set(float64(pending))
-			metrics.ArticlesDegraded.WithLabelValues("exhausted").Set(float64(exhausted))
-		}
+		// Nothing to do is a healthy outcome, so it counts as liveness: the
+		// reconciler ran and found the backlog empty.
+		metrics.EnrichmentPassesTotal.WithLabelValues("completed").Inc()
+		metrics.EnrichmentLastSuccessTimestamp.SetToCurrentTime()
 		return
 	}
 
-	slog.Info("enrichment pass starting", "articles", len(articles))
-	var filled, failed int
+	slog.Info("enrichment pass starting", "articles", len(articles),
+		"deadline", s.maxDuration())
+	var filled, failed, done int
 	for i, a := range articles {
+		if time.Now().After(deadline) {
+			metrics.EnrichmentPassesTotal.WithLabelValues("deadline").Inc()
+			slog.Warn("enrichment pass hit its deadline",
+				"processed", done, "abandoned", len(articles)-done,
+				"elapsed", time.Since(start).Round(time.Second))
+			// Deliberately NOT a liveness update: the pass did not finish its
+			// work, and treating it as success would mask a provider that is
+			// slow enough to prevent the backlog ever draining.
+			return
+		}
 		if i > 0 && s.Pace > 0 {
 			time.Sleep(s.Pace)
 		}
 		got, missed := s.enrichOne(a)
 		filled += got
 		failed += missed
+		done++
 	}
-	slog.Info("enrichment pass complete", "articles", len(articles),
-		"fields_filled", filled, "fields_failed", failed)
 
-	if pending, exhausted, err := s.db.CountDegradedArticles(s.MaxAttempts); err == nil {
-		metrics.ArticlesDegraded.WithLabelValues("pending").Set(float64(pending))
-		metrics.ArticlesDegraded.WithLabelValues("exhausted").Set(float64(exhausted))
+	metrics.EnrichmentPassesTotal.WithLabelValues("completed").Inc()
+	metrics.EnrichmentLastSuccessTimestamp.SetToCurrentTime()
+	slog.Info("enrichment pass complete", "articles", len(articles),
+		"fields_filled", filled, "fields_failed", failed,
+		"elapsed", time.Since(start).Round(time.Second))
+}
+
+// maxDuration returns the configured pass bound, or the default if unset.
+func (s *Service) maxDuration() time.Duration {
+	if s.MaxDuration > 0 {
+		return s.MaxDuration
 	}
+	return 10 * time.Minute
+}
+
+// refreshDegradedGauge republishes how many articles are still missing fields.
+func (s *Service) refreshDegradedGauge() {
+	pending, exhausted, err := s.db.CountDegradedArticles(s.MaxAttempts)
+	if err != nil {
+		slog.Warn("enrichment: could not count degraded articles", "error", err)
+		return
+	}
+	metrics.ArticlesDegraded.WithLabelValues("pending").Set(float64(pending))
+	metrics.ArticlesDegraded.WithLabelValues("exhausted").Set(float64(exhausted))
 }
 
 // enrichOne fills whatever it can for a single article and records the attempt.
@@ -232,10 +302,29 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 			"article_id", a.ID, "top_score", scored[0].Score)
 		return false
 	}
-	u.ImageURL = &scored[0].URL
-	u.ImageThumbnail = &scored[0].Thumbnail
-	u.ImageAttribution = &scored[0].Attribution
-	return true
+	// Walk down in score order until one is both relevant enough and actually
+	// fetchable. Scoring alone is not enough: an image host can return a URL
+	// that is already dead or that dies later, and without this check the
+	// first anyone learns of it is a broken thumbnail on the homepage.
+	for i := range scored {
+		c := scored[i]
+		if c.Score < MinImageScore {
+			break
+		}
+		if !s.searcher.Reachable(c.Thumbnail) {
+			continue
+		}
+		if c.URL != c.Thumbnail && !s.searcher.Reachable(c.URL) {
+			continue
+		}
+		u.ImageURL = &scored[i].URL
+		u.ImageThumbnail = &scored[i].Thumbnail
+		u.ImageAttribution = &scored[i].Attribution
+		return true
+	}
+	slog.Info("enrichment: every relevant image candidate was unfetchable",
+		"article_id", a.ID, "candidates", len(scored))
+	return false
 }
 
 // drawInfographic asks a model to chart the article's key details.

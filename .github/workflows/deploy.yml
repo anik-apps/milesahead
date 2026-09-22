@@ -80,7 +80,6 @@ jobs:
           ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
           UNSPLASH_KEY: ${{ secrets.UNSPLASH_KEY }}
           PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
-          PIXABAY_KEY: ${{ secrets.PIXABAY_KEY }}
         run: |
           SSH="ssh $OCI_USER@$OCI_HOST"
 
@@ -148,7 +147,6 @@ jobs:
           ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
           UNSPLASH_KEY: ${{ secrets.UNSPLASH_KEY }}
           PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
-          PIXABAY_KEY: ${{ secrets.PIXABAY_KEY }}
         run: |
           SSH="ssh $OCI_USER@$OCI_HOST"
 
@@ -180,6 +178,7 @@ jobs:
             enrichment_model: "mistralai/mistral-nemotron,openai/gpt-oss-20b"
             enrichment_interval: 15
             enrichment_max_attempts: 3
+            enrichment_max_duration: 10
             critic2_model: ""
             hf_api_token: "${NVIDIA_API_KEY}"
             hf_base_url: "https://integrate.api.nvidia.com/v1"
@@ -188,7 +187,6 @@ jobs:
             cache_ttl: 3600
             unsplash_key: "${UNSPLASH_KEY}"
             pexels_key: "${PEXELS_KEY}"
-            pixabay_key: "${PIXABAY_KEY}"
 
           mail:
             smtp:

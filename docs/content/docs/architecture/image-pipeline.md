@@ -47,7 +47,6 @@ All sources provide freely-licensed images. The searcher queries each API in par
 |--------|-----------------|---------|-------|
 | Unsplash | Yes (free) | Unsplash License | High-quality photos, landscape orientation |
 | Pexels | Yes (free) | Pexels License | Good variety, landscape orientation |
-| Pixabay | Yes (free) | Pixabay License | Large library, horizontal photos |
 | Openverse | No | CC-licensed | Aggregates Flickr, Wikimedia, and other open sources |
 | Wikimedia Commons | No | Various CC/PD | Uses MediaWiki API with thumbnail generation |
 
