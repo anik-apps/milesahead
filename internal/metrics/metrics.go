@@ -107,7 +107,7 @@ var (
 	ImageSearchTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "milesahead_image_search_total",
 		Help: "Total image searches by source and status",
-	}, []string{"source", "status"}) // source=unsplash/pexels/pixabay/openverse/wikimedia, status=success/error
+	}, []string{"source", "status"}) // source=unsplash/pexels/openverse/wikimedia, status=success/error
 
 	ImageSearchCandidates = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "milesahead_image_search_candidates",

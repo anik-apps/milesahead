@@ -18,7 +18,7 @@ import (
 type ImageCandidate struct {
 	URL         string  // Direct image URL (for display)
 	Thumbnail   string  // Smaller version for homepage cards
-	Source      string  // "unsplash", "pexels", "wikimedia"
+	Source      string  // "unsplash", "pexels", "openverse/*", "wikimedia"
 	Attribution string  // "Photo by X on Unsplash" etc
 	Description string  // Alt text, tags, or description from the API
 	Query       string  // What search term found this
@@ -37,16 +37,14 @@ type ImageResult struct {
 type Searcher struct {
 	unsplashKey string
 	pexelsKey   string
-	pixabayKey  string
 	httpClient  *http.Client
 }
 
 // NewSearcher creates a new Searcher with the given API keys.
-func NewSearcher(unsplashKey, pexelsKey, pixabayKey string) *Searcher {
+func NewSearcher(unsplashKey, pexelsKey string) *Searcher {
 	return &Searcher{
 		unsplashKey: unsplashKey,
 		pexelsKey:   pexelsKey,
-		pixabayKey:  pixabayKey,
 		httpClient:  &http.Client{Timeout: 15 * time.Second},
 	}
 }
@@ -104,30 +102,6 @@ func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
 					return
 				}
 				metrics.ImageSearchTotal.WithLabelValues("pexels", "success").Inc()
-				mu.Lock()
-				allCandidates = append(allCandidates, results...)
-				mu.Unlock()
-			}()
-		}
-
-		// Search Pixabay
-		if s.pixabayKey != "" {
-			wg.Add(1)
-			mu.Lock()
-			totalAttempts++
-			mu.Unlock()
-			go func() {
-				defer wg.Done()
-				results, err := s.searchPixabay(q)
-				if err != nil {
-					slog.Warn("pixabay search failed", "query", q, "error", err)
-					metrics.ImageSearchTotal.WithLabelValues("pixabay", "error").Inc()
-					mu.Lock()
-					totalErrors++
-					mu.Unlock()
-					return
-				}
-				metrics.ImageSearchTotal.WithLabelValues("pixabay", "success").Inc()
 				mu.Lock()
 				allCandidates = append(allCandidates, results...)
 				mu.Unlock()
@@ -336,52 +310,6 @@ func (s *Searcher) searchPexels(query string) ([]ImageCandidate, error) {
 	return candidates, nil
 }
 
-// pixabayResponse represents the Pixabay API response.
-type pixabayResponse struct {
-	Hits []struct {
-		LargeImageURL string `json:"largeImageURL"`
-		WebformatURL  string `json:"webformatURL"`
-		Tags          string `json:"tags"`
-		User          string `json:"user"`
-		PageURL       string `json:"pageURL"`
-	} `json:"hits"`
-}
-
-func (s *Searcher) searchPixabay(query string) ([]ImageCandidate, error) {
-	reqURL := fmt.Sprintf("https://pixabay.com/api/?key=%s&q=%s&per_page=3&orientation=horizontal&image_type=photo",
-		s.pixabayKey, url.QueryEscape(query))
-
-	resp, err := s.httpClient.Get(reqURL)
-	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("pixabay API error (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	var result pixabayResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
-	}
-
-	var candidates []ImageCandidate
-	for _, h := range result.Hits {
-		candidates = append(candidates, ImageCandidate{
-			URL:         h.WebformatURL,
-			Thumbnail:   h.WebformatURL,
-			Source:      "pixabay",
-			Attribution: fmt.Sprintf("Photo by %s on Pixabay", h.User),
-			Description: h.Tags,
-			Query:       query,
-		})
-	}
-
-	return candidates, nil
-}
-
 // openverseResponse represents the Openverse API response.
 type openverseResponse struct {
 	Results []struct {
@@ -426,16 +354,26 @@ func (s *Searcher) searchOpenverse(query string) ([]ImageCandidate, error) {
 		if len(tags) > 0 {
 			desc += " | Tags: " + fmt.Sprintf("%v", tags[:min(5, len(tags))])
 		}
-		thumb := r.Thumbnail
-		if thumb == "" {
-			thumb = r.URL
+		// Openverse's /thumb/ endpoint is a proxy that fetches from the
+		// upstream provider on demand and returns 424 whenever that fetch
+		// fails -- which it does intermittently, long after the article is
+		// published. The direct URL points at the provider's own CDN
+		// (live.staticflickr.com, upload.wikimedia.org) and is stable, so
+		// prefer it and keep the proxy only as a last resort.
+		direct, thumb := r.URL, r.URL
+		if direct == "" {
+			// Nothing better exists for this result, so both fields fall back
+			// to the proxy. Leaving URL empty would make the candidate
+			// unusable downstream, where an article with no image_url is
+			// indistinguishable from one that was never enriched.
+			direct, thumb = r.Thumbnail, r.Thumbnail
 		}
 		creator := r.Creator
 		if creator == "" {
 			creator = "Unknown"
 		}
 		candidates = append(candidates, ImageCandidate{
-			URL:         r.URL,
+			URL:         direct,
 			Thumbnail:   thumb,
 			Source:      "openverse/" + r.Source,
 			Attribution: fmt.Sprintf("Photo by %s via Openverse (%s)", creator, r.Source),
@@ -522,4 +460,47 @@ func (s *Searcher) searchWikimedia(query string) ([]ImageCandidate, error) {
 	}
 
 	return candidates, nil
+}
+
+// reachableTimeout bounds a single liveness probe. It is deliberately short:
+// a provider that cannot answer in a few seconds is not one we want on the
+// homepage, and findImage may probe several candidates in a row.
+const reachableTimeout = 8 * time.Second
+
+// Reachable reports whether a browser could actually fetch this URL right now.
+//
+// Image hosts hand out links that are signed, proxied, or generated on demand,
+// and such a URL is indistinguishable from a durable one until it is already
+// on the page. Probing at pick time is what keeps that discovery out of the
+// reader's browser.
+//
+// This issues a ranged GET rather than a HEAD because several image CDNs --
+// Openverse's thumbnail proxy among them -- answer HEAD with 405 while serving
+// GET perfectly well, which would reject good candidates.
+func (s *Searcher) Reachable(rawURL string) bool {
+	if rawURL == "" {
+		return false
+	}
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Range", "bytes=0-0")
+
+	client := &http.Client{Timeout: reachableTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Warn("image liveness probe failed", "url", rawURL, "error", err)
+		return false
+	}
+	// The response may be the whole file if the host ignored Range, so drain
+	// only what is needed to let the connection be reused and move on.
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+	resp.Body.Close()
+
+	ok := resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent
+	if !ok {
+		slog.Warn("image URL is not fetchable", "url", rawURL, "status", resp.StatusCode)
+	}
+	return ok
 }

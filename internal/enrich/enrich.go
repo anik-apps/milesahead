@@ -289,10 +289,29 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 			"article_id", a.ID, "top_score", scored[0].Score)
 		return false
 	}
-	u.ImageURL = &scored[0].URL
-	u.ImageThumbnail = &scored[0].Thumbnail
-	u.ImageAttribution = &scored[0].Attribution
-	return true
+	// Walk down in score order until one is both relevant enough and actually
+	// fetchable. Scoring alone is not enough: an image host can return a URL
+	// that is already dead or that dies later, and without this check the
+	// first anyone learns of it is a broken thumbnail on the homepage.
+	for i := range scored {
+		c := scored[i]
+		if c.Score < MinImageScore {
+			break
+		}
+		if !s.searcher.Reachable(c.Thumbnail) {
+			continue
+		}
+		if c.URL != c.Thumbnail && !s.searcher.Reachable(c.URL) {
+			continue
+		}
+		u.ImageURL = &scored[i].URL
+		u.ImageThumbnail = &scored[i].Thumbnail
+		u.ImageAttribution = &scored[i].Attribution
+		return true
+	}
+	slog.Info("enrichment: every relevant image candidate was unfetchable",
+		"article_id", a.ID, "candidates", len(scored))
+	return false
 }
 
 func (s *Service) recordFailure(step string, articleID int64, err error) {

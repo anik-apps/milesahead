@@ -8,7 +8,7 @@ A self-hosted content aggregation platform that scans miles and points websites,
 
 - **Automated Scanning** — RSS scraping of 6+ miles/points sources every 2-4 hours
 - **AI Pipeline** — Dual-model: Nemotron generates articles, Llama 70B verifies accuracy
-- **Image Pipeline** — 5-source search (Unsplash, Pexels, Pixabay, Openverse, Wikimedia) with vision model scoring
+- **Image Pipeline** — 4-source search (Unsplash, Pexels, Openverse, Wikimedia) with vision model scoring
 - **Reference Pages** — 52 credit card guides across 6 categories with Scout persona verdicts
 - **Card Comparison** — Side-by-side comparison of 2-3 cards (earning rates, credits, benefits, protections, transfer partners)
 - **Article Tags** — AI-generated tags from 8 categories with tag filter pills on homepage

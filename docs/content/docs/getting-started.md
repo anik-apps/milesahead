@@ -5,9 +5,9 @@ weight: 1
 
 ## Prerequisites
 
-- **Go 1.22+** (the project uses Go modules)
+- **Go 1.26+** (the project uses Go modules)
 - **NVIDIA API key** for AI generation and critique (free tier available at [build.nvidia.com](https://build.nvidia.com))
-- Optional: Unsplash, Pexels, and Pixabay API keys for the image pipeline
+- Optional: Unsplash and Pexels API keys for the image pipeline
 
 ## Quick Start
 
@@ -46,7 +46,6 @@ All settings live in a single `config.yaml` file. Environment variables can be i
 | `ai` | `cache_ttl` | AI response cache TTL in seconds |
 | `ai` | `unsplash_key` | Unsplash API key for image search |
 | `ai` | `pexels_key` | Pexels API key for image search |
-| `ai` | `pixabay_key` | Pixabay API key for image search |
 | `scanner` | `default_interval` | Default scan interval in minutes |
 | `scanner` | `user_agent` | HTTP User-Agent for scanning |
 | `site` | `persona_name` | AI persona name (default `Scout`) |

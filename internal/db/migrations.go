@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"log/slog"
 	"strings"
 )
 
@@ -222,6 +223,53 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("populating FTS: %w", err)
 	}
 
+	if err := repairRottedImages(db); err != nil {
+		return fmt.Errorf("repairing rotted images: %w", err)
+	}
+
+	return nil
+}
+
+// repairRottedImages fixes article images whose stored URL can no longer be
+// fetched by a browser. Both cases below were visible on the live homepage as
+// broken thumbnails, because the card renders image_thumbnail.
+//
+// Both statements are idempotent: each one stops matching the rows it has
+// already fixed, so running on every startup converges and then does nothing.
+func repairRottedImages(conn *sql.DB) error {
+	// Openverse thumbnails are a proxy (api.openverse.org/.../thumb/) that
+	// 424s whenever the upstream fetch fails. image_url already holds the
+	// provider's own stable CDN link for these rows, so promote it.
+	res, err := conn.Exec(`
+		UPDATE generated_articles
+		SET image_thumbnail = image_url
+		WHERE image_thumbnail LIKE 'https://api.openverse.org/%'
+		  AND image_url IS NOT NULL AND image_url != ''`)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		slog.Info("repaired openverse proxy thumbnails", "rows", n)
+	}
+
+	// Pixabay's hotlink URLs are signed and expire by design -- the API
+	// terms require downloading rather than hotlinking -- so every one of
+	// these eventually 400s with "This URL is invalid or has expired." There
+	// is nothing to promote, so clear the image and reset the attempt counter
+	// to hand the row back to the enrichment reconciler, which will re-pick
+	// from a source that does not rot.
+	res, err = conn.Exec(`
+		UPDATE generated_articles
+		SET image_url = '', image_thumbnail = '', image_attribution = '',
+		    enrichment_attempts = 0
+		WHERE image_url LIKE 'https://pixabay.com/get/%'
+		   OR image_thumbnail LIKE 'https://pixabay.com/get/%'`)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		slog.Info("cleared expired pixabay images for re-enrichment", "rows", n)
+	}
 	return nil
 }
 
