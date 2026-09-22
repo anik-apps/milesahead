@@ -5,7 +5,7 @@ weight: 1
 
 ## Prerequisites
 
-- **Go 1.22+** (the project uses Go modules)
+- **Go 1.26+** (the project uses Go modules)
 - **NVIDIA API key** for AI generation and critique (free tier available at [build.nvidia.com](https://build.nvidia.com))
 - Optional: Unsplash and Pexels API keys for the image pipeline
 

@@ -360,16 +360,20 @@ func (s *Searcher) searchOpenverse(query string) ([]ImageCandidate, error) {
 		// published. The direct URL points at the provider's own CDN
 		// (live.staticflickr.com, upload.wikimedia.org) and is stable, so
 		// prefer it and keep the proxy only as a last resort.
-		thumb := r.URL
-		if thumb == "" {
-			thumb = r.Thumbnail
+		direct, thumb := r.URL, r.URL
+		if direct == "" {
+			// Nothing better exists for this result, so both fields fall back
+			// to the proxy. Leaving URL empty would make the candidate
+			// unusable downstream, where an article with no image_url is
+			// indistinguishable from one that was never enriched.
+			direct, thumb = r.Thumbnail, r.Thumbnail
 		}
 		creator := r.Creator
 		if creator == "" {
 			creator = "Unknown"
 		}
 		candidates = append(candidates, ImageCandidate{
-			URL:         r.URL,
+			URL:         direct,
 			Thumbnail:   thumb,
 			Source:      "openverse/" + r.Source,
 			Attribution: fmt.Sprintf("Photo by %s via Openverse (%s)", creator, r.Source),

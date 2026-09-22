@@ -113,9 +113,13 @@ func TestOpenverseCandidates_PreferDirectURLOverProxy(t *testing.T) {
 	if strings.Contains(got[0].Thumbnail, "api.openverse.org") {
 		t.Error("thumbnail still points at the Openverse proxy")
 	}
-	// With no direct URL there is nothing better than the proxy.
+	// With no direct URL there is nothing better than the proxy -- but both
+	// fields must be filled, or the candidate is unusable downstream.
 	if got[1].Thumbnail != "https://api.openverse.org/v1/images/def/thumb/" {
 		t.Errorf("fallback thumbnail = %q, want the proxy", got[1].Thumbnail)
+	}
+	if got[1].URL != got[1].Thumbnail {
+		t.Errorf("fallback URL = %q, want the proxy so the candidate stays usable", got[1].URL)
 	}
 }
 
