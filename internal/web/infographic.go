@@ -1,47 +1,56 @@
 package web
 
 import (
+	"html"
 	"html/template"
 	"strings"
+
+	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/svg"
 )
 
-// sanitizedSVGPrefix is the exact opening tag internal/svg emits. Nothing else
-// produces this byte-for-byte, so matching on it is a cheap way to be sure the
-// markup about to be inlined came from the sanitiser.
-const sanitizedSVGPrefix = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="`
-
 // infographicHTML prepares a stored infographic for inlining, returning empty
-// when there is nothing to show.
+// when there is nothing safe to show.
 //
-// The value is already sanitised -- internal/svg runs before it is ever
-// written -- so this is not the security boundary. It is the check that the
-// boundary was actually crossed: a row edited by hand, restored from an older
-// backup, or written by some future code path that forgot to sanitise would
-// otherwise be inlined into the page unescaped. Refusing anything that does
-// not carry the sanitiser's own signature costs one prefix comparison.
+// The markup is re-sanitised here rather than trusted. It was already
+// sanitised before it was written, so in the normal case this changes nothing
+// -- but "was written by code that sanitises" is an assumption about history,
+// and the value is about to be inlined into a page unescaped, where being
+// wrong costs a same-origin XSS. A row edited by hand, restored from a backup
+// taken before the sanitiser existed, or written by some future code path that
+// forgets, all fail closed here instead of executing.
+//
+// The cost is parsing roughly two kilobytes of XML per rendered card:
+// measured at 50us for a real diagram, so about 1ms for a full twenty-card
+// homepage (see BenchmarkInfographicHTML). That is real but small next to the
+// database round trips and template execution on the same request, and it
+// buys a guarantee that holds regardless of what is in the column.
 func infographicHTML(stored string) template.HTML {
 	s := strings.TrimSpace(stored)
-	// The sentinel meaning "a model looked and found nothing to chart".
-	if s == "" || s == "none" {
+	if s == "" || s == db.NoInfographic {
 		return ""
 	}
-	if !strings.HasPrefix(s, sanitizedSVGPrefix) {
+	clean, err := svg.Sanitize(s)
+	if err != nil {
 		return ""
 	}
-	return template.HTML(s)
+	return template.HTML(clean)
 }
 
-// infographicTitle pulls the accessible name out for use in aria-label, so the
-// diagram is announced as one image rather than a loose pile of text nodes.
+// infographicTitle returns the diagram's accessible name, for the aria-label
+// that makes it announce as one image rather than a loose pile of text nodes.
+//
+// The title is unescaped on the way out. It sits inside the SVG as XML, so an
+// ampersand is stored as &amp;; handing that to html/template would escape it
+// a second time and a reader would hear "Fee &amp;amp; value".
 func infographicTitle(stored string) string {
 	s := strings.TrimSpace(stored)
-	if !strings.HasPrefix(s, sanitizedSVGPrefix) {
+	if s == "" || s == db.NoInfographic {
 		return ""
 	}
-	start := strings.Index(s, "<title>")
-	end := strings.Index(s, "</title>")
-	if start == -1 || end <= start {
+	clean, err := svg.Sanitize(s)
+	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(s[start+len("<title>") : end])
+	return html.UnescapeString(svg.Title(clean))
 }

@@ -80,11 +80,14 @@ func TestInfographic_NoChartableNumbersIsRecordedNotRetried(t *testing.T) {
 		t.Fatalf("infographic_svg = %q, want the sentinel %q", got, db.NoInfographic)
 	}
 
-	// A second pass must not ask again.
-	before := len(client.calls)
+	// A second pass must not ask again -- that is the whole point of the
+	// sentinel, and the cost of getting it wrong is a model call per pass
+	// forever.
+	before := client.promptCalls("information designer")
 	s.Run()
-	for _, c := range client.calls[before:] {
-		_ = c
+	if after := client.promptCalls("information designer"); after != before {
+		t.Errorf("infographic was requested %d more time(s) after the sentinel was written",
+			after-before)
 	}
 	if got, _ := readInfographic(t, d, id); got != db.NoInfographic {
 		t.Errorf("sentinel was overwritten: %q", got)
@@ -144,8 +147,10 @@ func TestInfographic_WaitsForKeyDetails(t *testing.T) {
 	if got, _ := readInfographic(t, d, id); got != "" {
 		t.Errorf("infographic_svg = %q, want empty while key details are missing", got)
 	}
-	for _, c := range client.calls {
-		_ = c
+	// Asking a model to chart numbers we do not have is a wasted call, so the
+	// step must not run at all until key details exist.
+	if n := client.promptCalls("information designer"); n != 0 {
+		t.Errorf("infographic was requested %d time(s) with no key details to chart", n)
 	}
 	arts, err := d.ListArticlesNeedingEnrichment(s.MaxAttempts, 10)
 	if err != nil {
