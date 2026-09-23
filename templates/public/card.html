@@ -28,13 +28,12 @@
     <div class="card-layout">
         {{if .Sections}}
         <aside class="card-sidebar">
-            {{if .Infographic}}
-            {{template "card-infographic-teaser" .}}
-            {{else if .Card.ImageURL}}
+            {{if .Card.ImageURL}}
             <div class="card-sidebar-image">
                 <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}">
             </div>
             {{end}}
+            {{if .Infographic}}{{template "card-infographic-teaser" .}}{{end}}
             <nav class="card-toc">
                 <ul>
                     {{if $.Video}}
@@ -75,13 +74,12 @@
         <div class="card-main">
             {{/* Mobile-only header card */}}
             <div class="card-mobile-header">
-                {{if .Infographic}}
-                {{template "card-infographic-teaser" .}}
-                {{else if .Card.ImageURL}}
+                {{if .Card.ImageURL}}
                 <div class="card-mobile-image">
                     <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}">
                 </div>
                 {{end}}
+            {{if .Infographic}}{{template "card-infographic-teaser" .}}{{end}}
                 {{if .Card.ApplyURL}}
                 <a href="{{.Card.ApplyURL}}" target="_blank" rel="noopener noreferrer" class="card-apply-btn">Card Details &rarr;</a>
                 {{end}}
@@ -152,13 +150,15 @@
         {{/* data-src, not src: the ~400 KB image loads only when the viewer opens */}}
         <img data-src="{{.InfographicImage}}" alt="{{.Infographic.Alt}}" width="1024" height="1536">
         {{if .Infographic.Text}}
-        <section class="ig-text" aria-labelledby="ig-text-heading">
-            <h2 id="ig-text-heading">Text version</h2>
+        {{/* Collapsed: the figures stay available to screen readers and on request,
+             without a page of notes under the image. */}}
+        <details class="ig-text">
+            <summary>Text version</summary>
             <ul>
                 {{range .Infographic.Text}}<li>{{.}}</li>
                 {{end}}
             </ul>
-        </section>
+        </details>
         {{end}}
     </div>
 </dialog>
@@ -167,19 +167,17 @@
 {{if .Video}}<script src="/static/js/card-video.js"></script>{{end}}
 {{end}}
 
-{{/* The infographic teaser takes the card-art slot in the sidebar and in the
-     mobile header card. It is a plain link to the full image, so it works without
-     JavaScript; card-infographic.js upgrades it to open the in-page viewer. */}}
+{{/* The infographic bar sits under the card art in the sidebar and in the mobile
+     header card. It is a plain link to the full image, so it works without
+     JavaScript; card-infographic.js upgrades it to open the in-page viewer. Its
+     accessible name is its visible text ("Infographic Expand"), so speech input
+     can target it by what it says (WCAG 2.5.3). */}}
 {{define "card-infographic-teaser"}}
-<div class="ig-teaser">
-    {{/* The label starts with the visible text so speech input can target it (WCAG 2.5.3). */}}
-    <a class="ig-teaser-link" href="{{.InfographicImage}}" data-ig-open aria-label="View the infographic: {{.Card.Title}}">
-        <span class="ig-teaser-img"><img src="{{.InfographicTeaser}}"
-            srcset="{{.InfographicTeaser}} 480w, {{.InfographicTeaser960}} 960w"
-            sizes="(max-width: 768px) 320px, 220px"
-            alt="" width="480" height="300" decoding="async"></span>
-        <span class="ig-teaser-cta">View the infographic <span aria-hidden="true">&#10530;</span></span>
+<div class="ig-bar">
+    <a class="ig-bar-link" href="{{.InfographicImage}}" data-ig-open>
+        <img src="{{.InfographicTeaser}}" alt="" width="256" height="160" decoding="async">
+        <span class="ig-bar-text"><span class="ig-bar-title">Infographic</span><span class="ig-bar-cta">Expand <span aria-hidden="true">&#10530;</span></span></span>
     </a>
-    <p class="ig-teaser-meta">Figures checked {{.Infographic.Checked}}</p>
+    <p class="ig-bar-meta">Figures checked {{.Infographic.Checked}}</p>
 </div>
 {{end}}

@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # Converts a card infographic PNG into the JPEGs the card page serves:
 #
-#   static/img/infographic-<slug>.jpg             full image, opened in the viewer
-#   static/img/infographic-<slug>-teaser.jpg      top 1024x640 region at 480x300
-#   static/img/infographic-<slug>-teaser-960.jpg  the same region at 960x600
+#   static/img/infographic-<slug>.jpg         full image, opened in the viewer
+#   static/img/infographic-<slug>-teaser.jpg  top 1024x640 region at 256x160
 #
-# The teaser is served with srcset: the sidebar shows it at about 220 CSS px and
-# the mobile header card at up to 320 CSS px, so 480 covers the sidebar at 2x and
-# 960 covers phones at 2x and 3x. The full image loads only when the viewer opens.
+# The teaser is the thumbnail in the compact "Infographic / Expand" bar under the
+# card art, shown at 84 CSS px wide, so 256 stays sharp on 3x screens. The full
+# image loads only when the viewer opens.
 #
 # Usage: scripts/infographic-images.sh <slug> <source.png>
 # Then add the slug to cardInfographics in internal/web/cardinfographics.go.
@@ -47,9 +46,6 @@ encode() {
 }
 
 encode "" 4 "$out/infographic-$slug.jpg"
-encode ",crop=1024:640:0:0,scale=480:300:flags=lanczos" 5 "$out/infographic-$slug-teaser.jpg"
-# Phones show this at 2-3x density, where q9 is indistinguishable from q5 and
-# about 30% smaller.
-encode ",crop=1024:640:0:0,scale=960:600:flags=lanczos" 9 "$out/infographic-$slug-teaser-960.jpg"
+encode ",crop=1024:640:0:0,scale=256:160:flags=lanczos" 5 "$out/infographic-$slug-teaser.jpg"
 
-ls -l "$out/infographic-$slug.jpg" "$out/infographic-$slug-teaser.jpg" "$out/infographic-$slug-teaser-960.jpg"
+ls -l "$out/infographic-$slug.jpg" "$out/infographic-$slug-teaser.jpg"
