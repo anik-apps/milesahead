@@ -128,6 +128,47 @@ That means phrasing varies with the verdict rather than following one template.
 It is a deliberate trade of uniformity for honesty, and is worth revisiting once
 there are enough videos to see how the variation reads.
 
+## Infographics
+
+A card page can carry a designed infographic: a 1024x1536 portrait image that
+summarises the card's earning, redemption and credits.
+
+It is not placed inline. In the article column it would render at under half its
+designed size, leaving its body text around 7px. Instead a cropped **teaser takes
+the card-art slot** (the sidebar on desktop, the header card on mobile), since the
+artwork already shows the card, and opens the full image in a native `<dialog>`
+viewer. `static/js/card-infographic.js` does the upgrade; without JavaScript the
+teaser is a plain link to the image.
+
+Infographics are declared in `internal/web/cardinfographics.go`:
+
+```go
+var cardInfographics = map[string]cardInfographic{
+    "amex-platinum": {Alt: "...", Checked: "Sep 22, 2026", Facts: []string{"$895", "$219"}},
+}
+```
+
+- **Alt** is a full text alternative, because the image is almost entirely text.
+- **Checked** is shown in the caption. An image cannot be corrected by a reseed the
+  way prose can, so readers are told how current it is.
+- **Facts** are figures the image states. `TestCardInfographics_FactsMatchCardProse`
+  fails if one disappears from the card's `cards.json` text, so a fee or credit
+  change cannot leave the image contradicting the page unnoticed. It cannot catch a
+  *second, older* figure elsewhere in the prose, so check the card's text against
+  the image when adding one.
+
+To add a card, generate both images and add the map entry:
+
+```bash
+scripts/infographic-images.sh chase-sapphire-reserve ~/Downloads/infographic.png
+```
+
+This writes `static/img/infographic-<slug>.jpg` (the full image, about 400 KB,
+loaded only when the viewer opens) and `static/img/infographic-<slug>-teaser.jpg`
+(its top 1024x640 region at 480x300, about 45 KB). Infographics render for
+everyone: unlike the video embed they are first-party images with no third-party
+request, so there is no `?beta=1` gate.
+
 ## Admin Management
 
 Reference pages can be managed through the admin dashboard:

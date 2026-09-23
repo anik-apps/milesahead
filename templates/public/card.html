@@ -28,7 +28,9 @@
     <div class="card-layout">
         {{if .Sections}}
         <aside class="card-sidebar">
-            {{if .Card.ImageURL}}
+            {{if .Infographic}}
+            {{template "card-infographic-teaser" .}}
+            {{else if .Card.ImageURL}}
             <div class="card-sidebar-image">
                 <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}">
             </div>
@@ -73,7 +75,9 @@
         <div class="card-main">
             {{/* Mobile-only header card */}}
             <div class="card-mobile-header">
-                {{if .Card.ImageURL}}
+                {{if .Infographic}}
+                {{template "card-infographic-teaser" .}}
+                {{else if .Card.ImageURL}}
                 <div class="card-mobile-image">
                     <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}">
                 </div>
@@ -137,5 +141,31 @@
         </div>
     </div>
 </article>
+{{if .Infographic}}
+<dialog class="ig-lightbox" id="ig-lightbox" aria-label="{{.Card.Title}} infographic">
+    <div class="ig-lightbox-frame">
+        <div class="ig-lightbox-bar">
+            <span>Figures checked {{.Infographic.Checked}} &middot; <a href="{{.InfographicImage}}" target="_blank" rel="noopener">Open image</a></span>
+            <button type="button" class="ig-lightbox-close" data-ig-close>Close <span aria-hidden="true">&#10005;</span></button>
+        </div>
+        {{/* data-src, not src: the ~400 KB image loads only when the viewer opens */}}
+        <img data-src="{{.InfographicImage}}" alt="{{.Infographic.Alt}}" width="1024" height="1536">
+    </div>
+</dialog>
+<script src="/static/js/card-infographic.js"></script>
+{{end}}
 {{if .Video}}<script src="/static/js/card-video.js"></script>{{end}}
+{{end}}
+
+{{/* The infographic teaser takes the card-art slot in the sidebar and in the
+     mobile header card. It is a plain link to the full image, so it works without
+     JavaScript; card-infographic.js upgrades it to open the in-page viewer. */}}
+{{define "card-infographic-teaser"}}
+<div class="ig-teaser">
+    <a class="ig-teaser-link" href="{{.InfographicImage}}" data-ig-open aria-label="Open the {{.Card.Title}} infographic">
+        <span class="ig-teaser-img"><img src="{{.InfographicTeaser}}" alt="" width="480" height="300" decoding="async"></span>
+        <span class="ig-teaser-cta">View the infographic <span aria-hidden="true">&#10530;</span></span>
+    </a>
+    <p class="ig-teaser-meta">Figures checked {{.Infographic.Checked}}</p>
+</div>
 {{end}}
