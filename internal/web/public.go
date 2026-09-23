@@ -94,6 +94,16 @@ type sourceInfo struct {
 	URL   string
 }
 
+// absoluteURL turns a site-relative path such as "/static/img/cards/x.png" into
+// an absolute URL for contexts that leave the site: og:image and JSON-LD, which
+// crawlers resolve without a base. Absolute URLs are returned unchanged.
+func absoluteURL(domain, u string) string {
+	if strings.HasPrefix(u, "/") && !strings.HasPrefix(u, "//") {
+		return "https://" + domain + u
+	}
+	return u
+}
+
 func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	typeFilter := r.URL.Query().Get("type")
 	tagFilter := r.URL.Query().Get("tag")
@@ -717,14 +727,14 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		"MetaDescription": metaDesc,
 		"CanonicalURL":    canonicalURL,
 		"OGType":          "website",
-		"OGImage":         page.ImageURL,
+		"OGImage":         absoluteURL(domain, page.ImageURL),
 		"CompareGroups":   compareGroups,
 		"JSONLD": buildJSONLD(cardLDData{
 			Context:     "https://schema.org",
 			Type:        "Product",
 			Name:        page.Title,
 			Description: metaDesc,
-			Image:       page.ImageURL,
+			Image:       absoluteURL(domain, page.ImageURL),
 			Brand:       jsonLDBrand{Type: "Brand", Name: page.Issuer},
 		}),
 	}

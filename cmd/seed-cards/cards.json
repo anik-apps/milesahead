@@ -5,7 +5,7 @@
     "category": "travel",
     "issuer": "Amex",
     "scouts_verdict": "The 2025 refresh turned the Platinum into a credit-stacking monster — $600 hotel, $400 Resy, $300 lululemon, $300 streaming, and a bunch more. If you naturally eat at Resy restaurants, already shop at lululemon, and travel enough to use the hotel and airline credits, the $895 fee pays for itself and then some. But here's the honest truth: if you're forcing spend just to 'use' credits, you're paying $895 for lounge access and a shiny metal card. Be brutally honest about your spending habits before you apply.",
-    "image_url": "https://icm.aexp-static.com/Internet/Acquisition/US_en/AppContent/OneSite/category/cardarts/platinum-card.png",
+    "image_url": "/static/img/cards/amex-platinum.png",
     "apply_url": "https://www.americanexpress.com/us/credit-cards/card/platinum/",
     "status": "published",
     "sections": [
@@ -67,7 +67,7 @@
     "category": "travel",
     "issuer": "Amex",
     "scouts_verdict": "The Amex Gold is the best everyday spending card in the game, full stop. You're getting 4x on dining and groceries — which at 2cpp is effectively 8% back — plus $424 in credits against a $325 fee. The card literally pays you to eat. Pair it with the Platinum for the full Amex experience, or run it solo and watch your grocery trips turn into business class flights.",
-    "image_url": "https://icm.aexp-static.com/Internet/Acquisition/US_en/AppContent/OneSite/category/cardarts/gold-card.png",
+    "image_url": "/static/img/cards/amex-gold.png",
     "apply_url": "https://www.americanexpress.com/us/credit-cards/card/gold-card/",
     "status": "published",
     "sections": [
@@ -128,7 +128,7 @@
     "category": "business",
     "issuer": "Amex",
     "scouts_verdict": "The 2025 refresh turned the Business Platinum into a legitimate powerhouse — but only for the right business. The bump from 1.5x to 2x on large purchases and on the tech, shipping, and hardware categories, plus the $600 hotel credit and $1,150 Dell credit? That's massive if your business actually spends in those categories. But at $895, you need to be buying Dell equipment, posting jobs on Indeed, AND traveling regularly. Otherwise, the Ink Business Preferred at $95 gives you 90% of the points value at 10% of the price.",
-    "image_url": "https://icm.aexp-static.com/Internet/Acquisition/US_en/AppContent/OneSite/open/category/cardarts/business-platinum.png",
+    "image_url": "/static/img/cards/amex-business-platinum.png",
     "apply_url": "https://www.americanexpress.com/us/credit-cards/business/business-credit-cards/american-express-business-platinum-credit-card-amex/",
     "status": "published",
     "sections": [
@@ -189,7 +189,7 @@
     "category": "travel",
     "issuer": "Chase",
     "scouts_verdict": "The CSP is still the best entry point into transferable points at $95. You get the same 14+ transfer partners as the Reserve (though Hyatt now transfers at 4:3 on this card), 3x on dining, gas and streaming, and a $100 Chase Travel hotel credit that covers the fee on its own if you use it. If you travel even a couple times a year and want your spending to fund real trips, start here.",
-    "image_url": "https://creditcards.chase.com/content/dam/jpmc-marketplace/card-art/sapphire_preferred_card.png",
+    "image_url": "/static/img/cards/chase-sapphire-preferred.png",
     "apply_url": "https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred",
     "status": "published",
     "sections": [
@@ -251,7 +251,7 @@
     "category": "travel",
     "issuer": "Chase",
     "scouts_verdict": "The revamped Reserve throws the kitchen sink at you — $500 hotel credit, $300 dining, $300 StubHub, $300 DoorDash, free Apple subscriptions — and the 8x on Chase Travel is legitimately best-in-class. But at $795, the math only works if you actually use those category-specific credits. If you'll hit the hotel credit, eat at Exclusive Tables restaurants, and go to concerts on StubHub, this card pays for itself several times over. If you're squinting at that list thinking \"maybe I'll use some of it...\" the Venture X at $395 is the smarter call.",
-    "image_url": "https://creditcards.chase.com/content/dam/jpmc-marketplace/card-art/sapphire_reserve_card_Halo.png",
+    "image_url": "/static/img/cards/chase-sapphire-reserve.png",
     "apply_url": "https://creditcards.chase.com/rewards-credit-cards/sapphire/reserve",
     "status": "published",
     "sections": [
@@ -313,7 +313,7 @@
     "category": "business",
     "issuer": "Chase",
     "scouts_verdict": "The Ink Business Preferred might be the best-kept secret in the Chase lineup. For $95 a year, you get 3x on advertising, shipping, internet, phone, and travel up to $150,000 — categories where most businesses spend heavily without thinking about rewards. Access to Chase's airline and hotel transfer partners (though Hyatt transfers drop to 4:3 on October 1, 2026), a 100,000-point welcome bonus, and phone protection worth more than the annual fee. If you have a business — even a side hustle — and you don't have this card, you're leaving serious points on the table.",
-    "image_url": "https://images.ctfassets.net/8qmz0ef3xzub/5MgLwpFlYyNXdq1uJK2RGS/2c9967d41c02902355130c832b249e71/ink_preferred_card.png",
+    "image_url": "/static/img/cards/chase-ink-business-preferred.png",
     "apply_url": "https://creditcards.chase.com/business-credit-cards/ink/business-preferred",
     "status": "published",
     "sections": [
@@ -375,7 +375,7 @@
     "category": "travel",
     "issuer": "Capital One",
     "scouts_verdict": "The Venture X is the best value in premium travel cards, and it's honestly not that close. Between the $300 travel credit, 10,000 anniversary miles, and free lounge access for you (guests and authorized users now cost extra), you're getting paid to hold this card. Flat 2x on everything, growing lounge network, transferable miles — all for an effective cost of negative five dollars. If the Amex Platinum is a luxury sports car, the Venture X is a Tesla that's somehow free after tax credits. It just makes sense.",
-    "image_url": "https://ecm.capitalone.com/WCM/card/products/venturex-cg-static-card-1000x630-2.png",
+    "image_url": "/static/img/cards/capital-one-venture-x.png",
     "apply_url": "https://www.capitalone.com/credit-cards/venture-x/",
     "status": "published",
     "sections": [
@@ -436,7 +436,7 @@
     "category": "travel",
     "issuer": "Capital One",
     "scouts_verdict": "The Venture is the reliable mid-tier card that never tries too hard and never lets you down. Flat 2x on everything, solid transfer partners (Turkish Miles & Smiles is a hidden gem), no category nonsense. It won't dazzle — the CSP has Hyatt, the Strata Premier has broader 3x categories — but it also won't make you think about which card to use at checkout. If you want a simple, no-drama travel card at $95, this is the one.",
-    "image_url": "https://ecm.capitalone.com/WCM/digital/reviews-forms/us-card/venture-metal-gen-flat-standard.png",
+    "image_url": "/static/img/cards/capital-one-venture.png",
     "apply_url": "https://www.capitalone.com/credit-cards/venture/",
     "status": "published",
     "sections": [
@@ -497,7 +497,7 @@
     "category": "cash-back",
     "issuer": "Capital One",
     "scouts_verdict": "The SavorOne is the best category rewards card you can get with fair credit — but you need to earn that title. The $39 annual fee means you have to spend enough on dining, groceries, entertainment, and streaming to justify the cost. If you're clearing $109/month on groceries alone, the 3% cash back covers the fee and everything else is gravy. No foreign transaction fees, 8% back on Capital One Entertainment, and 5% on hotels and rental cars booked through Capital One Travel are perks you won't find on most fair-credit cards. But let's be real: if your credit is good enough for the no-fee Savor card, get that instead. Same rewards, no fee, plus a $200 welcome bonus. The SavorOne is the stepping stone, not the destination — and it's a genuinely good one.",
-    "image_url": "https://ecm.capitalone.com/WCM/card/products/savorone-2025-cardart.png",
+    "image_url": "/static/img/cards/capital-one-savorone.png",
     "apply_url": "https://www.capitalone.com/credit-cards/savorone/",
     "status": "published",
     "sections": [
@@ -558,7 +558,7 @@
     "category": "cash-back",
     "issuer": "Citi",
     "scouts_verdict": "The Custom Cash is a scalpel, not a sledgehammer. Use it for one spending category per month — groceries, dining, gas, whatever your biggest expense is — and let it auto-detect your top category for an effortless 5% return. On its own, it's a solid free card. Pair it with a Strata Premier and suddenly your grocery points transfer 1:1 into airline miles. That's a free card doing premium-card work. One catch: Citi stopped taking new applications on May 28, 2026 — if you have one, keep it; if you don't, Citi now points you to the Double Cash.",
-    "image_url": "https://aemapi.citi.com/content/dam/cfs/uspb/usmkt/cards/en/static/images/citi-custom-cash-credit-card/citi-custom-cash-credit-card_306x192.webp",
+    "image_url": "/static/img/cards/citi-custom-cash.png",
     "apply_url": "https://www.citi.com/credit-cards/citi-custom-cash-credit-card",
     "status": "published",
     "sections": [
@@ -619,7 +619,7 @@
     "category": "travel",
     "issuer": "Citi",
     "scouts_verdict": "The Strata Premier is the quiet overachiever of mid-tier travel cards. Four categories at 3x for $95? The Sapphire Preferred now matches dining and gas, but neither it nor the Venture pays 3x in-store at supermarkets or on direct flights and hotels. The $100 hotel credit covers the annual fee with one $500+ Citi Travel stay, The Reserve hotel perks add genuine luxury value, and the transfer partner list — headlined by Singapore KrisFlyer and Turkish Miles & Smiles — opens up premium cabin redemptions that cards twice the price can't beat. The downsides are real: car rental coverage that's only secondary at home (it's primary abroad), no lounge access, no Global Entry credit, and Citi's travel portal still lags behind Chase and Amex. But pair it with a no-fee Double Cash for 2x on everything else (plus a Custom Cash if you already have one, since Citi stopped taking new applications in May 2026), and you've got a Citi setup that costs $95 a year total and punches way above its weight class.",
-    "image_url": "https://aemapi.citi.com/content/dam/cfs/uspb/usmkt/cards/en/static/images/citi-strata-premier-credit-card/citi-strata-premier-credit-card_306x192.webp",
+    "image_url": "/static/img/cards/citi-strata-premier.png",
     "apply_url": "https://www.citi.com/credit-cards/citi-strata-premier-credit-card",
     "status": "published",
     "sections": [
@@ -681,7 +681,7 @@
     "category": "travel",
     "issuer": "Citi",
     "scouts_verdict": "The Strata Elite is Citi's most serious premium card ever — and it legitimately competes. The earning rates through Citi Travel are best-in-class (12x on hotels is wild), the $700+ in annual credits can more than offset the $595 fee, and AA transfer access at 1:1 is a genuine differentiator no other transferable currency offers. The Admirals Club passes and Priority Pass together give you solid lounge coverage. Where it stumbles: the insurance package trails the CSR (secondary domestic car rental, no baggage delay coverage), the best earning rates require portal booking, and the 6-hour trip delay trigger is just average. If you're a Citi ecosystem person or an AA loyalist who also wants transferable points flexibility, this is your card. If you want set-it-and-forget-it simplicity, the Venture X still wins on pure value.",
-    "image_url": "https://aemapi.citi.com/content/dam/cfs/uspb/usmkt/cards/en/static/images/citi-strata-elite-credit-card/citi-strata-elite-credit-card_306x192.webp",
+    "image_url": "/static/img/cards/citi-strata-elite.png",
     "apply_url": "https://www.citi.com/credit-cards/citi-strata-elite-credit-card",
     "status": "published",
     "sections": [
@@ -742,7 +742,7 @@
     "category": "cash-back",
     "issuer": "Citi",
     "scouts_verdict": "The Citi Double Cash has been the default \"just give me a good card\" recommendation for years, and the ThankYou Points upgrade made it even better. Pair it with a Strata Premier and your 2% card quietly becomes a 2x fully transferable points card that costs you nothing to hold. If you're building a Citi setup, this is the foundation. If you just want simplicity, it's still one of the best no-fee cards around.",
-    "image_url": "https://aemapi.citi.com/content/dam/cfs/uspb/usmkt/cards/en/static/images/citi-double-cash-credit-card/citi-double-cash-credit-card_306x192.webp",
+    "image_url": "/static/img/cards/citi-double-cash.png",
     "apply_url": "https://www.citi.com/credit-cards/citi-double-cash-credit-card",
     "status": "published",
     "sections": [
@@ -803,7 +803,7 @@
     "category": "rewards",
     "issuer": "Bank of America",
     "scouts_verdict": "Don't sleep on this one. The BofA Premium Rewards looks like a generic mid-tier card until you add BofA Rewards into the equation. At the $100K Preferred Honors tier, you're earning 2.25x on everything (2.625x if you've got $1M+ for Premier) — a flat rate that embarrasses most premium cards at any price. Without it? Look elsewhere. This card rewards your BofA relationship and nothing else.",
-    "image_url": "https://www.bankofamerica.com/content/images/ContextualSiteGraphics/CreditCardArt/en_US/Approved_PCM/8CAL_prmsigcm_v_250_158.png",
+    "image_url": "/static/img/cards/boa-premium-rewards.png",
     "apply_url": "https://www.bankofamerica.com/credit-cards/products/premium-rewards-credit-card/",
     "status": "published",
     "sections": [
@@ -864,7 +864,7 @@
     "category": "rewards",
     "issuer": "Bank of America",
     "scouts_verdict": "The Premium Rewards Elite is BofA's premium play, and for BofA Rewards Premier members ($1M+), it's quietly dominant. You get 2.625x on everything (2.25x at the $100K Preferred Honors tier) with zero category management, Priority Pass with two guests, and $480 in credits that drop the effective fee to around $70. The catch is real though: without a high BofA Rewards tier, this is a mediocre $550 card and you should look at the Venture X instead.",
-    "image_url": "https://www.bankofamerica.com/content/images/ContextualSiteGraphics/CreditCardArt/en_US/Approved_PCM/8cud_premrewelite_v_250x158.png",
+    "image_url": "/static/img/cards/boa-premium-rewards-elite.png",
     "apply_url": "https://www.bankofamerica.com/credit-cards/products/premium-rewards-elite-credit-card/",
     "status": "published",
     "sections": [
@@ -925,7 +925,7 @@
     "category": "hotel",
     "issuer": "Amex",
     "scouts_verdict": "If Hilton is your ride-or-die hotel chain, the Aspire is still a slam dunk — even after the Priority Pass removal. A free night at a Waldorf Astoria can be worth more than the entire $550 fee. Diamond status means space-available upgrades and executive lounge access without grinding 50 nights. And the 200,000-point welcome offer (through January 13, 2027) is the best this card has ever had. But be honest with yourself: if you stay at Hilton fewer than 5-6 times a year, a flexible points card will treat you better.",
-    "image_url": "https://icm.aexp-static.com/Internet/Acquisition/US_en/AppContent/OneSite/category/cardarts/hilton-honors-aspire.png",
+    "image_url": "/static/img/cards/hilton-honors-amex-aspire.png",
     "apply_url": "https://www.americanexpress.com/us/credit-cards/card/hilton-honors-aspire/",
     "status": "published",
     "sections": [
@@ -987,7 +987,7 @@
     "category": "rewards",
     "issuer": "Bilt",
     "scouts_verdict": "The Bilt Blue is the most obvious card for any renter or mortgage-payer in America. Transferable points on housing payments — for free. That alone justifies the wallet slot. The 1x everyday rate is nothing special, and that's the catch: under Bilt 2.0 your housing points depend on everyday spend on this card (75% of your rent for 1x, 100% for 1.25x). Rent alone gets you a flat 250 points. So route enough spending here to hit your tier, let a stronger card handle the rest, and make sure this is the card paying your rent every single month.",
-    "image_url": "/static/img/card-placeholder.svg",
+    "image_url": "/static/img/cards/bilt-blue.png",
     "apply_url": "https://www.bilt.com/card/application?tier=blue",
     "status": "published",
     "sections": [
@@ -1048,7 +1048,7 @@
     "category": "rewards",
     "issuer": "Bilt",
     "scouts_verdict": "The Bilt Obsidian hits the sweet spot for renters and homeowners who want category bonuses with their housing rewards. At $95 with a $100 hotel credit, the fee is effectively negative — and 3x dining with Hyatt transfer access is a sneaky-powerful combo. It doesn't quite match the Sapphire Preferred's travel breadth, but no $95 card on the planet lets you earn transferable points on rent.",
-    "image_url": "/static/img/card-placeholder.svg",
+    "image_url": "/static/img/cards/bilt-obsidian.png",
     "apply_url": "https://www.bilt.com/card/application?tier=obsidian",
     "status": "published",
     "sections": [
@@ -1109,7 +1109,7 @@
     "category": "rewards",
     "issuer": "Bilt",
     "scouts_verdict": "The Bilt Palladium is a legit premium card contender. Flat 2x everywhere with transferable points, $600 in annual credits that beat the $495 fee, Priority Pass for you and two guests, and up to 1.25x on rent or mortgage with no transaction fee. If you pay rent or a mortgage and want one card to handle everything, the Palladium makes an argument that the Venture X and CSR simply can't.",
-    "image_url": "/static/img/card-placeholder.svg",
+    "image_url": "/static/img/cards/bilt-palladium.png",
     "apply_url": "https://www.bilt.com/card/application?tier=palladium",
     "status": "published",
     "sections": [
@@ -1170,7 +1170,7 @@
     "category": "cash-back",
     "issuer": "Chase",
     "scouts_verdict": "The Freedom Unlimited is the Swiss Army knife of the Chase lineup. Solo, it's a perfectly good 1.5% cash back card with a 3% kicker on dining. But pair it with a Sapphire Preferred or Reserve and it transforms — your everyday spending suddenly earns transferable points that can top 2 cents each through partners like Hyatt (though Preferred points now go to Hyatt at 4:3, not 1:1). The $200 bonus for just $500 in spend is easy money, and the 15-month 0% APR adds flexibility. The 3% foreign transaction fee means you need something else for international trips, but domestically? This belongs in your wallet if you're in the Chase ecosystem.",
-    "image_url": "https://images.ctfassets.net/8qmz0ef3xzub/302fEMopacO8lPIOANH1Kr/92aa401d22ec4244b1521a02d9ea1e19/freedom_unlimited_card_alt.png",
+    "image_url": "/static/img/cards/chase-freedom-unlimited.png",
     "apply_url": "https://creditcards.chase.com/cash-back-credit-cards/freedom/unlimited",
     "status": "published",
     "sections": [
@@ -1232,7 +1232,7 @@
     "category": "cash-back",
     "issuer": "Chase",
     "scouts_verdict": "The Freedom Flex is the overachiever of the Chase family. While its sibling the Unlimited is content being reliable and boring, the Flex rewards you for paying attention — and it rewards you handsomely. Those 5% quarterly categories on Amazon, gas stations, and dining can pile up points fast if you plan around them, and the fixed 3% on dining and drugstores means even a lazy quarter isn't wasted.\n\nBut here's the change that matters most: as of September 20, 2026, the Flex charges no foreign transaction fees, which makes it a rare no-fee rotating-category card you can actually take abroad. The trade-off? Chase retired the cell phone protection that same day, so don't lean on the Flex to cover your phone anymore. Add the limited-time $250 sign-up bonus and 0% intro APR, and the value proposition is still borderline unfair for a $0 card.\n\nThe power move? Carry both the Freedom Flex and Freedom Unlimited alongside a Sapphire. The Flex handles rotating categories and dining, the Unlimited mops up everything else at 1.5%, and the Sapphire turns all those points into first-class flights and Hyatt stays. If you're only picking one Freedom card, grab the Flex if you'll activate those categories — grab the Unlimited if that sounds like homework.",
-    "image_url": "https://images.ctfassets.net/8qmz0ef3xzub/7KrVet3yXT2YntiE8PqwAe/bd0a8cc35ed60ac330442ae63c031a95/freedom_flex_card_alt.png",
+    "image_url": "/static/img/cards/chase-freedom-flex.png",
     "apply_url": "https://creditcards.chase.com/cash-back-credit-cards/freedom/flex",
     "status": "published",
     "sections": [
@@ -1294,7 +1294,7 @@
     "category": "business",
     "issuer": "Amex",
     "scouts_verdict": "The Business Gold is a workhorse card for businesses that spend where it counts — advertising, software, transit, and the like. That automatic 4X on your top two categories sounds almost too clever, and honestly, it usually delivers. The catch? If your spending is scattered thinly across all six eligible categories, the 4X boost might land on amounts that don't matter much. Concentrated spending is where this card flexes.\n\nNow, about that $375 annual fee. It looks intimidating until you stack up the credits: $240 from Grubhub/office supplies (FedEx too, but only through October 1, 2026), $300 for ChatGPT Business, $155 from Walmart+, and $150 for Squarespace adds up to $845 — more than double the fee. But — and this is important — only count credits for services you'd actually use. Signing up for Walmart+ just to offset a credit card fee is the financial equivalent of buying something on sale you never wanted. The welcome offer (as high as 200,000 points) is excellent, though spending $15,000 in 3 months means this is truly a card for businesses with real expenses, not a side hustle.\n\nThe question that matters: Business Gold or Chase Ink Business Preferred? The Ink costs $95/year with 3X earning. The Amex costs $375 with 4X. If your business charges $50K+ annually in those bonus categories, the extra points from the Amex more than cover the fee difference. Below that threshold? The Ink Preferred and its Chase ecosystem might be the sharper play.",
-    "image_url": "https://icm.aexp-static.com/Internet/Acquisition/US_en/AppContent/OneSite/open/category/cardarts/business-gold.png",
+    "image_url": "/static/img/cards/amex-business-gold.png",
     "apply_url": "https://www.americanexpress.com/us/credit-cards/business/business-credit-cards/american-express-business-gold-card-amex/",
     "status": "published",
     "sections": [
@@ -1355,7 +1355,7 @@
     "category": "travel",
     "issuer": "Amex",
     "scouts_verdict": "The Amex Green (now the Classic Green, closed to new applicants since July 2026) fills an interesting niche: it's a low-cost way to keep earning Amex Membership Rewards points, and the 3X on travel, transit, and dining covers a surprising amount of what most people spend money on. The $219 CLEAR+ credit is the swing factor that makes or breaks this card — use CLEAR and you're effectively getting paid $69/year to carry the card. That's hard to argue with.\n\nWithout CLEAR, though, the math tightens up considerably. You're paying $150/year for 3X earning and some basic protections, while the Chase Sapphire Preferred offers 3X dining (plus gas and streaming), 2X travel, a $100 hotel credit, and Chase's partner network for $95. Unless you specifically need the transit category or you're chasing ANA and Singapore Airlines transfers (which are genuinely excellent), the Sapphire Preferred is the more cost-effective play for most people.\n\nWhere the Green really sings is as a supporting player in a bigger Amex lineup. Pair it with the Gold for 4X dining and groceries, let the Green handle travel and transit, and you've got your bases covered. Or keep it as your sole MR card if your spending skews heavily toward transportation. Just don't expect lounges, hotel status, or anything resembling luxury — that's Platinum territory, and Platinum money. And if you don't already have the Green, the only way in now is a product change from the Gold or Platinum — no welcome bonus attached.",
-    "image_url": "https://icm.aexp-static.com/Internet/Acquisition/US_en/AppContent/OneSite/category/cardarts/green-card.png",
+    "image_url": "/static/img/cards/amex-green.png",
     "apply_url": "https://www.americanexpress.com/us/credit-cards/",
     "status": "published",
     "sections": [
@@ -1416,7 +1416,7 @@
     "category": "cash-back",
     "issuer": "Capital One",
     "scouts_verdict": "The Savor is one of those rare cards that just makes sense for almost everyone. No annual fee, no foreign transaction fees, and 3% back on the stuff you're already spending money on — restaurants, groceries, entertainment, streaming. No quarterly activation dance, no caps, no fine print gotchas. Swipe and earn.\n\nThe one real gotcha: if Walmart or Target is your grocery store, you're earning a measly 1% instead of 3%, which kind of defeats the purpose. But if you shop at actual grocery chains — Kroger, Publix, Trader Joe's, Whole Foods, Safeway — the 3% is the real deal. And the entertainment and streaming categories are a nice bonus that most competitors simply don't match.\n\nThis isn't the card for points-and-miles nerds chasing business class flights — rewards are straight cash back with no transfer partner gymnastics. But honestly, that's a feature for people who just want money back without playing a game. If you need one set-it-and-forget-it card for everyday spending, the Savor is one of the best free options out there. Pair it with a flat 2% card like the Citi Double Cash for non-bonus spending, and you've got a two-card setup that quietly crushes it.",
-    "image_url": "https://cdn.prodstatic.com/shared/images/cards/500x315/ab588840-9089-11ef-9b25-ab59e8af7111.png",
+    "image_url": "/static/img/cards/capital-one-savor.png",
     "apply_url": "https://www.capitalone.com/credit-cards/savor/",
     "status": "published",
     "sections": [
@@ -1477,7 +1477,7 @@
     "category": "hotel",
     "issuer": "Amex",
     "scouts_verdict": "<p>The Brilliant is a fantastic card — for a very specific person. If you're already loyal to Marriott and staying at their properties regularly, the value stacks up fast. Platinum Elite status is genuinely powerful at full-service Marriotts, Westins, and Sheratons where you'll score lounge access and meaningful upgrades. The 85K free night certificate can easily cover a $500+ night at a premium property. And the $300 dining credit? If you eat out even once a month, you'll use it without trying.</p><p>But let's talk about the elephant in the room: $650 is real money. If you're not disciplined about using the $25/month dining credit (use-it-or-lose-it, no rollover), and if you don't have a Ritz-Carlton or St. Regis stay planned for the property credit, you're leaving hundreds on the table. Too many people sign up for premium hotel cards thinking they'll \"figure out\" the credits later. Spoiler: they don't.</p><p>The bottom line: 15+ nights a year at Marriott properties plus consistent dining out? This card practically pays for itself. Under 10 nights? Save yourself $555 and grab the Boundless. And if you're on the fence, the 150K-point welcome bonus plus $250 statement credit (available through September 30, 2026) tilts the math heavily in favor of signing up now rather than later.</p>",
-    "image_url": "https://icm.aexp-static.com/Internet/Acquisition/US_en/AppContent/OneSite/category/cardarts/marriott-bonvoy-brilliant.png",
+    "image_url": "/static/img/cards/marriott-bonvoy-brilliant.png",
     "apply_url": "https://www.americanexpress.com/us/credit-cards/card/marriott-bonvoy-brilliant/",
     "status": "published",
     "sections": [
@@ -1538,7 +1538,7 @@
     "category": "hotel",
     "issuer": "Chase",
     "scouts_verdict": "<p>The Boundless is quietly one of the best deals in the hotel card game, and Chase's limited-time airline credit (up to $100, through 2026 for existing cardholders and mid-2027 for new ones) makes it even better right now. At $95/year, you get a free night certificate worth $150-$250+ at most Marriott properties, plus that airline credit effectively zeroes out the fee while it lasts. A hotel card that pays for itself before you earn a single point? That's the definition of a keeper card.</p><p>The earning structure is solid if unspectacular — 6x at Marriott, 3x on groceries/gas/dining with a $6,000 combined cap. Heavy spenders will hit that ceiling, but for most people it's fine. The real play here is simple: hold the card, collect your free night every year, use the airline credit while it's around, and treat any points you earn along the way as a bonus. It's low-maintenance value.</p><p>Deciding between this and the Brilliant? Ask yourself one question: do you stay at Marriott properties often enough to justify $555 more per year? If you're under 15 nights annually, the Boundless gives you the vast majority of the value at a fraction of the cost. And that 3 Free Night welcome bonus (each night worth up to 50K points) is genuinely outstanding — time a sign-up right and your first $3,000 of spending could bank you a long weekend's worth of hotel stays.</p>",
-    "image_url": "https://images.ctfassets.net/8qmz0ef3xzub/6NQqYJGax6zMcb7iCw4kPx/e255147c0c247c676c9a082a38f05ab3/marriott_bonvoy_boundless_card.png",
+    "image_url": "/static/img/cards/marriott-bonvoy-boundless.png",
     "apply_url": "https://creditcards.chase.com/travel-credit-cards/marriott-bonvoy/boundless",
     "status": "published",
     "sections": [
@@ -1599,7 +1599,7 @@
     "category": "hotel",
     "issuer": "Chase",
     "scouts_verdict": "<p>Nobody is going to brag about the Marriott Bonvoy Bold at a dinner party. It's not that kind of card. It's the kind of card you toss in your wallet because it costs nothing and quietly gives you something back — Silver Elite status, a handful of night credits, 2x on groceries and streaming, and a free DashPass. Modest? Sure. But free is a powerful price.</p><p>The refreshed 2x categories (rideshare, food delivery, streaming, phone bills) make it more useful day-to-day than the old version, but that 1x base rate means you should only reach for this card in bonus categories and at Marriott hotels. For everything else, a 2% cash back card will serve you better.</p><p>Here's who should actually get the Bold: someone who stays at Marriott a few times a year, wants to passively accumulate points, and would rather not think about annual fees. Just don't count on it as a sidekick to a premium Marriott card: Chase won't approve the Bold while you hold a Boundless, and the Brilliant already earns at least 2x on everything, so the Bold's bonus categories add nothing (and its 5 night credits won't stack on top of the Brilliant's). The 45K welcome bonus is modest, but with only $1,000 to spend, it's basically a free $300 hotel weekend for minimal effort.</p>",
-    "image_url": "https://images.ctfassets.net/8qmz0ef3xzub/y8cXD7nquWVHSciAsUTzZ/fb3db0d90bc28976fabc684ce8867fe2/marriott_bonvoy_bold_card_NAF.png",
+    "image_url": "/static/img/cards/marriott-bonvoy-bold.png",
     "apply_url": "https://creditcards.chase.com/travel-credit-cards/marriott-bonvoy/bold",
     "status": "published",
     "sections": [
@@ -1660,7 +1660,7 @@
     "category": "cash-back",
     "issuer": "Wells Fargo",
     "scouts_verdict": "<p>The Active Cash is the answer to the question: \"What if a credit card just... worked?\" Two percent back on everything, no annual fee, no categories to remember, no quarterly activation rituals. In a world full of cards trying to be clever, this one is content to be straightforward — and it's better for it.</p><p>What pushes it past other flat-rate cards is the stuff you don't expect at $0/year. Cell phone protection covering up to $600 per claim? Its closest 2% rival, the Citi Double Cash, doesn't offer that at all. Visa Signature perks like the Luxury Hotel Collection and 24/7 concierge are genuine bonuses, not the kind of filler benefits that sound nice on paper but mean nothing in practice. And if you pair this with a Wells Fargo Autograph, you unlock transfer partners — turning a simple cash back card into part of a real points strategy.</p><p>The only real weakness: that 3% foreign transaction fee means this card needs to stay home when you fly overseas. But for everything domestic — groceries, gas, bills, subscriptions, the random impulse buy at 11 PM — this is as good as it gets for free. It's not exciting, and that's exactly why it works.</p>",
-    "image_url": "https://creditcards.wellsfargo.com/rv/assets/production/f96bf5383024739bd5d3c93a2a1886bede70a18c/active-cash.9hXxvW2T_isw3s.webp",
+    "image_url": "/static/img/cards/wells-fargo-active-cash.png",
     "apply_url": "https://creditcards.wellsfargo.com/active-cash-credit-card/",
     "status": "published",
     "sections": [
@@ -1721,7 +1721,7 @@
     "category": "travel",
     "issuer": "Wells Fargo",
     "scouts_verdict": "<p>The Wells Fargo Autograph is quietly one of the best no-annual-fee cards you can get, and it flies under the radar compared to flashier options. Six categories at 3x, no foreign transaction fees, and direct access to transfer partners — all for $0/year. Most cards offering this kind of flexibility charge $95 to $250 annually. The Autograph just hands it over and doesn't ask for anything back.</p><p>The transfer partners are the headline act. British Airways, Virgin Atlantic, Air France/KLM, JetBlue — all at 1:1 ratios with no minimums. A well-timed transfer to British Airways for a short-haul award or Virgin Atlantic for a premium cabin seat can easily get you 1.5 to 2+ cents per point. And unlike the Chase Freedom Flex, you don't need a $95-to-$795 Sapphire card lurking in the background to make transfers happen.</p><p>The ultimate move? Pair the Autograph with the Active Cash. Use the Autograph for its 3x categories, the Active Cash for everything else at 2%, pool the points, and transfer to partners. Boom — you have a powerhouse rewards system with a combined annual fee of exactly zero dollars. Try to beat that.</p>",
-    "image_url": "/static/img/card-placeholder.svg",
+    "image_url": "/static/img/cards/wells-fargo-autograph.png",
     "apply_url": "https://creditcards.wellsfargo.com/autograph-visa-credit-card/",
     "status": "published",
     "sections": [
@@ -1782,7 +1782,7 @@
     "category": "cash-back",
     "issuer": "Discover",
     "scouts_verdict": "<p>The Discover it Cash Back is the most underrated card in America. In an era of flashy travel cards with $795-$895 annual fees, a free card that effectively gives you 10% cash back in bonus categories for an entire year is borderline absurd. The Cashback Match is the single best first-year offer in the credit card industry — automatic, unlimited, and no-strings-attached. Nobody else is doing this. Nobody.</p><p>After year one, the card settles into a reliable 5%-on-rotating-categories, 1%-on-everything-else rhythm. That's good but not dominant. The real strategy is pairing it correctly: use the Discover for 5% categories, a flat 2% card for everything else, and you've built a no-fee reward system that rivals cards with annual fees. The quarterly activation takes 30 seconds and is only mildly annoying.</p><p>The knock on Discover is the network. Domestically you're fine — most merchants take it. Internationally and at some smaller businesses, you'll occasionally get turned away. Never carry this as your only card. But as part of a multi-card strategy, especially in your first year, the Discover it Cash Back is almost impossible to outvalue on pure math. Get it, maximize year one, and keep it forever.</p>",
-    "image_url": "https://www.discover.com/content/dam/discover/en_us/credit-cards/card-acquisitions/grey-redesign/global/images/background/bg-cards-itcards-388-350.png",
+    "image_url": "/static/img/cards/discover-it-cash-back.png",
     "apply_url": "https://www.discover.com/credit-cards/cash-back/it-card.html",
     "status": "published",
     "sections": [
@@ -1844,7 +1844,7 @@
     "category": "hotel",
     "issuer": "Chase",
     "scouts_verdict": "<p>Here's the bottom line: the IHG Premier is the most underrated hotel card on the market. Full stop. You're getting Platinum Elite status for $99 — the same tier competitors charge $550-$650 to hand out. Sure, IHG's Platinum isn't going to get you upgraded to a palace suite, but it's real status with real perks at a fraction of the price.</p><p>The earning structure is sneaky good, too. That 3x on everything means this card actually works as a daily driver, not just a hotel card you dust off for travel. Most hotel cards give you 1-2x on everyday spending, so 3x is doing real work. And at IHG properties, stacking bonuses push you to 26x per dollar — those points pile up fast on a multi-night stay.</p><p>Let's be honest about the downsides: IHG points are worth less per point than Marriott or Hyatt, and a Holiday Inn Express isn't exactly a Ritz-Carlton. But if you travel frequently, stay at IHG properties even once or twice a year, and want a card that over-delivers for under $100, the Premier is a no-brainer. The 140K welcome bonus alone covers up to 4 award nights at thousands of IHG hotels. For $99, that's kind of ridiculous.</p>",
-    "image_url": "https://creditcards.chase.com/content/dam/jpmc-marketplace/card-art/ihg_premier_card.png",
+    "image_url": "/static/img/cards/ihg-one-rewards-premier.png",
     "apply_url": "https://creditcards.chase.com/travel-credit-cards/ihg-rewards-club/premier",
     "status": "published",
     "sections": [
@@ -1905,7 +1905,7 @@
     "category": "airline",
     "issuer": "Amex",
     "scouts_verdict": "<p>The Delta Gold is the no-brainer entry point for anyone who flies Delta even a few times a year. The math is dead simple: two round trips with a checked bag saves you $180, more than covering the $150 annual fee — and year one is free, so you're playing with house money from day one.</p><p>Stack on the 2X earning at restaurants and supermarkets, and you've got a card that works for you between trips, not just at the airport. The $200 Delta flight credit after $10K in spending is a nice reward for loyalty, and the current welcome offer of as high as 80,000 miles plus a $250 statement credit is one of the richest in the entry-level airline card space — enough for a domestic round-trip or a one-way to Europe.</p><p>The honest trade-off: no companion certificate (that's the Platinum), no Sky Club access (that's the Reserve), and 1X on everything outside Delta, dining, and groceries is pretty meh. If you're a hardcore Delta loyalist flying every week, you should probably upgrade. But for the person who flies Delta a handful of times a year and wants solid value without overthinking it? The Gold nails it.</p>",
-    "image_url": "https://icm.aexp-static.com/Internet/Acquisition/US_en/AppContent/OneSite/category/cardarts/gold-delta-skymiles.png",
+    "image_url": "/static/img/cards/delta-skymiles-gold.png",
     "apply_url": "https://www.americanexpress.com/us/credit-cards/card/delta-skymiles-gold-american-express-card/",
     "status": "published",
     "sections": [
@@ -1966,7 +1966,7 @@
     "category": "airline",
     "issuer": "Amex",
     "scouts_verdict": "<p>The Delta Platinum is the card I'd hand to any couple that flies Delta. The companion certificate is the whole story — on a decent domestic round-trip that would normally cost $300-$500, your travel partner flies for just taxes and fees. That single perk can return more value than the entire $350 annual fee in one shot. If you travel with someone even once a year, the math just works.</p><p>The 3X on Delta and hotels is a nice bump over the Gold, and the MQD head start plus free checked bags for up to 9 people are genuinely useful extras. But let's not overcomplicate this: you either need the companion cert or you don't. If you do, there's no better deal in airline cards at this price.</p><p>Where it falls short: no lounge access, the credits ($150 Delta Stays plus $10 a month each for Resy and rideshare) take some effort to actually use, and if you're a solo traveler, that companion cert is just wasted cardboard. In that case, stick with the Gold at $150 and pocket the difference. But if you've got someone to share that cert with? The Platinum is one of the best values in co-branded airline cards, period.</p>",
-    "image_url": "https://icm.aexp-static.com/Internet/Acquisition/US_en/AppContent/OneSite/category/cardarts/platinum-delta-skymiles.png",
+    "image_url": "/static/img/cards/delta-skymiles-platinum.png",
     "apply_url": "https://www.americanexpress.com/us/credit-cards/card/delta-skymiles-platinum-american-express-card/",
     "status": "published",
     "sections": [
@@ -2027,7 +2027,7 @@
     "category": "airline",
     "issuer": "Amex",
     "scouts_verdict": "<p>The Delta Reserve is a perks card, not a points card — and you need to evaluate it on those terms. A 3X/1X earning structure on a $650 card is, frankly, embarrassing compared to what competitors offer. But that's not why you carry the Reserve. You carry it for Sky Club access, a companion cert that works on First Class tickets, and $360/year in dining and rideshare credits that take zero effort to use.</p><p>The 15 Sky Club visits per year are the headline — and for a Delta hub flyer who hits the lounge regularly, that alone can be worth $500+ at day-pass prices. The companion cert upgrade to First Class and Delta Comfort is a meaningful step up from the Platinum's Delta Main-only cert. And those Resy and rideshare credits? They just require you to eat food and get rides. Not exactly a burden.</p><p>The honest calculus: if you fly Delta 10+ times a year, use Sky Clubs, dine out, and travel with a companion — the Reserve pays for itself and then some. But if you're flying Delta a few times a year and just want the essentials, you're overpaying by hundreds. The Platinum at $350 gives you a companion cert and better everyday earning. The Reserve is a luxury — treat it like one and only carry it if you'll use every perk.</p>",
-    "image_url": "https://icm.aexp-static.com/Internet/Acquisition/US_en/AppContent/OneSite/category/cardarts/delta-reserve.png",
+    "image_url": "/static/img/cards/delta-skymiles-reserve.png",
     "apply_url": "https://www.americanexpress.com/us/credit-cards/card/delta-skymiles-reserve-american-express-card/",
     "status": "published",
     "sections": [
@@ -2088,7 +2088,7 @@
     "category": "airline",
     "issuer": "Chase",
     "scouts_verdict": "<p>The 2025 refresh turned the United Explorer from a decent entry-level card into one of the best values in the airline card space. Over $500 in potential credits against a $150 fee — with the first year free — is the kind of math that makes you double-check you're reading it right.</p><p>The free checked bag for both you and a companion is a quiet winner, and the Star Alliance redemption options give United miles a flexibility edge that Delta miles simply don't have. ANA First Class to Japan? Lufthansa Business to Europe? That's where this card's miles really earn their keep.</p><p>The catch is the word \"potential.\" Those credits are spread across Instacart, rideshare, United Hotels, Avis/Budget and JSX, plus a $100 United credit that takes $10K in spend — and each comes with its own fine print, from monthly caps to enrollment hoops. If you're disciplined about using them, this card is a steal. If you're the type who forgets to activate perks, the on-paper value evaporates fast. But for a United flyer willing to work the system, the Explorer punches way above its weight class.</p>",
-    "image_url": "https://creditcards.chase.com/content/dam/jpmc-marketplace/card-art/united_explorer_card_tilted.png",
+    "image_url": "/static/img/cards/united-explorer.png",
     "apply_url": "https://creditcards.chase.com/travel-credit-cards/united/united-explorer",
     "status": "published",
     "sections": [
@@ -2149,7 +2149,7 @@
     "category": "airline",
     "issuer": "Chase",
     "scouts_verdict": "<p>The United Quest is the ultimate status-chaser's weapon. Outside the pricier Club Infinite, no personal airline card lets you earn up to 18,000 PQP per year from spending — and 18,000 PQP is the entire PQP-only bar for Premier Platinum, as long as you also fly the four United flights every Premier tier requires. Add the 1,000 PQP annual bonus and 500 PQP sign-up bonus, and you're getting a running start that, among personal United cards, only the $695 Club Infinite beats.</p><p>The $350 fee is basically a non-issue: $200 United credit + $180 Instacart = $380 in credits against a $350 fee. You're ahead before counting the 2 free checked bags, the 10,000-mile award discount, or the JSX credits. The earning rates are solid too — 4X on United and 2X on travel, dining, and streaming covers most of a frequent traveler's spending.</p><p>Where the Quest loses to the Delta Platinum is obvious: no companion cert. If you regularly travel with someone and a companion cert would save you $300-$500, that's hard to ignore. But if you're a solo flyer, a United status grinder, or someone who prefers a guaranteed $200 credit over a situational cert, the Quest is the better card. One of the most underrated mid-tier airline cards out there.</p>",
-    "image_url": "https://images.ctfassets.net/8qmz0ef3xzub/3kQM0ECug63bxYrvYwK9a0/be0fdb5e6a7a87e5a90a04187d4007f3/united_quest_card_tilted.png",
+    "image_url": "/static/img/cards/united-quest.png",
     "apply_url": "https://creditcards.chase.com/travel-credit-cards/united/united-quest",
     "status": "published",
     "sections": [
@@ -2210,7 +2210,7 @@
     "category": "airline",
     "issuer": "Chase",
     "scouts_verdict": "<p>The Club Infinite is a card you either need or you don't — and the answer hinges entirely on United Club lounges. A standalone membership costs ~$750. This card costs $695 and gives you that membership, up to $890 in credits, 5X on United plus 2X on dining and travel, and the most aggressive PQP engine in the United lineup. If you were going to buy the membership anyway, you'd be leaving money on the table by <em>not</em> getting this card.</p><p>The 2X on dining and travel is the unsung hero here. The Delta Reserve and Citi Executive both earn 1X on dining and most non-airline travel — meaning the Club Infinite literally earns double what its premium competitors do at restaurants, on rideshares and at most hotels. Over a year of normal expenses, that gap adds up to thousands of extra miles. And the 28,000 PQP cap is borderline absurd for status seekers — that's enough to clear Premier Platinum (18,000 PQP) and even hit the Premier 1K bar (28,000) from card spending, as long as you also fly the four United flights every Premier tier requires.</p><p>The honest downside: $695 is real money, and there's no companion cert to deliver a single big value hit like the Delta Reserve offers. The credits are spread across Instacart, rideshare, Renowned Hotels, JSX and Avis/Budget — useful if they fit your life, wasted if they don't. For the United road warrior who lives in the Club, this card is practically mandatory. For everyone else, the Quest or Explorer will serve you better without the premium price tag.</p>",
-    "image_url": "https://creditcards.chase.com/content/dam/jpmc-marketplace/card-art/united_club_infinite_card_tilted.png",
+    "image_url": "/static/img/cards/united-club-infinite.png",
     "apply_url": "https://creditcards.chase.com/travel-credit-cards/united/club-infinite",
     "status": "published",
     "sections": [
@@ -2271,7 +2271,7 @@
     "category": "cash-back",
     "issuer": "Capital One",
     "scouts_verdict": "<p>The Quicksilver isn't going to make anyone's heart race, and that's exactly the point. It's the credit card equivalent of a reliable friend — always there, never costs you anything, and quietly has your back when things go wrong.</p><p>At 1.5% flat cash back, it loses the pure earning rate fight to the Active Cash and Double Cash at 2%. On $20,000 in annual spending, that's $100 you're leaving on the table. But those cards charge 3% on foreign transactions, which means one international trip can erase months of extra cash back. The Quicksilver's no-FTF policy and travel insurance suite — baggage delay, lost luggage, trip cancellation — give it a real edge that doesn't show up in a simple rate comparison.</p><p>The bottom line: if you never travel and want maximum cash back, get the Active Cash. But if you want a zero-cost, zero-hassle card that works everywhere in the world and protects you when stuff goes sideways, the Quicksilver is the one. It won't win any awards, but it'll never let you down.</p>",
-    "image_url": "https://cdn.prodstatic.com/shared/images/cards/500x315/b36ad2d0-ee0e-11ef-bda4-559b94aab7a2.png",
+    "image_url": "/static/img/cards/capital-one-quicksilver.png",
     "apply_url": "https://www.capitalone.com/credit-cards/quicksilver/",
     "status": "published",
     "sections": [
@@ -2332,7 +2332,7 @@
     "category": "rewards",
     "issuer": "Citi",
     "scouts_verdict": "<p>The Citi Rewards+ was the quirky underdog of the no-annual-fee card world until Citi retired it in July 2025. The round-up feature sounded like a gimmick until you realized that your $2 gas station snack was earning points at a 5x effective rate. Coffee runs, transit taps, quick convenience store stops — the more micro-purchases you made, the more the round-up feature bent the math in your favor. It was a card that rewarded how you spent, not just what you spent.</p><p>The 10% points back on redemptions was the other hidden gem — essentially a 10% discount on your first 100,000 redeemed points each year, and literally no other card offered this. Pair it with a Citi Strata Premier for full-value transfer partner access, and suddenly your ThankYou points are booking JetBlue flights and Singapore Airlines business class.</p><p>But let's keep it real: as a standalone card, the earning rates were mediocre. The Autograph does 3x on six categories. The Freedom Unlimited does 3x on dining. The Rewards+ only really sang as part of a Citi card strategy — you used it for small purchases, pooled your ThankYou points, and let the round-ups and 10% back do their thing. On its own, there are better options. As a sidekick, it was genuinely clever. Just know this is a eulogy now: Citi folded every Rewards+ into the Citi Strata in July 2025, and the last holdovers kept the round-ups and 10% back only until July 19, 2026.</p>",
-    "image_url": "https://www.creditcards.com/ext/cdn.prodstatic.com/shared/images/cards/500x315/96eb2f40-fb6b-11eb-bb36-9183285abe2c.png",
+    "image_url": "/static/img/cards/citi-rewards-plus.png",
     "apply_url": "https://www.citi.com/credit-cards/citi-strata-credit-card",
     "status": "published",
     "sections": [
@@ -2393,7 +2393,7 @@
     "category": "business",
     "issuer": "Chase",
     "scouts_verdict": "<p>Look, $795 is a lot of money. I'm not going to pretend otherwise. But Chase built the Sapphire Reserve for Business for a specific kind of business owner — one who travels regularly, runs digital ads, and actually uses premium perks — and for that person, the math is borderline absurd.</p><p>Between the $300 travel credit, $500 in Edit hotel credits, Google Workspace and ZipRecruiter credits, and the gift card perk, you're looking at $1,500+ in tangible credits before you even count lounge access or points earning. The 3x on advertising spend is a genuine differentiator that no other premium travel card matches, and 8x on everything in Chase Travel is one of the richest portal earning rates in the business card space.</p><p>My take: if your business spends at least $50K/year on the card and you travel six or more times annually, this card pays for itself and then some. The Sapphire Lounges are legitimately great, the Ultimate Rewards ecosystem is best-in-class, and the Flex option gives you a safety valve when cash flow gets bumpy. If that doesn't describe your business, the <a href=\"/cards/capital-one-venture-x-business\">Capital One Venture X Business</a> gives you 80% of the experience at half the price. But for high-spending, high-traveling businesses? The Reserve for Business is the one to beat.</p>",
-    "image_url": "https://creditcards.chase.com/content/dam/jpmc-marketplace/card-art/sapphire_reserve_biz_card.png",
+    "image_url": "/static/img/cards/chase-sapphire-reserve-business.png",
     "apply_url": "https://creditcards.chase.com/business-credit-cards/sapphire/reserve",
     "status": "published",
     "sections": [
@@ -2455,7 +2455,7 @@
     "category": "business",
     "issuer": "Capital One",
     "scouts_verdict": "<p>The Capital One Venture X Business is the rare premium card that doesn't require mental gymnastics to justify keeping. At $395 with a $300 travel credit and 10K anniversary miles, you're essentially getting paid to carry it — and that's before you earn a single mile on purchases.</p><p>The 2X flat rate everywhere is genuinely best-in-class for a premium business card, the transfer partners are strong enough for aspirational redemptions, and the lounge access (especially the Capital One Lounges) adds real quality-of-life value for road warriors. The charge card structure with no preset spending limit is the cherry on top for businesses that need flexibility.</p><p>Is it perfect? No. The $30K welcome bonus spend requirement is steep, the portal-only bonus categories limit earning for those who book direct, and the transfer partner list — while solid — still lacks some Amex Membership Rewards heavy hitters like ANA, Delta, Hilton and Marriott. But for the price? Nothing in the premium business card space comes close to this value proposition. <strong>Scout's Rating: 9.2/10</strong></p>",
-    "image_url": "/static/img/card-placeholder.svg",
+    "image_url": "/static/img/cards/capital-one-venture-x-business.png",
     "apply_url": "https://www.capitalone.com/small-business/credit-cards/venture-x-business/",
     "status": "published",
     "sections": [
@@ -2516,7 +2516,7 @@
     "category": "hotel",
     "issuer": "Chase",
     "scouts_verdict": "The World of Hyatt card is the best hotel credit card in the game, full stop. At $95 per year, you get a free night certificate worth $150-$300+, a path to a second free night, automatic Discoverist status, and access to one of the few hotel loyalty programs where points are still genuinely valuable. Pair it with a Chase Ultimate Rewards card that transfers to Hyatt (the Sapphire Reserve still goes 1:1) and you've got a hotel rewards machine that punches way above its weight class. If you stay at Hyatt even occasionally, get this card.",
-    "image_url": "https://creditcards.chase.com/bcs/_next/image?url=%2Fbcs%2Fimages.ctfassets.net%2F8qmz0ef3xzub%2F1AkbUQRvzWYNR5P2dQLTul%2Ffe7b9d7da30705705c139807e5a541e1%2Fworld_of_hyatt_card.png&w=640&q=75",
+    "image_url": "/static/img/cards/world-of-hyatt.png",
     "apply_url": "https://creditcards.chase.com/travel-credit-cards/world-of-hyatt-credit-card",
     "status": "published",
     "sections": [
@@ -2577,7 +2577,7 @@
     "category": "hotel",
     "issuer": "Chase",
     "scouts_verdict": "The Hyatt Business card is the power move for business owners who are serious about Hyatt. At $199 (effectively $99 after credits), you get a 70K welcome bonus, automatic 2x on your top spending categories, and a fast track to Globalist status (no free night certificate, though — that's a personal-card perk). Pair it with the personal Hyatt card and you're running a two-card system that generates absurd hotel value. The $7K spend requirement for the bonus is steep for individuals but routine for businesses. If Hyatt is your brand, this is your business card.",
-    "image_url": "https://creditcards.chase.com/bcs/images.ctfassets.net/8qmz0ef3xzub/6yKBjSOdSt1XOOPElHsVEV/5dd07e2c772125992b25a88c173481f1/world_hyatt_biz_card.png",
+    "image_url": "/static/img/cards/world-of-hyatt-business.png",
     "apply_url": "https://creditcards.chase.com/business-credit-cards/world-of-hyatt/hyatt-business-card",
     "status": "published",
     "sections": [
@@ -2638,7 +2638,7 @@
     "category": "airline",
     "issuer": "Chase",
     "scouts_verdict": "The Southwest Plus is the budget entry into the Southwest ecosystem. At $99, you're really paying for free checked bags and the 10,000-point Companion Pass boost — and honestly, that's enough for casual Southwest flyers. The earning rates are mediocre and the anniversary points are modest, but if you just need the basics and fly Southwest a few times a year, it does the job. Families especially will love the bag savings. Just know that for $50-$130 more, the Premier and Priority cards offer meaningfully better perks.",
-    "image_url": "https://creditcards.chase.com/content/dam/jpmc-marketplace/card-art/swa_plus_card_New.png",
+    "image_url": "/static/img/cards/southwest-rapid-rewards-plus.png",
     "apply_url": "https://creditcards.chase.com/travel-credit-cards/southwest/plus",
     "status": "published",
     "sections": [
@@ -2699,7 +2699,7 @@
     "category": "airline",
     "issuer": "Chase",
     "scouts_verdict": "The Southwest Priority lost some shine when the $75 travel credit disappeared at the end of 2025, and the effective annual cost went from ~$57 to ~$132. But the new assigned-seating perks — free seat selection at booking and unlimited Extra Legroom upgrades — fill a real gap now that Southwest has ditched open seating. If you fly Southwest 5+ times a year, the combination of seat perks, 7,500 anniversary points, 4x earning, and Group 5 boarding still makes this the right Southwest card. The math just requires a bit more flying to break even than it used to. If you only fly Southwest a couple of times a year, downgrade to the Plus and save yourself $130.",
-    "image_url": "https://creditcards.chase.com/content/dam/jpmc-marketplace/card-art/swa_priority_card-2.png",
+    "image_url": "/static/img/cards/southwest-rapid-rewards-priority.png",
     "apply_url": "https://creditcards.chase.com/travel-credit-cards/southwest/priority",
     "status": "published",
     "sections": [
@@ -2760,7 +2760,7 @@
     "category": "airline",
     "issuer": "Chase",
     "scouts_verdict": "The Southwest Premier is the sensible middle child of the Southwest card family. At $149, it gives you 3x on Southwest, 6,000 anniversary points, a 15% promo code (vs. 10%), and Preferred seating — meaningful upgrades over the $99 Plus card. But the $229 Priority card's seat selection at booking, free Extra Legroom upgrades and 4x on Southwest can be worth the extra $80 if you fly often. The Premier is best for moderate Southwest flyers who want more than the basics but don't fly enough to justify the Priority. The standard welcome bonus lands in the middle too — 55,000 points for $1,500 spend, between the Plus's 50,000 and the Priority's 60,000.",
-    "image_url": "https://creditcards.chase.com/content/dam/jpmc-marketplace/card-art/swa_premier_card.png",
+    "image_url": "/static/img/cards/southwest-rapid-rewards-premier.png",
     "apply_url": "https://creditcards.chase.com/travel-credit-cards/southwest/premier",
     "status": "published",
     "sections": [
@@ -2821,7 +2821,7 @@
     "category": "airline",
     "issuer": "Barclays",
     "scouts_verdict": "The Aviator Red had a great run — that one-purchase, 60,000-mile welcome bonus was legendary — but the card closed to new applicants on September 30, 2025, and Citi converted every account to the Citi AAdvantage Platinum Select on April 24, 2026. The earning rates were never the point: just 2x on AA purchases and 1x on everything else. This was a card you held for the free checked bags, the companion certificate after $20K spend, and that ridiculously easy sign-up bonus. At $99 a year, the checked bag benefit alone could pay for the card in one round trip. If you had one, it's now a Platinum Select: keep it for the bags and the better earning, but the old $25 Wi-Fi credit ends October 25, 2026 and the companion certificate goes away after your next cardmember anniversary. If you're shopping for a new AA card, the Citi AAdvantage Platinum Select is the clear successor — same fee, better earning categories, active welcome bonus.",
-    "image_url": "/static/img/card-placeholder.svg",
+    "image_url": "/static/img/cards/aadvantage-aviator-red.png",
     "apply_url": "",
     "status": "published",
     "sections": [
@@ -2883,7 +2883,7 @@
     "category": "airline",
     "issuer": "Citi",
     "scouts_verdict": "The Citi AAdvantage Platinum Select is the AA card most people should get. The math is simple: $99/year (waived year one), free bags for you and 4 companions, preferred boarding, 2x on AA/gas/restaurants, and a 50,000-mile welcome bonus. With the Aviator Red discontinued (its accounts were converted to this card in April 2026), this is now the definitive mid-tier AA card. The $125 flight discount at $20K spend is a nice loyalty kicker, and the 48-month bonus restriction is standard Citi. If you fly AA regularly, this card pays for itself in bag fees alone.",
-    "image_url": "https://creditcards.aa.com/credit-cards/wp-content/uploads/sites/2/2025/11/plat-cent-cropped.png",
+    "image_url": "/static/img/cards/citi-aadvantage-platinum-select.png",
     "apply_url": "https://creditcards.aa.com/credit-cards/citi-platinum-card-american-airlines-direct/",
     "status": "published",
     "sections": [
@@ -2944,7 +2944,7 @@
     "category": "airline",
     "issuer": "Citi",
     "scouts_verdict": "The Citi AAdvantage Executive is a one-trick pony — but it's a very good trick. The Admirals Club membership alone is worth up to $1,400/year, and you're paying $695. Everything else — the 4x on AA, free bags for 8 companions, up to $180 in Lyft, $120 car rental, $100 inflight and $500 AA Vacations credits — is bonus. The 125K welcome bonus is the largest of any AA card. But let's be honest: if you don't care about the Admirals Club, there's no reason to pay $695 when the Platinum Select exists at $99. This card is laser-focused on AA loyalists who fly frequently and want a home base in the airport. For that audience, it's excellent.",
-    "image_url": "https://aemapi.citi.com/content/dam/cfs/uspb/usmkt/cards/en/static/images/citi-aadvantage-executive-credit-card/citi-aadvantage-executive-credit-card_306x192.webp",
+    "image_url": "/static/img/cards/citi-aadvantage-executive.png",
     "apply_url": "https://creditcards.aa.com/credit-cards/citi-executive-card-american-airlines-direct/",
     "status": "published",
     "sections": [
@@ -3005,7 +3005,7 @@
     "category": "airline",
     "issuer": "Bank of America",
     "scouts_verdict": "<p>The Atmos Rewards Summit is a genuinely impressive premium airline card — and at $395, it undercuts the Delta Reserve ($650) and United Club Infinite ($695) while arguably delivering more flexible value. The star of the show is that 25,000-point Global Companion Award. Unlike Delta's companion cert (U.S., Mexico, Caribbean and Central America only), this one works on partner airlines in <em>any cabin</em>. Book a companion on Cathay Pacific business class or Japan Airlines first class and it knocks up to 25,000 points off their seat, while the 100K version you unlock at $60K in spend can cover most of a long-haul business-class award.</p><p>The 8 Alaska Lounge passes a year (2 per quarter), 3X on dining and foreign transactions, and 10,000 annual status points round out a genuinely strong package. And if you're a big spender who can hit $60K, that 100,000-point Global Companion Award is gravy.</p><p>Here's the honest take: if you fly Alaska or Hawaiian regularly and have any interest in Oneworld partner redemptions, this is the best premium airline card you can carry in 2026. The earning rates won't blow you away on everyday spend (1X on non-bonus categories is par for the course), but the perks-to-fee ratio is best-in-class. Just make sure you'll actually use the lounge passes and companion award — if those go to waste, you're better off with the Ascent at $95 and pocketing the $300 difference.</p>",
-    "image_url": "https://www.bankofamerica.com/content/images/ContextualSiteGraphics/CreditCardArt/en_US/Approved_PCM/1bed_rewcm_v_atmos_visafront_infinite_250.png",
+    "image_url": "/static/img/cards/atmos-rewards-summit.png",
     "apply_url": "https://www.bankofamerica.com/credit-cards/products/alaska-airlines-infinite-credit-card/",
     "status": "published",
     "sections": [
@@ -3067,7 +3067,7 @@
     "category": "airline",
     "issuer": "Bank of America",
     "scouts_verdict": "<p>The Atmos Rewards Ascent is the card I'd recommend to 80% of Alaska/Hawaiian flyers, and it's not even close. At $95, you get a $99 Companion Fare that can save $200-$500 on a single trip, free checked bags for your whole group, and a 50,000-point welcome bonus worth around $750 in flights. The fee-to-value ratio here is absurd.</p><p>The earning structure is quietly excellent too. 3X on Alaska/Hawaiian, 2X on gas, streaming, and transit — these aren't aspirational categories, they're your actual monthly bills. And you earn 1 status point per $3 on all purchases (no cap), so everyday spend steadily chips away at Atmos elite status. The $395 Summit earns faster (1 per $2), but for $95 this is a solid start.</p><p>The honest comparison: the Summit gives you lounge passes and a Global Companion Award for partner premium cabins, but it costs $300 more per year. Unless you're booking Cathay Pacific business class with that companion award, the Ascent's $99 Companion Fare on North American flights delivers more tangible savings for the average traveler. Get this card, hit the $6K annual spend for the companion fare, and enjoy what is quietly one of the best-value airline cards in 2026.</p>",
-    "image_url": "https://www.bankofamerica.com/content/images/ContextualSiteGraphics/CreditCardArt/en_US/Approved_PCM/1bbt_sigcm_v_atmos_ascent_250.png",
+    "image_url": "/static/img/cards/atmos-rewards-ascent.png",
     "apply_url": "https://www.alaskaair.com/atmosrewards/content/credit-cards/visa-ascent",
     "status": "published",
     "sections": [
@@ -3129,7 +3129,7 @@
     "category": "business",
     "issuer": "Bank of America",
     "scouts_verdict": "<p>The Atmos Rewards Business card is essentially the personal Ascent in a business suit — same $95 fee, same $99 Companion Fare, same free bags. The only meaningful ongoing difference is that shipping replaces streaming in the 2X categories, which is a perfectly sensible swap for any business that ships products.</p><p>Let's be real about what this card is: it's a companion fare delivery vehicle that also happens to earn decent points on business spending. And that's not a criticism — the companion fare alone justifies the $95 fee every single year. Add the checked bag savings, 2X on shipping and gas, and the ability to earn Atmos status points through business spending, and you have a quietly excellent business card.</p><p>The one caveat: if Alaska and Hawaiian aren't part of your regular travel patterns, this card has no reason to be in your wallet. The Chase Ink Preferred at the same $95 offers far more flexibility with transferable Ultimate Rewards points. But if you fly the Alaska/Hawaiian network for business and want a companion fare and airline perks at a rock-bottom fee, there's nothing else like this. It's the most efficient way to turn business spending into Alaska/Hawaiian travel value.</p>",
-    "image_url": "https://www1.bac-assets.com/smallbusiness/credit-cards/spa-assets/images/assets-images-site-sb-credit-cards-card-arts-en-1bbt_bussigcm_v_atmos-CSXc2982f7d.png",
+    "image_url": "/static/img/cards/atmos-rewards-ascent-business.png",
     "apply_url": "https://www.alaskaair.com/atmosrewards/content/credit-cards/visa-small-business",
     "status": "published",
     "sections": [
