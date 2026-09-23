@@ -596,7 +596,7 @@ func (s *Service) loadCardOfWeekData(cardID int64) *cardOfWeekData {
 // an email client.
 func (s *Service) absoluteURL(u string) string {
 	if strings.HasPrefix(u, "/") && !strings.HasPrefix(u, "//") {
-		return "https://" + s.domain + u
+		return s.baseURL() + u
 	}
 	return u
 }
