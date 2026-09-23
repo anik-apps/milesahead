@@ -586,9 +586,19 @@ func (s *Service) loadCardOfWeekData(cardID int64) *cardOfWeekData {
 		ID:       page.ID,
 		Title:    page.Title,
 		Slug:     page.Slug,
-		ImageURL: page.ImageURL,
+		ImageURL: s.absoluteURL(page.ImageURL),
 		Verdict:  page.ScoutsVerdict,
 	}
+}
+
+// absoluteURL makes a site-relative image path absolute. Card art is served from
+// the site's own /static/ directory, and a relative src does not resolve inside
+// an email client.
+func (s *Service) absoluteURL(u string) string {
+	if strings.HasPrefix(u, "/") && !strings.HasPrefix(u, "//") {
+		return "https://" + s.domain + u
+	}
+	return u
 }
 
 // loadScoutsPickData loads article data for the Scout's Pick.
