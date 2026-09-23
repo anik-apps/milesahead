@@ -349,3 +349,22 @@ func TestSetDialFunc(t *testing.T) {
 		t.Error("expected 1 message sent via injected dial function")
 	}
 }
+
+func TestRenderConfirmation_IsBranded(t *testing.T) {
+	html, err := RenderConfirmation("abc123", "milesahead.com")
+	if err != nil {
+		t.Fatalf("RenderConfirmation failed: %v", err)
+	}
+	for _, want := range []string{
+		`src="https://milesahead.com/static/img/brand/email-lockup.png"`,
+		`src="https://milesahead.com/static/img/brand/email-band.png"`,
+		"Thank you for subscribing to MilesAhead!",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("confirmation email should contain %s", want)
+		}
+	}
+	if strings.Contains(html, "Miles Ahead") || strings.Contains(html, ".svg") {
+		t.Error("confirmation email should use the one-word name and raster images only")
+	}
+}
