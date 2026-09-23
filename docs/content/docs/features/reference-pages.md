@@ -134,12 +134,14 @@ A card page can carry a designed infographic: a 1024x1536 portrait image that
 summarises the card's earning, redemption and credits.
 
 It is not placed inline. In the article column it would render at under half its
-designed size, leaving its body text around 7px. Instead a cropped **teaser takes
-the card-art slot** (the sidebar on desktop, the header card on mobile), since the
-artwork already shows the card, and opens the full image in a native `<dialog>`
-viewer. `static/js/card-infographic.js` does the upgrade; without JavaScript the
-teaser is a plain link to the image. The page behind the viewer does not scroll
-while it is open, and it opens with focus on its Close button.
+designed size, leaving its body text around 7px. Instead a compact **"Infographic /
+Expand" bar sits under the card art** (in the sidebar on desktop, in the header card
+on mobile) and opens the full image in a native `<dialog>` viewer. The bar adds
+about 40px to the sticky sidebar; a full-width teaser there would add about 145px
+and push the TOC and the Card Details button further below the fold.
+`static/js/card-infographic.js` does the upgrade; without JavaScript the bar is a
+plain link to the image. The page behind the viewer does not scroll while it is
+open, and it opens with focus on its Close button.
 
 Infographics are declared in `internal/web/cardinfographics.go`:
 
@@ -155,8 +157,8 @@ var cardInfographics = map[string]cardInfographic{
 ```
 
 - **Alt** names the image briefly.
-- **Text** is the image's content, one plain sentence group per section, shown as
-  a list under the image in the viewer. It is the only way a screen-reader user
+- **Text** is the image's content, one plain sentence group per section, offered as
+  a collapsed "Text version" under the image in the viewer. It is the only way a screen-reader user
   gets what the image says, so it transcribes every figure and caveat, including
   cadences, thresholds and the "important to know" warnings. A single long alt
   string would be read as one unbroken run with nothing to navigate.
@@ -176,13 +178,12 @@ To add a card, generate the images and add the map entry:
 scripts/infographic-images.sh chase-sapphire-reserve ~/Downloads/infographic.png
 ```
 
-This writes three files to `static/img/`:
+This writes two files to `static/img/`:
 
 | File | Size | Used for |
 |---|---|---|
 | `infographic-<slug>.jpg` | 1024x1536, ~400 KB | the viewer; loaded only when it opens |
-| `infographic-<slug>-teaser.jpg` | 480x300, ~45 KB | the sidebar (about 220 CSS px) |
-| `infographic-<slug>-teaser-960.jpg` | 960x600, ~95 KB | phones at 2-3x density (up to 320 CSS px) |
+| `infographic-<slug>-teaser.jpg` | 256x160, ~14 KB | the bar's thumbnail, shown at 84 CSS px |
 
 The script rejects anything that is not 1024x1536 and flattens transparency onto
 white, since JPEG has no alpha channel.

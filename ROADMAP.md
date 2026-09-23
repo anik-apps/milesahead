@@ -155,12 +155,11 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       images are now liveness-probed before they are stored, so a dead URL is caught at
       pick time instead of on the homepage.
 - [x] **Card infographics** — designed 1024x1536 infographics on the Amex Platinum, Bilt
-      Palladium and Sapphire Reserve pages. A cropped teaser takes the card-art slot (the
-      artwork already shows the card) and opens the full image in a native `<dialog>`
-      viewer; inline in the article column the image rendered at 46% of its size, too small
-      to read. The 400 KB full image loads only when the viewer opens, and without
-      JavaScript the teaser is a plain link to it. The image's content is also given as a
-      structured text version under it, and image URLs carry a content hash so a replaced
+      Palladium and Sapphire Reserve pages. A compact "Infographic / Expand" bar under the
+      card art opens the full image in a native `<dialog>` viewer; inline in the article
+      column the image rendered at 46% of its size, too small to read. The 400 KB full image loads only when the viewer opens, and without
+      JavaScript the bar is a plain link to it. The image's content is also given as a
+      structured text version, collapsed under it, and image URLs carry a content hash so a replaced
       image is never served from a stale cache. Each entry lists the figures the image
       states, and a test fails if one disappears from the card's `cards.json` text, since an
       image cannot be corrected by a reseed the way prose can. That check sees the seed
