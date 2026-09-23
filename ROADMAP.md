@@ -179,6 +179,43 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 
 ## Up Next
 
+- [ ] **Newsletter signup and delivery are broken end to end** — found in the
+      2026-09-23 UX review, and confirmed in the code. Nobody who signs up on the site
+      ever receives the newsletter, and nobody who receives it can unsubscribe.
+      1. **No confirmation email is sent.** `handleSubscribe` stores the address and a
+         token, then says "check your email", but `mail.Sender.SendConfirmation` has no
+         caller and the web `App` has no mail sender. The weekly send goes only to
+         confirmed subscribers, so web signups are silently dropped. *Fix:* pass the
+         sender into `web.App` and send the confirmation from `handleSubscribe` in a
+         tracked background goroutine; log and alert on failure; test that it is sent.
+      2. **Every Unsubscribe link fails.** The newsletter is rendered once for all
+         recipients with `UnsubscribeURL: domain + "/unsubscribe"`, no token, so each
+         click shows "Invalid unsubscribe link". There is no `List-Unsubscribe` header
+         either, which Gmail and Yahoo require of bulk senders and CAN-SPAM expects to
+         work. *Fix:* a per-recipient `/unsubscribe?token=...`, plus `List-Unsubscribe`
+         and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058) handled by
+         a POST endpoint. `GET /unsubscribe` should show a confirm button that POSTs,
+         so link scanners cannot unsubscribe people.
+      3. **There is no way to sign up.** No page has a form, and `GET /subscribe`
+         returns 405 (`routes.go` registers only POST). The one link to it is in the
+         home page's empty state. *Fix:* a `GET /subscribe` page, and a labelled email
+         form (`type=email`, `autocomplete=email`) in the footer band, after Scout's
+         Take on every article, and on the home page, with a one-line promise and a
+         privacy link. Add Subscribe to the footer links only once 1 and 2 work.
+      4. **Harden the form before it goes on every page.** Rate-limit `POST /subscribe`
+         (the existing `rateLimitMiddleware`), add a honeypot field, and answer new and
+         existing addresses with the same "check your inbox" message: today "This email
+         is already subscribed" tells anyone whether an address is on the list. Make
+         confirmation idempotent, so a second click (or a mail scanner opening the link
+         first) shows success rather than "Invalid or expired".
+      5. **Email readability.** Most newsletter text is 9-12px, and the gold section
+         labels are 2.29:1 on white. *Fix:* body text at least 14px, labels at least
+         12px, contrast at least 4.5:1.
+
+      Order: 1 and 2 first (they break mail already going out), then 3 and 4 together.
+      Already fixed alongside the branding change: the daily digest and admin preview
+      rendered relative links, and the lead story linked to `/articles/`, a 404.
+
 - [ ] Card explainer videos — YouTube-hosted, embedded per card page (Amex Platinum, Sapphire Reserve, Strata Elite so far)
 - [ ] **More card infographics** — each is `scripts/infographic-images.sh <slug> <png>` plus an entry in `internal/web/cardinfographics.go`. Verify the card's prose against the image before adding one: the drift test only confirms the image's figures appear somewhere in the text, so it cannot see a *second, older* figure. Sapphire Reserve's prose once claimed the retired 1.5 cents per point and a $100 Global Entry credit beside an image that correctly said 1 cent plus Points Boost and $120; the test passed anyway.
 - [ ] **Revisit video heading framing** — headings currently vary with the verdict: positive cards ask "is the $X fee worth it?", while the Strata Elite asks "do the credits cover the $595 fee?" because that video concludes they do not. Deliberate, so a heading never promises an answer the video does not give — but it means the phrasing is not uniform across cards. Worth a look once there are enough videos to judge whether the inconsistency reads as considered or as sloppy.
