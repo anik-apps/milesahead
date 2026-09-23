@@ -54,7 +54,11 @@ The seed data includes 42+ keyword variants per category to maximize link covera
 
 ## Card Images
 
-Each reference page has an `image_url` field for a card image. These are set in the seed data and can be updated through the admin dashboard.
+Card art is self-hosted: every card's `image_url` in the seed data is `/static/img/cards/<slug>.png`, a committed palette PNG with transparency, at most 480px wide. Hotlinking issuer images broke 15 cards when the issuers redeployed their sites, so `TestCardArt_IsSelfHosted` fails if any card points anywhere else or its file is missing.
+
+The path is relative on the site. Places where the image leaves the site (og:image, JSON-LD, and the newsletter's Card of the Week) turn it into an absolute URL on the configured domain.
+
+`image_url` can still be changed per card in the admin dashboard. A change to the seed file reaches existing production cards only through a scoped force-reseed (`seed-cards -force -slug <slug>`, or the Deploy workflow's `reseed_slugs` input), because a normal seed skips cards that already exist.
 
 ## Seed Script
 
