@@ -202,7 +202,7 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		"JSONLD": buildJSONLD(websiteLDData{
 			Context: "https://schema.org",
 			Type:    "WebSite",
-			Name:    "Miles Ahead",
+			Name:    "MilesAhead",
 			URL:     "https://" + domain + "/",
 			PotentialAction: jsonLDSearchAction{
 				Type:       "SearchAction",
@@ -416,8 +416,8 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 			DatePublished: datePublished,
 			Description:   metaDesc,
 			Image:         article.ImageURL,
-			Author:        jsonLDOrg{Type: "Organization", Name: "Miles Ahead"},
-			Publisher:     jsonLDOrg{Type: "Organization", Name: "Miles Ahead"},
+			Author:        jsonLDOrg{Type: "Organization", Name: "MilesAhead"},
+			Publisher:     jsonLDOrg{Type: "Organization", Name: "MilesAhead"},
 		}),
 	}
 	app.renderTemplate(w, "article.html", data)
@@ -526,7 +526,7 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
 	fmt.Fprint(w, `<rss version="2.0">`)
 	fmt.Fprint(w, `<channel>`)
-	fmt.Fprintf(w, `<title>%s</title>`, html.EscapeString("Miles Ahead"))
+	fmt.Fprintf(w, `<title>%s</title>`, html.EscapeString("MilesAhead"))
 	fmt.Fprintf(w, `<link>https://%s</link>`, html.EscapeString(domain))
 	fmt.Fprint(w, `<description>Curated news and analysis</description>`)
 
@@ -830,7 +830,7 @@ func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":           "Search",
 		"Query":           query,
-		"MetaDescription": "Search Miles Ahead for credit card deals, travel rewards, and points strategies.",
+		"MetaDescription": "Search MilesAhead for credit card deals, travel rewards, and points strategies.",
 		"CanonicalURL":    "https://" + domain + "/search",
 		"OGType":          "website",
 	}

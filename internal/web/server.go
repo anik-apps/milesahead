@@ -179,9 +179,28 @@ func (app *App) renderTemplate(w http.ResponseWriter, name string, data interfac
 		http.Error(w, "Template not found: "+name, http.StatusInternalServerError)
 		return
 	}
+	if m, ok := data.(map[string]interface{}); ok {
+		// Pages without their own image (home, compare, search) still get a
+		// branded preview when shared. Crawlers need an absolute URL.
+		if img, _ := m["OGImage"].(string); img == "" {
+			m["OGImage"] = "https://" + app.siteDomain() + defaultOGImage
+		}
+	}
 	if err := t.ExecuteTemplate(w, name, data); err != nil {
 		http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// defaultOGImage is the share image for pages that have none of their own.
+const defaultOGImage = "/static/img/brand/og-default.png"
+
+// siteDomain is the public host name, falling back to localhost like the
+// handlers do when none is configured.
+func (app *App) siteDomain() string {
+	if app.cfg.Server.Domain == "" {
+		return "localhost"
+	}
+	return app.cfg.Server.Domain
 }
 
 // ServeHTTP delegates to the internal mux, wrapped with metrics middleware.

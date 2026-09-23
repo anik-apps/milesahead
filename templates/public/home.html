@@ -1,9 +1,13 @@
 {{template "layout" .}}
 {{define "content"}}
-<div class="hero-banner">
-    <h1>Miles Ahead</h1>
-    <p>The latest miles, points, and credit card deals — curated daily.</p>
-</div>
+<section class="hero-brand">
+    <img class="brand-plane on-light" src="/static/img/brand/plane.svg" alt="" width="300" height="56">
+    <img class="brand-plane on-dark" src="/static/img/brand/plane-dark.svg" alt="" width="300" height="56">
+    {{template "brand-mark"}}
+    <h1 class="brand-word">MilesAhead</h1>
+    <span class="brand-tag">Travel further. Earn smarter.</span>
+    <p class="hero-sub">The latest miles, points, and credit card deals — curated daily.</p>
+</section>
 
 <div class="category-tabs">
     <a href="/" class="tab{{if eq .TypeFilter ""}} active{{end}}">All</a>

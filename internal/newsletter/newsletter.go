@@ -205,6 +205,16 @@ func groupArticlesByTag(articles []db.GeneratedArticle) map[string][]articleItem
 	return groups
 }
 
+// baseURL is the absolute site root that email links and images are built on.
+// An email client has no base URL, so a relative link or image in a newsletter
+// is simply broken. Empty only when no domain is configured (tests).
+func (s *Service) baseURL() string {
+	if s.domain == "" {
+		return ""
+	}
+	return "https://" + s.domain
+}
+
 // renderNewsletter renders the newsletter HTML for the given articles and date.
 func renderNewsletter(articles []db.GeneratedArticle, date, domain string) (string, error) {
 	tmplPath := filepath.Join(templateDir, "newsletter.html")
@@ -385,7 +395,7 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	// Create newsletter record with status draft.
 	nl := &db.Newsletter{
 		Date:         sendDate,
-		Subject:      fmt.Sprintf("Miles Ahead Weekly — %s", sendDate),
+		Subject:      fmt.Sprintf("MilesAhead Weekly — %s", sendDate),
 		HTMLContent:  "", // Will be rendered at send time.
 		Status:       "draft",
 		ArticleCount: len(articles),
@@ -438,7 +448,7 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	var sp *scoutsPickData
 	sp = s.loadScoutsPickData(scoutsPickID)
 
-	htmlContent, err := renderWeeklyNewsletter(articles, sendDate, "https://"+s.domain, cow, sp)
+	htmlContent, err := renderWeeklyNewsletter(articles, sendDate, s.baseURL(), cow, sp)
 	if err != nil {
 		slog.Error("failed to render weekly newsletter", "error", err)
 	} else {
@@ -586,7 +596,7 @@ func (s *Service) loadCardOfWeekData(cardID int64) *cardOfWeekData {
 // an email client.
 func (s *Service) absoluteURL(u string) string {
 	if strings.HasPrefix(u, "/") && !strings.HasPrefix(u, "//") {
-		return "https://" + s.domain + u
+		return s.baseURL() + u
 	}
 	return u
 }
@@ -670,7 +680,7 @@ func (s *Service) SendWeekly() error {
 			articles = reorderArticles(articles, candidateIDs)
 		}
 
-		htmlContent, err := renderWeeklyNewsletter(articles, sendDate, "https://"+s.domain, cow, sp)
+		htmlContent, err := renderWeeklyNewsletter(articles, sendDate, s.baseURL(), cow, sp)
 		if err != nil {
 			slog.Error("failed to re-render newsletter at send time", "error", err)
 		} else {
@@ -715,12 +725,12 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 		return existing, nil
 	}
 
-	htmlContent, err := renderNewsletter(articles, date, "")
+	htmlContent, err := renderNewsletter(articles, date, s.baseURL())
 	if err != nil {
 		return nil, fmt.Errorf("rendering newsletter: %w", err)
 	}
 
-	subject := fmt.Sprintf("Miles Ahead Daily Digest — %s", date)
+	subject := fmt.Sprintf("MilesAhead Daily Digest — %s", date)
 
 	nl := &db.Newsletter{
 		Date:         date,
@@ -806,5 +816,5 @@ func (s *Service) PreviewNext() (string, error) {
 	}
 
 	date := s.todayDate()
-	return renderNewsletter(articles, date, "")
+	return renderNewsletter(articles, date, s.baseURL())
 }
