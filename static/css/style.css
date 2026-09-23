@@ -2498,3 +2498,43 @@ tr.flagged { background: #fef2f2; }
 .card-video-facade:hover .card-video-play { background: rgba(0,0,0,0.78); transform: translate(-50%, -50%) scale(1.06); }
 .card-video-facade:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .card-video-caption { color: var(--text-muted); font-size: 0.85rem; margin-top: 8px; }
+
+/* Card infographic: a teaser in the card-art slot that opens the full image in a
+   viewer. The artwork is light in both themes, so the tile stays white. */
+.ig-teaser { margin: 0 0 1rem; }
+.card-mobile-header .ig-teaser { max-width: 320px; margin: 0 auto 0.75rem; }
+.ig-teaser-link { display: block; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    background: #fff; text-decoration: none; cursor: zoom-in; }
+/* The teaser is a crop, so fade its bottom edge to signal there is more. */
+.ig-teaser-img { display: block; position: relative; }
+.ig-teaser-img img { display: block; width: 100%; height: auto; }
+.ig-teaser-img::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 38%;
+    background: linear-gradient(to bottom, rgba(255,255,255,0), #fff); pointer-events: none; }
+.ig-teaser-cta { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+    padding: 0.55rem 0.75rem; font-size: 0.85rem; font-weight: 600; color: #1d4ed8; background: #fff;
+    border-top: 1px solid #e2e8f0; line-height: 1.3; }
+.ig-teaser-link:hover .ig-teaser-cta { text-decoration: underline; }
+.ig-teaser-link:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.ig-teaser-meta { color: var(--text-muted); font-size: 0.75rem; margin: 0.35rem 0 0; }
+
+/* The site reset zeroes margins, which would pin a modal dialog to the top-left. */
+dialog.ig-lightbox { margin: auto; padding: 0; border: 0; background: transparent;
+    width: 100%; max-width: min(1024px, 96vw); max-height: 96vh; overflow: visible; }
+dialog.ig-lightbox::backdrop { background: rgba(8, 12, 20, 0.82); }
+/* Keep the page behind the viewer still, so closing it returns the reader to
+   where they were. overscroll-behavior stops scroll chaining at the frame's end. */
+html:has(dialog.ig-lightbox[open]) { overflow: hidden; }
+.ig-lightbox-frame { max-height: 96vh; overflow: auto; overscroll-behavior: contain; border-radius: 12px; background: #fff; }
+.ig-lightbox-frame img { display: block; width: 100%; height: auto; }
+.ig-text { padding: 1.25rem 1.5rem 1.5rem; color: #1a1a2e; border-top: 1px solid #e2e8f0; }
+.ig-text h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
+.ig-text ul { margin: 0; padding-left: 1.2rem; }
+.ig-text li { font-size: 0.92rem; line-height: 1.55; margin: 0 0 0.55rem; }
+.ig-lightbox-bar { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between;
+    align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.85rem;
+    background: #0f172a; color: #fff; }
+/* Underlined: colour alone does not separate it from the text beside it. */
+.ig-lightbox-bar a { color: #93c5fd; text-decoration: underline; }
+.ig-lightbox-close { font: inherit; font-size: 0.9rem; color: #fff; background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 0.25rem 0.6rem; cursor: pointer; }
+.ig-lightbox-close:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }

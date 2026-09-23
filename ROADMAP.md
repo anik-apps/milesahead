@@ -154,10 +154,22 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       source and its rows cleared for the enrichment reconciler to re-pick. Newly chosen
       images are now liveness-probed before they are stored, so a dead URL is caught at
       pick time instead of on the homepage.
+- [x] **Card infographics** — designed 1024x1536 infographics on the Amex Platinum, Bilt
+      Palladium and Sapphire Reserve pages. A cropped teaser takes the card-art slot (the
+      artwork already shows the card) and opens the full image in a native `<dialog>`
+      viewer; inline in the article column the image rendered at 46% of its size, too small
+      to read. The 400 KB full image loads only when the viewer opens, and without
+      JavaScript the teaser is a plain link to it. The image's content is also given as a
+      structured text version under it, and image URLs carry a content hash so a replaced
+      image is never served from a stale cache. Each entry lists the figures the image
+      states, and a test fails if one disappears from the card's `cards.json` text, since an
+      image cannot be corrected by a reseed the way prose can. That check sees the seed
+      file only, so admin edits to the live prose bypass it.
 
 ## Up Next
 
 - [ ] Card explainer videos — YouTube-hosted, embedded per card page (Amex Platinum, Sapphire Reserve, Strata Elite so far)
+- [ ] **More card infographics** — each is `scripts/infographic-images.sh <slug> <png>` plus an entry in `internal/web/cardinfographics.go`. Verify the card's prose against the image before adding one: the drift test only confirms the image's figures appear somewhere in the text, so it cannot see a *second, older* figure. Sapphire Reserve's prose still claims the retired 1.5 cents per point and a $100 Global Entry credit beside an image that correctly says 1 cent plus Points Boost and $120.
 - [ ] **Revisit video heading framing** — headings currently vary with the verdict: positive cards ask "is the $X fee worth it?", while the Strata Elite asks "do the credits cover the $595 fee?" because that video concludes they do not. Deliberate, so a heading never promises an answer the video does not give — but it means the phrasing is not uniform across cards. Worth a look once there are enough videos to judge whether the inconsistency reads as considered or as sloppy.
 - [ ] Additional model providers (Groq, Gemini) — reduce dependency on NVIDIA API
 - [ ] OAuth/SSO login — replace single bcrypt password with Google OAuth

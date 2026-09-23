@@ -11,6 +11,7 @@ A self-hosted content aggregation platform that scans miles and points websites,
 - **Image Pipeline** — 4-source search (Unsplash, Pexels, Openverse, Wikimedia) with vision model scoring
 - **Reference Pages** — 52 credit card guides across 6 categories with Scout persona verdicts
 - **Card Comparison** — Side-by-side comparison of 2-3 cards (earning rates, credits, benefits, protections, transfer partners)
+- **Card Infographics** — Designed infographics on card pages: a teaser in the card-art slot opens the full image in an in-page viewer
 - **Article Tags** — AI-generated tags from 8 categories with tag filter pills on homepage
 - **Admin Dashboard** — Review queue with approve/reject/revise workflow, newsletter admin workflow
 - **Magazine-Style Site** — Dark/light mode, two-column articles, category filters, RSS feed
