@@ -3,7 +3,7 @@
     "slug": "amex-platinum",
     "annual_fee_amount": 895,
     "annual_fee_note": "Increased from $695 in September 2025",
-    "welcome_bonus_text": "150,000–175,000 MR points after $12,000 spend in 6 months (personalized offer)",
+    "welcome_bonus_text": "As high as 175,000 MR points after $12,000 spend in 6 months (personalized offer)",
     "earning_rates": {
       "dining": {
         "rate": "1x",
@@ -118,7 +118,7 @@
       },
       "hotel_status": {
         "value": "Hilton Gold, Marriott Gold",
-        "note": "Auto-enrolled"
+        "note": "Enrollment required"
       },
       "global_entry_tsa": {
         "value": "$120 every 4 years",
@@ -139,7 +139,7 @@
       "niche": [
         {
           "label": "Fine Hotels + Resorts Program",
-          "note": "Upgrades, breakfast, late checkout, property credits at 1,200+ luxury hotels"
+          "note": "Upgrades, breakfast, late checkout, property credits at 1,800+ luxury hotels"
         },
         {
           "label": "Leaders Club Sterling Status",
@@ -147,7 +147,7 @@
         },
         {
           "label": "Authorized users",
-          "note": "Up to 3 Platinum at $195 each; up to 5 Gold at no fee"
+          "note": "Up to 3 Platinum at $195 each; Companion Platinum cards at no fee"
         }
       ]
     },
@@ -158,7 +158,7 @@
       },
       "baggage_delay_loss": {
         "value": "$3K/trip",
-        "note": "Lost luggage; baggage delay $100/day x 5 days, 6hr trigger"
+        "note": "Lost, damaged or stolen bags: up to $2K checked, $3K carry-on, $3K combined per person per trip; no baggage delay coverage"
       },
       "car_rental": {
         "value": "Secondary",
@@ -175,7 +175,7 @@
       "niche": [
         {
           "label": "Trip cancellation/interruption",
-          "note": "Up to $10,000 per person, $20,000 per trip"
+          "note": "Up to $10,000 per trip, $20,000 per card per 12 months"
         },
         {
           "label": "Return protection",
@@ -603,8 +603,8 @@
         "note": "Online grocery purchases; excludes Target, Walmart, wholesale clubs"
       },
       "gas": {
-        "rate": "1x",
-        "note": ""
+        "rate": "3x",
+        "note": "Gas stations and EV charging"
       },
       "airlines_direct": {
         "rate": "2x",
@@ -620,7 +620,7 @@
       },
       "hotels_portal": {
         "rate": "5x",
-        "note": "Via Chase Travel (excludes hotel purchases qualifying for $50 credit)"
+        "note": "Via Chase Travel (excludes hotel purchases qualifying for $100 credit)"
       },
       "car_rental_direct": {
         "rate": "2x",
@@ -656,8 +656,8 @@
           "note": "Equipment/accessory purchases $150+, through December 31, 2027"
         },
         {
-          "label": "10% Anniversary Bonus",
-          "note": "Bonus points equal to 10% of total purchases from prior year"
+          "label": "3x on vacation homes",
+          "note": "Airbnb, Vrbo and other top brands, booked directly"
         }
       ]
     },
@@ -667,7 +667,7 @@
         "note": ""
       },
       "hotel": {
-        "amount": "$50/yr",
+        "amount": "$100/yr",
         "note": "Annual Chase Travel hotel credit, applied automatically"
       },
       "travel_other": {
@@ -699,8 +699,8 @@
         "note": ""
       },
       "global_entry_tsa": {
-        "value": "N/A",
-        "note": ""
+        "value": "$120 every 4 years",
+        "note": "Global Entry, TSA PreCheck or NEXUS application fee"
       },
       "companion_cert": {
         "value": "N/A",
@@ -716,30 +716,30 @@
       },
       "niche": [
         {
-          "label": "25% portal bonus",
-          "note": "Points worth 1.25 cpp when redeemed via Chase Travel"
+          "label": "Points Boost",
+          "note": "Up to 1.5 cpp on select hotels and flights via Chase Travel"
         },
         {
-          "label": "1:1 transfer partners",
-          "note": "14+ partners including Hyatt, United, Southwest, BA, Flying Blue"
+          "label": "Transfer partners",
+          "note": "14+ partners including United, Southwest, BA, Flying Blue; Hyatt at 4:3"
         }
       ]
     },
     "protections": {
       "trip_delay": {
         "value": "$500",
-        "note": "6-hour trigger"
+        "note": "12-hour trigger or overnight stay"
       },
       "baggage_delay_loss": {
         "value": "$3K/trip",
-        "note": "Lost luggage; baggage delay $100/day x 5 days, 6hr trigger"
+        "note": "Lost luggage up to $3,000/traveler; baggage delay $100/day x 5 days, 6hr trigger"
       },
       "car_rental": {
         "value": "Primary",
         "note": "Primary coverage for business and personal rentals"
       },
       "purchase_protection": {
-        "value": "$500/claim",
+        "value": "$500/item",
         "note": "$50,000/account, 120 days"
       },
       "extended_warranty": {
@@ -763,14 +763,14 @@
         "British Airways",
         "Air France/KLM"
       ],
-      "note": "1:1 transfer ratio to most partners"
+      "note": "1:1 to most partners; World of Hyatt at 4:3"
     }
   },
   {
     "slug": "chase-sapphire-reserve",
     "annual_fee_amount": 795,
     "annual_fee_note": "Increased from $550 in June 2025",
-    "welcome_bonus_text": "125,000 UR points after $6,000 spend in 3 months",
+    "welcome_bonus_text": "100,000 UR points after $6,000 spend in 3 months",
     "earning_rates": {
       "dining": {
         "rate": "3x",
@@ -831,7 +831,7 @@
         },
         {
           "label": "10x on Peloton",
-          "note": "Equipment/accessory purchases, through December 31, 2027"
+          "note": "Equipment/accessory purchases over $150, through December 31, 2027"
         }
       ]
     },
@@ -910,8 +910,8 @@
       },
       "niche": [
         {
-          "label": "1.5x portal redemption value",
-          "note": "Points worth 1.5 cpp via Chase Travel"
+          "label": "Points Boost up to 2x",
+          "note": "Up to 2 cpp on select Chase Travel flights & hotels; 1 cpp otherwise"
         },
         {
           "label": "1:1 transfer partners",
@@ -925,7 +925,7 @@
         "note": "6-hour trigger"
       },
       "baggage_delay_loss": {
-        "value": "$3K/trip",
+        "value": "$3K/traveler",
         "note": "Lost luggage; baggage delay $100/day x 5 days, 6hr trigger"
       },
       "car_rental": {
@@ -933,8 +933,8 @@
         "note": "Collision/theft coverage"
       },
       "purchase_protection": {
-        "value": "$10,000/claim",
-        "note": "$50,000/account, 120 days"
+        "value": "$10,000/item",
+        "note": "$50,000/year, 120 days"
       },
       "extended_warranty": {
         "value": "1 year",
@@ -1331,7 +1331,7 @@
     "slug": "capital-one-venture",
     "annual_fee_amount": 95,
     "annual_fee_note": "",
-    "welcome_bonus_text": "75,000 bonus miles after $4,000 spend in 3 months",
+    "welcome_bonus_text": "75,000 bonus miles after $4,000 spend in 3 months, plus a one-time $300 Capital One Travel credit for hotels/vacation rentals in the first year (limited-time)",
     "earning_rates": {
       "dining": {
         "rate": "2x",
@@ -1350,8 +1350,8 @@
         "note": ""
       },
       "airlines_portal": {
-        "rate": "5x",
-        "note": "Via Capital One Travel"
+        "rate": "2x",
+        "note": "No flight bonus via Capital One Travel; 5x covers hotels, vacation rentals and rental cars only"
       },
       "hotels_direct": {
         "rate": "2x",
@@ -1359,7 +1359,7 @@
       },
       "hotels_portal": {
         "rate": "5x",
-        "note": "Hotels and rental cars via Capital One Travel"
+        "note": "Hotels, vacation rentals and rental cars via Capital One Travel"
       },
       "car_rental_direct": {
         "rate": "2x",
@@ -1464,7 +1464,7 @@
         "note": ""
       },
       "extended_warranty": {
-        "value": "N/A",
+        "value": "Yes",
         "note": ""
       },
       "niche": [
@@ -1535,8 +1535,8 @@
         "note": ""
       },
       "other_travel_portal": {
-        "rate": "N/A",
-        "note": ""
+        "rate": "5%",
+        "note": "Vacation rentals and activities via Capital One Travel"
       },
       "streaming": {
         "rate": "3%",
@@ -1607,8 +1607,8 @@
       },
       "niche": [
         {
-          "label": "Capital One Dining Access",
-          "note": "Exclusive reservations and free OpenTable Premium subscription"
+          "label": "Capital One Entertainment access",
+          "note": "Exclusive access and cardholder perks for ticketed events"
         },
         {
           "label": "Capital One Cafe perk",
@@ -1626,16 +1626,16 @@
         "note": ""
       },
       "car_rental": {
-        "value": "Secondary domestic, Primary international",
-        "note": "Up to vehicle cost for 15 days"
+        "value": "N/A",
+        "note": "Not listed among Capital One's benefits for this card"
       },
       "purchase_protection": {
         "value": "N/A",
         "note": ""
       },
       "extended_warranty": {
-        "value": "2 years",
-        "note": "On warranties of 2 years or less"
+        "value": "Yes",
+        "note": "Additional warranty protection on eligible purchases"
       },
       "niche": [
         {
@@ -1842,8 +1842,8 @@
         "note": "Air travel booked directly"
       },
       "airlines_portal": {
-        "rate": "10x",
-        "note": "Via cititravel.com"
+        "rate": "3x",
+        "note": "Flights aren't in the 10x Citi Travel category; air earns 3x"
       },
       "hotels_direct": {
         "rate": "3x",
@@ -1930,7 +1930,7 @@
       "niche": [
         {
           "label": "Transfer partners",
-          "note": "1:1 to 16+ partners including Singapore KrisFlyer, Turkish, Flying Blue, Virgin Atlantic, JetBlue"
+          "note": "20 partners, mostly 1:1, including American Airlines, Singapore KrisFlyer, Turkish, Flying Blue, Virgin Atlantic, JetBlue"
         },
         {
           "label": "The Reserve by Citi Travel",
@@ -1948,16 +1948,16 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "$500/person",
+        "value": "$500/trip",
         "note": "6-hour trigger, 2 claims per 12 months"
       },
       "baggage_delay_loss": {
         "value": "$3K/trip",
-        "note": "Lost/damaged luggage; baggage delay $100/day x 5 days ($500 max), 6hr trigger"
+        "note": "Lost/damaged luggage, 2 claims per 12 months; no baggage delay coverage"
       },
       "car_rental": {
-        "value": "Secondary",
-        "note": "MasterRental coverage; must decline rental company insurance"
+        "value": "Secondary domestic, Primary international",
+        "note": "MasterRental coverage; primary outside your country of residence; must decline rental company's collision damage waiver"
       },
       "purchase_protection": {
         "value": "$10,000/incident",
@@ -1965,7 +1965,7 @@
       },
       "extended_warranty": {
         "value": "2 years",
-        "note": "On warranties up to 7 years, $10,000 max per item"
+        "note": "Adds 24 months, up to 7 years total from purchase; $10,000 max per item"
       },
       "niche": [
         {
@@ -1976,7 +1976,7 @@
     },
     "transfer_partners": {
       "program": "Citi ThankYou Points",
-      "count": "16+",
+      "count": "20",
       "key_partners": [
         "American Airlines",
         "JetBlue",
@@ -2107,7 +2107,7 @@
       },
       "niche": [
         {
-          "label": "22 transfer partners",
+          "label": "20 airline and hotel transfer partners",
           "note": "Including AA (1:1), JetBlue, Virgin Atlantic, Cathay Pacific, Singapore, Emirates"
         },
         {
@@ -2120,7 +2120,7 @@
         },
         {
           "label": "Mastercard World Legend",
-          "note": "Priceless experiences, concierge, priority reservations"
+          "note": "Priceless experiences, priority reservations, event ticketing"
         },
         {
           "label": "Citigold banking credit",
@@ -2130,7 +2130,7 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "$500/person",
+        "value": "$500/trip",
         "note": "6-hour trigger, 2 claims per 12 months; secondary coverage"
       },
       "baggage_delay_loss": {
@@ -2142,8 +2142,8 @@
         "note": "MasterRental coverage; covers vehicle cash value + $500 loss-of-use"
       },
       "purchase_protection": {
-        "value": "$10,000/incident",
-        "note": "$50,000/yr, 90 days"
+        "value": "$10,000/item",
+        "note": "$50,000/yr, 120 days (90 for NY residents)"
       },
       "extended_warranty": {
         "value": "2 years",
@@ -2152,13 +2152,13 @@
       "niche": [
         {
           "label": "Trip cancellation/interruption",
-          "note": "$5,000/trip/person, $10,000/account/yr"
+          "note": "$5,000/trip, $10,000/account/yr"
         }
       ]
     },
     "transfer_partners": {
       "program": "Citi ThankYou Points",
-      "count": "16+",
+      "count": "20",
       "key_partners": [
         "American Airlines",
         "JetBlue",
@@ -3174,7 +3174,7 @@
     "earning_rates": {
       "dining": {
         "rate": "2x",
-        "note": "Flat 2x on all everyday purchases"
+        "note": "Flat 2x; up to 5x at Bilt Dining partner restaurants"
       },
       "groceries": {
         "rate": "2x",
@@ -3189,16 +3189,16 @@
         "note": "Flat 2x on all everyday purchases"
       },
       "airlines_portal": {
-        "rate": "N/A",
-        "note": ""
+        "rate": "3x",
+        "note": "Flights booked through Bilt Travel (2x card + 1x Bilt Travel bonus)"
       },
       "hotels_direct": {
         "rate": "2x",
         "note": "Flat 2x on all everyday purchases"
       },
       "hotels_portal": {
-        "rate": "N/A",
-        "note": ""
+        "rate": "4x",
+        "note": "Hotels booked through Bilt Travel (2x card + 2x Bilt Travel bonus)"
       },
       "car_rental_direct": {
         "rate": "2x",
@@ -3210,7 +3210,7 @@
       },
       "other_travel_direct": {
         "rate": "2x",
-        "note": "Flat 2x on all everyday purchases"
+        "note": "Flat 2x; 4x on Lyft rides with linked Bilt and Lyft accounts"
       },
       "other_travel_portal": {
         "rate": "N/A",
@@ -3222,20 +3222,20 @@
       },
       "base": {
         "rate": "2x",
-        "note": "Flat 2x on everything; plus 4% Bilt Cash stacks on top"
+        "note": "Flat 2x on everything; plus 4% Bilt Cash on the Flexible Bilt Cash option"
       },
       "niche": [
         {
           "label": "Housing (rent/mortgage)",
-          "note": "Up to 1.25x tiered: 0.5x at 25% ratio, 0.75x at 50%, 1.0x at 75%, 1.25x at 100% everyday spend ratio"
+          "note": "Up to 1.25x tiered: 0.5x at 25% ratio, 0.75x at 50%, 1.0x at 75%, 1.25x at 100% everyday spend ratio (Housing-only option; 250-point floor below 25%). Flexible Bilt Cash option: up to 1x, unlocked at $3 Bilt Cash per 100 points"
         },
         {
           "label": "4% Bilt Cash",
-          "note": "4% Bilt Cash on all everyday spending stacks on top of 2x base"
+          "note": "4% Bilt Cash on all everyday spending stacks on top of 2x base, only on the Flexible Bilt Cash option (housing then maxes out at 1x)"
         },
         {
           "label": "Transfer partners",
-          "note": "1:1 to Hyatt, AA, United, Air Canada, Turkish, Virgin Atlantic, IHG, and more"
+          "note": "1:1 to Hyatt, United, Air Canada, Turkish, Virgin Atlantic, IHG, Atmos Rewards (Alaska/Hawaiian), and more"
         }
       ]
     },
@@ -3246,7 +3246,7 @@
       },
       "hotel": {
         "amount": "$400/yr",
-        "note": "Two $200 credits per year for qualifying hotel bookings through Bilt Travel portal"
+        "note": "Two $200 credits per year (Jan–Jun and Jul–Dec) for 2+ night hotel bookings through Bilt Travel portal; no rollover"
       },
       "travel_other": {
         "amount": "N/A",
@@ -3263,14 +3263,14 @@
       "niche": [
         {
           "label": "Annual Bilt Cash Bonus",
-          "note": "$200 Bilt Cash credited upon opening and annually around January 1st"
+          "note": "$200 Bilt Cash credited upon opening and every January 1st; Bilt Cash expires Dec 31 (up to $100 rolls over)"
         }
       ]
     },
     "benefits": {
       "lounge_access": {
         "value": "Priority Pass + 2 guests",
-        "note": "Unlimited entry at 1,400+ lounges (excluding restaurants)"
+        "note": "Unlimited entry at 1,300+ lounges (excluding restaurants); authorized users also get Priority Pass"
       },
       "hotel_status": {
         "value": "N/A",
@@ -3294,7 +3294,7 @@
       },
       "niche": [
         {
-          "label": "Dedicated Concierge",
+          "label": "Mastercard Concierge",
           "note": "Personalized travel planning, dining reservations, event access"
         },
         {
@@ -3309,24 +3309,24 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "Yes",
-        "note": "Trip cancellation/interruption coverage for pre-paid, non-refundable travel"
+        "value": "$300",
+        "note": "Up to $300 per trip after a 6+ hour delay, 1 claim per 12 months; trip cancellation/interruption also covered up to $2,000 per trip"
       },
       "baggage_delay_loss": {
         "value": "Yes",
-        "note": "Baggage delay insurance for essentials"
+        "note": "Baggage delay up to $250 per claim after 6 hours, plus lost or damaged luggage coverage"
       },
       "car_rental": {
-        "value": "Yes",
-        "note": "Rental car CDW via World Legend Mastercard"
+        "value": "Secondary",
+        "note": "MasterRental CDW via World Legend Mastercard; secondary (primary if you have no other coverage), rentals up to 31 days"
       },
       "purchase_protection": {
-        "value": "Yes",
-        "note": "Via World Legend Mastercard"
+        "value": "$1,000/incident",
+        "note": "Purchase Assurance: theft or damage within 90 days, up to $1,000 per loss and $50,000 per 12 months"
       },
       "extended_warranty": {
         "value": "Yes",
-        "note": "Extra protection beyond manufacturer warranty"
+        "note": "Doubles manufacturer warranties, adding up to 24 months; up to $10,000 per claim"
       },
       "niche": [
         {
@@ -3346,7 +3346,7 @@
         "Air Canada",
         "Atmos Rewards (Alaska/Hawaiian)"
       ],
-      "note": "1:1 transfer ratio to most partners. AA replaced by Atmos Rewards (Alaska/Hawaiian) in 2025."
+      "note": "1:1 transfer ratio to most partners. Accor is 3:2, Amtrak 2:1 and I Prefer 1:2. American Airlines left Bilt in June 2024; Atmos Rewards (Alaska/Hawaiian) is a current partner."
     }
   },
   {
@@ -4863,14 +4863,14 @@
       "dining": "5x IHG points",
       "groceries": "3x IHG points",
       "gas": "5x IHG points",
-      "airlines_direct": "3x IHG points",
-      "airlines_portal": "3x IHG points",
+      "airlines_direct": "5x IHG points",
+      "airlines_portal": "N/A",
       "hotels_direct": "10x IHG points (up to 26x total with member/elite bonuses at IHG properties)",
-      "hotels_portal": "3x IHG points",
+      "hotels_portal": "N/A",
       "car_rental_direct": "5x IHG points",
-      "car_rental_portal": "3x IHG points",
+      "car_rental_portal": "N/A",
       "other_travel_direct": "5x IHG points",
-      "other_travel_portal": "3x IHG points",
+      "other_travel_portal": "N/A",
       "streaming": "3x IHG points",
       "base": "3x IHG points",
       "niche": "N/A"
@@ -4881,11 +4881,11 @@
       "travel_other": "N/A",
       "dining": "N/A",
       "streaming": "N/A",
-      "niche": "$100 statement credit + 10,000 bonus points after $20,000 annual spend; Complimentary DashPass (1 year)"
+      "niche": "$100 statement credit + 10,000 bonus points after $20,000 annual spend; Complimentary DashPass (1 year); $10/month Instacart credit with Instacart+ (through 12/31/2027)"
     },
     "benefits": {
       "lounge_access": "N/A",
-      "hotel_status": "Automatic Platinum Elite status (room upgrades, welcome amenity, extended checkout, bonus points, complimentary internet)",
+      "hotel_status": "Automatic Platinum Elite status (room upgrades, welcome amenity, extended checkout, bonus points, complimentary internet); Diamond Elite after $40K calendar-year spend",
       "global_entry_tsa": "Up to $120 every 4 years",
       "companion_cert": "N/A",
       "free_checked_bags": "N/A",
@@ -4898,8 +4898,8 @@
         "note": ""
       },
       "baggage_delay_loss": {
-        "value": "$3K/trip",
-        "note": "Lost luggage up to $3,000/traveler; baggage delay $100/day x 5 days, 6hr trigger"
+        "value": "$3K/traveler",
+        "note": "Lost luggage up to $3,000/traveler; baggage delay $100/day x 3 days, 6hr trigger"
       },
       "car_rental": {
         "value": "Secondary",
@@ -4934,7 +4934,7 @@
     "issuer": "Amex",
     "annual_fee_amount": 150,
     "annual_fee_note": "$0 introductory first year, then $150/year",
-    "welcome_bonus_text": "70,000 bonus SkyMiles after $3,000 spend + 20,000 after additional $2,000 spend in first 6 months (up to 90,000 miles, ~$1,080 value)",
+    "welcome_bonus_text": "As high as 80,000 bonus SkyMiles + $250 statement credit after $3,000 spend in first 6 months (offer ends 11/4/2026; ~$1,210 value)",
     "earning_rates": {
       "dining": "2x SkyMiles",
       "groceries": "2x SkyMiles (U.S. supermarkets)",
@@ -4957,21 +4957,21 @@
       "travel_other": "N/A",
       "dining": "N/A",
       "streaming": "N/A",
-      "niche": "Uber One membership credit up to $9.99/month for 6 months (through June 2026); 20% back on Delta in-flight purchases"
+      "niche": "$120/year rideshare credit ($10/month after first card renewal; enrollment required); 20% back on Delta in-flight purchases"
     },
     "benefits": {
       "lounge_access": "N/A",
       "hotel_status": "N/A",
       "global_entry_tsa": "N/A",
       "companion_cert": "N/A",
-      "free_checked_bags": "First checked bag free on Delta (cardholder and up to 8 companions on same reservation)",
+      "free_checked_bags": "First checked bag free on Delta (cardholder and up to 8 companions on same reservation); second checked bag free for cardholder on domestic Delta itineraries",
       "no_ftf": true,
-      "niche": "Priority boarding; 15% off Delta award travel; 20% back on in-flight purchases"
+      "niche": "Zone 5 priority boarding; 15% off Delta award travel; 20% back on in-flight purchases"
     },
     "protections": {
       "trip_delay": {
-        "value": "$300",
-        "note": "12-hour trigger"
+        "value": "N/A",
+        "note": ""
       },
       "baggage_delay_loss": {
         "value": "$1,250 carry-on/$500 checked",
@@ -4979,7 +4979,7 @@
       },
       "car_rental": {
         "value": "Secondary",
-        "note": "Up to $75,000 for theft/damage; decline rental CDW"
+        "note": "Up to $50,000 for theft/damage; decline rental CDW"
       },
       "purchase_protection": {
         "value": "$1,000/incident",
@@ -5005,7 +5005,7 @@
     "issuer": "Amex",
     "annual_fee_amount": 350,
     "annual_fee_note": "$350 per year",
-    "welcome_bonus_text": "80,000 bonus SkyMiles after $4,000 spend + 20,000 after additional $2,000 spend in first 6 months (up to 100,000 miles, ~$1,200 value)",
+    "welcome_bonus_text": "As high as 90,000 bonus SkyMiles + $300 statement credit after $4,000 spend in first 6 months (offers vary; ends 11/04/2026; ~$1,380 value)",
     "earning_rates": {
       "dining": "2x SkyMiles",
       "groceries": "2x SkyMiles (U.S. supermarkets)",
@@ -5020,24 +5020,24 @@
       "other_travel_portal": "N/A",
       "streaming": "1x SkyMiles",
       "base": "1x SkyMiles",
-      "niche": "N/A"
+      "niche": "MQD Boost: $1 MQD per $20 spent on all purchases"
     },
     "credits": {
       "airline": "N/A",
-      "hotel": "N/A",
+      "hotel": "$150/year Delta Stays credit (prepaid hotels/vacation rentals booked through Delta Stays on delta.com)",
       "travel_other": "N/A",
-      "dining": "N/A",
+      "dining": "$120/year Resy credit ($10/month at U.S. Resy restaurants; enrollment required)",
       "streaming": "N/A",
-      "niche": "20% back on Delta in-flight purchases"
+      "niche": "$120/year rideshare credit ($10/month on U.S. rideshare; enrollment required); 20% back on Delta in-flight purchases"
     },
     "benefits": {
       "lounge_access": "N/A",
       "hotel_status": "N/A",
-      "global_entry_tsa": "Up to $100 every 4 years",
-      "companion_cert": "Annual domestic companion certificate (Main Cabin; round-trip domestic/Caribbean/Central America for taxes and fees only, $22-$250)",
-      "free_checked_bags": "First checked bag free for cardholder and up to 8 companions on same reservation",
+      "global_entry_tsa": "$120 Global Entry every 4 years or up to $85 TSA PreCheck",
+      "companion_cert": "Annual domestic companion certificate (Delta Main only, Delta Basic excluded; round-trip domestic/Caribbean/Central America for taxes and fees only, $22-$250)",
+      "free_checked_bags": "First checked bag free for cardholder and up to 8 companions on same reservation; second checked bag free for cardholder on domestic Delta flights",
       "no_ftf": true,
-      "niche": "$2,500 MQD Head Start per Medallion Qualification Year; Priority boarding"
+      "niche": "$2,500 MQD Headstart per Medallion Qualification Year + MQD Boost ($1 MQD per $20 spent); Zone 5 priority boarding; Complimentary Upgrade List (after Medallion Members and Reserve Card Members); 15% off Delta award travel; Hertz Five Star status"
     },
     "protections": {
       "trip_delay": {
@@ -5050,7 +5050,7 @@
       },
       "car_rental": {
         "value": "Secondary",
-        "note": "Up to $75,000 for theft/damage; decline rental CDW"
+        "note": "Up to $50,000 for theft/damage; decline rental CDW"
       },
       "purchase_protection": {
         "value": "$1,000/incident",
@@ -5076,7 +5076,7 @@
     "issuer": "Amex",
     "annual_fee_amount": 650,
     "annual_fee_note": "$650 per year",
-    "welcome_bonus_text": "100,000 bonus SkyMiles after $6,000 spend + 25,000 after additional $3,000 spend in first 6 months (up to 125,000 miles, ~$1,500 value)",
+    "welcome_bonus_text": "Two round-trip Delta Comfort Flight Certificates + 50,000 bonus SkyMiles after $10,000 spend in first 6 months (limited-time offer through Nov. 4, 2026; miles ~$600 value plus the certificates)",
     "earning_rates": {
       "dining": "1x SkyMiles",
       "groceries": "1x SkyMiles",
@@ -5095,20 +5095,20 @@
     },
     "credits": {
       "airline": "N/A",
-      "hotel": "N/A",
+      "hotel": "$200/year Delta Stays credit (prepaid hotels or vacation rentals booked through Delta Stays on delta.com)",
       "travel_other": "N/A",
       "dining": "$240/year Resy dining credit ($20/month at U.S. Resy restaurants)",
       "streaming": "N/A",
       "niche": "$120/year rideshare credit ($10/month); 20% back on Delta in-flight purchases"
     },
     "benefits": {
-      "lounge_access": "15 Delta Sky Club visits/year (unlimited at $75,000 annual spend); Centurion Lounge and Escape Lounge access when flying Delta on Reserve-purchased ticket",
+      "lounge_access": "15 Delta Sky Club visits/year (unlimited at $75,000 annual spend) plus 4 one-time Sky Club guest passes/year; Centurion Lounge access when flying Delta on Reserve-purchased ticket",
       "hotel_status": "N/A",
-      "global_entry_tsa": "Up to $100 every 4 years",
-      "companion_cert": "Annual companion certificate valid on Delta First Class, Comfort+, or Main Cabin (domestic/Caribbean/Central America round-trip for taxes and fees)",
-      "free_checked_bags": "First checked bag free; priority boarding",
+      "global_entry_tsa": "$120 every 4 years (Global Entry) or up to $85 (TSA PreCheck)",
+      "companion_cert": "Annual companion certificate (after card renewal) valid on a Delta First, Delta Comfort, or Delta Main round-trip within the U.S. or to Mexico, the Caribbean, or Central America; you pay taxes and fees of $22-$250",
+      "free_checked_bags": "First checked bag free on Delta flights (second bag free on domestic Delta flights); Zone 5 priority boarding",
       "no_ftf": true,
-      "niche": "$2,500 MQD Head Start + MQD Boost ($1 per $10 spent); Global Dining Access by Resy; 15% off Delta award travel"
+      "niche": "$2,500 MQD Head Start + MQD Boost ($1 per $10 spent); Global Dining Access by Resy; 15% off Delta award travel; Hertz President's Circle status; Complimentary Upgrade List (after Medallion Members)"
     },
     "protections": {
       "trip_delay": {
@@ -5134,7 +5134,7 @@
       "niche": [
         {
           "label": "Trip cancellation/interruption",
-          "note": "Up to $10,000 per person, $20,000 per trip"
+          "note": "Up to $10,000 per trip, $20,000 per card per 12 months"
         }
       ]
     },
@@ -5152,15 +5152,15 @@
     "issuer": "Chase",
     "annual_fee_amount": 150,
     "annual_fee_note": "$0 introductory first year, then $150/year",
-    "welcome_bonus_text": "70,000 bonus miles after $3,000 spend + 10,000 for adding authorized user in first 3 months (up to 80,000 miles, ~$1,040 value)",
+    "welcome_bonus_text": "50,000 bonus miles after $3,000 spend + 10,000 for adding authorized user in first 3 months (up to 60,000 miles, ~$780 value)",
     "earning_rates": {
       "dining": "2x United miles",
       "groceries": "1x United miles",
       "gas": "1x United miles",
-      "airlines_direct": "2x United miles (7x total with MileagePlus member earning)",
+      "airlines_direct": "3x United miles on United purchases (9x total on eligible United flights with MileagePlus member earning)",
       "airlines_portal": "N/A",
       "hotels_direct": "2x United miles",
-      "hotels_portal": "5x United miles (via United Hotels/Renowned Hotels portal)",
+      "hotels_portal": "N/A",
       "car_rental_direct": "1x United miles",
       "car_rental_portal": "N/A",
       "other_travel_direct": "1x United miles",
@@ -5180,7 +5180,7 @@
     "benefits": {
       "lounge_access": "2 United Club one-time passes per year",
       "hotel_status": "N/A",
-      "global_entry_tsa": "N/A",
+      "global_entry_tsa": "Up to $120 every 4 years",
       "companion_cert": "N/A",
       "free_checked_bags": "First checked bag free for cardholder and a companion on same reservation",
       "no_ftf": true,
@@ -5304,12 +5304,12 @@
     "issuer": "Chase",
     "annual_fee_amount": 695,
     "annual_fee_note": "$695 per year (increased from $525 in March 2025)",
-    "welcome_bonus_text": "90,000 bonus miles after $5,000 spend + 10,000 for adding authorized user in first 3 months (up to 100,000 miles, ~$1,300 value)",
+    "welcome_bonus_text": "80,000 bonus miles after $5,000 spend + 10,000 for adding authorized user in first 3 months (up to 90,000 miles, ~$1,170 value)",
     "earning_rates": {
       "dining": "2x United miles",
       "groceries": "1x United miles",
       "gas": "1x United miles",
-      "airlines_direct": "4x United miles (up to 9x total with MileagePlus member earning)",
+      "airlines_direct": "5x United miles (11x total on eligible United flights with MileagePlus cardmember earning)",
       "airlines_portal": "N/A",
       "hotels_direct": "2x United miles",
       "hotels_portal": "5x United miles (Renowned Hotels prepaid stays)",
@@ -5324,15 +5324,15 @@
     "credits": {
       "airline": "Up to $200/year JSX credits",
       "hotel": "Up to $200/year Renowned Hotels credits",
-      "travel_other": "Up to $150/year rideshare credits ($12/month Jan-Nov, $18 Dec); up to $100/year Avis/Budget credits",
+      "travel_other": "Up to $150/year rideshare credits ($12/month Jan-Nov, $18 Dec); up to $100/year Avis/Budget credits (as United TravelBank cash)",
       "dining": "N/A",
       "streaming": "N/A",
-      "niche": "Up to $240/year Instacart credits (two $10 credits/month + complimentary Instacart+ through 12/31/2027); up to 20,000-mile award flight discount (10K at $20K spend + 10K at $40K spend); 1,500 PQP annual bonus; 4 United Club one-time guest passes/year"
+      "niche": "Up to $240/year Instacart credits (two $10 credits/month + complimentary Instacart+ through 12/31/2027); up to 20,000-mile award flight discount (10K at $20K spend + 10K at $40K spend); 1,500 PQP annual bonus; 4 United Club one-time passes each anniversary with All Access membership (Premier Gold or $50K calendar-year spend) and an authorized user"
     },
     "benefits": {
-      "lounge_access": "United Club membership (unlimited access to 50+ United Club lounges worldwide)",
-      "hotel_status": "N/A",
-      "global_entry_tsa": "N/A",
+      "lounge_access": "United Club membership (unlimited access to 45+ United Club lounges worldwide)",
+      "hotel_status": "IHG One Rewards Platinum Elite (registration required)",
+      "global_entry_tsa": "Up to $120 every 4 years (Global Entry/TSA PreCheck/NEXUS)",
       "companion_cert": "N/A",
       "free_checked_bags": "2 free checked bags on United flights",
       "no_ftf": true,
@@ -5345,7 +5345,7 @@
       },
       "baggage_delay_loss": {
         "value": "$3K/trip",
-        "note": "Lost luggage up to $3,000/traveler; baggage delay $100/day x 5 days, 6hr trigger"
+        "note": "Lost luggage up to $3,000/traveler; baggage delay $100/day x 3 days, 6hr trigger"
       },
       "car_rental": {
         "value": "Primary",
@@ -5770,11 +5770,11 @@
       "groceries": "2x Rapid Rewards points (first $5,000 combined with gas per anniversary year, then 1x)",
       "gas": "2x Rapid Rewards points (first $5,000 combined with groceries per anniversary year, then 1x)",
       "airlines_direct": "2x Rapid Rewards points on Southwest purchases",
-      "airlines_portal": "2x on Rapid Rewards hotel and car rental partners",
+      "airlines_portal": "N/A",
       "hotels_direct": "1x Rapid Rewards points",
-      "hotels_portal": "2x on Rapid Rewards hotel partners",
+      "hotels_portal": "N/A",
       "car_rental_direct": "1x Rapid Rewards points",
-      "car_rental_portal": "2x on Rapid Rewards car rental partners",
+      "car_rental_portal": "N/A",
       "other_travel_direct": "1x Rapid Rewards points",
       "other_travel_portal": "N/A",
       "streaming": "1x Rapid Rewards points",
@@ -5782,7 +5782,7 @@
       "niche": "N/A"
     },
     "credits": {
-      "airline": "3,000 anniversary points (~$39-45 value)",
+      "airline": "3,000 anniversary points (~$39-45 value); 10% promo code on Southwest flights annually (excludes Basic fares)",
       "hotel": "N/A",
       "travel_other": "N/A",
       "dining": "N/A",
@@ -5796,11 +5796,11 @@
       "companion_cert": "N/A",
       "free_checked_bags": "First checked bag free for cardholder + up to 8 companions on same reservation",
       "no_ftf": true,
-      "niche": "10,000 Companion Pass qualifying points annually; 25% back on inflight purchases"
+      "niche": "10,000 Companion Pass qualifying points annually; Standard seat selection within 48 hours of departure; Group 5 boarding; 25% back on inflight purchases"
     },
     "protections": {
       "trip_delay": "N/A",
-      "baggage_delay_loss": "Lost luggage reimbursement up to $3,000 per traveler",
+      "baggage_delay_loss": "Lost luggage reimbursement up to $3,000 per traveler; baggage delay up to $100/day for 3 days (6-hour trigger)",
       "car_rental": "Auto rental collision damage waiver (secondary)",
       "purchase_protection": "120 days, up to $500 per item",
       "extended_warranty": "1 additional year on warranties of 3 years or less",
@@ -5841,7 +5841,7 @@
       "travel_other": "N/A",
       "dining": "N/A",
       "streaming": "N/A",
-      "niche": "Reimbursement for up to 4 upgraded boardings per year"
+      "niche": "N/A"
     },
     "benefits": {
       "lounge_access": "N/A",
@@ -5854,7 +5854,7 @@
     },
     "protections": {
       "trip_delay": "N/A",
-      "baggage_delay_loss": "Lost luggage reimbursement up to $3,000 per traveler",
+      "baggage_delay_loss": "Lost luggage reimbursement up to $3,000 per traveler; baggage delay up to $100/day for up to 3 days (6+ hour delay)",
       "car_rental": "Auto rental collision damage waiver (secondary)",
       "purchase_protection": "120 days, up to $500 per item",
       "extended_warranty": "1 additional year on warranties of 3 years or less",
@@ -5887,7 +5887,7 @@
       "other_travel_portal": "N/A",
       "streaming": "1x Rapid Rewards points",
       "base": "1x Rapid Rewards points",
-      "niche": "N/A"
+      "niche": "3x on Lyft rides and services bought in the Lyft app (through 12/31/2027)"
     },
     "credits": {
       "airline": "6,000 anniversary points (~$78 value); 15% promo code on Southwest flights annually (excludes Basic fares)",
@@ -5895,7 +5895,7 @@
       "travel_other": "N/A",
       "dining": "N/A",
       "streaming": "N/A",
-      "niche": "N/A"
+      "niche": "Up to $120/yr in Instacart credits ($10/month with Instacart+; 3 months of Instacart+ included) and 1-year DashPass plus $10 off quarterly on non-restaurant DoorDash orders, through 12/31/2027"
     },
     "benefits": {
       "lounge_access": "N/A",
@@ -5908,7 +5908,7 @@
     },
     "protections": {
       "trip_delay": "N/A",
-      "baggage_delay_loss": "Lost luggage reimbursement up to $3,000 per traveler",
+      "baggage_delay_loss": "Lost luggage reimbursement up to $3,000 per traveler; baggage delay up to $100/day for 3 days (6-hour trigger)",
       "car_rental": "Auto rental collision damage waiver (secondary)",
       "purchase_protection": "120 days, up to $500 per item",
       "extended_warranty": "1 additional year on warranties of 3 years or less",
@@ -5925,12 +5925,12 @@
     "id": 47,
     "slug": "aadvantage-aviator-red",
     "annual_fee_amount": 99,
-    "annual_fee_note": "Card discontinued (Barclays exiting AA partnership); being migrated to Citi on April 26, 2026. No longer accepting new applications.",
+    "annual_fee_note": "Card discontinued: closed to new applications on September 30, 2025, and accounts were converted to the Citi AAdvantage Platinum Select ($99/yr) on April 24, 2026.",
     "welcome_bonus_text": "No longer available. Previously: 60,000 AAdvantage miles after one purchase and paying the $99 annual fee.",
     "earning_rates": {
-      "dining": "1x AAdvantage mile",
+      "dining": "1x AAdvantage mile under Barclays (2x at restaurants since the April 24, 2026 conversion to Citi)",
       "groceries": "1x AAdvantage mile",
-      "gas": "1x AAdvantage mile",
+      "gas": "1x AAdvantage mile under Barclays (2x at gas stations since the April 24, 2026 conversion to Citi)",
       "airlines_direct": "2x AAdvantage miles on American Airlines purchases",
       "airlines_portal": "N/A",
       "hotels_direct": "1x AAdvantage mile",
@@ -5944,7 +5944,7 @@
       "niche": "N/A"
     },
     "credits": {
-      "airline": "$25 inflight Wi-Fi credit per anniversary year on AA flights",
+      "airline": "$25 inflight Wi-Fi credit per anniversary year on AA flights (ends October 25, 2026)",
       "hotel": "N/A",
       "travel_other": "N/A",
       "dining": "N/A",
@@ -5955,10 +5955,10 @@
       "lounge_access": "N/A",
       "hotel_status": "N/A",
       "global_entry_tsa": "N/A",
-      "companion_cert": "Companion certificate ($99 plus taxes) after $20,000 annual spend on domestic economy",
+      "companion_cert": "Companion certificate ($99 plus taxes) after $20,000 annual spend on domestic economy (Citi is ending it; last one earnable through your next cardmember anniversary)",
       "free_checked_bags": "First checked bag free for cardholder + up to 4 companions on same domestic AA reservation",
       "no_ftf": true,
-      "niche": "Preferred boarding (Group 5) for cardholder + up to 4 companions; 25% back on inflight food/beverage purchases; 0% intro APR on balance transfers for 15 billing cycles"
+      "niche": "Preferred boarding (Group 5) for cardholder + up to 4 companions; 25% back on inflight food/beverage purchases; 0% intro APR on balance transfers for 15 billing cycles (new accounts only; no longer available)"
     },
     "protections": {
       "trip_delay": "N/A",
@@ -6032,9 +6032,9 @@
   {
     "id": 49,
     "slug": "citi-aadvantage-executive",
-    "annual_fee_amount": 595,
-    "annual_fee_note": "Authorized users: $175 total for up to 3 users, $175 each additional. Each AU gets Admirals Club access.",
-    "welcome_bonus_text": "Earn 70,000 AAdvantage bonus miles after $7,000 spend in 3 months.",
+    "annual_fee_amount": 695,
+    "annual_fee_note": "$695 for accounts opened on or after Aug 23, 2026 (previously $595). Authorized users: $175 total for up to 3 users, $175 each additional. Each AU gets Admirals Club access.",
+    "welcome_bonus_text": "Earn 125,000 AAdvantage bonus miles after $15,000 spend in 5 months.",
     "earning_rates": {
       "dining": "1x AAdvantage mile",
       "groceries": "1x AAdvantage mile",
@@ -6052,44 +6052,40 @@
         "note": ""
       },
       "hotels_portal": {
-        "rate": "10x",
+        "rate": "12x",
         "note": "Via aadvantagehotels.com"
       },
       "car_rental_direct": "1x AAdvantage mile",
-      "car_rental_portal": "10x AAdvantage miles on car rentals via aadvantagecars.com",
+      "car_rental_portal": "12x AAdvantage miles on car rentals via aadvantagecars.com",
       "other_travel_direct": "1x AAdvantage mile",
       "other_travel_portal": "N/A",
       "streaming": "1x AAdvantage mile",
       "base": "1x AAdvantage mile",
-      "niche": [
-        "N",
-        "/",
-        "A"
-      ]
+      "niche": "1 Loyalty Point per 1 eligible AAdvantage mile earned from purchases; 10,000 bonus Loyalty Points at 50K, 90K, 165K and 240K Loyalty Points in a status year (up to 40,000)"
     },
     "credits": {
-      "airline": "N/A",
+      "airline": "Up to $100/year back on inflight and eligible Admirals Club purchases",
       "hotel": "N/A",
-      "travel_other": "Up to $120/year Avis/Budget prepaid car rental credit; up to $120 Global Entry/TSA PreCheck credit every 4 years",
-      "dining": "Up to $120/year Grubhub credit ($10/month)",
+      "travel_other": "Up to $120/year Avis/Budget prepaid car rental credit; up to $120 Global Entry/TSA PreCheck credit every 4 years; up to $500/year American Airlines Vacations package credit ($250 Jan-Jun + $250 Jul-Dec)",
+      "dining": "N/A",
       "streaming": "N/A",
-      "niche": "Up to $10 Lyft credit per month (after 3 eligible rides in a calendar month)"
+      "niche": "Up to $15 Lyft credit per month (after 3 eligible rides in a calendar month; up to $180/year)"
     },
     "benefits": {
-      "lounge_access": "Admirals Club membership (50+ lounges worldwide + ~60 partner lounges including Alaska Lounges); immediate family or up to 2 guests; each authorized user also gets access",
-      "hotel_status": "N/A",
+      "lounge_access": "Admirals Club membership (nearly 50 Admirals Clubs + 60+ partner lounges including Alaska Lounges); immediate family or up to 2 guests; each authorized user (18+) also gets Admirals Club access (not partner lounges)",
+      "hotel_status": "Omni Hotels Champion status (enrollment required); one Omni Free Night Award per calendar year after a qualifying 2+ night stay booked directly with Omni",
       "global_entry_tsa": "Up to $120 every 4 years",
       "companion_cert": "N/A",
       "free_checked_bags": "First checked bag free for cardholder + up to 8 companions on same domestic AA reservation",
       "no_ftf": true,
-      "niche": "Priority check-in at business class counters; priority boarding for cardholder + up to 8 companions; 25% back on inflight food/beverage (excluding Wi-Fi)"
+      "niche": "Priority check-in and airport screening (where available) and Group 4 priority boarding for cardholder + up to 8 companions; complimentary Avis President's Club status"
     },
     "protections": {
-      "trip_delay": "Trip delay protection (6-hour trigger)",
-      "baggage_delay_loss": "Lost baggage protection up to $3,000",
-      "car_rental": "Worldwide car rental insurance",
-      "purchase_protection": "N/A",
-      "extended_warranty": "N/A",
+      "trip_delay": "Up to $500 per traveler when delayed 6+ hours",
+      "baggage_delay_loss": "Lost baggage protection up to $3,000 per traveler",
+      "car_rental": "Worldwide car rental insurance up to $75,000 (secondary in U.S., primary abroad)",
+      "purchase_protection": "Up to $10,000 per incident, $50,000/year (damage or theft within 90 days)",
+      "extended_warranty": "Adds 24 months to the manufacturer's warranty (up to $10,000 per item)",
       "niche": "Trip cancellation/interruption protection up to $5,000 per trip"
     },
     "transfer_partners": {
@@ -6158,7 +6154,7 @@
     "slug": "atmos-rewards-ascent",
     "annual_fee_amount": 95,
     "annual_fee_note": null,
-    "welcome_bonus_text": "Earn 70,000 bonus Atmos Rewards points plus a $99 Companion Fare (plus taxes/fees from $23) after $3,000 spend in 90 days.",
+    "welcome_bonus_text": "Earn 50,000 bonus Atmos Rewards points plus a $99 Companion Fare (plus taxes/fees from $23) after $1,500 spend in 90 days.",
     "earning_rates": {
       "dining": "1x Atmos Rewards points",
       "groceries": "1x Atmos Rewards points",
@@ -6173,7 +6169,7 @@
       "other_travel_portal": "N/A",
       "streaming": "2x Atmos Rewards points on streaming services and cable",
       "base": "1x Atmos Rewards points",
-      "niche": "10% BofA checking/savings bonus (3x becomes 3.3x, 2x becomes 2.2x); 3 status points per $1 spent (no cap)"
+      "niche": "10% bonus with an eligible Bank of America account (3x becomes 3.3x, 2x becomes 2.2x); 1 status point per $3 spent (no cap)"
     },
     "credits": {
       "airline": "N/A",
@@ -6190,24 +6186,24 @@
       "companion_cert": "$99 Companion Fare annually (plus taxes/fees from $23) after $6,000 spend in prior year; valid on Alaska and Hawaiian flights in North America",
       "free_checked_bags": "First checked bag free for cardholder + up to 6 companions on same reservation",
       "no_ftf": true,
-      "niche": "Priority boarding on Alaska and Hawaiian; 20% back on inflight purchases (food, beverages, Wi-Fi); 3 status points per $1 spent (no cap)"
+      "niche": "Preferred boarding on Alaska, Horizon and SkyWest-operated flights (not Hawaiian); 20% back on inflight purchases (food, beverages, Wi-Fi); 1 status point per $3 spent (no cap)"
     },
     "protections": {
       "trip_delay": {
-        "value": "$300",
-        "note": "12-hour trigger (Visa Signature benefit)"
+        "value": "$500",
+        "note": "Per ticket, for delays of 12+ hours (Visa Signature benefit)"
       },
       "baggage_delay_loss": {
-        "value": "$300 baggage delay",
-        "note": "Baggage delay up to $300 if delayed 4+ hours; lost luggage reimbursement also included (Visa Signature)"
+        "value": "Lost luggage only",
+        "note": "No baggage delay coverage; lost luggage reimbursement (Visa Signature)"
       },
       "car_rental": {
         "value": "Secondary",
         "note": "Auto rental collision damage waiver (Visa Signature benefit)"
       },
       "purchase_protection": {
-        "value": "Yes",
-        "note": "Theft or damage within 90 days of purchase (Visa Signature benefit)"
+        "value": "N/A",
+        "note": "Not offered on this card"
       },
       "extended_warranty": {
         "value": "1 year",
