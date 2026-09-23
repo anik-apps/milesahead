@@ -16,7 +16,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
-// Every configured infographic needs both images committed, or the sidebar
+// Every configured infographic needs its images committed, or the sidebar
 // renders a broken teaser and the viewer opens on nothing.
 func TestCardInfographics_HaveCommittedImages(t *testing.T) {
 	if len(cardInfographics) == 0 {
@@ -32,7 +32,7 @@ func TestCardInfographics_HaveCommittedImages(t *testing.T) {
 		if len(ig.Facts) == 0 {
 			t.Errorf("cardInfographics[%q] lists no facts, so nothing ties the image to the page", slug)
 		}
-		for _, name := range []string{"infographic-" + slug + ".jpg", "infographic-" + slug + "-teaser.jpg"} {
+		for _, name := range infographicFiles(slug) {
 			path := filepath.Join("..", "..", "static", "img", name)
 			if _, err := os.Stat(path); err != nil {
 				t.Errorf("cardInfographics[%q] has no committed image at %s: %v", slug, path, err)
@@ -90,12 +90,14 @@ func TestCardInfographics_FactsMatchCardProse(t *testing.T) {
 func infographicCardData() map[string]interface{} {
 	data := baseCardData()
 	data["Infographic"] = cardInfographic{
-		Alt:     `Amex Platinum infographic. $895 annual fee. "Quoted" & <tagged> text.`,
+		Alt:     `Amex Platinum infographic. "Quoted" & <tagged> text.`,
+		Text:    []string{"Annual fee: $895.", `Credits: <script>alert(1)</script> & "more".`},
 		Checked: "Sep 22, 2026",
 		Facts:   []string{"$895"},
 	}
-	data["InfographicImage"] = "/static/img/infographic-amex-platinum.jpg"
-	data["InfographicTeaser"] = "/static/img/infographic-amex-platinum-teaser.jpg"
+	data["InfographicImage"] = "/static/img/infographic-amex-platinum.jpg?v=abc123"
+	data["InfographicTeaser"] = "/static/img/infographic-amex-platinum-teaser.jpg?v=abc123"
+	data["InfographicTeaser960"] = "/static/img/infographic-amex-platinum-teaser-960.jpg?v=abc123"
 	return data
 }
 
@@ -104,11 +106,17 @@ func TestCardPage_InfographicReplacesCardArt(t *testing.T) {
 
 	for _, want := range []string{
 		`data-ig-open`,
-		`href="/static/img/infographic-amex-platinum.jpg"`,
-		`src="/static/img/infographic-amex-platinum-teaser.jpg"`,
+		`href="/static/img/infographic-amex-platinum.jpg?v=abc123"`,
+		`src="/static/img/infographic-amex-platinum-teaser.jpg?v=abc123"`,
+		`/static/img/infographic-amex-platinum-teaser-960.jpg?v=abc123 960w`,
 		`id="ig-lightbox"`,
 		`/static/js/card-infographic.js`,
 		`Figures checked Sep 22, 2026`,
+		// The spoken name starts with the visible text (WCAG 2.5.3 Label in Name).
+		`aria-label="View the infographic: American Express Platinum Card"`,
+		// The viewer opens on a named control rather than the unnamed scroll area.
+		`data-ig-close autofocus`,
+		`<li>Annual fee: $895.</li>`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("card page with an infographic should contain %q", want)
@@ -130,11 +138,11 @@ func TestCardPage_InfographicFullImageNotEagerlyLoaded(t *testing.T) {
 	out := renderRealCardTemplate(t, infographicCardData())
 
 	// \s before src so data-src="..." does not count as a match.
-	eager := regexp.MustCompile(`\ssrc="/static/img/infographic-amex-platinum\.jpg"`)
+	eager := regexp.MustCompile(`\ssrc="/static/img/infographic-amex-platinum\.jpg[?"]`)
 	if eager.MatchString(out) {
 		t.Error("the full infographic must not be in an eager src attribute")
 	}
-	if !strings.Contains(out, `data-src="/static/img/infographic-amex-platinum.jpg"`) {
+	if !strings.Contains(out, `data-src="/static/img/infographic-amex-platinum.jpg?v=abc123"`) {
 		t.Error("the viewer should carry the full image as data-src")
 	}
 }
@@ -147,6 +155,12 @@ func TestCardPage_InfographicAltIsEscaped(t *testing.T) {
 	}
 	if !strings.Contains(out, "&lt;tagged&gt;") {
 		t.Error("expected the escaped alt text in the viewer image")
+	}
+	if strings.Contains(out, "<script>alert(1)</script>") {
+		t.Error("text version items must be HTML-escaped")
+	}
+	if !strings.Contains(out, "&lt;script&gt;alert(1)&lt;/script&gt;") {
+		t.Error("expected the escaped text version item")
 	}
 }
 
@@ -218,9 +232,13 @@ func TestHandleCard_ServesInfographicForConfiguredCard(t *testing.T) {
 
 	body := getCardPage(t, app, "amex-platinum")
 
+	v := app.infographicVersions["amex-platinum"]
+	if !regexp.MustCompile(`^[0-9a-f]{12}$`).MatchString(v) {
+		t.Fatalf("expected a 12-hex-digit content version for amex-platinum, got %q", v)
+	}
 	for _, want := range []string{
-		`href="/static/img/infographic-amex-platinum.jpg"`,
-		`src="/static/img/infographic-amex-platinum-teaser.jpg"`,
+		`href="/static/img/infographic-amex-platinum.jpg?v=` + v + `"`,
+		`src="/static/img/infographic-amex-platinum-teaser.jpg?v=` + v + `"`,
 		`id="ig-lightbox"`,
 		`Figures checked ` + cardInfographics["amex-platinum"].Checked,
 	} {
@@ -249,5 +267,75 @@ func TestHandleCard_OtherCardsUnchanged(t *testing.T) {
 	}
 	if strings.Contains(body, `id="ig-lightbox"`) || strings.Contains(body, "card-infographic.js") {
 		t.Error("a card without an infographic should not render the viewer or its script")
+	}
+}
+
+// The alt names the image; the content lives in the structured text version,
+// which must carry every figure the drift check relies on.
+func TestCardInfographics_TextVersionCarriesTheFacts(t *testing.T) {
+	for slug, ig := range cardInfographics {
+		if n := len(ig.Alt); n > 200 {
+			t.Errorf("cardInfographics[%q].Alt is %d characters; keep it a short name and put content in Text", slug, n)
+		}
+		if len(ig.Text) == 0 {
+			t.Errorf("cardInfographics[%q] has no text version", slug)
+			continue
+		}
+		text := strings.ToLower(strings.Join(ig.Text, " "))
+		for _, fact := range ig.Facts {
+			if !strings.Contains(text, strings.ToLower(fact)) {
+				t.Errorf("infographic for %q states %q, but its text version does not", slug, fact)
+			}
+		}
+	}
+}
+
+func writeInfographicFiles(t *testing.T, staticDir, slug, content string) {
+	t.Helper()
+	for _, name := range infographicFiles(slug) {
+		if err := os.WriteFile(filepath.Join(staticDir, "img", name), []byte(content+name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// Replacing an image must change its URL, or browsers keep serving the old
+// artwork beside the new "Figures checked" date.
+func TestInfographicVersions_ChangeWithContent(t *testing.T) {
+	staticDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(staticDir, "img"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for slug := range cardInfographics {
+		writeInfographicFiles(t, staticDir, slug, "v1")
+	}
+	before := infographicVersions(staticDir)
+	if len(before) != len(cardInfographics) {
+		t.Fatalf("expected a version for every card, got %d of %d", len(before), len(cardInfographics))
+	}
+	if again := infographicVersions(staticDir); again["amex-platinum"] != before["amex-platinum"] {
+		t.Error("the version must be stable for unchanged files")
+	}
+
+	writeInfographicFiles(t, staticDir, "amex-platinum", "v2")
+	after := infographicVersions(staticDir)
+	if after["amex-platinum"] == before["amex-platinum"] {
+		t.Error("replacing a card's images must change its version")
+	}
+	if after["bilt-palladium"] != before["bilt-palladium"] {
+		t.Error("another card's version must not change")
+	}
+
+	if err := os.Remove(filepath.Join(staticDir, "img", "infographic-bilt-palladium-teaser-960.jpg")); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := infographicVersions(staticDir)["bilt-palladium"]; ok {
+		t.Error("a card with a missing file should be served unversioned")
+	}
+}
+
+func TestInfographicVersions_NoStaticDir(t *testing.T) {
+	if got := infographicVersions(filepath.Join(t.TempDir(), "absent")); len(got) != 0 {
+		t.Errorf("expected no versions without a static directory, got %v", got)
 	}
 }

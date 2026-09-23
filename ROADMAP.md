@@ -159,9 +159,12 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       artwork already shows the card) and opens the full image in a native `<dialog>`
       viewer; inline in the article column the image rendered at 46% of its size, too small
       to read. The 400 KB full image loads only when the viewer opens, and without
-      JavaScript the teaser is a plain link to it. Each entry lists the figures the image
+      JavaScript the teaser is a plain link to it. The image's content is also given as a
+      structured text version under it, and image URLs carry a content hash so a replaced
+      image is never served from a stale cache. Each entry lists the figures the image
       states, and a test fails if one disappears from the card's `cards.json` text, since an
-      image cannot be corrected by a reseed the way prose can.
+      image cannot be corrected by a reseed the way prose can. That check sees the seed
+      file only, so admin edits to the live prose bypass it.
 
 ## Up Next
 

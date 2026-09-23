@@ -138,36 +138,62 @@ designed size, leaving its body text around 7px. Instead a cropped **teaser take
 the card-art slot** (the sidebar on desktop, the header card on mobile), since the
 artwork already shows the card, and opens the full image in a native `<dialog>`
 viewer. `static/js/card-infographic.js` does the upgrade; without JavaScript the
-teaser is a plain link to the image.
+teaser is a plain link to the image. The page behind the viewer does not scroll
+while it is open, and it opens with focus on its Close button.
 
 Infographics are declared in `internal/web/cardinfographics.go`:
 
 ```go
 var cardInfographics = map[string]cardInfographic{
-    "amex-platinum": {Alt: "...", Checked: "Sep 22, 2026", Facts: []string{"$895", "$219"}},
+    "amex-platinum": {
+        Alt:     "Amex Platinum infographic: annual fee, ... The text version below lists every figure.",
+        Text:    []string{"Annual fee: $895. ...", "Earn Membership Rewards: ..."},
+        Checked: "Sep 22, 2026",
+        Facts:   []string{"$895", "$219"},
+    },
 }
 ```
 
-- **Alt** is a full text alternative, because the image is almost entirely text.
+- **Alt** names the image briefly.
+- **Text** is the image's content, one plain sentence group per section, shown as
+  a list under the image in the viewer. It is the only way a screen-reader user
+  gets what the image says, so it transcribes every figure and caveat, including
+  cadences, thresholds and the "important to know" warnings. A single long alt
+  string would be read as one unbroken run with nothing to navigate.
 - **Checked** is shown in the caption. An image cannot be corrected by a reseed the
   way prose can, so readers are told how current it is.
 - **Facts** are figures the image states. `TestCardInfographics_FactsMatchCardProse`
-  fails if one disappears from the card's `cards.json` text, so a fee or credit
-  change cannot leave the image contradicting the page unnoticed. It cannot catch a
-  *second, older* figure elsewhere in the prose, so check the card's text against
-  the image when adding one.
+  fails if one disappears from the card's `cards.json` text, and
+  `TestCardInfographics_TextVersionCarriesTheFacts` fails if the text version
+  drops one. Two limits: it checks the **seed file only**, so an admin edit or an
+  approved card update that changes the live prose will not trip it; and it
+  cannot see a *second, older* figure elsewhere in the prose. Recheck the image
+  whenever either happens to a card that has one.
 
-To add a card, generate both images and add the map entry:
+To add a card, generate the images and add the map entry:
 
 ```bash
 scripts/infographic-images.sh chase-sapphire-reserve ~/Downloads/infographic.png
 ```
 
-This writes `static/img/infographic-<slug>.jpg` (the full image, about 400 KB,
-loaded only when the viewer opens) and `static/img/infographic-<slug>-teaser.jpg`
-(its top 1024x640 region at 480x300, about 45 KB). Infographics render for
-everyone: unlike the video embed they are first-party images with no third-party
-request, so there is no `?beta=1` gate.
+This writes three files to `static/img/`:
+
+| File | Size | Used for |
+|---|---|---|
+| `infographic-<slug>.jpg` | 1024x1536, ~400 KB | the viewer; loaded only when it opens |
+| `infographic-<slug>-teaser.jpg` | 480x300, ~45 KB | the sidebar (about 220 CSS px) |
+| `infographic-<slug>-teaser-960.jpg` | 960x600, ~95 KB | phones at 2-3x density (up to 320 CSS px) |
+
+The script rejects anything that is not 1024x1536 and flattens transparency onto
+white, since JPEG has no alpha channel.
+
+Image URLs carry `?v=<content hash>`, computed from the files at startup. Static
+files are served with only `Last-Modified`, so browsers cache them heuristically;
+without the version, replacing an image would leave returning visitors on the old
+artwork beside the new "Figures checked" date.
+
+Infographics render for everyone: unlike the video embed they are first-party
+images with no third-party request, so there is no `?beta=1` gate.
 
 ## Admin Management
 

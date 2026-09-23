@@ -146,10 +146,20 @@
     <div class="ig-lightbox-frame">
         <div class="ig-lightbox-bar">
             <span>Figures checked {{.Infographic.Checked}} &middot; <a href="{{.InfographicImage}}" target="_blank" rel="noopener">Open image</a></span>
-            <button type="button" class="ig-lightbox-close" data-ig-close>Close <span aria-hidden="true">&#10005;</span></button>
+            {{/* autofocus: the dialog opens on a named control, not the unnamed scroll area */}}
+            <button type="button" class="ig-lightbox-close" data-ig-close autofocus>Close <span aria-hidden="true">&#10005;</span></button>
         </div>
         {{/* data-src, not src: the ~400 KB image loads only when the viewer opens */}}
         <img data-src="{{.InfographicImage}}" alt="{{.Infographic.Alt}}" width="1024" height="1536">
+        {{if .Infographic.Text}}
+        <section class="ig-text" aria-labelledby="ig-text-heading">
+            <h2 id="ig-text-heading">Text version</h2>
+            <ul>
+                {{range .Infographic.Text}}<li>{{.}}</li>
+                {{end}}
+            </ul>
+        </section>
+        {{end}}
     </div>
 </dialog>
 <script src="/static/js/card-infographic.js"></script>
@@ -162,8 +172,12 @@
      JavaScript; card-infographic.js upgrades it to open the in-page viewer. */}}
 {{define "card-infographic-teaser"}}
 <div class="ig-teaser">
-    <a class="ig-teaser-link" href="{{.InfographicImage}}" data-ig-open aria-label="Open the {{.Card.Title}} infographic">
-        <span class="ig-teaser-img"><img src="{{.InfographicTeaser}}" alt="" width="480" height="300" decoding="async"></span>
+    {{/* The label starts with the visible text so speech input can target it (WCAG 2.5.3). */}}
+    <a class="ig-teaser-link" href="{{.InfographicImage}}" data-ig-open aria-label="View the infographic: {{.Card.Title}}">
+        <span class="ig-teaser-img"><img src="{{.InfographicTeaser}}"
+            srcset="{{.InfographicTeaser}} 480w, {{.InfographicTeaser960}} 960w"
+            sizes="(max-width: 768px) 320px, 220px"
+            alt="" width="480" height="300" decoding="async"></span>
         <span class="ig-teaser-cta">View the infographic <span aria-hidden="true">&#10530;</span></span>
     </a>
     <p class="ig-teaser-meta">Figures checked {{.Infographic.Checked}}</p>

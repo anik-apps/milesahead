@@ -2521,12 +2521,20 @@ tr.flagged { background: #fef2f2; }
 dialog.ig-lightbox { margin: auto; padding: 0; border: 0; background: transparent;
     width: 100%; max-width: min(1024px, 96vw); max-height: 96vh; overflow: visible; }
 dialog.ig-lightbox::backdrop { background: rgba(8, 12, 20, 0.82); }
-.ig-lightbox-frame { max-height: 96vh; overflow: auto; border-radius: 12px; background: #fff; }
+/* Keep the page behind the viewer still, so closing it returns the reader to
+   where they were. overscroll-behavior stops scroll chaining at the frame's end. */
+html:has(dialog.ig-lightbox[open]) { overflow: hidden; }
+.ig-lightbox-frame { max-height: 96vh; overflow: auto; overscroll-behavior: contain; border-radius: 12px; background: #fff; }
 .ig-lightbox-frame img { display: block; width: 100%; height: auto; }
+.ig-text { padding: 1.25rem 1.5rem 1.5rem; color: #1a1a2e; border-top: 1px solid #e2e8f0; }
+.ig-text h2 { font-size: 1.05rem; margin: 0 0 0.6rem; }
+.ig-text ul { margin: 0; padding-left: 1.2rem; }
+.ig-text li { font-size: 0.92rem; line-height: 1.55; margin: 0 0 0.55rem; }
 .ig-lightbox-bar { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between;
     align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.85rem;
-    background: rgba(15, 23, 42, 0.94); color: #fff; }
-.ig-lightbox-bar a { color: #93c5fd; }
+    background: #0f172a; color: #fff; }
+/* Underlined: colour alone does not separate it from the text beside it. */
+.ig-lightbox-bar a { color: #93c5fd; text-decoration: underline; }
 .ig-lightbox-close { font: inherit; font-size: 0.9rem; color: #fff; background: rgba(255,255,255,0.12);
     border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 0.25rem 0.6rem; cursor: pointer; }
 .ig-lightbox-close:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }

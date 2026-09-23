@@ -73,6 +73,9 @@ type App struct {
 	templates map[string]*template.Template
 	mux       *http.ServeMux
 	startedAt time.Time
+	// infographicVersions is a content hash per card slug, appended to that
+	// card's infographic URLs so a replaced image is not served from cache.
+	infographicVersions map[string]string
 }
 
 // WaitBackground blocks until handler-started background work finishes.
@@ -98,6 +101,7 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 	if err := app.loadTemplates("templates"); err != nil {
 		return nil, err
 	}
+	app.infographicVersions = infographicVersions("static")
 
 	app.setupRoutes()
 	return app, nil
@@ -120,6 +124,8 @@ func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *artic
 	if err := app.loadTemplates(templateDir); err != nil {
 		return nil, err
 	}
+	// static/ sits beside templates/, as it does in the repository and on the server.
+	app.infographicVersions = infographicVersions(filepath.Join(filepath.Dir(templateDir), "static"))
 
 	app.setupRoutes()
 	return app, nil
