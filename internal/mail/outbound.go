@@ -75,7 +75,7 @@ func (s *Sender) SendConfirmation(toEmail, token, domain string) error {
 	m := gomail.NewMessage()
 	m.SetHeader("From", s.from)
 	m.SetHeader("To", toEmail)
-	m.SetHeader("Subject", "Confirm your subscription to Miles Ahead")
+	m.SetHeader("Subject", "Confirm your subscription to MilesAhead")
 	m.SetBody("text/html", htmlBody)
 
 	return s.send(m)
@@ -128,7 +128,7 @@ The article <strong>"%s"</strong> (ID: %d) has received a high number of downvot
 </p>
 </td></tr>
 <tr><td style="background-color:#f8f9fa;padding:16px 32px;border-top:1px solid #e0e0e0;">
-<p style="margin:0;color:#999;font-size:12px;">Automated alert from Miles Ahead.</p>
+<p style="margin:0;color:#999;font-size:12px;">Automated alert from MilesAhead.</p>
 </td></tr>
 </table>
 </td></tr>

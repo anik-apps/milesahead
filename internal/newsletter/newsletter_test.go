@@ -123,8 +123,8 @@ func TestGenerateDaily_ThreeArticles(t *testing.T) {
 	}
 
 	// Verify newspaper-style layout markers.
-	if !strings.Contains(nl.HTMLContent, "MILES AHEAD") {
-		t.Error("newsletter HTML missing masthead 'MILES AHEAD'")
+	if !strings.Contains(nl.HTMLContent, "/static/img/brand/email-lockup.png") {
+		t.Error("newsletter HTML missing the MilesAhead masthead image")
 	}
 	if !strings.Contains(nl.HTMLContent, "WEEKLY") {
 		t.Error("newsletter HTML missing subtitle")
@@ -318,7 +318,7 @@ func TestPreviewNext(t *testing.T) {
 	if !strings.Contains(html, "Preview Article") {
 		t.Error("preview HTML missing article title")
 	}
-	if !strings.Contains(html, "MILES AHEAD") {
+	if !strings.Contains(html, "/static/img/brand/email-lockup.png") {
 		t.Error("preview HTML missing masthead")
 	}
 

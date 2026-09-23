@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Miles Ahead Weekly</title>
+<title>MilesAhead Weekly</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Georgia,'Times New Roman',Times,serif;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;">
@@ -16,7 +16,7 @@
 <td style="padding:14px 24px;border-bottom:3px double #1a1a2e;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr>
-<td><span style="font-size:24px;font-weight:700;color:#1a1a2e;letter-spacing:4px;text-transform:uppercase;font-family:Georgia,serif;">MILES AHEAD</span></td>
+<td><a href="{{.Domain}}/" style="text-decoration:none;"><img src="{{.Domain}}/static/img/brand/email-lockup.png" width="240" height="51" alt="MilesAhead: Travel further. Earn smarter." style="display:block;border:0;"></a></td>
 <td style="text-align:right;"><span style="font-size:10px;color:#888;letter-spacing:1px;">WEEKLY &middot; {{.Date}}</span></td>
 </tr>
 </table>
@@ -143,13 +143,16 @@
 {{end}}
 {{end}}
 
-<!-- Footer -->
+<!-- Footer: the brand band from the infographics, then the subscription notice -->
 <tr>
-<td style="padding:14px 24px;background-color:#1a1a2e;border-top:3px double #1a1a2e;">
+<td style="padding:0;border-top:1px solid #d0d0d0;"><a href="{{.Domain}}/" style="text-decoration:none;"><img src="{{.Domain}}/static/img/brand/email-band.png" width="640" alt="MilesAhead: points, travel, deals, guides" style="display:block;width:100%;max-width:640px;height:auto;border:0;"></a></td>
+</tr>
+<tr>
+<td style="padding:14px 24px;background-color:#eef6fd;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td style="text-align:center;">
-<p style="margin:0 0 4px 0;font-size:10px;color:#aaa;font-family:Arial,sans-serif;">You subscribed to Miles Ahead Weekly.</p>
-<p style="margin:0;font-size:10px;font-family:Arial,sans-serif;"><a href="{{.UnsubscribeURL}}" style="color:#ccc;text-decoration:underline;">Unsubscribe</a></p>
+<p style="margin:0 0 4px 0;font-size:12px;color:#3d5a8a;font-family:Arial,sans-serif;">You subscribed to MilesAhead Weekly.</p>
+<p style="margin:0;font-size:12px;font-family:Arial,sans-serif;"><a href="{{.UnsubscribeURL}}" style="color:#15307a;text-decoration:underline;">Unsubscribe</a></p>
 </td></tr>
 </table>
 </td>

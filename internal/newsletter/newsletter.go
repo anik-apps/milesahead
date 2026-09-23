@@ -395,7 +395,7 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	// Create newsletter record with status draft.
 	nl := &db.Newsletter{
 		Date:         sendDate,
-		Subject:      fmt.Sprintf("Miles Ahead Weekly — %s", sendDate),
+		Subject:      fmt.Sprintf("MilesAhead Weekly — %s", sendDate),
 		HTMLContent:  "", // Will be rendered at send time.
 		Status:       "draft",
 		ArticleCount: len(articles),
@@ -730,7 +730,7 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 		return nil, fmt.Errorf("rendering newsletter: %w", err)
 	}
 
-	subject := fmt.Sprintf("Miles Ahead Daily Digest — %s", date)
+	subject := fmt.Sprintf("MilesAhead Daily Digest — %s", date)
 
 	nl := &db.Newsletter{
 		Date:         date,

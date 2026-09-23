@@ -1,4 +1,6 @@
 // Theme Toggle
+// layout.html applies the saved theme (or the OS setting) in <head> before first
+// paint; this only wires up the button and keeps its pressed state in sync.
 (function() {
     const html = document.documentElement;
     const saved = localStorage.getItem('theme');
@@ -9,11 +11,16 @@
     document.addEventListener('DOMContentLoaded', function() {
         const toggleBtn = document.getElementById('theme-toggle');
         if (toggleBtn) {
+            const sync = function() {
+                toggleBtn.setAttribute('aria-pressed', html.getAttribute('data-theme') === 'dark' ? 'true' : 'false');
+            };
+            sync();
             toggleBtn.addEventListener('click', function() {
                 const current = html.getAttribute('data-theme');
                 const next = current === 'dark' ? 'light' : 'dark';
                 html.setAttribute('data-theme', next);
                 localStorage.setItem('theme', next);
+                sync();
             });
         }
     });

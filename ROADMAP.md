@@ -167,6 +167,15 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       states, and a test fails if one disappears from the card's `cards.json` text, since an
       image cannot be corrected by a reseed the way prose can. That check sees the seed
       file only, so admin edits to the live prose bypass it.
+- [x] **Site branding** — the band at the bottom of every infographic (mountain mark,
+      "MilesAhead" wordmark, "Travel further. Earn smarter.", misty ridges, the plane and
+      POINTS • TRAVEL • DEALS • GUIDES) now brands the site: a misty header on every page,
+      the home hero, and a footer band with real links, the four words included. The art is
+      vector (36 KB of SVG in `static/img/brand/`) with a dark-theme version; email,
+      the favicon and the default share image use PNG copies, since Outlook and Gmail do not
+      show SVG. The name is one word everywhere, as on the infographics. The phone header
+      was 101px and wrapped the logo and "Toggle Theme" into "Cards"; it is now one line,
+      with a sun/moon toggle that follows the OS dark-mode setting before first paint.
 
 ## Up Next
 
