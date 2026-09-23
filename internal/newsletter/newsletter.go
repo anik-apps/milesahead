@@ -205,6 +205,16 @@ func groupArticlesByTag(articles []db.GeneratedArticle) map[string][]articleItem
 	return groups
 }
 
+// baseURL is the absolute site root that email links and images are built on.
+// An email client has no base URL, so a relative link or image in a newsletter
+// is simply broken. Empty only when no domain is configured (tests).
+func (s *Service) baseURL() string {
+	if s.domain == "" {
+		return ""
+	}
+	return "https://" + s.domain
+}
+
 // renderNewsletter renders the newsletter HTML for the given articles and date.
 func renderNewsletter(articles []db.GeneratedArticle, date, domain string) (string, error) {
 	tmplPath := filepath.Join(templateDir, "newsletter.html")
@@ -438,7 +448,7 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	var sp *scoutsPickData
 	sp = s.loadScoutsPickData(scoutsPickID)
 
-	htmlContent, err := renderWeeklyNewsletter(articles, sendDate, "https://"+s.domain, cow, sp)
+	htmlContent, err := renderWeeklyNewsletter(articles, sendDate, s.baseURL(), cow, sp)
 	if err != nil {
 		slog.Error("failed to render weekly newsletter", "error", err)
 	} else {
@@ -670,7 +680,7 @@ func (s *Service) SendWeekly() error {
 			articles = reorderArticles(articles, candidateIDs)
 		}
 
-		htmlContent, err := renderWeeklyNewsletter(articles, sendDate, "https://"+s.domain, cow, sp)
+		htmlContent, err := renderWeeklyNewsletter(articles, sendDate, s.baseURL(), cow, sp)
 		if err != nil {
 			slog.Error("failed to re-render newsletter at send time", "error", err)
 		} else {
@@ -715,7 +725,7 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 		return existing, nil
 	}
 
-	htmlContent, err := renderNewsletter(articles, date, "")
+	htmlContent, err := renderNewsletter(articles, date, s.baseURL())
 	if err != nil {
 		return nil, fmt.Errorf("rendering newsletter: %w", err)
 	}
@@ -806,5 +816,5 @@ func (s *Service) PreviewNext() (string, error) {
 	}
 
 	date := s.todayDate()
-	return renderNewsletter(articles, date, "")
+	return renderNewsletter(articles, date, s.baseURL())
 }
