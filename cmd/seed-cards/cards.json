@@ -1356,7 +1356,7 @@
     "issuer": "Amex",
     "scouts_verdict": "The Amex Green (now the Classic Green, closed to new applicants since July 2026) fills an interesting niche: it's a low-cost way to keep earning Amex Membership Rewards points, and the 3X on travel, transit, and dining covers a surprising amount of what most people spend money on. The $219 CLEAR+ credit is the swing factor that makes or breaks this card — use CLEAR and you're effectively getting paid $69/year to carry the card. That's hard to argue with.\n\nWithout CLEAR, though, the math tightens up considerably. You're paying $150/year for 3X earning and some basic protections, while the Chase Sapphire Preferred offers 3X dining (plus gas and streaming), 2X travel, a $100 hotel credit, and Chase's partner network for $95. Unless you specifically need the transit category or you're chasing ANA and Singapore Airlines transfers (which are genuinely excellent), the Sapphire Preferred is the more cost-effective play for most people.\n\nWhere the Green really sings is as a supporting player in a bigger Amex lineup. Pair it with the Gold for 4X dining and groceries, let the Green handle travel and transit, and you've got your bases covered. Or keep it as your sole MR card if your spending skews heavily toward transportation. Just don't expect lounges, hotel status, or anything resembling luxury — that's Platinum territory, and Platinum money. And if you don't already have the Green, the only way in now is a product change from the Gold or Platinum — no welcome bonus attached.",
     "image_url": "/static/img/cards/amex-green.png",
-    "apply_url": "https://www.americanexpress.com/us/credit-cards/",
+    "apply_url": "",
     "status": "published",
     "sections": [
       {
@@ -1407,7 +1407,10 @@
     ],
     "keywords": [
       "Amex Green",
-      "American Express Green"
+      "American Express Green",
+      "Amex Classic Green",
+      "American Express Classic Green",
+      "Classic Green Card"
     ]
   },
   {
@@ -2333,7 +2336,7 @@
     "issuer": "Citi",
     "scouts_verdict": "<p>The Citi Rewards+ was the quirky underdog of the no-annual-fee card world until Citi retired it in July 2025. The round-up feature sounded like a gimmick until you realized that your $2 gas station snack was earning points at a 5x effective rate. Coffee runs, transit taps, quick convenience store stops — the more micro-purchases you made, the more the round-up feature bent the math in your favor. It was a card that rewarded how you spent, not just what you spent.</p><p>The 10% points back on redemptions was the other hidden gem — essentially a 10% discount on your first 100,000 redeemed points each year, and literally no other card offered this. Pair it with a Citi Strata Premier for full-value transfer partner access, and suddenly your ThankYou points are booking JetBlue flights and Singapore Airlines business class.</p><p>But let's keep it real: as a standalone card, the earning rates were mediocre. The Autograph does 3x on six categories. The Freedom Unlimited does 3x on dining. The Rewards+ only really sang as part of a Citi card strategy — you used it for small purchases, pooled your ThankYou points, and let the round-ups and 10% back do their thing. On its own, there are better options. As a sidekick, it was genuinely clever. Just know this is a eulogy now: Citi folded every Rewards+ into the Citi Strata in July 2025, and the last holdovers kept the round-ups and 10% back only until July 19, 2026.</p>",
     "image_url": "/static/img/cards/citi-rewards-plus.png",
-    "apply_url": "https://www.citi.com/credit-cards/citi-strata-credit-card",
+    "apply_url": "",
     "status": "published",
     "sections": [
       {
