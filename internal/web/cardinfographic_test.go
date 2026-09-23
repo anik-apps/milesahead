@@ -268,12 +268,16 @@ func TestHandleCard_ServesInfographicForConfiguredCard(t *testing.T) {
 }
 
 func TestHandleCard_OtherCardsUnchanged(t *testing.T) {
+	const slug = "discover-it-cash-back"
+	if _, ok := cardInfographics[slug]; ok {
+		t.Fatalf("%s now has an infographic; pick a card without one for this test", slug)
+	}
 	app := setupRealTemplateCardApp(t)
-	createPublishedCard(t, app, "chase-sapphire-preferred", "Chase Sapphire Preferred")
+	createPublishedCard(t, app, slug, "Discover it Cash Back")
 
-	body := getCardPage(t, app, "chase-sapphire-preferred")
+	body := getCardPage(t, app, slug)
 
-	if !strings.Contains(body, `<img src="https://example.com/card-art-chase-sapphire-preferred.png"`) {
+	if !strings.Contains(body, `<img src="https://example.com/card-art-`+slug+`.png"`) {
 		t.Error("a card without an infographic should still render its card art")
 	}
 	if strings.Contains(body, `id="ig-lightbox"`) || strings.Contains(body, "card-infographic.js") {
