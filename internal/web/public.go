@@ -740,6 +740,20 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Infographics are static first-party images with no third-party embed, so
+	// unlike the video they render for everyone rather than behind ?beta=1.
+	if ig, ok := cardInfographics[page.Slug]; ok {
+		version := ""
+		if v := app.infographicVersions[page.Slug]; v != "" {
+			version = "?v=" + v
+		}
+		base := "/static/img/infographic-" + page.Slug
+		data["Infographic"] = ig
+		data["InfographicImage"] = base + ".jpg" + version
+		data["InfographicTeaser"] = base + "-teaser.jpg" + version
+		data["InfographicTeaser960"] = base + "-teaser-960.jpg" + version
+	}
+
 	app.renderTemplate(w, "card.html", data)
 }
 
