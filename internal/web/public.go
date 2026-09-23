@@ -761,7 +761,6 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		data["Infographic"] = ig
 		data["InfographicImage"] = base + ".jpg" + version
 		data["InfographicTeaser"] = base + "-teaser.jpg" + version
-		data["InfographicTeaser960"] = base + "-teaser-960.jpg" + version
 	}
 
 	app.renderTemplate(w, "card.html", data)

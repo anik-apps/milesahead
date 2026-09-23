@@ -97,38 +97,51 @@ func infographicCardData() map[string]interface{} {
 	}
 	data["InfographicImage"] = "/static/img/infographic-amex-platinum.jpg?v=abc123"
 	data["InfographicTeaser"] = "/static/img/infographic-amex-platinum-teaser.jpg?v=abc123"
-	data["InfographicTeaser960"] = "/static/img/infographic-amex-platinum-teaser-960.jpg?v=abc123"
 	return data
 }
 
-func TestCardPage_InfographicReplacesCardArt(t *testing.T) {
+// The card art stays; the infographic is a compact bar under it, in both the
+// sidebar and the mobile header card.
+func TestCardPage_InfographicKeepsCardArt(t *testing.T) {
 	out := renderRealCardTemplate(t, infographicCardData())
 
 	for _, want := range []string{
 		`data-ig-open`,
 		`href="/static/img/infographic-amex-platinum.jpg?v=abc123"`,
 		`src="/static/img/infographic-amex-platinum-teaser.jpg?v=abc123"`,
-		`/static/img/infographic-amex-platinum-teaser-960.jpg?v=abc123 960w`,
 		`id="ig-lightbox"`,
 		`/static/js/card-infographic.js`,
 		`Figures checked Sep 22, 2026`,
-		// The spoken name starts with the visible text (WCAG 2.5.3 Label in Name).
-		`aria-label="View the infographic: American Express Platinum Card"`,
+		`<span class="ig-bar-title">Infographic</span>`,
+		`<span class="ig-bar-cta">Expand `,
 		// The viewer opens on a named control rather than the unnamed scroll area.
 		`data-ig-close autofocus`,
+		// The text version is offered, collapsed, rather than shown under the image.
+		`<details class="ig-text">`,
+		`<summary>Text version</summary>`,
 		`<li>Annual fee: $895.</li>`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("card page with an infographic should contain %q", want)
 		}
 	}
-	// The teaser takes the card-art slot in both the sidebar and the mobile
-	// header; the infographic already shows the card.
-	if strings.Contains(out, "card-placeholder.svg") {
-		t.Error("card art should be replaced by the infographic teaser")
+	if got := strings.Count(out, `<img src="/static/img/card-placeholder.svg"`); got != 2 {
+		t.Errorf("card art should still render in the sidebar and the mobile header, got %d", got)
 	}
-	if got := strings.Count(out, `class="ig-teaser"`); got != 2 {
-		t.Errorf("expected a teaser in the sidebar and the mobile header, got %d", got)
+	if got := strings.Count(out, `class="ig-bar"`); got != 2 {
+		t.Errorf("expected an infographic bar in the sidebar and the mobile header, got %d", got)
+	}
+	// The bar comes after the card art in each slot.
+	if strings.Index(out, `card-sidebar-image`) > strings.Index(out, `class="ig-bar"`) {
+		t.Error("the sidebar infographic bar should follow the card art")
+	}
+	if strings.Contains(out, `<details class="ig-text" open`) {
+		t.Error("the text version must start collapsed")
+	}
+	// Its accessible name is its visible text, so no aria-label may override it
+	// (WCAG 2.5.3 Label in Name).
+	if regexp.MustCompile(`class="ig-bar-link"[^>]*aria-label=`).MatchString(out) {
+		t.Error("the infographic bar link must not carry an aria-label that replaces its visible text")
 	}
 }
 
@@ -246,10 +259,8 @@ func TestHandleCard_ServesInfographicForConfiguredCard(t *testing.T) {
 			t.Errorf("GET /cards/amex-platinum should contain %q", want)
 		}
 	}
-	// The card art still appears in og:image and JSON-LD, which is right; it must
-	// just not be rendered as a visible image on the page.
-	if strings.Contains(body, `<img src="https://example.com/card-art-amex-platinum.png"`) {
-		t.Error("configured card should show the teaser in place of its card art")
+	if !strings.Contains(body, `<img src="https://example.com/card-art-amex-platinum.png"`) {
+		t.Error("a card with an infographic should keep its card art")
 	}
 	if strings.Contains(body, `name="robots"`) {
 		t.Error("the infographic is public and must not add a noindex tag")
@@ -257,12 +268,16 @@ func TestHandleCard_ServesInfographicForConfiguredCard(t *testing.T) {
 }
 
 func TestHandleCard_OtherCardsUnchanged(t *testing.T) {
+	const slug = "discover-it-cash-back"
+	if _, ok := cardInfographics[slug]; ok {
+		t.Fatalf("%s now has an infographic; pick a card without one for this test", slug)
+	}
 	app := setupRealTemplateCardApp(t)
-	createPublishedCard(t, app, "chase-sapphire-preferred", "Chase Sapphire Preferred")
+	createPublishedCard(t, app, slug, "Discover it Cash Back")
 
-	body := getCardPage(t, app, "chase-sapphire-preferred")
+	body := getCardPage(t, app, slug)
 
-	if !strings.Contains(body, `<img src="https://example.com/card-art-chase-sapphire-preferred.png"`) {
+	if !strings.Contains(body, `<img src="https://example.com/card-art-`+slug+`.png"`) {
 		t.Error("a card without an infographic should still render its card art")
 	}
 	if strings.Contains(body, `id="ig-lightbox"`) || strings.Contains(body, "card-infographic.js") {
@@ -326,7 +341,7 @@ func TestInfographicVersions_ChangeWithContent(t *testing.T) {
 		t.Error("another card's version must not change")
 	}
 
-	if err := os.Remove(filepath.Join(staticDir, "img", "infographic-bilt-palladium-teaser-960.jpg")); err != nil {
+	if err := os.Remove(filepath.Join(staticDir, "img", "infographic-bilt-palladium-teaser.jpg")); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := infographicVersions(staticDir)["bilt-palladium"]; ok {
