@@ -147,7 +147,7 @@
         },
         {
           "label": "Authorized users",
-          "note": "Up to 3 Platinum at $195 each; Companion Platinum cards at no fee"
+          "note": "Additional Platinum cards at $195 each; Companion Platinum cards at no fee"
         }
       ]
     },
@@ -185,7 +185,7 @@
     },
     "transfer_partners": {
       "program": "Amex Membership Rewards",
-      "count": "20+",
+      "count": "20",
       "key_partners": [
         "ANA",
         "Delta",
@@ -202,8 +202,8 @@
   {
     "slug": "amex-gold",
     "annual_fee_amount": 325,
-    "annual_fee_note": "Increased from $250 in 2025",
-    "welcome_bonus_text": "Up to 100,000 MR points after $6,000 spend in 6 months (personalized offer)",
+    "annual_fee_note": "Increased from $250 in 2024",
+    "welcome_bonus_text": "Up to 100,000 MR points after $8,000 spend in 6 months (personalized offer)",
     "earning_rates": {
       "dining": {
         "rate": "4x",
@@ -238,15 +238,15 @@
         "note": ""
       },
       "car_rental_portal": {
-        "rate": "N/A",
-        "note": "No car rental portal bonus"
+        "rate": "2x",
+        "note": "Prepaid car rentals via Amex Travel"
       },
       "other_travel_direct": {
         "rate": "1x",
         "note": ""
       },
       "other_travel_portal": {
-        "rate": "N/A",
+        "rate": "2x",
         "note": ""
       },
       "streaming": {
@@ -323,26 +323,26 @@
       "niche": [
         {
           "label": "Authorized users",
-          "note": "$35 per additional Gold card, up to 5"
+          "note": "$0 for up to 5 additional cards; $35 each from the 6th"
         }
       ]
     },
     "protections": {
       "trip_delay": {
-        "value": "$500",
-        "note": "6-hour trigger"
+        "value": "$300",
+        "note": "12-hour trigger, 2 claims/yr"
       },
       "baggage_delay_loss": {
         "value": "Yes",
         "note": "Baggage insurance plan for lost, damaged, or stolen baggage"
       },
       "car_rental": {
-        "value": "N/A",
+        "value": "Secondary",
         "note": ""
       },
       "purchase_protection": {
         "value": "$10,000/incident",
-        "note": "90 days"
+        "note": "$50,000/yr, 90 days"
       },
       "extended_warranty": {
         "value": "1 year",
@@ -350,8 +350,8 @@
       },
       "niche": [
         {
-          "label": "Return protection",
-          "note": "Up to $300 per item"
+          "label": "Global Assist Hotline",
+          "note": "24/7 emergency assistance when 100+ miles from home"
         }
       ]
     },
@@ -375,7 +375,7 @@
     "slug": "amex-business-platinum",
     "annual_fee_amount": 895,
     "annual_fee_note": "Increased from $695 in 2025 refresh",
-    "welcome_bonus_text": "200,000 MR points after $20,000 spend in 3 months",
+    "welcome_bonus_text": "As high as 300,000 MR points after $20,000 spend in 3 months (offers vary)",
     "earning_rates": {
       "dining": {
         "rate": "1x",
@@ -480,7 +480,7 @@
         },
         {
           "label": "$360 Indeed Credit",
-          "note": "$90/quarter for sponsored job postings"
+          "note": "$90/quarter on U.S. purchases directly with Indeed"
         },
         {
           "label": "$250 Adobe Credit",
@@ -495,8 +495,8 @@
           "note": "Annual"
         },
         {
-          "label": "$200 OURA Credit",
-          "note": "Annual toward OURA Ring"
+          "label": "$300 ChatGPT Business Credit",
+          "note": "Up to $300/yr on U.S. ChatGPT Business purchases"
         },
         {
           "label": "$120 Wireless Telephone Credit",
@@ -507,11 +507,11 @@
     "benefits": {
       "lounge_access": {
         "value": "Yes",
-        "note": "Centurion Lounges + Priority Pass Select + Delta Sky Club (when flying Delta)"
+        "note": "Centurion Lounges + Priority Pass Select + 10 Delta Sky Club visits/yr (when flying Delta)"
       },
       "hotel_status": {
         "value": "Hilton Gold, Marriott Gold",
-        "note": "Auto-enrolled"
+        "note": "Enrollment required; also Leaders Club Sterling (LHW)"
       },
       "global_entry_tsa": {
         "value": "$120 every 4 years",
@@ -540,14 +540,14 @@
         },
         {
           "label": "Employee cards",
-          "note": "No fee for Gold cards; Platinum employee cards $350 each"
+          "note": "$0 Employee Business Expense Cards; Employee Business Platinum Cards $400 each"
         }
       ]
     },
     "protections": {
       "trip_delay": {
         "value": "$500",
-        "note": "12-hour trigger"
+        "note": "6-hour trigger, 2 claims/yr"
       },
       "baggage_delay_loss": {
         "value": "Yes",
@@ -653,7 +653,7 @@
         },
         {
           "label": "5x on Peloton",
-          "note": "Equipment/accessory purchases $150+, through December 31, 2027"
+          "note": "Equipment/accessory purchases over $150, up to $5,000 total, through December 31, 2027"
         },
         {
           "label": "3x on vacation homes",
@@ -685,7 +685,7 @@
       "niche": [
         {
           "label": "DashPass by DoorDash",
-          "note": "Complimentary 1-year membership ($120/yr value)"
+          "note": "Complimentary 1-year membership ($120/yr value) if activated by 12/31/2027, plus $10/mo off a non-restaurant order"
         }
       ]
     },
@@ -736,7 +736,7 @@
       },
       "car_rental": {
         "value": "Primary",
-        "note": "Primary coverage for business and personal rentals"
+        "note": "Primary coverage for business and personal rentals, up to $60,000 for collision/theft; MSRP up to $125,000"
       },
       "purchase_protection": {
         "value": "$500/item",
@@ -1087,12 +1087,12 @@
       },
       "niche": [
         {
-          "label": "25% portal bonus",
-          "note": "Points worth 1.25 cpp when redeemed via Chase Travel"
+          "label": "Points Boost up to 1.5 cpp",
+          "note": "1 cpp in Chase Travel, up to 1.5 cpp on select Points Boost flights/hotels; pre-6/23/2025 cardmembers keep 1.25 cpp on points earned before 10/26/2025 until 10/26/2027"
         },
         {
-          "label": "1:1 transfer partners",
-          "note": "14+ partners including Hyatt, United, Southwest, BA, Flying Blue"
+          "label": "Transfer partners (1:1 except Hyatt 4:3 from Oct 1, 2026)",
+          "note": "13 partners on Chase's Ink page, including Hyatt, United, Southwest, BA, Flying Blue; Hyatt drops to 4:3 on Oct 1, 2026"
         },
         {
           "label": "Cell phone protection",
@@ -1118,7 +1118,7 @@
         "note": "Primary for business rentals"
       },
       "purchase_protection": {
-        "value": "$10,000/claim",
+        "value": "$10,000/item",
         "note": "$50,000/account, 120 days"
       },
       "extended_warranty": {
@@ -1134,7 +1134,7 @@
     },
     "transfer_partners": {
       "program": "Chase Ultimate Rewards",
-      "count": "14+",
+      "count": "13+",
       "key_partners": [
         "United",
         "Hyatt",
@@ -1142,7 +1142,7 @@
         "British Airways",
         "Air France/KLM"
       ],
-      "note": "1:1 transfer ratio to most partners"
+      "note": "1:1 to most partners; Hyatt moves to 4:3 (1,000 UR = 750 Hyatt) on October 1, 2026"
     }
   },
   {
@@ -1192,8 +1192,8 @@
         "note": ""
       },
       "other_travel_portal": {
-        "rate": "N/A",
-        "note": "Only flights, hotels, and car rentals have portal bonuses"
+        "rate": "5x",
+        "note": "Vacation rentals via Capital One Travel"
       },
       "streaming": {
         "rate": "2x",
@@ -1225,7 +1225,7 @@
       },
       "travel_other": {
         "amount": "$300/yr",
-        "note": "Automatically applied to Capital One Travel portal bookings"
+        "note": "Applied at checkout on Capital One Travel bookings; resets each account anniversary"
       },
       "dining": {
         "amount": "",
@@ -1240,7 +1240,7 @@
     "benefits": {
       "lounge_access": {
         "value": "Yes",
-        "note": "Capital One Lounges (cardholder + 2 guests) + Priority Pass Select"
+        "note": "Capital One Lounges + Priority Pass for the primary cardholder; guests $45 at Capital One Lounges (free with $75K calendar-year spend), $35 at Priority Pass; authorized users $125/yr"
       },
       "hotel_status": {
         "value": "Hertz President's Circle",
@@ -1269,7 +1269,7 @@
         },
         {
           "label": "Transferable miles",
-          "note": "1:1 to 15+ airline/hotel partners (Aeroplan, Turkish, BA Avios, Wyndham, Accor)"
+          "note": "15+ airline/hotel partners, mostly 1:1 (Aeroplan, Turkish, BA Avios, Wyndham; Accor is 2:1)"
         },
         {
           "label": "Premier Collection",
@@ -1277,7 +1277,7 @@
         },
         {
           "label": "Authorized users",
-          "note": "$0 fee; $125/yr for AU lounge access starting Feb 2026"
+          "note": "$0 fee; lounge access costs $125/yr per authorized user"
         }
       ]
     },
@@ -1287,11 +1287,11 @@
         "note": "6-hour or overnight trigger"
       },
       "baggage_delay_loss": {
-        "value": "Yes",
-        "note": "Visa Infinite benefit"
+        "value": "$3K/trip (lost luggage)",
+        "note": "Visa Infinite lost luggage reimbursement; no baggage delay coverage"
       },
       "car_rental": {
-        "value": "Secondary domestic, Primary international",
+        "value": "Primary",
         "note": "Visa Infinite benefit"
       },
       "purchase_protection": {
@@ -1655,7 +1655,7 @@
     "slug": "citi-custom-cash",
     "annual_fee_amount": 0,
     "annual_fee_note": "",
-    "welcome_bonus_text": "$200 cash back (20,000 ThankYou Points) after $1,500 spend in 6 months",
+    "welcome_bonus_text": "None — closed to new applicants as of May 28, 2026",
     "earning_rates": {
       "dining": {
         "rate": "5%",
@@ -1679,27 +1679,27 @@
       },
       "hotels_direct": {
         "rate": "5%",
-        "note": "If top category (select travel); $500/billing cycle cap"
+        "note": "Direct: 5% if top category (select travel), $500/billing cycle cap. Citi Travel: extra 4% (5% total)"
       },
       "hotels_portal": {
-        "rate": "N/A",
-        "note": ""
+        "rate": "5%",
+        "note": "Citi Travel: extra 4% on hotels (5% total)"
       },
       "car_rental_direct": {
-        "rate": "1%",
-        "note": ""
+        "rate": "5%",
+        "note": "Direct: 5% if top category (select transit), $500/billing cycle cap. Citi Travel: extra 4% (5% total)"
       },
       "car_rental_portal": {
-        "rate": "N/A",
-        "note": ""
+        "rate": "5%",
+        "note": "Citi Travel: extra 4% on car rentals (5% total)"
       },
       "other_travel_direct": {
         "rate": "5%",
-        "note": "If top category (select transit); $500/billing cycle cap"
+        "note": "Direct: 5% if top category (select transit), $500/billing cycle cap. Citi Travel attractions: extra 4% (5% total)"
       },
       "other_travel_portal": {
-        "rate": "N/A",
-        "note": ""
+        "rate": "5%",
+        "note": "Citi Travel: extra 4% on attractions (5% total)"
       },
       "streaming": {
         "rate": "5%",
@@ -1771,15 +1771,15 @@
       "niche": [
         {
           "label": "ThankYou Points compatible",
-          "note": "Points become transferable with Strata Premier or Strata Elite"
+          "note": "1:1 transfers when pooled with Strata Premier or Strata Elite; reduced ratios (1:0.7 to most airlines) on its own"
         },
         {
           "label": "Citi Entertainment",
           "note": "Presale tickets and preferred seating"
         },
         {
-          "label": "0% Intro APR",
-          "note": "15 months on purchases and balance transfers"
+          "label": "Closed to new applicants",
+          "note": "Citi stopped taking applications May 28, 2026; existing cardmembers unaffected"
         }
       ]
     },
@@ -1793,22 +1793,22 @@
         "note": ""
       },
       "car_rental": {
-        "value": "Secondary",
-        "note": "Worldwide car rental insurance"
+        "value": "N/A",
+        "note": "Not offered"
       },
       "purchase_protection": {
         "value": "N/A",
         "note": ""
       },
       "extended_warranty": {
-        "value": "N/A",
-        "note": ""
+        "value": "Up to 24 months",
+        "note": "Doubles original manufacturer's or store warranty, up to a max of 24 months"
       },
       "niche": []
     },
     "transfer_partners": {
       "program": "Citi ThankYou Points",
-      "count": "16+",
+      "count": "20",
       "key_partners": [
         "American Airlines",
         "JetBlue",
@@ -1816,7 +1816,7 @@
         "Etihad",
         "Singapore Airlines"
       ],
-      "note": "Transfer partners accessible when paired with Strata Premier or Elite card"
+      "note": "1:1 when pooled with Strata Premier or Elite; on its own, reduced ratios (1:0.7 to most airlines)"
     }
   },
   {
@@ -2192,31 +2192,31 @@
         "note": "Flat 2% on everything"
       },
       "airlines_portal": {
-        "rate": "N/A",
+        "rate": "2%",
         "note": ""
       },
       "hotels_direct": {
         "rate": "2%",
-        "note": "Flat 2% on everything"
+        "note": "Flat 2% booked direct; 5% total via Citi Travel"
       },
       "hotels_portal": {
-        "rate": "N/A",
+        "rate": "5%",
         "note": ""
       },
       "car_rental_direct": {
         "rate": "2%",
-        "note": "Flat 2% on everything"
+        "note": "Flat 2% booked direct; 5% total via Citi Travel"
       },
       "car_rental_portal": {
-        "rate": "N/A",
+        "rate": "5%",
         "note": ""
       },
       "other_travel_direct": {
         "rate": "2%",
-        "note": "Flat 2% on everything"
+        "note": "Flat 2% booked direct; 5% total on attractions via Citi Travel"
       },
       "other_travel_portal": {
-        "rate": "N/A",
+        "rate": "5%",
         "note": ""
       },
       "streaming": {
@@ -2280,7 +2280,7 @@
       "niche": [
         {
           "label": "ThankYou Points compatible",
-          "note": "Points become transferable with Strata Premier or Strata Elite"
+          "note": "Transfers at reduced ratios on its own; full ratios when pooled with Strata Premier or Strata Elite"
         },
         {
           "label": "Citi Entertainment",
@@ -2302,22 +2302,22 @@
         "note": ""
       },
       "car_rental": {
-        "value": "Secondary",
-        "note": "Car rental insurance when declining rental company coverage"
+        "value": "N/A",
+        "note": "Not offered"
       },
       "purchase_protection": {
         "value": "N/A",
         "note": ""
       },
       "extended_warranty": {
-        "value": "N/A",
+        "value": "Yes",
         "note": ""
       },
       "niche": []
     },
     "transfer_partners": {
       "program": "Citi ThankYou Points",
-      "count": "16+",
+      "count": "20",
       "key_partners": [
         "American Airlines",
         "JetBlue",
@@ -2325,7 +2325,7 @@
         "Etihad",
         "Singapore Airlines"
       ],
-      "note": "Transfer partners accessible when paired with Strata Premier or Elite card"
+      "note": "Full ratios (1:1 to most partners) when paired with Strata Premier or Elite; reduced ratios on its own"
     }
   },
   {
@@ -2336,19 +2336,19 @@
     "earning_rates": {
       "dining": {
         "rate": "2x",
-        "note": "Up to 3.5x with Preferred Rewards Platinum Honors"
+        "note": "3x with BofA Rewards Preferred Honors (50%); up to 3.5x at Premier (75%)"
       },
       "groceries": {
         "rate": "1.5x",
-        "note": "Up to 2.625x with Preferred Rewards Platinum Honors"
+        "note": "2.25x with BofA Rewards Preferred Honors (50%); up to 2.625x at Premier (75%)"
       },
       "gas": {
         "rate": "1.5x",
-        "note": "Up to 2.625x with Preferred Rewards Platinum Honors"
+        "note": "2.25x with BofA Rewards Preferred Honors (50%); up to 2.625x at Premier (75%)"
       },
       "airlines_direct": {
         "rate": "2x",
-        "note": "Travel category; up to 3.5x with Preferred Rewards Platinum Honors"
+        "note": "Travel category; 3x at BofA Rewards Preferred Honors, up to 3.5x at Premier"
       },
       "airlines_portal": {
         "rate": "N/A",
@@ -2356,7 +2356,7 @@
       },
       "hotels_direct": {
         "rate": "2x",
-        "note": "Travel category; up to 3.5x with Preferred Rewards Platinum Honors"
+        "note": "Travel category; 3x at BofA Rewards Preferred Honors, up to 3.5x at Premier"
       },
       "hotels_portal": {
         "rate": "N/A",
@@ -2384,19 +2384,19 @@
       },
       "base": {
         "rate": "1.5x",
-        "note": "Up to 2.625x with Preferred Rewards Platinum Honors"
+        "note": "2.25x with BofA Rewards Preferred Honors (50%); up to 2.625x at Premier (75%)"
       },
       "niche": [
         {
-          "label": "Preferred Rewards boost",
-          "note": "Gold 25% (+$20K), Platinum 50% (+$50K), Platinum Honors 75% (+$100K), Diamond 75% (+$1M)"
+          "label": "BofA Rewards boost",
+          "note": "Member 10%, Preferred Plus 25% ($30K+), Preferred Honors 50% ($100K+), Premier 75% ($1M+); replaced Preferred Rewards May 2026"
         }
       ]
     },
     "credits": {
       "airline": {
         "amount": "$100/yr",
-        "note": "Airline incidental credit (baggage, seat upgrades, in-flight) on selected airline"
+        "note": "Calendar-year airline incidental credit on most U.S. airlines, no airline selection (baggage, seat upgrades, change fees, in-flight, lounge fees); Allegiant, Spirit, Sun Country excluded"
       },
       "hotel": {
         "amount": "N/A",
@@ -2455,12 +2455,12 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "N/A",
-        "note": "Not explicitly listed; Visa Signature includes trip cancellation/interruption"
+        "value": "Yes",
+        "note": "Visa Signature travel insurance covers trip delays, cancellations and interruptions"
       },
       "baggage_delay_loss": {
         "value": "Yes",
-        "note": "Lost luggage reimbursement via Visa Signature"
+        "note": "Baggage delay and lost luggage coverage via Visa Signature"
       },
       "car_rental": {
         "value": "Yes",
@@ -2480,7 +2480,7 @@
       "program": "N/A",
       "count": "0",
       "key_partners": [],
-      "note": "Cash back only, no transfer partners"
+      "note": "Fixed 1cpp points (cash back, travel, gift cards); no transfer partners"
     }
   },
   {
@@ -2491,19 +2491,19 @@
     "earning_rates": {
       "dining": {
         "rate": "2x",
-        "note": "Up to 3.5x with Preferred Rewards Platinum Honors"
+        "note": "3x with BofA Rewards Preferred Honors (50%); up to 3.5x at Premier (75%)"
       },
       "groceries": {
         "rate": "1.5x",
-        "note": "Up to 2.625x with Preferred Rewards Platinum Honors"
+        "note": "2.25x with BofA Rewards Preferred Honors (50%); up to 2.625x at Premier (75%)"
       },
       "gas": {
         "rate": "1.5x",
-        "note": "Up to 2.625x with Preferred Rewards Platinum Honors"
+        "note": "2.25x with BofA Rewards Preferred Honors (50%); up to 2.625x at Premier (75%)"
       },
       "airlines_direct": {
         "rate": "2x",
-        "note": "Travel category; up to 3.5x with Preferred Rewards; 1.2cpp for airfare redemptions"
+        "note": "Travel category; up to 3.5x with BofA Rewards; 1.25cpp for airfare redemptions via BofA Travel"
       },
       "airlines_portal": {
         "rate": "N/A",
@@ -2511,7 +2511,7 @@
       },
       "hotels_direct": {
         "rate": "2x",
-        "note": "Travel category; up to 3.5x with Preferred Rewards"
+        "note": "Travel category; up to 3.5x with BofA Rewards"
       },
       "hotels_portal": {
         "rate": "N/A",
@@ -2539,23 +2539,23 @@
       },
       "base": {
         "rate": "1.5x",
-        "note": "Up to 2.625x with Preferred Rewards Platinum Honors"
+        "note": "2.25x with BofA Rewards Preferred Honors (50%); up to 2.625x at Premier (75%)"
       },
       "niche": [
         {
           "label": "20% Airfare Redemption Boost",
-          "note": "Points worth 1.2cpp when redeemed for flights through BofA travel center"
+          "note": "20% off airfare paid with points through BofA Travel (1.25cpp)"
         },
         {
-          "label": "Preferred Rewards boost",
-          "note": "Gold 25%, Platinum 50%, Platinum Honors 75%, Diamond 75%"
+          "label": "BofA Rewards boost",
+          "note": "Member 10%, Preferred Plus 25% ($30K+), Preferred Honors 50% ($100K+), Premier 75% ($1M+); replaced Preferred Rewards May 2026"
         }
       ]
     },
     "credits": {
       "airline": {
         "amount": "$300/yr",
-        "note": "Airline incidental credit on selected airline (baggage, seat upgrades, in-flight, lounge fees)"
+        "note": "Calendar-year airline incidental credit on select U.S. airlines, no airline selection (baggage, seat upgrades, change fees, in-flight, lounge fees); Allegiant, Spirit, Sun Country excluded"
       },
       "hotel": {
         "amount": "N/A",
@@ -2587,7 +2587,7 @@
     "benefits": {
       "lounge_access": {
         "value": "Priority Pass + 2 guests",
-        "note": "Unlimited access to 1,400+ lounges; up to 4 Priority Pass memberships"
+        "note": "Unlimited access to 1,900+ lounges and experiences; up to 4 Priority Pass memberships"
       },
       "hotel_status": {
         "value": "N/A",
@@ -2612,35 +2612,35 @@
       "niche": [
         {
           "label": "Visa Infinite benefits",
-          "note": "Return protection, extended warranty, auto CDW, trip cancellation/interruption, emergency medical evacuation"
+          "note": "Primary auto rental CDW, trip delay, trip cancellation/interruption, baggage delay, lost luggage, emergency medical evacuation"
         }
       ]
     },
     "protections": {
       "trip_delay": {
-        "value": "Yes",
-        "note": "Trip cancellation/interruption via Visa Infinite"
+        "value": "$500",
+        "note": "Up to $500 per ticket for 6+ hour delays or overnight stays; trip cancellation/interruption also included"
       },
       "baggage_delay_loss": {
         "value": "Yes",
         "note": "Via Visa Infinite"
       },
       "car_rental": {
-        "value": "Yes",
-        "note": "Auto CDW via Visa Infinite"
+        "value": "Primary",
+        "note": "Primary auto rental CDW up to $75,000"
       },
       "purchase_protection": {
-        "value": "Yes",
-        "note": "Via Visa Infinite"
+        "value": "N/A",
+        "note": "Not listed among BofA's Elite benefits (the regular Premium Rewards lists Purchase Security)"
       },
       "extended_warranty": {
-        "value": "Yes",
-        "note": "Via Visa Infinite"
+        "value": "N/A",
+        "note": "Not listed among BofA's Elite benefits (the regular Premium Rewards lists Warranty Manager Service)"
       },
       "niche": [
         {
           "label": "Emergency medical evacuation",
-          "note": "Via Visa Infinite"
+          "note": "Up to $100,000 for evacuation expenses"
         }
       ]
     },
@@ -2648,14 +2648,14 @@
       "program": "N/A",
       "count": "0",
       "key_partners": [],
-      "note": "Cash back only, no transfer partners"
+      "note": "Fixed-value points (1 cent each; 1.25 cents toward airfare via BofA Travel); no transfer partners"
     }
   },
   {
     "slug": "hilton-honors-amex-aspire",
     "annual_fee_amount": 550,
     "annual_fee_note": "",
-    "welcome_bonus_text": "175,000 Hilton Honors points after $6,000 spend in 6 months, plus a Free Night Reward (through April 15, 2026)",
+    "welcome_bonus_text": "200,000 Hilton Honors points after $6,000 spend in 6 months (limited-time offer through January 13, 2027); annual Free Night Reward also issued in year one",
     "earning_rates": {
       "dining": {
         "rate": "7x",
@@ -2679,11 +2679,11 @@
       },
       "hotels_direct": {
         "rate": "14x",
-        "note": "At Hilton properties; 34x total with Diamond status bonus"
+        "note": "At Hilton properties; 34x total with Diamond status bonus at most brands (24x at Home2, Homewood, Spark and Tru)"
       },
       "hotels_portal": {
-        "rate": "7x",
-        "note": "Non-Hilton hotels via Amex Travel count as flights/travel"
+        "rate": "3x",
+        "note": "Non-Hilton hotels via Amex Travel earn the 3x base rate (only flights earn 7x via Amex Travel)"
       },
       "car_rental_direct": {
         "rate": "7x",
@@ -2712,7 +2712,7 @@
       "niche": [
         {
           "label": "Hilton Diamond status stacking",
-          "note": "14x card + 20x Diamond bonus = 34x total at Hilton properties"
+          "note": "14x card + 20x Hilton Honors earn (10x base + 100% Diamond bonus) = 34x total at most Hilton properties"
         },
         {
           "label": "Spend bonuses",
@@ -2755,11 +2755,11 @@
     "benefits": {
       "lounge_access": {
         "value": "Diamond lounge only",
-        "note": "Executive lounge access at Hilton properties via Diamond status; Priority Pass removed Jan 2024"
+        "note": "Executive lounge access at Hilton properties via Diamond status; Priority Pass removed Feb 2024"
       },
       "hotel_status": {
         "value": "Hilton Diamond",
-        "note": "Highest Hilton tier: suite upgrades, exec lounge, daily F&B credit, 100% bonus on base points"
+        "note": "2nd-highest Hilton tier (below Diamond Reserve): suite upgrades, exec lounge, daily F&B credit, 100% bonus on base points"
       },
       "global_entry_tsa": {
         "value": "N/A",
@@ -2790,12 +2790,12 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "N/A",
-        "note": ""
+        "value": "$500",
+        "note": "6-hour trigger, round trip paid entirely with the card, 2 claims per 12 months"
       },
       "baggage_delay_loss": {
-        "value": "N/A",
-        "note": ""
+        "value": "$3K/trip",
+        "note": "Lost, damaged or stolen bags (up to $2,000 checked, $3,000 combined per trip); no baggage-delay coverage listed"
       },
       "car_rental": {
         "value": "Yes",
@@ -2822,11 +2822,11 @@
     "slug": "bilt-blue",
     "annual_fee_amount": 0,
     "annual_fee_note": "",
-    "welcome_bonus_text": "$100 in Bilt Cash upon approval (no spending requirement)",
+    "welcome_bonus_text": "$100 in Bilt Cash upon approval (no spending requirement; not for current or past Bilt Card 2.0 holders)",
     "earning_rates": {
       "dining": {
         "rate": "1x",
-        "note": "Everyday purchases base rate"
+        "note": "Everyday purchases base rate; up to 4x at Bilt Dining partner restaurants"
       },
       "groceries": {
         "rate": "1x",
@@ -2838,19 +2838,19 @@
       },
       "airlines_direct": {
         "rate": "1x",
-        "note": "Everyday purchases base rate"
+        "note": "Everyday purchases base rate; 2x on flights booked through Bilt Travel (1x card + 1x Bilt Travel bonus)"
       },
       "airlines_portal": {
-        "rate": "N/A",
-        "note": "Bilt Travel portal available but no bonus rate"
+        "rate": "2x",
+        "note": "Flights booked through Bilt Travel (1x card + 1x Bilt Travel bonus)"
       },
       "hotels_direct": {
         "rate": "1x",
-        "note": "Everyday purchases base rate"
+        "note": "Everyday purchases base rate; 3x on hotels booked through Bilt Travel (1x card + 2x Bilt Travel bonus, posted after the stay)"
       },
       "hotels_portal": {
-        "rate": "N/A",
-        "note": ""
+        "rate": "3x",
+        "note": "Hotels booked through Bilt Travel (1x card + 2x Bilt Travel bonus, posted after the stay)"
       },
       "car_rental_direct": {
         "rate": "1x",
@@ -2862,7 +2862,7 @@
       },
       "other_travel_direct": {
         "rate": "1x",
-        "note": ""
+        "note": "3x on Lyft rides with linked Bilt and Lyft accounts"
       },
       "other_travel_portal": {
         "rate": "N/A",
@@ -2874,20 +2874,20 @@
       },
       "base": {
         "rate": "1x",
-        "note": "All everyday purchases; optional 4% Bilt Cash stacks on top"
+        "note": "All everyday purchases; 4% Bilt Cash on top only with the Flexible Bilt Cash option"
       },
       "niche": [
         {
           "label": "Housing (rent/mortgage)",
-          "note": "Up to 1.25x tiered: 0.5x at 25% ratio, 0.75x at 50%, 1.0x at 75%, 1.25x at 100% everyday spend ratio"
+          "note": "Up to 1.25x tiered: 0.5x at 25% ratio, 0.75x at 50%, 1.0x at 75%, 1.25x at 100% everyday spend ratio (Housing-only option; 250-point floor below 25%). Flexible Bilt Cash option: up to 1x, unlocked at $3 Bilt Cash per 100 points"
         },
         {
           "label": "4% Bilt Cash",
-          "note": "Optional 4% Bilt Cash on everyday purchases stacks on top of base points"
+          "note": "Optional 4% Bilt Cash on everyday purchases stacks on top of base points, only on the Flexible Bilt Cash option (housing then maxes out at 1x)"
         },
         {
           "label": "Transfer partners",
-          "note": "1:1 to Hyatt, AA, United, Air Canada, Turkish, Virgin Atlantic, IHG, and more"
+          "note": "1:1 to Hyatt, United, Air Canada, Turkish, Virgin Atlantic, IHG, Atmos Rewards (Alaska/Hawaiian), and more"
         }
       ]
     },
@@ -2942,7 +2942,7 @@
       "niche": [
         {
           "label": "Rent Day perks",
-          "note": "Special promos, bonus earning, partner offers on 1st of each month"
+          "note": "Double points on everyday purchases (up to 1,000 bonus points), transfer bonuses and partner offers on the 1st of each month"
         }
       ]
     },
@@ -2956,12 +2956,12 @@
         "note": ""
       },
       "car_rental": {
-        "value": "Yes",
-        "note": "MasterRental coverage via Mastercard"
+        "value": "Secondary",
+        "note": "MasterRental coverage via Mastercard; secondary (primary if you have no other coverage), rentals up to 31 days"
       },
       "purchase_protection": {
-        "value": "Yes",
-        "note": "Purchase assurance via Mastercard"
+        "value": "$1,000/incident",
+        "note": "Purchase Assurance: theft or damage within 90 days, up to $1,000 per loss and $50,000 per 12 months"
       },
       "extended_warranty": {
         "value": "N/A",
@@ -2985,14 +2985,14 @@
         "Air Canada",
         "Atmos Rewards (Alaska/Hawaiian)"
       ],
-      "note": "1:1 transfer ratio to most partners. AA replaced by Atmos Rewards (Alaska/Hawaiian) in 2025."
+      "note": "1:1 transfer ratio to most partners. Accor is 3:2, I Prefer 1:2 and Amtrak 2:1. American Airlines left Bilt in June 2024; Atmos Rewards (Alaska/Hawaiian) is a current partner."
     }
   },
   {
     "slug": "bilt-obsidian",
     "annual_fee_amount": 95,
     "annual_fee_note": "",
-    "welcome_bonus_text": "$200 in Bilt Cash upon approval (no spending requirement)",
+    "welcome_bonus_text": "$200 in Bilt Cash upon approval (no spending requirement; not available if you have or ever had a Bilt Card 2.0)",
     "earning_rates": {
       "dining": {
         "rate": "3x",
@@ -3011,16 +3011,16 @@
         "note": "Travel category"
       },
       "airlines_portal": {
-        "rate": "N/A",
-        "note": "Bilt Travel portal available but no special portal rate"
+        "rate": "3x",
+        "note": "Flights via Bilt Travel (2x travel + 1x portal bonus)"
       },
       "hotels_direct": {
         "rate": "2x",
         "note": "Travel category"
       },
       "hotels_portal": {
-        "rate": "N/A",
-        "note": ""
+        "rate": "4x",
+        "note": "Hotels via Bilt Travel (2x travel + 2x portal bonus)"
       },
       "car_rental_direct": {
         "rate": "2x",
@@ -3031,8 +3031,8 @@
         "note": ""
       },
       "other_travel_direct": {
-        "rate": "2x",
-        "note": "Travel category"
+        "rate": "1x",
+        "note": "Trains, transit, taxis and tolls earn 1x; cruise lines earn the 2x travel rate; Lyft 3x with linked accounts"
       },
       "other_travel_portal": {
         "rate": "N/A",
@@ -3044,16 +3044,16 @@
       },
       "base": {
         "rate": "1x",
-        "note": "All other purchases; optional 4% Bilt Cash stacks on top"
+        "note": "All other purchases; Flexible Bilt Cash option adds 4% Bilt Cash but drops the tiered housing points"
       },
       "niche": [
         {
           "label": "Housing (rent/mortgage)",
-          "note": "Up to 1.25x tiered: 0.5x at 25% ratio, 0.75x at 50%, 1.0x at 75%, 1.25x at 100% everyday spend ratio"
+          "note": "Up to 1.25x tiered: 0.5x at 25% ratio, 0.75x at 50%, 1.0x at 75%, 1.25x at 100% everyday spend ratio (Housing-only option; 250-point floor below 25%)"
         },
         {
           "label": "4% Bilt Cash",
-          "note": "Optional 4% Bilt Cash on everyday purchases stacks on top of base points"
+          "note": "Flexible Bilt Cash option: 4% Bilt Cash on everyday purchases on top of base points; housing then earns up to 1x only by spending Bilt Cash ($3 per 100 points)"
         },
         {
           "label": "3x category choice",
@@ -3061,7 +3061,7 @@
         },
         {
           "label": "Transfer partners",
-          "note": "1:1 to Hyatt, AA, United, Air Canada, Turkish, Virgin Atlantic, IHG, and more"
+          "note": "1:1 to Hyatt, Atmos (Alaska/Hawaiian), United, Air Canada, Turkish, Virgin Atlantic, IHG, and more"
         }
       ]
     },
@@ -3072,7 +3072,7 @@
       },
       "hotel": {
         "amount": "$100/yr",
-        "note": "Two $50 statement credits per year for hotel bookings through Bilt Travel portal"
+        "note": "Two $50 credits per year (Jan–Jun and Jul–Dec, no rollover) for 2+ night hotel bookings through Bilt Travel portal"
       },
       "travel_other": {
         "amount": "N/A",
@@ -3126,24 +3126,24 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "N/A",
-        "note": ""
+        "value": "$300",
+        "note": "6+ hour delay; 1 claim per 12 months. Trip cancellation/interruption also covered ($2,000/trip)"
       },
       "baggage_delay_loss": {
-        "value": "N/A",
-        "note": ""
+        "value": "$1.5K/incident",
+        "note": "Lost or damaged luggage only (no baggage-delay cover); 2 claims per 12 months"
       },
       "car_rental": {
-        "value": "Yes",
-        "note": "Rental car CDW via World Elite Mastercard"
+        "value": "Secondary",
+        "note": "MasterRental CDW via World Elite Mastercard; secondary (primary if you have no other coverage), rentals up to 31 days"
       },
       "purchase_protection": {
-        "value": "Yes",
-        "note": "Via World Elite Mastercard"
+        "value": "$1,000/claim",
+        "note": "Purchase Assurance: theft or damage within 90 days of purchase; $50,000 max per 12 months"
       },
       "extended_warranty": {
-        "value": "N/A",
-        "note": ""
+        "value": "2 years",
+        "note": "Doubles manufacturer warranties of 24 months or less, up to 24 extra months; $10,000 max per claim"
       },
       "niche": [
         {
@@ -3163,7 +3163,7 @@
         "Air Canada",
         "Atmos Rewards (Alaska/Hawaiian)"
       ],
-      "note": "1:1 transfer ratio to most partners. AA replaced by Atmos Rewards (Alaska/Hawaiian) in 2025."
+      "note": "1:1 transfer ratio to most partners. American Airlines left Bilt in June 2024; Alaska and Hawaiian transfer as Atmos Rewards."
     }
   },
   {
@@ -3353,7 +3353,7 @@
     "slug": "chase-freedom-unlimited",
     "annual_fee_amount": 0,
     "annual_fee_note": "",
-    "welcome_bonus_text": "$250 bonus after $500 spend in 3 months (limited-time through June 11, 2026; standard is $200)",
+    "welcome_bonus_text": "$200 bonus (20,000 UR points) after $500 spend in 3 months",
     "earning_rates": {
       "dining": {
         "rate": "3%",
@@ -3414,7 +3414,7 @@
         },
         {
           "label": "Chase ecosystem",
-          "note": "Points pool with Sapphire Preferred (1.25cpp) or Reserve (1.5cpp) and unlock transfer partners"
+          "note": "Points pool with Sapphire Preferred or Reserve to unlock transfer partners (Preferred: Hyatt at 4:3); Chase Travel is 1cpp plus Points Boost up to 1.5cpp (Preferred) or 2cpp (Reserve) on select bookings"
         }
       ]
     },
@@ -3475,16 +3475,16 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "Yes",
-        "note": "Trip cancellation/interruption up to $1,500/person, $6,000/trip"
+        "value": "N/A",
+        "note": "No trip delay coverage; trip cancellation/interruption up to $1,500/person, $6,000/trip"
       },
       "baggage_delay_loss": {
-        "value": "Yes",
-        "note": "Covers essentials when bags delayed 6+ hours"
+        "value": "N/A",
+        "note": "No baggage delay or lost luggage coverage"
       },
       "car_rental": {
-        "value": "Yes",
-        "note": "Primary for business, secondary for personal rentals"
+        "value": "Secondary",
+        "note": "Secondary in the U.S.; primary outside the U.S. (up to $60,000)"
       },
       "purchase_protection": {
         "value": "Yes",
@@ -3513,7 +3513,7 @@
     "slug": "chase-freedom-flex",
     "annual_fee_amount": 0,
     "annual_fee_note": "",
-    "welcome_bonus_text": "$200 bonus after $500 spend in 3 months",
+    "welcome_bonus_text": "$250 bonus after $500 spend in 3 months (limited-time; standard offer is $200)",
     "earning_rates": {
       "dining": {
         "rate": "3%",
@@ -3570,7 +3570,7 @@
       "niche": [
         {
           "label": "Rotating 5% categories",
-          "note": "5% on up to $1,500/quarter in rotating categories (activation required); Q2 2026: Amazon, Whole Foods, Chase Travel, Feeding America"
+          "note": "5% on up to $1,500/quarter in rotating categories (activation required); Q4 2026: grocery stores (excl. Walmart & Target), dining, American Red Cross"
         },
         {
           "label": "Drugstores",
@@ -3578,7 +3578,7 @@
         },
         {
           "label": "Chase ecosystem",
-          "note": "Points pool with Sapphire Preferred (1.25cpp) or Reserve (1.5cpp) and unlock transfer partners"
+          "note": "Points pool with Sapphire Preferred or Reserve to unlock transfer partners and Points Boost (1cpp in Chase Travel, up to 1.5cpp CSP / 2cpp CSR on select flights and hotels)"
         }
       ]
     },
@@ -3627,8 +3627,8 @@
         "note": ""
       },
       "no_ftf": {
-        "value": "No",
-        "note": "3% foreign transaction fee"
+        "value": "Yes",
+        "note": "No foreign transaction fees since Sept 20, 2026 (was 3%)"
       },
       "niche": [
         {
@@ -3636,23 +3636,23 @@
           "note": "15 months on purchases and balance transfers"
         },
         {
-          "label": "Mastercard World Elite",
-          "note": "Cell phone protection, ID theft protection, ShopRunner membership"
+          "label": "DoorDash DashPass",
+          "note": "6 months complimentary (activate by 12/31/2027), then auto-renews at the monthly rate"
         }
       ]
     },
     "protections": {
       "trip_delay": {
-        "value": "Yes",
-        "note": "Trip cancellation/interruption up to $1,500/person, $6,000/trip"
+        "value": "N/A",
+        "note": "No trip delay coverage (trip cancellation/interruption only)"
       },
       "baggage_delay_loss": {
-        "value": "Yes",
-        "note": "Covers essentials when bags delayed 6+ hours"
+        "value": "N/A",
+        "note": "No baggage delay or lost luggage coverage"
       },
       "car_rental": {
-        "value": "Yes",
-        "note": "Primary for business, secondary for personal rentals"
+        "value": "Secondary domestic, Primary international",
+        "note": "Up to $60,000; primary in the U.S. only if you have no other auto insurance"
       },
       "purchase_protection": {
         "value": "Yes",
@@ -3664,12 +3664,12 @@
       },
       "niche": [
         {
-          "label": "Cell phone protection",
-          "note": "Up to $800/claim ($1,000/yr), $50 deductible; pay monthly phone bill with card"
+          "label": "Trip cancellation/interruption",
+          "note": "Up to $1,500/person, $6,000/trip for prepaid nonrefundable fares"
         },
         {
-          "label": "Travel accident insurance",
-          "note": "Up to $500,000"
+          "label": "Travel & emergency assistance",
+          "note": "Legal and medical referrals while traveling (services at your cost)"
         }
       ]
     },
@@ -3690,7 +3690,7 @@
     "slug": "amex-business-gold",
     "annual_fee_amount": 375,
     "annual_fee_note": "",
-    "welcome_bonus_text": "100,000 Membership Rewards points after $15,000 spend in 3 months",
+    "welcome_bonus_text": "As high as 200,000 Membership Rewards points after $15,000 spend in 3 months (personalized offer)",
     "earning_rates": {
       "dining": {
         "rate": "4x",
@@ -3705,8 +3705,8 @@
         "note": "If U.S. gas stations is one of your top 2 spending categories that billing cycle; up to $150K/yr combined then 1x"
       },
       "airlines_direct": {
-        "rate": "3x",
-        "note": "Flights booked on amextravel.com"
+        "rate": "1x",
+        "note": "Base rate; 3x only on flights booked on amextravel.com"
       },
       "airlines_portal": {
         "rate": "3x",
@@ -3730,11 +3730,11 @@
       },
       "other_travel_direct": {
         "rate": "1x",
-        "note": "Base rate"
+        "note": "Base rate; transit (trains, rideshare, taxis, tolls, parking) earns 4x if it's a top-2 category"
       },
       "other_travel_portal": {
-        "rate": "3x",
-        "note": "Via Amex Travel"
+        "rate": "N/A",
+        "note": "No portal bonus; Amex Travel 3x covers only flights and prepaid hotels"
       },
       "streaming": {
         "rate": "1x",
@@ -3747,7 +3747,7 @@
       "niche": [
         {
           "label": "Auto top-2 4x categories",
-          "note": "Card automatically picks top 2 from: U.S. advertising, computer/software/cloud, gas, restaurants, shipping, wireless telephone"
+          "note": "Card automatically picks top 2 from: U.S. advertising, computer/software/cloud, gas, restaurants, transit, wireless telephone"
         },
         {
           "label": "U.S. advertising",
@@ -3758,8 +3758,8 @@
           "note": "4x if top-2 category (AWS, Microsoft, Adobe, Apple)"
         },
         {
-          "label": "U.S. shipping",
-          "note": "4x if top-2 category (FedEx, UPS, USPS)"
+          "label": "Transit",
+          "note": "4x if top-2 category (trains, taxis, rideshare, ferries, tolls, parking, buses, subways)"
         },
         {
           "label": "U.S. wireless telephone",
@@ -3794,16 +3794,16 @@
       },
       "niche": [
         {
-          "label": "FedEx/Grubhub/Office Supply",
-          "note": "Up to $20/month ($240/yr) in statement credits for U.S. purchases"
+          "label": "$240 Grubhub/Office Supply credit",
+          "note": "Up to $20/month ($240/yr) in statement credits for U.S. purchases; FedEx eligible only through 10/1/2026; enrollment required"
         },
         {
           "label": "Walmart+ membership",
           "note": "Monthly statement credit worth up to $155/yr"
         },
         {
-          "label": "Squarespace credit",
-          "note": "Up to $150/yr for eligible U.S. purchases with Squarespace"
+          "label": "Squarespace + ChatGPT Business credits",
+          "note": "Up to $150/yr for eligible U.S. purchases with Squarespace, plus up to $300/yr on U.S. ChatGPT Business purchases (enrollment required for both)"
         }
       ]
     },
@@ -3849,20 +3849,20 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "N/A",
-        "note": ""
+        "value": "$300/trip",
+        "note": "12+ hour delay on a round-trip paid with the card; max 2 claims per 12 months"
       },
       "baggage_delay_loss": {
         "value": "Yes",
         "note": "Up to $1,250 carry-on, $500 checked"
       },
       "car_rental": {
-        "value": "Yes",
-        "note": "Secondary coverage for business rentals"
+        "value": "Secondary",
+        "note": "Secondary coverage; no liability coverage"
       },
       "purchase_protection": {
         "value": "Yes",
-        "note": "Up to $10,000 per occurrence"
+        "note": "Up to $1,000 per covered purchase, $50,000/yr, 90 days"
       },
       "extended_warranty": {
         "value": "Yes",
@@ -3870,8 +3870,8 @@
       },
       "niche": [
         {
-          "label": "Travel accident insurance",
-          "note": "Up to $100,000"
+          "label": "Cell phone protection",
+          "note": "Up to $800 per claim, 2 claims per 12 months, $50 deductible"
         },
         {
           "label": "Global Assist Hotline",
@@ -3881,7 +3881,7 @@
     },
     "transfer_partners": {
       "program": "Amex Membership Rewards",
-      "count": "20+",
+      "count": "20",
       "key_partners": [
         "ANA",
         "Delta",
@@ -3892,14 +3892,14 @@
         "Singapore Airlines",
         "Emirates"
       ],
-      "note": "1:1 transfer ratio to most airline partners; some hotel partners at different ratios"
+      "note": "1:1 to most of the 16 airline partners (JetBlue and Emirates 5:4, Aeromexico 1:1.6); hotel ratios vary (Hilton 1:2)"
     }
   },
   {
     "slug": "amex-green",
     "annual_fee_amount": 150,
     "annual_fee_note": "",
-    "welcome_bonus_text": "40,000 Membership Rewards points after $3,000 spend in 6 months",
+    "welcome_bonus_text": "No longer available (closed to new applicants July 23, 2026; product change from Gold/Platinum only, no bonus). Previously: 40,000 MR points after $3,000 spend in 6 months",
     "earning_rates": {
       "dining": {
         "rate": "3x",
@@ -3956,11 +3956,11 @@
       "niche": [
         {
           "label": "Transit",
-          "note": "3x on taxis, rideshares, trains, buses, tolls, parking, bike-share worldwide"
+          "note": "3x on taxis, rideshares, trains, subways, buses, ferries, tolls, parking worldwide"
         },
         {
           "label": "MR transfer partners",
-          "note": "1:1 to Delta, ANA, Singapore, BA, Air France/KLM, JetBlue, Emirates, Etihad, etc.; Hilton 1:2, Marriott 1:1"
+          "note": "1:1 to Delta, ANA, Singapore, BA, Air France/KLM, Aeroplan, Avianca, Virgin Atlantic, etc.; JetBlue, Emirates and Cathay 5:4; Hilton 1:2, Marriott and Choice 1:1"
         }
       ]
     },
@@ -4020,13 +4020,13 @@
       "niche": [
         {
           "label": "Transit 3x earning",
-          "note": "Unique bonus on rideshares, subway, commuter rail, tolls, parking, bike-share"
+          "note": "3x on rideshares, taxis, trains, subways, buses, ferries, tolls, parking"
         }
       ]
     },
     "protections": {
       "trip_delay": {
-        "value": "Yes",
+        "value": "$300",
         "note": "Up to $300 per trip (up to 2 claims/yr) for delays over 12 hours"
       },
       "baggage_delay_loss": {
@@ -4034,21 +4034,21 @@
         "note": "Up to $1,250 carry-on, $500 checked"
       },
       "car_rental": {
-        "value": "Yes",
+        "value": "Secondary",
         "note": "Secondary coverage for collision/theft on eligible rentals"
       },
       "purchase_protection": {
-        "value": "Yes",
-        "note": "Coverage on eligible purchases"
+        "value": "$1,000/item",
+        "note": "90 days, $50,000/yr"
       },
       "extended_warranty": {
-        "value": "N/A",
-        "note": "Not explicitly listed"
+        "value": "1 year",
+        "note": "Adds up to 1 year to warranties of 5 years or less; up to $10,000/item, $50,000/yr"
       },
       "niche": [
         {
-          "label": "Travel accident insurance",
-          "note": "Up to $100,000 for common carrier travel"
+          "label": "Premium Car Rental Protection (optional)",
+          "note": "Paid opt-in upgrade to primary rental car coverage"
         },
         {
           "label": "Global Assist Hotline",
@@ -4058,7 +4058,7 @@
     },
     "transfer_partners": {
       "program": "Amex Membership Rewards",
-      "count": "20+",
+      "count": "20",
       "key_partners": [
         "ANA",
         "Delta",
@@ -4075,7 +4075,7 @@
   {
     "slug": "capital-one-savor",
     "annual_fee_amount": 0,
-    "annual_fee_note": "Formerly SavorOne; rebranded October 2024",
+    "annual_fee_note": "Formerly SavorOne (renamed Savor in October 2024); not the separate $39 SavorOne for fair credit",
     "welcome_bonus_text": "$200 cash bonus after $500 spend in 3 months",
     "earning_rates": {
       "dining": {
@@ -4095,8 +4095,8 @@
         "note": "Base rate"
       },
       "airlines_portal": {
-        "rate": "5%",
-        "note": "Hotels, vacation rentals, rental cars, activities via Capital One Travel"
+        "rate": "N/A",
+        "note": "No portal bonus on flights; flights booked via Capital One Travel earn the 1% base rate"
       },
       "hotels_direct": {
         "rate": "1%",
@@ -4120,11 +4120,11 @@
       },
       "other_travel_portal": {
         "rate": "5%",
-        "note": "Via Capital One Travel"
+        "note": "Vacation rentals via Capital One Travel"
       },
       "streaming": {
         "rate": "3%",
-        "note": "Popular streaming services (Netflix, Spotify, Disney+, etc.); unlimited"
+        "note": "Popular streaming services (Netflix, Hulu, Disney+, etc.); unlimited"
       },
       "base": {
         "rate": "1%",
@@ -4214,12 +4214,12 @@
       },
       "extended_warranty": {
         "value": "Yes",
-        "note": "Doubles manufacturer warranty up to 1 additional year"
+        "note": "Additional warranty protection on eligible purchases; terms in Mastercard Guide to Benefits"
       },
       "niche": [
         {
-          "label": "24/7 travel assistance",
-          "note": "Trip planning, lost luggage, emergencies"
+          "label": "24-hour travel assistance",
+          "note": "Emergency card replacement and cash advance if your card is lost or stolen"
         }
       ]
     },
@@ -4227,14 +4227,14 @@
       "program": "N/A",
       "count": "0",
       "key_partners": [],
-      "note": "Cash back only, no transfer partners"
+      "note": "Cash back only, no transfer partners of its own; can be converted to Capital One miles if you also hold a Capital One miles card like the Venture or Venture X"
     }
   },
   {
     "slug": "marriott-bonvoy-brilliant",
     "annual_fee_amount": 650,
     "annual_fee_note": "",
-    "welcome_bonus_text": "200,000 Marriott Bonvoy points after $6,000 spend in 6 months (through May 13, 2026)",
+    "welcome_bonus_text": "150,000 Marriott Bonvoy points + $250 statement credit after $6,000 spend in 6 months (through Sep 30, 2026)",
     "earning_rates": {
       "dining": {
         "rate": "3x",
@@ -4295,7 +4295,7 @@
         },
         {
           "label": "Airline transfers",
-          "note": "Transfer to 40+ airlines at 3:1 ratio; 5K bonus per 60K transferred"
+          "note": "Transfer to 38 airlines, mostly at 3:1; 5K bonus per 60K transferred with most partners (10K for United)"
         }
       ]
     },
@@ -4305,8 +4305,8 @@
         "note": ""
       },
       "hotel": {
-        "amount": "$100/yr",
-        "note": "$100 property credit on qualifying 2+ night stays at Ritz-Carlton or St. Regis"
+        "amount": "$100/stay",
+        "note": "Up to $100 property credit for qualifying charges per 2+ night stay at Ritz-Carlton or St. Regis booked direct at an eligible special rate"
       },
       "travel_other": {
         "amount": "N/A",
@@ -4334,14 +4334,14 @@
     "benefits": {
       "lounge_access": {
         "value": "Priority Pass + 2 guests",
-        "note": "Unlimited access to 1,400+ lounges worldwide"
+        "note": "Unlimited access to 1,300+ lounges worldwide"
       },
       "hotel_status": {
         "value": "Marriott Platinum Elite",
-        "note": "Room upgrades (incl. suites when available), late checkout, exec lounge access, 50% bonus points, welcome gifts"
+        "note": "Room upgrades (incl. suites when available), late checkout, exec lounge access at participating brands (not Ritz-Carlton, St. Regis or W), 50% bonus points, welcome gifts"
       },
       "global_entry_tsa": {
-        "value": "Yes",
+        "value": "$120 every 4 years",
         "note": "Up to $85 TSA PreCheck or $120 Global Entry every 4 years"
       },
       "companion_cert": {
@@ -4365,39 +4365,39 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "N/A",
-        "note": ""
+        "value": "$500",
+        "note": "6-hour trigger, 2 claims/yr"
       },
       "baggage_delay_loss": {
-        "value": "N/A",
-        "note": ""
+        "value": "$3K/trip",
+        "note": "Lost, damaged or stolen bags: up to $2,000 checked, $3,000 combined per trip; no baggage delay coverage"
       },
       "car_rental": {
-        "value": "Yes",
-        "note": "Car rental loss and damage insurance"
+        "value": "Secondary",
+        "note": "Car rental loss and damage insurance (secondary; no liability coverage)"
       },
       "purchase_protection": {
-        "value": "Yes",
-        "note": "Purchase protection on eligible items"
+        "value": "$10,000/incident",
+        "note": "$50,000/yr, 90 days"
       },
       "extended_warranty": {
-        "value": "Yes",
-        "note": "Extended warranty on eligible purchases"
+        "value": "1 year",
+        "note": "On warranties of 5 years or less"
       },
       "niche": []
     },
     "transfer_partners": {
       "program": "Marriott Bonvoy",
-      "count": "N/A",
+      "count": "38 airlines, mostly 3:1",
       "key_partners": [],
-      "note": "Earns Marriott Bonvoy directly, no transfer partners"
+      "note": "Earns Marriott Bonvoy directly; points transfer to 38 airline programs, mostly at 3:1"
     }
   },
   {
     "slug": "marriott-bonvoy-boundless",
     "annual_fee_amount": 95,
     "annual_fee_note": "",
-    "welcome_bonus_text": "3 Free Night Awards after $3,000 spend in 3 months + 1 additional Free Night after $4,000 total in 4 months (each up to 50,000 points)",
+    "welcome_bonus_text": "3 Free Night Awards after $3,000 spend in 3 months (each up to 50,000 points)",
     "earning_rates": {
       "dining": {
         "rate": "3x",
@@ -4457,19 +4457,19 @@
           "note": "3x on first $6,000/yr combined across grocery, gas, and dining; then 2x"
         },
         {
-          "label": "4th Night Free",
-          "note": "Book 4+ consecutive award nights and 4th night is free"
+          "label": "5th Night Free",
+          "note": "Redeem points for 5 consecutive nights and the 5th is free (Marriott perk for all members)"
         },
         {
           "label": "Airline transfers",
-          "note": "Transfer to 40+ airlines at 3:1 ratio; 5K bonus per 60K transferred"
+          "note": "Transfer to 38 airlines, mostly at 3:1; 5K bonus miles per 60K points with most (10K with United)"
         }
       ]
     },
     "credits": {
       "airline": {
-        "amount": "$100/yr",
-        "note": "2026 benefit: $50 per half-year for airline purchases (requires $250+ spend per period)"
+        "amount": "$100 (limited-time)",
+        "note": "Limited-time offer, not ongoing: $50 per half-year window after $250+ spent directly with airlines; cardmembers by 1/7/2026 (activation required) through 12/31/2026, new cardmembers who apply 6/4/2026-12/31/2026 through 6/30/2027"
       },
       "hotel": {
         "amount": "N/A",
@@ -4505,7 +4505,7 @@
       },
       "hotel_status": {
         "value": "Marriott Silver Elite",
-        "note": "10% bonus points on stays, priority late checkout, enhanced Wi-Fi"
+        "note": "10% bonus points on stays, priority late checkout, free Wi-Fi"
       },
       "global_entry_tsa": {
         "value": "N/A",
@@ -4525,8 +4525,8 @@
       },
       "niche": [
         {
-          "label": "4th Night Free",
-          "note": "On award stays of 4+ consecutive nights, only pay points for 3"
+          "label": "5th Night Free",
+          "note": "On 5-night award stays, only pay points for 4 (Marriott perk for all members)"
         },
         {
           "label": "Free Night Award",
@@ -4536,32 +4536,32 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "Yes",
-        "note": "Trip cancellation/interruption via Visa Signature"
+        "value": "$500",
+        "note": "Trip delay reimbursement: 12+ hour delay or overnight stay, up to $500 per traveler"
       },
       "baggage_delay_loss": {
-        "value": "Yes",
-        "note": "Baggage delay insurance via Visa Signature"
+        "value": "$3K/traveler",
+        "note": "Baggage delay up to $100/day for 5 days (6+ hr delay); lost luggage up to $3,000 per traveler"
       },
       "car_rental": {
-        "value": "Yes",
-        "note": "Auto rental CDW via Visa Signature"
+        "value": "Secondary",
+        "note": "Up to $60,000 for theft or collision; secondary in the U.S. (primary abroad); decline the rental company's CDW"
       },
       "purchase_protection": {
-        "value": "Yes",
-        "note": "Purchase protection via Visa Signature"
+        "value": "$500/item",
+        "note": "120 days, up to $500 per item"
       },
       "extended_warranty": {
-        "value": "Yes",
-        "note": "Extended warranty via Visa Signature"
+        "value": "1 year",
+        "note": "Adds 1 year to U.S. manufacturer warranties of 3 years or less"
       },
       "niche": []
     },
     "transfer_partners": {
       "program": "Marriott Bonvoy",
-      "count": "N/A",
+      "count": "38 airlines, mostly 3:1",
       "key_partners": [],
-      "note": "Earns Marriott Bonvoy directly, no transfer partners"
+      "note": "Earns Marriott Bonvoy directly; points transfer to 38 airline programs, mostly at 3:1"
     }
   },
   {
@@ -4571,7 +4571,7 @@
     "issuer": "Chase",
     "annual_fee_amount": 0,
     "annual_fee_note": "No annual fee",
-    "welcome_bonus_text": "30,000 Marriott Bonvoy points after $1,000 spend in 3 months",
+    "welcome_bonus_text": "45,000 Marriott Bonvoy points after $1,000 spend in 3 months",
     "earning_rates": {
       "dining": "N/A",
       "groceries": "2x Bonvoy points",
@@ -4598,7 +4598,7 @@
     },
     "benefits": {
       "lounge_access": "N/A",
-      "hotel_status": "Automatic Silver Elite status (10% bonus points, priority late checkout, enhanced Wi-Fi)",
+      "hotel_status": "Automatic Silver Elite status (10% bonus points, priority late checkout, free Wi-Fi)",
       "global_entry_tsa": "N/A",
       "companion_cert": "N/A",
       "free_checked_bags": "N/A",
@@ -4607,8 +4607,8 @@
     },
     "protections": {
       "trip_delay": {
-        "value": "N/A",
-        "note": ""
+        "value": "$500",
+        "note": "12-hour trigger or overnight stay required"
       },
       "baggage_delay_loss": {
         "value": "$3K/trip",
@@ -4630,9 +4630,9 @@
     },
     "transfer_partners": {
       "program": "Marriott Bonvoy",
-      "count": "N/A",
+      "count": "38 airlines, mostly 3:1",
       "key_partners": [],
-      "note": "Earns Marriott Bonvoy directly, no transfer partners"
+      "note": "Earns Marriott Bonvoy directly; points transfer to 38 airline programs, mostly at 3:1"
     }
   },
   {
@@ -4642,7 +4642,7 @@
     "issuer": "Wells Fargo",
     "annual_fee_amount": 0,
     "annual_fee_note": "No annual fee",
-    "welcome_bonus_text": "$200 cash rewards bonus after $500 spend in 3 months",
+    "welcome_bonus_text": "$100 cash rewards bonus after $500 spend in 3 months",
     "earning_rates": {
       "dining": "2%",
       "groceries": "2%",
@@ -4674,7 +4674,7 @@
       "companion_cert": "N/A",
       "free_checked_bags": "N/A",
       "no_ftf": false,
-      "niche": "0% intro APR for 12 months on purchases; Visa Signature Luxury Hotel Collection; Visa Signature Concierge; 3% foreign transaction fee"
+      "niche": "0% intro APR for 12 months on purchases and qualifying balance transfers; Visa Signature Luxury Hotel Collection; Visa Signature Concierge"
     },
     "protections": {
       "trip_delay": {
@@ -4686,8 +4686,8 @@
         "note": ""
       },
       "car_rental": {
-        "value": "N/A",
-        "note": ""
+        "value": "Secondary domestic, Primary international",
+        "note": "Auto rental collision damage waiver up to $50,000; pay the full rental with the card and decline the rental company's CDW; up to 15 days in the U.S., 31 days abroad"
       },
       "purchase_protection": {
         "value": "N/A",
@@ -4705,14 +4705,14 @@
       ]
     },
     "transfer_partners": {
-      "program": "Wells Fargo Go Far Rewards",
-      "count": "8",
+      "program": "Wells Fargo Rewards",
+      "count": "10",
       "key_partners": [
         "Choice Hotels",
         "Air France/KLM",
         "British Airways"
       ],
-      "note": "Limited transfer partners; 1:1 ratio to most"
+      "note": "Active Cash earns cash rewards; to transfer, combine them into an Autograph Journey or Autograph points account. 1:1 to most airlines, 1:2 to Choice and Wyndham"
     }
   },
   {
@@ -4754,7 +4754,7 @@
       "companion_cert": "N/A",
       "free_checked_bags": "N/A",
       "no_ftf": true,
-      "niche": "8 transfer partners at 1:1 ratio (Air France/KLM, British Airways, Virgin Atlantic, Aer Lingus, Avianca, JetBlue, Iberia, Virgin Red); Choice Hotels at 1:2; 0% intro APR for 12 months"
+      "niche": "8 airline transfer partners at 1:1 ratio (Air France/KLM, British Airways, Virgin Atlantic, Aer Lingus, Avianca, Cathay Pacific, JetBlue, Iberia); Choice Hotels and Wyndham at 1:2; 0% intro APR for 12 months"
     },
     "protections": {
       "trip_delay": {
@@ -4762,12 +4762,12 @@
         "note": ""
       },
       "baggage_delay_loss": {
-        "value": "$3K/trip",
-        "note": "Lost luggage reimbursement up to $3,000 per trip"
+        "value": "N/A",
+        "note": "Not offered (Lost Luggage Locator Service only; no reimbursement)"
       },
       "car_rental": {
         "value": "Secondary",
-        "note": "Auto rental collision damage waiver; up to 15 days U.S., 31 days international"
+        "note": "Auto rental collision damage waiver; secondary in the U.S., primary abroad; up to 15 days U.S., 31 days international"
       },
       "purchase_protection": {
         "value": "N/A",
@@ -4785,8 +4785,8 @@
       ]
     },
     "transfer_partners": {
-      "program": "Wells Fargo Go Far Rewards",
-      "count": "8",
+      "program": "Wells Fargo Rewards",
+      "count": "10",
       "key_partners": [
         "Choice Hotels",
         "Air France/KLM",
@@ -4807,17 +4807,17 @@
       "dining": "1% (5% when rotating category, up to $1,500/quarter)",
       "groceries": "1% (5% when rotating category, up to $1,500/quarter)",
       "gas": "1% (5% when rotating category, up to $1,500/quarter)",
-      "airlines_direct": "1%",
+      "airlines_direct": "1% (5% when rotating category, up to $1,500/quarter)",
       "airlines_portal": "N/A",
       "hotels_direct": "1%",
       "hotels_portal": "N/A",
       "car_rental_direct": "1%",
       "car_rental_portal": "N/A",
-      "other_travel_direct": "1%",
+      "other_travel_direct": "1% (5% when rotating category, up to $1,500/quarter)",
       "other_travel_portal": "N/A",
       "streaming": "1% (5% when rotating category, up to $1,500/quarter)",
       "base": "1% cash back (2% effective in first year with Cashback Match)",
-      "niche": "5% on quarterly rotating categories up to $1,500/quarter (activation required). 2026 Q1: grocery/wholesale/streaming; Q2: restaurants/home improvement"
+      "niche": "5% on quarterly rotating categories up to $1,500/quarter (activation required). 2026 Q1: grocery/wholesale/streaming; Q2: restaurants/home improvement; Q3: gas/EV charging/transit (incl. airlines)/drugstores; Q4: utilities/restaurants/entertainment"
     },
     "credits": {
       "airline": "N/A",
@@ -4839,7 +4839,7 @@
     "protections": {
       "trip_delay": "N/A",
       "baggage_delay_loss": "N/A",
-      "car_rental": "Secondary collision damage coverage on rental cars",
+      "car_rental": "N/A",
       "purchase_protection": "N/A",
       "extended_warranty": "N/A",
       "niche": "N/A"
@@ -5034,7 +5034,7 @@
       "lounge_access": "N/A",
       "hotel_status": "N/A",
       "global_entry_tsa": "$120 Global Entry every 4 years or up to $85 TSA PreCheck",
-      "companion_cert": "Annual domestic companion certificate (Delta Main only, Delta Basic excluded; round-trip domestic/Caribbean/Central America for taxes and fees only, $22-$250)",
+      "companion_cert": "Annual companion certificate (Delta Main only, Delta Basic excluded; round-trip domestic/Caribbean/Central America for taxes and fees only, $22-$250)",
       "free_checked_bags": "First checked bag free for cardholder and up to 8 companions on same reservation; second checked bag free for cardholder on domestic Delta flights",
       "no_ftf": true,
       "niche": "$2,500 MQD Headstart per Medallion Qualification Year + MQD Boost ($1 MQD per $20 spent); Zone 5 priority boarding; Complimentary Upgrade List (after Medallion Members and Reserve Card Members); 15% off Delta award travel; Hertz Five Star status"
@@ -5228,16 +5228,16 @@
     "issuer": "Chase",
     "annual_fee_amount": 350,
     "annual_fee_note": "$350 per year",
-    "welcome_bonus_text": "80,000 bonus miles + 3,000 PQP after $4,000 spend in first 3 months (~$1,040 value)",
+    "welcome_bonus_text": "60,000 bonus miles + 500 PQP after $4,000 spend in first 3 months, plus 10,000 bonus miles for adding an authorized user in first 3 months (up to 70,000 miles, ~$910 value)",
     "earning_rates": {
       "dining": "2x United miles",
       "groceries": "1x United miles",
       "gas": "1x United miles",
-      "airlines_direct": "3x United miles (8x total with MileagePlus member earning)",
+      "airlines_direct": "4x United miles on United purchases (10x total on eligible United flights with MileagePlus member earning)",
       "airlines_portal": "N/A",
       "hotels_direct": "2x United miles",
       "hotels_portal": "5x United miles (Renowned Hotels prepaid stays)",
-      "car_rental_direct": "1x United miles",
+      "car_rental_direct": "2x United miles (car rentals count as travel)",
       "car_rental_portal": "N/A",
       "other_travel_direct": "2x United miles (non-United travel)",
       "other_travel_portal": "N/A",
@@ -5251,16 +5251,16 @@
       "travel_other": "Up to $100/year rideshare credits; up to $80/year Avis/Budget credits",
       "dining": "N/A",
       "streaming": "N/A",
-      "niche": "Up to $180/year Instacart credits ($10 Instacart+ + $5 Instacart/month through 12/31/2027); 10,000-mile award flight discount on anniversary; 1,000 PQP annual bonus"
+      "niche": "Up to $180/year Instacart credits (one $10 + one $5 credit/month with an active Instacart+ membership, through 12/31/2027); 10,000-mile award flight discount on anniversary (plus another after $20K calendar-year spend); 1,000 PQP annual bonus"
     },
     "benefits": {
       "lounge_access": "N/A",
       "hotel_status": "N/A",
       "global_entry_tsa": "Up to $120 every 4 years",
       "companion_cert": "N/A",
-      "free_checked_bags": "2 free checked bags on United flights",
+      "free_checked_bags": "2 free checked bags on United flights (cardmember + 1 companion on same reservation)",
       "no_ftf": true,
-      "niche": "Priority boarding; up to 18,000 PQP/year from card spend + 1,000 PQP annual bonus"
+      "niche": "Priority boarding; 2 global Economy Plus seat upgrades after $40K calendar-year spend; up to 18,000 PQP/year from card spend + 1,000 PQP annual bonus"
     },
     "protections": {
       "trip_delay": {
@@ -5276,8 +5276,8 @@
         "note": "Primary coverage up to $60,000 for collision/theft; MSRP up to $125,000"
       },
       "purchase_protection": {
-        "value": "$500/claim",
-        "note": "120 days, excess coverage basis"
+        "value": "$10,000/item",
+        "note": "$50,000/yr, 120 days (90 for NY residents), excess coverage basis"
       },
       "extended_warranty": {
         "value": "1 year",
@@ -5386,13 +5386,13 @@
       "groceries": "1.5%",
       "gas": "1.5%",
       "airlines_direct": "1.5%",
-      "airlines_portal": "5% (Capital One Travel)",
+      "airlines_portal": "1.5% (no flight bonus via Capital One Travel; 5% covers hotels, vacation rentals and rental cars only)",
       "hotels_direct": "1.5%",
       "hotels_portal": "5% (Capital One Travel)",
       "car_rental_direct": "1.5%",
       "car_rental_portal": "5% (Capital One Travel)",
       "other_travel_direct": "1.5%",
-      "other_travel_portal": "5% (Capital One Travel activities/vacation rentals)",
+      "other_travel_portal": "5% (Capital One Travel vacation rentals)",
       "streaming": "1.5%",
       "base": "1.5% cash back on all purchases",
       "niche": "5% on Capital One Entertainment purchases"
@@ -5416,11 +5416,11 @@
     },
     "protections": {
       "trip_delay": "N/A",
-      "baggage_delay_loss": "Baggage delay insurance up to $100/day for 3 days (4+ hour delay); lost/damaged luggage up to $1,500/incident",
-      "car_rental": "Auto rental collision/theft coverage (secondary)",
-      "purchase_protection": "Up to $10,000 per item for 90 days (damage or theft)",
+      "baggage_delay_loss": "Baggage delay insurance up to $100/day for 3 days (4+ hour delay); lost/damaged luggage up to $3,000/trip",
+      "car_rental": "Auto rental collision/theft coverage (secondary in the U.S.; primary when renting outside your home country)",
+      "purchase_protection": "Up to $1,000 per claim, $25,000 per 12 months, for 90 days (damage or theft)",
       "extended_warranty": "Extended warranty on eligible purchases",
-      "niche": "Travel accident insurance; 24-hour travel assistance"
+      "niche": "Travel accident insurance; trip cancellation/interruption up to $1,500 per person; 24-hour travel assistance"
     },
     "transfer_partners": {
       "program": "N/A",
@@ -5436,9 +5436,9 @@
     "issuer": "Citi",
     "annual_fee_amount": 0,
     "annual_fee_note": "No annual fee (card transitioned to Citi Strata as of July 2025)",
-    "welcome_bonus_text": "20,000 bonus ThankYou points after $1,000 spend in 3 months (~$200 value)",
+    "welcome_bonus_text": "No longer available (card discontinued July 2025); successor Citi Strata offers 20,000 bonus ThankYou points after $1,000 spend in 3 months (~$200 value)",
     "earning_rates": {
-      "dining": "1x ThankYou points (rounded up to nearest 10)",
+      "dining": "1x ThankYou points (round-up to nearest 10 has ended)",
       "groceries": "2x ThankYou points (U.S. supermarkets, up to $6,000/yr combined with gas)",
       "gas": "2x ThankYou points (U.S. gas stations, up to $6,000/yr combined with supermarkets)",
       "airlines_direct": "1x ThankYou points",
@@ -5450,8 +5450,8 @@
       "other_travel_direct": "1x ThankYou points",
       "other_travel_portal": "1x ThankYou points",
       "streaming": "1x ThankYou points",
-      "base": "1x ThankYou point (all purchases round up to nearest 10 points)",
-      "niche": "Round-up rewards (every purchase rounds to nearest 10 ThankYou points); 10% points back on all redemptions (up to 100,000 points/year)"
+      "base": "1x ThankYou point (round-up to nearest 10 points has ended)",
+      "niche": "Round-up rewards (every purchase rounded to nearest 10 ThankYou points) and 10% points back on the first 100,000 points redeemed per year — both ended (last holdover accounts kept them only until July 19, 2026)"
     },
     "credits": {
       "airline": "N/A",
@@ -5468,7 +5468,7 @@
       "companion_cert": "N/A",
       "free_checked_bags": "N/A",
       "no_ftf": false,
-      "niche": "Limited transfer partner access (JetBlue, Choice Privileges, Wyndham); full 16+ partners available when paired with Strata Premier or Elite; Citi Entertainment presale access; 3% foreign transaction fee"
+      "niche": "Transfers to most Citi partners at reduced ratios (mostly 10:7) on its own; full-value ratios across all 20 partners when paired with Strata Premier or Elite; Citi Entertainment presale access; 3% foreign transaction fee"
     },
     "protections": {
       "trip_delay": {
@@ -5484,18 +5484,18 @@
         "note": "Not offered"
       },
       "purchase_protection": {
-        "value": "$10,000/item",
-        "note": "120 days from purchase"
+        "value": "N/A",
+        "note": "Not offered"
       },
       "extended_warranty": {
-        "value": "2 years",
-        "note": "On warranties of 7 years or less, up to $10,000 per item"
+        "value": "N/A",
+        "note": "Not offered"
       },
       "niche": []
     },
     "transfer_partners": {
       "program": "Citi ThankYou Points",
-      "count": "16+",
+      "count": "20",
       "key_partners": [
         "American Airlines",
         "JetBlue",
@@ -5503,7 +5503,7 @@
         "Etihad",
         "Singapore Airlines"
       ],
-      "note": "1:1 transfer ratio to most partners"
+      "note": "Reduced ratios (mostly 10:7) on its own; 1:1 to most partners when paired with Strata Premier or Elite"
     }
   },
   {
@@ -5513,7 +5513,7 @@
     "issuer": "Chase",
     "annual_fee_amount": 795,
     "annual_fee_note": "$795 per year (pay-in-full charge card with Flex for Business revolving option)",
-    "welcome_bonus_text": "150,000 bonus Ultimate Rewards points after $20,000 spend in first 3 months (~$3,000 value)",
+    "welcome_bonus_text": "200,000 bonus Ultimate Rewards points after $30,000 spend in first 6 months (~$4,000 via Points Boost on select Chase Travel flights and hotels)",
     "earning_rates": {
       "dining": "1x Ultimate Rewards points",
       "groceries": "1x Ultimate Rewards points",
@@ -5528,11 +5528,11 @@
       "other_travel_portal": "8x Ultimate Rewards points (Chase Travel cruises, activities, tours)",
       "streaming": "1x Ultimate Rewards points",
       "base": "1x Ultimate Rewards point",
-      "niche": "3x on social media and search engine advertising (Google Ads, Meta Ads, LinkedIn Ads); 5x total on Lyft (through 9/30/2027)"
+      "niche": "3x on social media and search engine advertising (Google Ads, Meta Ads, LinkedIn Ads; up to $1M per account anniversary year starting 11/15/2026); 5x total on Lyft (through 9/30/2027)"
     },
     "credits": {
       "airline": "N/A",
-      "hotel": "$500/year for The Edit by Chase Travel ($250 per half-year); $250 Select Hotel credit (prepaid Chase Travel, through 12/31/2026)",
+      "hotel": "$500/calendar year for The Edit by Chase Travel (max $250 per transaction; $1,000/year starting 1/1/2027); $250 Select Hotel credit (prepaid Chase Travel, through 12/31/2026)",
       "travel_other": "$300/year travel credit (broad, includes parking, tolls, transit); $10/month Lyft credit",
       "dining": "N/A",
       "streaming": "N/A",
@@ -5545,7 +5545,7 @@
       "companion_cert": "N/A",
       "free_checked_bags": "N/A",
       "no_ftf": true,
-      "niche": "Up to 99 employee cards at no cost; 1.5x value when redeeming points through Chase Travel or Pay Yourself Back; transfer partners (United, Hyatt, Southwest, British Airways, Air France/KLM, Singapore Airlines, etc.)"
+      "niche": "Up to 99 employee cards at no cost; Points Boost: up to 2 cents per point on select Chase Travel flights and hotels (1 cent baseline); transfer partners (United, Hyatt, Southwest, British Airways, Air France/KLM, Singapore Airlines, etc.)"
     },
     "protections": {
       "trip_delay": {
@@ -5558,11 +5558,11 @@
       },
       "car_rental": {
         "value": "Primary",
-        "note": "Primary coverage up to $75,000 for collision/theft; decline rental company CDW"
+        "note": "Primary for business rentals and outside the U.S. (secondary for personal U.S. rentals), up to $75,000 for collision/theft; decline rental company CDW"
       },
       "purchase_protection": {
         "value": "$10,000/claim",
-        "note": "$50,000/yr, 120 days"
+        "note": "$50,000 per account, 120 days"
       },
       "extended_warranty": {
         "value": "1 year",
@@ -5585,7 +5585,7 @@
         "British Airways",
         "Air France/KLM"
       ],
-      "note": "1:1 transfer ratio to most partners"
+      "note": "1:1 transfer ratio to all partners, including Hyatt"
     }
   },
   {
@@ -5594,7 +5594,7 @@
     "title": "Capital One Venture X Business",
     "issuer": "Capital One",
     "annual_fee_amount": 395,
-    "annual_fee_note": "$395 per year (charge card, balance due in full monthly, no preset spending limit)",
+    "annual_fee_note": "$395 per year (charge card designed to be paid in full monthly; option to carry a portion of the balance at a variable APR; no preset spending limit)",
     "welcome_bonus_text": "150,000 miles after $30,000 spend in first 3 months (~$1,500+ value, potentially $3,000-$5,000 via transfer partners)",
     "earning_rates": {
       "dining": "2x Capital One miles",
@@ -5621,13 +5621,13 @@
       "niche": "10,000 anniversary miles (~$100 value); $125/year per additional cardholder for lounge access (as of Feb 2026)"
     },
     "benefits": {
-      "lounge_access": "Capital One Lounges (DFW, DEN, IAD + expanding) + Priority Pass Select (1,300+ lounges, 2 free guests)",
+      "lounge_access": "Capital One Lounges (DFW, DEN, IAD, LAS, JFK; CLT coming) + Landings (DCA, LGA) + Priority Pass (1,300+ lounges, 2 free guests); Capital One Lounge guests $45 each unless $75K/yr spend",
       "hotel_status": "N/A",
       "global_entry_tsa": "Up to $120 every 4 years",
       "companion_cert": "N/A",
       "free_checked_bags": "N/A",
       "no_ftf": true,
-      "niche": "15+ transfer partners at 1:1 (Air Canada Aeroplan, Turkish Miles & Smiles, Air France/KLM, Avianca LifeMiles, Singapore KrisFlyer, Virgin Red, British Airways Avios, etc.); employee cards at no cost with customizable spend limits; cell phone protection up to $800/claim"
+      "niche": "15+ transfer partners, mostly 1:1 (Air Canada Aeroplan, Turkish Miles & Smiles, Air France/KLM, Avianca LifeMiles, Singapore KrisFlyer, Virgin Red, British Airways Avios, etc.); employee cards at no cost with customizable spend limits; cell phone protection up to $800/claim"
     },
     "protections": {
       "trip_delay": "Trip cancellation/interruption insurance (up to $3,000); trip delay reimbursement (6+ hours)",
@@ -5679,7 +5679,7 @@
       "travel_other": "N/A",
       "dining": "N/A",
       "streaming": "N/A",
-      "niche": "N/A"
+      "niche": "Complimentary DashPass (12 months, activate by 12/31/2027) + $10 off one non-restaurant DoorDash order per quarter through 12/31/2027"
     },
     "benefits": {
       "lounge_access": "N/A",
@@ -5688,15 +5688,15 @@
       "companion_cert": "N/A",
       "free_checked_bags": "N/A",
       "no_ftf": true,
-      "niche": "10% award points back when redeeming 50,000+ points in a year"
+      "niche": "N/A"
     },
     "protections": {
-      "trip_delay": "Up to $500 per ticket after 12-hour delay or overnight stay",
+      "trip_delay": "N/A",
       "baggage_delay_loss": "Delay: $100/day for up to 5 days (6-hour trigger); Loss: up to $3,000 per traveler",
       "car_rental": "Auto rental collision damage waiver (secondary)",
       "purchase_protection": "120 days, up to $500 per item",
-      "extended_warranty": "1 additional year on warranties of 3 years or less",
-      "niche": "N/A"
+      "extended_warranty": "N/A",
+      "niche": "Trip cancellation/interruption up to $5,000 per traveler, $10,000 per trip"
     },
     "transfer_partners": {
       "program": "World of Hyatt",
@@ -5710,30 +5710,30 @@
     "slug": "world-of-hyatt-business",
     "annual_fee_amount": 199,
     "annual_fee_note": "Effectively $99 after $100 Hyatt statement credit; $0 for employee cards",
-    "welcome_bonus_text": "Earn 80,000 bonus points after $10,000 spend in 3 months.",
+    "welcome_bonus_text": "Earn 70,000 bonus points after $7,000 spend in 3 months.",
     "earning_rates": {
       "dining": "Up to 2x Hyatt points (if dining is a top-3 spending category)",
-      "groceries": "Up to 2x Hyatt points (if groceries is a top-3 spending category)",
+      "groceries": "1x Hyatt points",
       "gas": "Up to 2x Hyatt points (if gas is a top-3 spending category)",
       "airlines_direct": "Up to 2x Hyatt points (if airlines is a top-3 spending category)",
       "airlines_portal": "N/A",
       "hotels_direct": "9x Hyatt points (4x card + 5x member) at Hyatt properties",
       "hotels_portal": "N/A",
-      "car_rental_direct": "1x Hyatt points",
+      "car_rental_direct": "Up to 2x Hyatt points (if car rental is a top-3 spending category)",
       "car_rental_portal": "N/A",
-      "other_travel_direct": "Up to 2x Hyatt points (if travel is a top-3 spending category)",
+      "other_travel_direct": "Up to 2x Hyatt points on local transit & commuting (if a top-3 spending category); 1x on other travel",
       "other_travel_portal": "N/A",
       "streaming": "1x Hyatt points",
       "base": "1x Hyatt points",
-      "niche": "2x on fitness club/gym memberships; automatic 2x on top 3 spending categories each quarter"
+      "niche": "2x on fitness club/gym memberships; automatic 2x on top 3 spending categories each quarter (from dining, shipping, airfare bought direct, local transit & commuting, social media & search ads, car rentals, gas, internet/cable/phone)"
     },
     "credits": {
       "airline": "N/A",
-      "hotel": "Free night certificate (Category 1-4) annually; up to $100 Hyatt statement credit per year ($50 x 2 when spending $50+ at Hyatt)",
+      "hotel": "Up to $100 Hyatt statement credit per anniversary year ($50 x 2 when spending $50+ at Hyatt); no free night certificate",
       "travel_other": "N/A",
       "dining": "N/A",
       "streaming": "N/A",
-      "niche": "N/A"
+      "niche": "Complimentary DashPass (12 months, activate by 12/31/2027) + $10 off one non-restaurant DoorDash order per quarter through 12/31/2027"
     },
     "benefits": {
       "lounge_access": "N/A",
@@ -5742,15 +5742,15 @@
       "companion_cert": "N/A",
       "free_checked_bags": "N/A",
       "no_ftf": true,
-      "niche": "10% award points back when redeeming 50,000+ points in a year"
+      "niche": "10% of redeemed points back for the rest of the calendar year after $50,000 spend (on up to 200,000 points redeemed); complimentary Hyatt Leverage membership"
     },
     "protections": {
-      "trip_delay": "Up to $500 per ticket after 12-hour delay or overnight stay",
-      "baggage_delay_loss": "Delay: $100/day for up to 5 days (6-hour trigger); Loss: up to $3,000 per traveler",
-      "car_rental": "Auto rental collision damage waiver (secondary)",
-      "purchase_protection": "120 days, up to $500 per item",
+      "trip_delay": "N/A",
+      "baggage_delay_loss": "Delay: $100/day for up to 3 days (6-hour trigger); Loss: up to $3,000 per traveler",
+      "car_rental": "Auto rental collision damage waiver (primary when renting for business purposes, up to $60,000; secondary for personal rentals in the U.S.)",
+      "purchase_protection": "120 days, up to $10,000 per item ($50,000 per account)",
       "extended_warranty": "1 additional year on warranties of 3 years or less",
-      "niche": "N/A"
+      "niche": "Trip cancellation/interruption (up to $1,500 per traveler, $6,000 per trip)"
     },
     "transfer_partners": {
       "program": "World of Hyatt",
@@ -6100,7 +6100,7 @@
     "slug": "atmos-rewards-summit",
     "annual_fee_amount": 395,
     "annual_fee_note": null,
-    "welcome_bonus_text": "Earn 80,000 bonus Atmos Rewards points plus a 25,000-point Global Companion Award after $4,000 spend in 90 days. Targeted offer: 100,000 points with $6,000 spend.",
+    "welcome_bonus_text": "Earn 70,000 bonus Atmos Rewards points plus a 25,000-point Global Companion Award after $3,000 spend in 90 days.",
     "earning_rates": {
       "dining": "3x Atmos Rewards points",
       "groceries": "1x Atmos Rewards points",
@@ -6120,7 +6120,7 @@
     "credits": {
       "airline": "N/A",
       "hotel": "N/A",
-      "travel_other": "Up to $120 TSA PreCheck/Global Entry credit every 4 years; $100 off Alaska Lounge+ annual membership",
+      "travel_other": "Up to $120 TSA PreCheck/Global Entry credit every 4 years; $50 Instant Travel Delay Credit when an Alaska/Hawaiian flight booked on alaskaair.com with the card is canceled or delayed 2+ hours",
       "dining": "N/A",
       "streaming": "N/A",
       "niche": "N/A"
@@ -6129,24 +6129,24 @@
       "lounge_access": "8 Alaska Lounge passes per year (2 per quarter, no rollover); premium bar experience at Alaska Lounges for cardholders (through 2026)",
       "hotel_status": "N/A",
       "global_entry_tsa": "Up to $120 every 4 years",
-      "companion_cert": "25,000-point Global Companion Award annually (any cabin, any partner including Oneworld); additional 100,000-point bonus award after $60,000 annual spend",
+      "companion_cert": "25,000-point Global Companion Award annually (any cabin, any partner including Oneworld); additional 100,000-point Global Companion Award after $60,000 spend in a card anniversary year",
       "free_checked_bags": "First checked bag free for cardholder + up to 6 companions on same reservation",
       "no_ftf": true,
-      "niche": "Preferred boarding on Alaska and Hawaiian; 20% back on inflight purchases (food, beverages, Wi-Fi); 10,000 status points annually"
+      "niche": "Preferred boarding on Alaska/Horizon/SkyWest-operated flights; 8 Alaska Wi-Fi passes per year; same-day change and partner award booking fees waived; 20% back on inflight purchases (food, beverages, Wi-Fi); 10,000 status points annually"
     },
     "protections": {
-      "trip_delay": "Visa Infinite travel protections",
-      "baggage_delay_loss": "Visa Infinite baggage protections",
-      "car_rental": "Auto rental collision damage waiver (Visa Infinite)",
+      "trip_delay": "$500 coverage when delayed 6+ hours or overnight (Visa Infinite)",
+      "baggage_delay_loss": "$3K lost luggage; baggage delay up to $100/day for 5 days after 6+ hours",
+      "car_rental": "Primary auto rental collision damage waiver (Visa Infinite)",
       "purchase_protection": "Visa Infinite purchase protection",
       "extended_warranty": "Visa Infinite extended warranty",
-      "niche": "N/A"
+      "niche": "Trip cancellation/interruption up to $2,500; return protection; emergency evacuation; identity theft reimbursement"
     },
     "transfer_partners": {
       "program": "Atmos Rewards (Alaska/Hawaiian Miles)",
       "count": "N/A",
       "key_partners": [],
-      "note": "Earns Atmos Rewards (Alaska/Hawaiian Miles) directly, no transfer partners"
+      "note": "Earns Atmos Rewards points directly. Primary Summit cardholders can also transfer points to participating hotel programs such as Marriott Bonvoy and Shangri-La Circle (ratios vary by partner)"
     }
   },
   {
@@ -6186,7 +6186,7 @@
       "companion_cert": "$99 Companion Fare annually (plus taxes/fees from $23) after $6,000 spend in prior year; valid on Alaska and Hawaiian flights in North America",
       "free_checked_bags": "First checked bag free for cardholder + up to 6 companions on same reservation",
       "no_ftf": true,
-      "niche": "Preferred boarding on Alaska, Horizon and SkyWest-operated flights (not Hawaiian); 20% back on inflight purchases (food, beverages, Wi-Fi); 1 status point per $3 spent (no cap)"
+      "niche": "Preferred boarding on Alaska and Hawaiian flights operated by Alaska, Hawaiian, Horizon or SkyWest; 20% back on inflight purchases (food, beverages, Wi-Fi); 1 status point per $3 spent (no cap)"
     },
     "protections": {
       "trip_delay": {
@@ -6243,7 +6243,7 @@
       "other_travel_portal": "N/A",
       "streaming": "1x Atmos Rewards points",
       "base": "1x Atmos Rewards points",
-      "niche": "2x on shipping purchases; 10% BofA business checking bonus; 1 status point per $3 spent (no cap)"
+      "niche": "2x on shipping purchases; 10% bonus with an eligible BofA small business checking/savings or Merrill business investment account; 1 status point per $3 spent (no cap)"
     },
     "credits": {
       "airline": "N/A",
@@ -6258,13 +6258,13 @@
       "hotel_status": "N/A",
       "global_entry_tsa": "N/A",
       "companion_cert": "$99 Companion Fare annually (plus taxes/fees from $23) after $6,000 spend in prior year; valid on Alaska and Hawaiian flights in North America",
-      "free_checked_bags": "First checked bag free for cardholder + up to 6 companions on same reservation",
+      "free_checked_bags": "First checked bag free for cardholder + up to 6 companions on same reservation when airfare is paid with the card",
       "no_ftf": true,
-      "niche": "Priority boarding on Alaska and Hawaiian; 20% back on inflight purchases (food, beverages, Wi-Fi); 1 status point per $3 spent (no cap)"
+      "niche": "Preferred boarding on Alaska and Hawaiian when airfare is paid with the card; 20% back on inflight purchases (food, beverages, Wi-Fi); 1 status point per $3 spent (no cap)"
     },
     "protections": {
-      "trip_delay": "Visa business card travel protections",
-      "baggage_delay_loss": "Visa business card baggage protections",
+      "trip_delay": "None listed by issuer ($1M travel accident insurance and travel/emergency assistance instead)",
+      "baggage_delay_loss": "None listed by issuer (BofA lists lost-luggage assistance, a help service, not reimbursement)",
       "car_rental": "Auto rental collision damage waiver (Visa)",
       "purchase_protection": "Visa business purchase protection",
       "extended_warranty": "Visa business extended warranty",
