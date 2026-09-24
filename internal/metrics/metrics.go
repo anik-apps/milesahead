@@ -131,6 +131,23 @@ var (
 		Help: "Total image selection outcomes",
 	}, []string{"outcome"}) // selected, no_match, search_failed
 
+	// ImageResizeTotal counts what the stored-image resize did with each row
+	// it tried: swapped for sized copies, left unchanged because a sized URL
+	// could not be confirmed, or cleared because the file was deleted.
+	ImageResizeTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_image_resize_total",
+		Help: "Stored article images the resize step tried, by outcome (resized, unconfirmed, cleared)",
+	}, []string{"outcome"})
+
+	// ArticleImagesUnsized is how many article images the resize step could
+	// still swap for a sized copy after its last pass. It should reach 0
+	// within a few passes of a deploy and stay there; a value that stays up
+	// means the conversion is stuck (hosts refusing, width lookups failing).
+	ArticleImagesUnsized = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "milesahead_article_images_unsized",
+		Help: "Article images still waiting to be swapped for a sized copy",
+	})
+
 	ResponseBytes = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "milesahead_http_response_bytes",
 		Help:    "HTTP response body size in bytes",
@@ -153,6 +170,7 @@ func Init() {
 		HTTPRequestsTotal, HTTPDuration,
 		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,
 		ImageSelectedScore, ImageSelectedTotal,
+		ImageResizeTotal, ArticleImagesUnsized,
 		ResponseBytes, DailyUniqueVisitors,
 	)
 }

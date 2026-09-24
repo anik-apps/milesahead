@@ -66,10 +66,19 @@ type Service struct {
 	// long the pass it is yielding to has been running.
 	startedAt atomic.Int64
 
+	// ResizeMaxDuration and ResizeMaxRows bound the stored-image resize that
+	// opens each pass (see resizeStoredImages), so it cannot eat the time
+	// enrichment needs. The duration is further capped at a quarter of
+	// MaxDuration. Zero means the default.
+	ResizeMaxDuration time.Duration
+	ResizeMaxRows     int
+
 	// originalWidths caches the pixel widths of Wikimedia originals that
 	// resizeStoredImages has looked up; 0 records a file Commons reports as
-	// deleted. Only touched inside Run, which never overlaps itself.
+	// deleted. resizeRetries tracks rows whose resize keeps failing. Both are
+	// only touched inside Run, which never overlaps itself.
 	originalWidths map[string]int
+	resizeRetries  map[int64]*resizeRetry
 
 	// running guards against overlapping passes. robfig/cron's "@every" does
 	// NOT skip a tick when the previous run is still going, and a pass can
@@ -95,6 +104,7 @@ func New(database *db.Database, client ai.HFClientInterface, models []string,
 		Pace:           2 * time.Second,
 		MaxDuration:    10 * time.Minute,
 		originalWidths: map[string]int{},
+		resizeRetries:  map[int64]*resizeRetry{},
 	}
 }
 
@@ -129,8 +139,13 @@ func (s *Service) Run() {
 		s.refreshDegradedGauge()
 	}()
 
-	// Before any model calls, so a degraded provider cannot hold it up.
-	s.resizeStoredImages(deadline)
+	// Before any model calls, so a degraded provider cannot hold it up, and
+	// on its own budget, so a slow image host cannot hold up enrichment.
+	resizeDeadline := start.Add(s.resizeBudget())
+	if resizeDeadline.After(deadline) {
+		resizeDeadline = deadline
+	}
+	s.resizeStoredImages(resizeDeadline)
 
 	articles, err := s.db.ListArticlesNeedingEnrichment(s.MaxAttempts, s.BatchSize)
 	if err != nil {

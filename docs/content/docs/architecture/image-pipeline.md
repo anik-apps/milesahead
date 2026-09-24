@@ -107,15 +107,30 @@ alone. Wikimedia also rejects generic HTTP clients, so every request carries
 a `MilesAhead/1.0` User-Agent.
 
 At pick time each candidate's URLs are fetched with a ranged GET and must
-answer 200/206 within a byte cap: 1 MiB for the display image, 512 KiB for the
-thumbnail. A host that does not state the size has it measured, up to the cap.
+answer 200/206 with an `image/*` content type, within a byte cap: 1 MiB for
+the display image, 512 KiB for the thumbnail. A host that does not state the
+size has it measured, up to the cap. The same check (`Searcher.CheckFit`)
+guards every URL the resize step below writes.
 
-Rows stored before this existed are converted by the enrichment reconciler: at
-the start of every pass, including the one ~90 s after each deploy, it swaps
-Wikimedia originals and oversized Wikimedia/Flickr thumbnails for sized URLs,
-fetching each one first and leaving any field it cannot confirm unchanged. A
-Wikimedia file that Commons reports deleted, and whose URL answers 404, is
-cleared so enrichment picks a new image.
+Rows stored before this existed are converted by the enrichment reconciler
+(`internal/enrich/imagesize.go`). At the start of every pass, including the
+one ~90 s after each deploy, it swaps Wikimedia originals and oversized
+Wikimedia/Flickr thumbnails for sized URLs:
+
+- Each new URL is fetched first; a field that cannot be confirmed keeps its
+  current URL. If a step is an image over the byte cap, the next step down is
+  tried (960 px for the display image, 330 px for the thumbnail).
+- A Wikimedia file that Commons reports deleted, and whose URL answers 404 or
+  410, is cleared so enrichment picks a new image. If the URL still loads it
+  is kept.
+- The step has its own budget so it cannot starve enrichment: at most 90 s
+  (and never more than a quarter of the pass), and at most 25 rows per pass,
+  Wikimedia originals and the newest articles first. The rest wait for the
+  next pass. A row that fails two passes running is set aside for 6 hours.
+- `milesahead_article_images_unsized` is the number of rows still waiting
+  after the last pass (it should reach 0 a few passes after a deploy), and
+  `milesahead_image_resize_total{outcome}` counts rows resized, left
+  unchanged (`unconfirmed`) and cleared.
 
 ## Stored Fields
 
