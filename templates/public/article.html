@@ -61,7 +61,7 @@
         </aside>
         <div class="article-main">
             <div class="article-content">
-                {{.Article.Content | safeHTML}}
+                {{scrollTables "Table" .Article.Content | safeHTML}}
             </div>
         </div>
     </div>
