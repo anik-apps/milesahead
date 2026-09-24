@@ -209,7 +209,8 @@ func TestVersionedStylesheet(t *testing.T) {
 // columns a card is at most 361 px, and offering it there had every 2x
 // desktop fetch 16 display images, 2.6x the page's image bytes. It lists only
 // the two URLs the row stores, when they are two sizes of one picture, with
-// the widths their URLs fix.
+// the widths their URLs fix, and only when the thumbnail alone fills the
+// widest card at 1x, so a 1x screen never fetches the display image.
 func TestHome_GridThumbnailsOfferTheDisplayImage(t *testing.T) {
 	const (
 		wm     = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Lobby.jpg/"
@@ -231,9 +232,14 @@ func TestHome_GridThumbnailsOfferTheDisplayImage(t *testing.T) {
 		// grid
 		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", lobby},
 		{fl + "_b.jpg", fl + ".jpg", flickr},
-		{us + "1080", us + "400", us + "400 400w, " + us + "1080 1080w"},
+		// Unsplash's small size is 400px, less than a 466px card: a 1x
+		// screen would fetch the display image.
+		{us + "1080", us + "400", ""},
 		// Two different crops of one photo (row 58 in the dev database).
 		{"https://images.unsplash.com/photo-2?w=1200&h=400&fit=crop", "https://images.unsplash.com/photo-2?w=500&h=300&fit=crop", ""},
+		// Every copy was over 1 MiB, so the resize kept the lightest, 500px
+		// one as the display image, and the thumbnail is the 330px step.
+		{wm + "500px-Lobby.jpg", wm + "330px-Lobby.jpg", ""},
 		// The display image is no wider than the thumbnail.
 		{wm + "500px-Lobby.jpg", wm + "960px-Lobby.jpg", ""},
 		{wm + "500px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
@@ -299,6 +305,10 @@ func TestHome_GridThumbnailsOfferTheDisplayImage(t *testing.T) {
 		}
 	}
 
+	// gridThumbSlotMax is the source's sizes at the top of its media range.
+	if gridThumbSlotMax != (1024-92)/2 {
+		t.Errorf("gridThumbSlotMax = %d; sizes gives %d px at 1024 px", gridThumbSlotMax, (1024-92)/2)
+	}
 	// The <picture> must not change how the <img> is laid out.
 	if rule := cssRule(t, readStylesheet(t), ".card-thumb picture"); !strings.Contains(rule, "display: contents") {
 		t.Errorf(".card-thumb picture must not take part in layout: %s", rule)

@@ -92,6 +92,11 @@ type publicArticleRow struct {
 	ThumbSrcset string
 }
 
+// gridThumbSlotMax is the widest, in CSS px, a bottom-grid card shows its
+// thumbnail where the srcset applies (769-1024 px, two columns): the source's
+// sizes, (100vw - 92px) / 2, at 1024 px.
+const gridThumbSlotMax = 466
+
 // thumbSrcset returns a srcset of the thumbnail and the display image, each
 // with the width its URL fixes, for the bottom grid's two-column layout
 // (769-1024 px wide). There a card is up to 466 CSS px wide, so a 500px
@@ -104,11 +109,16 @@ type publicArticleRow struct {
 //   - the URLs are two sizes of one picture (see images.SrcsetWidths). Only
 //     the two URLs the row stores -- each confirmed to load before it was
 //     written -- are ever referenced.
+//   - the thumbnail alone fills the widest card on a 1x screen, so no 1x
+//     screen fetches the display image. That also keeps out the display
+//     image the resize settles for over its byte cap, when every copy down
+//     to 500px is over 1 MiB: the 500px copy is then over the 512 KiB
+//     thumbnail cap too, so the thumbnail is the 330px step.
 //   - the display image is the wider of the two.
 //   - neither URL has a comma or white space, which separate srcset entries.
 func thumbSrcset(thumbnail, image string) string {
 	tw, iw, ok := images.SrcsetWidths(thumbnail, image)
-	if !ok || iw <= tw || strings.ContainsAny(thumbnail+image, ", \t\n\r\f") {
+	if !ok || tw < gridThumbSlotMax || iw <= tw || strings.ContainsAny(thumbnail+image, ", \t\n\r\f") {
 		return ""
 	}
 	return fmt.Sprintf("%s %dw, %s %dw", thumbnail, tw, image, iw)

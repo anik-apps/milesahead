@@ -201,6 +201,10 @@ other, each with the width its URL fixes, and only when:
   the same Flickr photo at two sizes, or two Unsplash API sizes whose URLs
   differ only in `w=` (a URL that sets `h=`, `ar=` or anything else that
   changes the framing is left out);
+- the thumbnail is at least 466 px wide, so a 1x screen never needs the
+  display image. That also leaves out a display image the resize kept over
+  its byte cap, since that row's thumbnail is the 330 px step, and
+  Unsplash's 400 px `small` size;
 - the display image is the wider, and neither URL has a comma or a space.
 
 Phones and 1x screens, and every screen outside 769-1024 px, load the
