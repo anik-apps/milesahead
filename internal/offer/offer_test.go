@@ -1,7 +1,10 @@
 package offer
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -168,6 +171,41 @@ func TestEndDate_NoEndDate(t *testing.T) {
 	}
 }
 
+// A value can name dates that are not its end: the deadline an extension
+// replaced, or when the text was updated. Those give way to the real end.
+func TestEndDate_SupersededAndIncidentalDates(t *testing.T) {
+	cases := []struct{ name, value, want string }{
+		{"extension, old date after", "Extended to October 31, 2026 (was September 30, 2026)", "2026-10-31"},
+		{"extension, old date first", "Previously September 30, now October 31, 2026", "2026-10-31"},
+		{"originally", "October 31, 2026 (originally September 30)", "2026-10-31"},
+		{"formerly", "October 31, 2026, formerly September 30, 2026", "2026-10-31"},
+		{"last updated", "September 30, 2026 (last updated May 1, 2026)", "2026-09-30"},
+		{"announced on", "September 30, 2026; announced on August 3, 2026", "2026-09-30"},
+		{"posted", "Posted August 3, 2026: register by September 30, 2026", "2026-09-30"},
+		// A past-tense deadline with nothing replacing it is still the end:
+		// dropping it would leave an ended offer looking current.
+		{"only a past-tense date", "Was September 19, 2026 (offer has ended)", "2026-09-19"},
+		// An update date alone is never the end.
+		{"only an update date", "Not announced (last updated May 1, 2026)", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := EndDate(details(t, "Deadline", c.value), day("2026-07-01")); got != c.want {
+				t.Errorf("EndDate(Deadline: %q) = %q, want %q", c.value, got, c.want)
+			}
+		})
+	}
+}
+
+// ISO dates with a time attached ("2026-09-30T23:59") are read as their date.
+func TestEndDate_ISOTimestamp(t *testing.T) {
+	for _, v := range []string{"2026-09-30T23:59", "2026-09-30T23:59:00-04:00", "Ends 2026-09-30T23:59Z", "2026-09-30 23:59 ET"} {
+		if got := EndDate(details(t, "Deadline", v), day("2026-07-01")); got != "2026-09-30" {
+			t.Errorf("EndDate(Deadline: %q) = %q, want 2026-09-30", v, got)
+		}
+	}
+}
+
 // The generator writes typographic spaces and dashes inside dates: 7 of the
 // 87 live titles do ("Ends July\u202f29,\u202f2026", "June\u202f15\u2011July\u202f15"), and
 // Key Details values carry U+202F too. They must read exactly like their
@@ -255,6 +293,11 @@ func TestToday_UsesSiteTimezone(t *testing.T) {
 }
 
 func TestLocation_FallsBackToUTC(t *testing.T) {
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
 	for _, name := range []string{"", "Not/AZone"} {
 		if got := Location(name); got != time.UTC {
 			t.Errorf("Location(%q) = %v, want UTC", name, got)
@@ -262,6 +305,11 @@ func TestLocation_FallsBackToUTC(t *testing.T) {
 	}
 	if got := Location("America/New_York"); got.String() != "America/New_York" {
 		t.Errorf("Location(America/New_York) = %v", got)
+	}
+	// An unset zone is UTC by design; a misspelt one is a mistake worth a
+	// warning, since it shifts every end date by the UTC offset.
+	if n := strings.Count(logged.String(), "level=WARN"); n != 1 || !strings.Contains(logged.String(), "Not/AZone") {
+		t.Errorf("want one warning naming the unknown zone, got:\n%s", logged.String())
 	}
 }
 

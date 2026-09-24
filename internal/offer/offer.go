@@ -13,6 +13,7 @@ package offer
 
 import (
 	"encoding/json"
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -127,8 +128,8 @@ var dayRangeRE = regexp.MustCompile(`^\s*(?:-|to|through|thru)\s*(\d{1,2})(?:st|
 // rangeJoinRE is the text between the two ends of a range.
 var rangeJoinRE = regexp.MustCompile(`(?i)^\s*(?:-|to|through|thru|until)\s*$`)
 
-// isoDateRE matches "2026-07-29".
-var isoDateRE = regexp.MustCompile(`\b(\d{4})-(\d{2})-(\d{2})\b`)
+// isoDateRE matches "2026-07-29", and the date of "2026-07-29T23:59".
+var isoDateRE = regexp.MustCompile(`\b(\d{4})-(\d{2})-(\d{2})(?:T|\b)`)
 
 // beforeRE catches "before July 29", whose last day is July 28.
 var beforeRE = regexp.MustCompile(`(?i)\bbefore\s+$`)
@@ -136,6 +137,14 @@ var beforeRE = regexp.MustCompile(`(?i)\bbefore\s+$`)
 // startRE catches a date that opens a window ("starting May 1", "from April
 // 6"). A start is never an end, even when it is the only date in a period.
 var startRE = regexp.MustCompile(`(?i)\b(?:start(?:s|ing)?|begin(?:s|ning)?|from|effective|as of|launch(?:es|ing)?|after)\s+(?:on\s+)?$`)
+
+// supersededRE catches a date an extension replaced ("was September 30",
+// "originally September 30"). It gives way to the date that replaced it.
+var supersededRE = regexp.MustCompile(`(?i)\b(?:was|were|previously|originally|formerly|initially)\s+(?:on\s+)?$`)
+
+// incidentalRE catches a date that says when the text was written, not when
+// the offer ends ("last updated May 1", "announced on August 3").
+var incidentalRE = regexp.MustCompile(`(?i)\b(?:updated|posted|published|announced|reported)\s+(?:on\s+)?$`)
 
 var months = map[string]time.Month{
 	"jan": time.January, "feb": time.February, "mar": time.March,
@@ -146,12 +155,22 @@ var months = map[string]time.Month{
 
 // found is one date read from a value. year is 0 when the text gave none.
 type found struct {
-	pos, end  int // byte offsets of the date in the value
-	year      int
-	month     time.Month
-	day       int
-	dayBefore bool // "before July 29": the last day is the day before
-	start     bool // "starting May 1": opens a window, so it is not an end
+	pos, end   int // byte offsets of the date in the value
+	year       int
+	month      time.Month
+	day        int
+	dayBefore  bool // "before July 29": the last day is the day before
+	start      bool // "starting May 1": opens a window, so it is not an end
+	superseded bool // "was September 30": replaced by another date, if any
+	incidental bool // "updated May 1": not about the offer's end at all
+}
+
+// readPrefix sets what the words just before a date say about it.
+func (f *found) readPrefix(prefix string) {
+	f.dayBefore = beforeRE.MatchString(prefix)
+	f.start = startRE.MatchString(prefix)
+	f.superseded = supersededRE.MatchString(prefix)
+	f.incidental = incidentalRE.MatchString(prefix)
 }
 
 // scanDates returns the dates written in s, in the order they appear.
@@ -164,8 +183,8 @@ func scanDates(s string) []found {
 		if m[6] >= 0 {
 			year, _ = strconv.Atoi(s[m[6]:m[7]])
 		}
-		f := found{pos: m[0], end: m[1], year: year, month: mon, day: day,
-			dayBefore: beforeRE.MatchString(s[:m[0]]), start: startRE.MatchString(s[:m[0]])}
+		f := found{pos: m[0], end: m[1], year: year, month: mon, day: day}
+		f.readPrefix(s[:m[0]])
 		if year == 0 {
 			// "July 7-10, 2026": the range's end shares the month, and its
 			// year belongs to both ends.
@@ -187,8 +206,9 @@ func scanDates(s string) []found {
 		year, _ := strconv.Atoi(s[m[2]:m[3]])
 		mon, _ := strconv.Atoi(s[m[4]:m[5]])
 		day, _ := strconv.Atoi(s[m[6]:m[7]])
-		out = append(out, found{pos: m[0], end: m[1], year: year, month: time.Month(mon), day: day,
-			dayBefore: beforeRE.MatchString(s[:m[0]]), start: startRE.MatchString(s[:m[0]])})
+		f := found{pos: m[0], end: m[1], year: year, month: time.Month(mon), day: day}
+		f.readPrefix(s[:m[0]])
+		out = append(out, f)
 	}
 	// Keep reading order: the ISO pass appends after the month-name pass.
 	for i := 1; i < len(out); i++ {
@@ -229,11 +249,22 @@ func valid(y int, m time.Month, d int) bool {
 // Offers are written about while they run, so a yearless deadline is almost
 // always still ahead ("through December 31" written in May is this December,
 // not the one gone); the grace covers a story written just after an offer
-// closed. Dates that open a window are skipped: they are never the end.
+// closed. Dates that open a window, and dates that only say when the text
+// was written, are skipped: they are never the end. A superseded date ("was
+// September 30") is skipped when the value names the date that replaced it,
+// and kept when it is the only one -- "Deadline: was September 19" still
+// says when the offer ended.
 func resolve(dates []found, anchor time.Time) []time.Time {
+	replaced := false
+	for _, f := range dates {
+		if !f.start && !f.incidental && !f.superseded {
+			replaced = true
+			break
+		}
+	}
 	var out []time.Time
 	for i, f := range dates {
-		if f.start {
+		if f.start || f.incidental || (f.superseded && replaced) {
 			continue
 		}
 		year := f.year
@@ -352,6 +383,9 @@ func Location(name string) *time.Location {
 	}
 	loc, err := time.LoadLocation(name)
 	if err != nil {
+		// A misspelt zone would silently shift every "has it ended" by the
+		// UTC offset, so say so.
+		slog.Warn("unknown timezone for offer end dates; using UTC", "timezone", name, "error", err)
 		return time.UTC
 	}
 	return loc
