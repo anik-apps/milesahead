@@ -28,6 +28,7 @@ var templateFuncs = template.FuncMap{
 	"safeHTML": func(s string) template.HTML {
 		return template.HTML(s)
 	},
+	"scrollTables": scrollTables,
 	"deref": func(v interface{}) string {
 		if v == nil {
 			return ""
