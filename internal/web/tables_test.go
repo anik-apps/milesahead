@@ -24,6 +24,8 @@ func TestScrollTables(t *testing.T) {
 			scrollOpen + `T"><table><tr><td><table></table></td></tr></table></div>`},
 		{"not a table tag", "T", "<tablet>x</tablet>", "<tablet>x</tablet>"},
 		{"unclosed table is left alone", "T", "<table><tr><td>1</td></tr>", "<table><tr><td>1</td></tr>"},
+		{"characters whose lowercase has a different length", "T", "\u212A \u0130<table></table>\u212A",
+			"\u212A \u0130" + scrollOpen + `T"><table></table></div>` + "\u212A"},
 		{"label is escaped", `Fees & "Costs" table`, "<table></table>",
 			scrollOpen + `Fees &amp; &#34;Costs&#34; table"><table></table></div>`},
 	}
