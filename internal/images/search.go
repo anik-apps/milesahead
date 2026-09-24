@@ -569,6 +569,10 @@ type Probe struct {
 	// Size is the whole file's size in bytes, or -1 when the host did not
 	// say and it was not measured.
 	Size int64
+	// Measured means Size was counted from the body rather than stated by
+	// the host. Counting stops one byte past the cap, so a measured size
+	// over the cap is only known to exceed it.
+	Measured bool
 }
 
 // IsImage reports whether the host labelled the response as an image.
@@ -638,6 +642,7 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 		switch {
 		case measure && resp.StatusCode == http.StatusOK:
 			p.Size, p.OK = measureBody(rawURL, resp.Body, measureUpTo)
+			p.Measured = true
 			resp.Body.Close()
 		case measure:
 			// A 206 whose Content-Range total is "*", or missing: the host
@@ -646,7 +651,7 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 			// Left at -1, the size would pass any byte cap.
 			io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 			resp.Body.Close()
-			p.Size = s.measureWhole(client, rawURL, measureUpTo)
+			p.Size, p.Measured = s.measureWhole(client, rawURL, measureUpTo)
 		default:
 			// The response may be the whole file if the host ignored Range,
 			// so drain only what is needed to let the connection be reused.
@@ -715,31 +720,32 @@ func measureBody(rawURL string, body io.Reader, limit int64) (size int64, ok boo
 	return n, true
 }
 
-// measureWhole fetches rawURL without a range and counts it up to one byte
-// past limit, or returns -1 if that fails.
-func (s *Searcher) measureWhole(client *http.Client, rawURL string, limit int64) int64 {
+// measureWhole fetches rawURL without a range and returns its stated length,
+// or counts it up to one byte past limit (counted is then true). It returns
+// -1 if neither works.
+func (s *Searcher) measureWhole(client *http.Client, rawURL string, limit int64) (size int64, counted bool) {
 	req, err := s.newRequest(rawURL)
 	if err != nil {
-		return -1
+		return -1, false
 	}
 	resp, err := client.Do(req)
 	if err != nil {
 		slog.Warn("image size could not be measured", "url", rawURL, "error", err)
-		return -1
+		return -1, false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		slog.Warn("image size could not be measured", "url", rawURL, "status", resp.StatusCode)
-		return -1
+		return -1, false
 	}
 	if n := resp.ContentLength; n >= 0 {
-		return n
+		return n, false
 	}
 	n, ok := measureBody(rawURL, resp.Body, limit)
 	if !ok {
-		return -1
+		return -1, false
 	}
-	return n
+	return n, true
 }
 
 // Usable reports whether a candidate can go on the page: its URLs fetch as
@@ -774,24 +780,35 @@ const (
 // get an image from it no heavier than limit bytes. Both the pick path and the
 // stored-image resize go through it before a URL is written to an article.
 func (s *Searcher) CheckFit(rawURL string, limit int64) Fit {
+	fit, _ := s.Weigh(rawURL, limit)
+	return fit
+}
+
+// Weigh is CheckFit that also returns the file's size in bytes when it is
+// known exactly, or -1: for an unusable URL, and for a file whose size was
+// counted from the body and so is only known to exceed limit.
+func (s *Searcher) Weigh(rawURL string, limit int64) (Fit, int64) {
 	p := s.Probe(rawURL, limit)
 	switch {
 	case !p.OK:
-		return Unusable
+		return Unusable, -1
 	case !p.IsImage():
 		slog.Warn("image URL did not return an image",
 			"url", rawURL, "status", p.Status, "content_type", p.ContentType)
-		return Unusable
+		return Unusable, -1
 	case p.Size < 0:
 		// Neither stated nor measurable: its weight cannot be confirmed.
 		slog.Warn("image size is unknown", "url", rawURL, "status", p.Status)
-		return Unusable
+		return Unusable, -1
 	case p.Size > limit:
 		slog.Info("image is too heavy for its slot",
 			"url", rawURL, "bytes", p.Size, "limit", limit)
-		return TooHeavy
+		if p.Measured {
+			return TooHeavy, -1
+		}
+		return TooHeavy, p.Size
 	}
-	return Fits
+	return Fits, p.Size
 }
 
 // declaredSize reads the file size a response states: the total in

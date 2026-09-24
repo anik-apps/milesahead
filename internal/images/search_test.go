@@ -547,6 +547,48 @@ func TestCheckFit_UnknownRangeTotalIsMeasured(t *testing.T) {
 	}
 }
 
+// Weigh reports a size only when it is exact: the resize compares an over-cap
+// copy with the file a row holds, and a count that stopped at the cap is only
+// a lower bound.
+func TestWeigh_ReportsOnlyExactSizes(t *testing.T) {
+	s := stubSearcher(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		switch r.URL.Path {
+		case "/stated.jpg":
+			w.Header().Set("Content-Range", "bytes 0-0/2000000")
+			w.WriteHeader(http.StatusPartialContent)
+			w.Write([]byte("j"))
+		case "/counted.jpg", "/small.jpg":
+			n := 2_000_000
+			if r.URL.Path == "/small.jpg" {
+				n = 3000
+			}
+			w.WriteHeader(http.StatusOK)
+			for i := 0; i < n; i += 1000 {
+				w.Write([]byte(strings.Repeat("x", 1000)))
+				w.(http.Flusher).Flush() // chunked: no Content-Length
+			}
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+	h := "https://img.example/"
+	for _, tt := range []struct {
+		path string
+		fit  Fit
+		size int64
+	}{
+		{"stated.jpg", TooHeavy, 2_000_000},
+		{"counted.jpg", TooHeavy, -1},
+		{"small.jpg", Fits, 3000},
+		{"missing.jpg", Unusable, -1},
+	} {
+		if fit, size := s.Weigh(h+tt.path, MaxImageBytes); fit != tt.fit || size != tt.size {
+			t.Errorf("Weigh(%s) = %v, %d; want %v, %d", tt.path, fit, size, tt.fit, tt.size)
+		}
+	}
+}
+
 func TestWikimediaWidths(t *testing.T) {
 	var titles string
 	s := stubSearcher(t, func(w http.ResponseWriter, r *http.Request) {

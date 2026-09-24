@@ -31,12 +31,13 @@ const (
 	resizeBackoff               = 6 * time.Hour
 )
 
-// The widths tried for each field, best first. The second is used only when
-// the first comes back as an image over the field's byte cap -- a detailed
-// PNG can pass 1 MiB at 1280 px -- because any sized copy is far lighter than
-// the multi-megabyte original the row would otherwise keep.
+// The widths tried for each field, best first. A narrower one is used only
+// when the wider ones come back as images over the field's byte cap -- a
+// detailed PNG can pass 1 MiB at 1280 and 960 px -- because any sized copy
+// is far lighter than the multi-megabyte original the row would otherwise
+// keep. If every width is over the cap, see pickSized.
 var (
-	displaySteps   = []int{images.HeroWidth, 960}
+	displaySteps   = []int{images.HeroWidth, 960, images.ThumbnailWidth}
 	thumbnailSteps = []int{images.ThumbnailWidth, 330}
 )
 
@@ -214,14 +215,14 @@ func (s *Service) resizeOne(job resizeJob) resizeOutcome {
 
 	newURL, newThumb := a.URL, a.Thumbnail
 	if job.urls != nil {
-		if u, ok := s.firstThatFits(job.urls, images.MaxImageBytes); ok {
+		if u, found := s.pickSized(job.urls, images.MaxImageBytes, a.URL); found == sizedFound {
 			newURL = u
 		} else {
 			incomplete = true
 		}
 	}
 	if job.thumbs != nil {
-		if u, ok := s.firstThatFits(job.thumbs, images.MaxThumbnailBytes); ok {
+		if u, found := s.pickSized(job.thumbs, images.MaxThumbnailBytes, a.Thumbnail); found == sizedFound {
 			newThumb = u
 		} else {
 			incomplete = true
@@ -251,22 +252,63 @@ func (s *Service) resizeOne(job resizeJob) resizeOutcome {
 	return resizeDone
 }
 
-// firstThatFits returns the first of candidates that is an image within
-// limit. A step that is too heavy moves on to the next, narrower one; a step
-// that does not load at all ends the search, since a narrower copy of the
-// same file on the same host would not fare better this pass.
-func (s *Service) firstThatFits(candidates []string, limit int64) (string, bool) {
+// sizedFind is what pickSized found for one field.
+type sizedFind int
+
+const (
+	// sizedFound: a sized copy was confirmed.
+	sizedFound sizedFind = iota
+	// sizedUnconfirmed: a copy did not load, or the comparison with the
+	// current file could not be made; worth another try later.
+	sizedUnconfirmed
+	// sizedNoLighter: every copy is an image over the cap, and none is
+	// known to be lighter than the file the field holds.
+	sizedNoLighter
+)
+
+// pickSized returns the URL to store in a field that holds current, trying
+// candidates best first.
+//
+// The first candidate that is an image within limit wins. A candidate that is
+// too heavy moves on to the next, narrower one; one that does not load at all
+// ends the search, since a narrower copy of the same file on the same host
+// would not fare better this pass.
+//
+// If every candidate is over the cap, the lightest one whose size is known
+// exactly is taken as long as it is lighter than current: a 1.2 MB copy of a
+// 13 MB original is still a tenth of the weight, and without it the row
+// would keep the original and be retried every resizeBackoff for good. It is
+// never swapped for something heavier.
+func (s *Service) pickSized(candidates []string, limit int64, current string) (string, sizedFind) {
+	lightest, lightestSize := "", int64(-1)
 	for _, u := range candidates {
-		switch s.searcher.CheckFit(u, limit) {
+		fit, size := s.searcher.Weigh(u, limit)
+		switch fit {
 		case images.Fits:
-			return u, true
+			return u, sizedFound
 		case images.TooHeavy:
-			continue
+			if size >= 0 && (lightestSize < 0 || size < lightestSize) {
+				lightest, lightestSize = u, size
+			}
 		default:
-			return "", false
+			return "", sizedUnconfirmed
 		}
 	}
-	return "", false
+	if lightest == "" {
+		return "", sizedNoLighter
+	}
+	cur := s.searcher.Probe(current, 0)
+	switch {
+	case cur.Status == 0:
+		return "", sizedUnconfirmed // the request failed; compare next time
+	case !cur.OK || cur.Size < 0 || lightestSize >= cur.Size:
+		slog.Info("image resize: every sized copy is over its cap and none is lighter; keeping the current file",
+			"url", current, "bytes", cur.Size, "lightest_copy", lightest, "lightest_bytes", lightestSize)
+		return "", sizedNoLighter
+	}
+	slog.Info("image resize: every sized copy is over its cap; taking the lightest, still lighter than the current file",
+		"url", lightest, "bytes", lightestSize, "limit", limit, "current_bytes", cur.Size)
+	return lightest, sizedFound
 }
 
 // noteResizeFailure counts a failed pass for a row and, once it has failed

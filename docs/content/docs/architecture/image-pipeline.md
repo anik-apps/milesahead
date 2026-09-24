@@ -141,7 +141,9 @@ Wikimedia/Flickr thumbnails for sized URLs:
   `<width>px-thumbnail.jpg`.
 - Each new URL is fetched first; a field that cannot be confirmed keeps its
   current URL. If a step is an image over the byte cap, the next step down is
-  tried (960 px for the display image, 330 px for the thumbnail).
+  tried (960 then 500 px for the display image, 330 px for the thumbnail). If
+  every step is over the cap, the lightest one is taken as long as it is
+  lighter than the file the row holds; otherwise the row keeps its file.
 - A Wikimedia file that Commons reports deleted, and whose URL answers 404 or
   410, is cleared so enrichment picks a new image. If the URL still loads it
   is kept.

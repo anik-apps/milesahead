@@ -34,6 +34,10 @@ const (
 	htmlErr      = wm + "1/1a/" + htmlFile
 	heavyFile    = "Heavy_render.png"
 	heavy        = wm + "2/2b/" + heavyFile
+	heavierFile  = "Heavier_render.png"
+	heavier      = wm + "2/2c/" + heavierFile
+	denseFile    = "Dense_scan.png"
+	dense        = wm + "2/2d/" + denseFile
 	detailedFile = "Detailed_map.png"
 	detailed     = wm + "3/3c/" + detailedFile
 	stillFile    = "Still_served.jpg"
@@ -56,15 +60,27 @@ const (
 // stepBytes is what a thumbnail step weighs where it is not the usual 60 KB:
 // files whose sized copies are still over a field's byte cap.
 var stepBytes = map[string]int{
-	// Over 1 MiB at 1280 and at 960: the display image cannot be sized.
+	// Over 1 MiB at 1280 and at 960, within it at 500.
 	"1280px-" + heavyFile: 2_000_000,
 	"960px-" + heavyFile:  2_000_000,
+	"500px-" + heavyFile:  700_000,
+	// Over 1 MiB at every display width, but far lighter than the original.
+	"1280px-" + heavierFile: 2_400_000,
+	"960px-" + heavierFile:  1_900_000,
+	"500px-" + heavierFile:  1_200_000,
+	// Over 1 MiB at every display width, and heavier than the original.
+	"1280px-" + denseFile: 2_000_000,
+	"960px-" + denseFile:  1_800_000,
+	"500px-" + denseFile:  1_600_000,
 	// Over the cap at the first step, within it at the next one down.
 	"1280px-" + detailedFile: 1_500_000,
 	"960px-" + detailedFile:  700_000,
 	"500px-" + detailedFile:  600_000,
 	"330px-" + detailedFile:  200_000,
 }
+
+// originalBytes is what an original weighs where it is not 13.2 MB.
+var originalBytes = map[string]int{narrowFile: 400_000, denseFile: 1_500_000}
 
 // standardSteps are the only widths upload.wikimedia.org serves.
 var standardSteps = map[string]bool{"20": true, "40": true, "60": true, "120": true, "250": true,
@@ -99,6 +115,8 @@ func (h *imageHosts) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			{"title":"File:Uncached.jpg","imageinfo":[{"width":4000}]},
 			{"title":"File:Html error.jpg","imageinfo":[{"width":4000}]},
 			{"title":"File:Heavy render.png","imageinfo":[{"width":5000}]},
+			{"title":"File:Heavier render.png","imageinfo":[{"width":5000}]},
+			{"title":"File:Dense scan.png","imageinfo":[{"width":5000}]},
 			{"title":"File:Detailed map.png","imageinfo":[{"width":3000}]},
 			{"title":"File:Still served.jpg","missing":true},
 			{"title":"File:Old search.jpg","imageinfo":[{"width":6048}]},
@@ -128,10 +146,12 @@ func (h *imageHosts) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		image(60_000)
 	case r.Host == "live.staticflickr.com":
 		image(70_000)
-	case strings.HasSuffix(p, "/"+narrowFile):
-		image(400_000) // a 900 px original
-	default:
-		image(13_218_990) // an original
+	default: // an original
+		if b, ok := originalBytes[p[strings.LastIndex(p, "/")+1:]]; ok {
+			image(b)
+			return
+		}
+		image(13_218_990)
 	}
 }
 
@@ -428,7 +448,6 @@ func TestRun_ResizeWritesOnlyConfirmedImages(t *testing.T) {
 	s := newResizeService(t, d, hosts)
 
 	htmlRow := seedImage(t, d, htmlErr, htmlErr)
-	heavyRow := seedImage(t, d, heavy, heavy)
 	detailedRow := seedImage(t, d, detailed, detailed)
 	stillThumb := wm + "thumb/4/4d/" + stillFile + "/960px-" + stillFile
 	stillRow := seedImage(t, d, stillServed, stillThumb)
@@ -444,9 +463,6 @@ func TestRun_ResizeWritesOnlyConfirmedImages(t *testing.T) {
 	}{
 		// 200 text/html for every sized URL: nothing is written.
 		{"sized URL is an HTML page", htmlRow, htmlErr, htmlErr},
-		// 1280 and 960 are both over 1 MiB: the display image stays; the
-		// thumbnail, which fits, is still converted.
-		{"sized display image over its cap", heavyRow, heavy, thumbs("2/2b", heavyFile) + "500px-" + heavyFile},
 		// Over the cap at the first step, within it one step down.
 		{"steps down when too heavy", detailedRow, thumbs("3/3c", detailedFile) + "960px-" + detailedFile, thumbs("3/3c", detailedFile) + "330px-" + detailedFile},
 		// Commons says missing, but the URL answers with an image: kept, and
@@ -466,20 +482,20 @@ func TestRun_ResizeWritesOnlyConfirmedImages(t *testing.T) {
 	if got := resizeCount(t, "resized") - resizedBefore; got != 1 {
 		t.Errorf("resized counter +%v, want +1 (only the row where every field converted)", got)
 	}
-	if got := resizeCount(t, "unconfirmed") - unconfirmedBefore; got != 3 {
-		t.Errorf("unconfirmed counter +%v, want +3", got)
+	if got := resizeCount(t, "unconfirmed") - unconfirmedBefore; got != 2 {
+		t.Errorf("unconfirmed counter +%v, want +2", got)
 	}
 	if got := resizeCount(t, "cleared") - clearedBefore; got != 0 {
 		t.Errorf("cleared counter +%v, want 0", got)
 	}
-	if got := unsizedGauge(t); got != 3 {
-		t.Errorf("unsized gauge = %v, want 3 rows still waiting", got)
+	if got := unsizedGauge(t); got != 2 {
+		t.Errorf("unsized gauge = %v, want 2 rows still waiting", got)
 	}
 
-	// Second pass: the three rows that failed are tried once more...
+	// Second pass: the two rows that failed are tried once more...
 	before := hosts.total()
 	s.Run()
-	for _, file := range []string{htmlFile, heavyFile, stillFile} {
+	for _, file := range []string{htmlFile, stillFile} {
 		if n := countIn(hosts.since(before), file); n == 0 {
 			t.Errorf("second pass did not retry %s", file)
 		}
@@ -491,8 +507,53 @@ func TestRun_ResizeWritesOnlyConfirmedImages(t *testing.T) {
 	if again := hosts.since(before); len(again) != 0 {
 		t.Errorf("third pass probed rows that are backing off: %v", again)
 	}
-	if got := unsizedGauge(t); got != 3 {
-		t.Errorf("unsized gauge = %v after backing off, want 3 (still unconverted)", got)
+	if got := unsizedGauge(t); got != 2 {
+		t.Errorf("unsized gauge = %v after backing off, want 2 (still unconverted)", got)
+	}
+}
+
+// A detailed PNG can be over 1 MiB at 1280 and at 960 px. The display image
+// then stayed the multi-megabyte original, and the row was retried every six
+// hours for good. The resize now tries 500 px as well, and if every width is
+// over the cap it takes the lightest sized copy that is still lighter than
+// the file the row holds -- never a heavier one.
+func TestRun_ResizeDisplayImageOverCapAtEveryWidth(t *testing.T) {
+	d := testDB(t)
+	hosts := &imageHosts{}
+	s := newResizeService(t, d, hosts)
+
+	heavyRow := seedImage(t, d, heavy, heavy)
+	heavierRow := seedImage(t, d, heavier, heavier)
+	denseRow := seedImage(t, d, dense, dense)
+	s.Run()
+
+	thumbs := func(dir, file string) string { return wm + "thumb/" + dir + "/" + file + "/" }
+	for _, c := range []struct {
+		name       string
+		id         int64
+		url, thumb string
+	}{
+		// 700 KB at 500 px fits the display cap (not the thumbnail's).
+		{"fits at 500 px", heavyRow, thumbs("2/2b", heavyFile) + "500px-" + heavyFile, thumbs("2/2b", heavyFile) + "330px-" + heavyFile},
+		// 1.2 MB at 500 px is over the cap, but a tenth of the 13.2 MB original.
+		{"lighter than the original", heavierRow, thumbs("2/2c", heavierFile) + "500px-" + heavierFile, thumbs("2/2c", heavierFile) + "330px-" + heavierFile},
+		// Every sized copy is heavier than the 1.5 MB original: it stays.
+		{"heavier than the original", denseRow, dense, thumbs("2/2d", denseFile) + "330px-" + denseFile},
+	} {
+		url, thumb, _ := storedImage(t, d, c.id)
+		if url != c.url || thumb != c.thumb {
+			t.Errorf("%s:\n url   %q\n want  %q\n thumb %q\n want  %q", c.name, url, c.url, thumb, c.thumb)
+		}
+	}
+	hosts.noNonStandardWidths(t)
+
+	// The converted rows are done: nothing about them is fetched again.
+	before := hosts.total()
+	s.Run()
+	for _, file := range []string{heavyFile, heavierFile} {
+		if n := countIn(hosts.since(before), file); n != 0 {
+			t.Errorf("second pass fetched %s again %d times", file, n)
+		}
 	}
 }
 
