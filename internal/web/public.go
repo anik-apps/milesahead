@@ -143,6 +143,15 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
 		return
 	}
+	// An empty live feed on a site that has published articles means every
+	// one of them has ended, which the empty state should say rather than
+	// "nothing published yet".
+	allEnded := false
+	if len(articles) == 0 && tagFilter == "" && typeFilter == "" {
+		if published, perr := app.db.ListPublishedArticles(1, 0); perr == nil && len(published) > 0 {
+			allEnded = true
+		}
+	}
 
 	var rows []publicArticleRow
 	for _, a := range articles {
@@ -208,6 +217,7 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		"Grid":            grid,
 		"Articles":        rows,
 		"TypeFilter":      typeFilter,
+		"AllEnded":        allEnded,
 		"Types":           []string{"deal", "roundup", "alert", "summary"},
 		"ActiveTag":       tagFilter,
 		"Tags":            predefinedTags,

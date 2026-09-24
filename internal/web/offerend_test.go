@@ -301,3 +301,26 @@ func TestSitemap_KeepsEndedOffers(t *testing.T) {
 		t.Error("the sitemap should still list the ended offer's page")
 	}
 }
+
+// When every published article has ended, the empty default feed says so
+// instead of claiming nothing has been published.
+func TestHome_AllEndedEmptyState(t *testing.T) {
+	app := offerApp(t)
+	publishOffer(t, app, "ended", "Citi 25% Transfer Bonus to Leading Hotels of the World", "deal", "September 19, 2026", `["transfer-bonuses"]`)
+
+	body := getPage(t, app, "/")
+	if !strings.Contains(body, "every recent one has ended") {
+		t.Error("an all-ended feed should say every recent offer has ended")
+	}
+	if strings.Contains(body, "No articles published yet") {
+		t.Error("the site has published articles; the empty state should not say otherwise")
+	}
+	if cardFor(getPage(t, app, "/?type=deal"), "ended") == "" {
+		t.Error("the deals view should still list the ended offer")
+	}
+
+	fresh := setupRealTemplateCardApp(t)
+	if !strings.Contains(getPage(t, fresh, "/"), "No articles published yet") {
+		t.Error("a site with nothing published keeps its original empty state")
+	}
+}

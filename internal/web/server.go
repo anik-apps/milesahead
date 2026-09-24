@@ -87,7 +87,16 @@ type App struct {
 // offerToday is the site's current date ("2006-01-02"), the calendar offer
 // end dates are compared against.
 func (app *App) offerToday() string {
-	return offer.Today(app.now(), app.siteLoc)
+	// Guarded so an App built without a constructor (a test fixture) still
+	// works rather than panicking on a nil clock.
+	now, loc := time.Now, time.UTC
+	if app.now != nil {
+		now = app.now
+	}
+	if app.siteLoc != nil {
+		loc = app.siteLoc
+	}
+	return offer.Today(now(), loc)
 }
 
 // WaitBackground blocks until handler-started background work finishes.

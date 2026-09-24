@@ -89,6 +89,8 @@
 <div class="empty-state">
     {{if .ActiveTag}}
     <p>No articles tagged <strong>{{.ActiveTag}}</strong> right now — check back soon!</p>
+    {{else if .AllEnded}}
+    <p>No current offers right now — every recent one has ended. Check back soon!</p>
     {{else if eq .TypeFilter ""}}
     <p>No articles published yet. Check back soon!</p>
     {{else}}
