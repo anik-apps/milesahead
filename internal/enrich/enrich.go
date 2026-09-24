@@ -58,8 +58,10 @@ type Service struct {
 	// last read, so a stalled reconciler is indistinguishable from an idle one.
 	//
 	// The bound is checked between articles, so the true ceiling is MaxDuration
-	// plus one article's worst case. Bounding mid-article needs a context
-	// threaded through Generate, which it does not take yet.
+	// plus one article's worst case. Within an article only the image checks
+	// stop at it (see findImage); bounding the model calls needs a context
+	// threaded through Generate, which it does not take yet, and warming
+	// thumbnails for image scoring can add up to 15 s.
 	MaxDuration time.Duration
 
 	// startedAt records when the in-flight pass began, so a skip can report how
@@ -182,7 +184,7 @@ func (s *Service) Run() {
 		if i > 0 && s.Pace > 0 {
 			time.Sleep(s.Pace)
 		}
-		got, missed := s.enrichOne(a)
+		got, missed := s.enrichOne(a, deadline)
 		filled += got
 		failed += missed
 		done++
@@ -216,8 +218,9 @@ func (s *Service) refreshDegradedGauge() {
 
 // enrichOne fills whatever it can for a single article and records the attempt.
 // A partial success is kept: each field is written independently, so one
-// failing step does not discard the others.
-func (s *Service) enrichOne(a db.ArticleNeedingEnrichment) (filled, failed int) {
+// failing step does not discard the others. deadline is the pass's: the image
+// checks stop at it (see findImage).
+func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (filled, failed int) {
 	var u db.EnrichmentUpdate
 
 	if a.MissingScoutsTake {
@@ -262,7 +265,7 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment) (filled, failed int) 
 	}
 
 	if a.MissingImage {
-		if s.findImage(&u, a) {
+		if s.findImage(&u, a, deadline) {
 			filled++
 		} else {
 			failed++
@@ -289,7 +292,14 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment) (filled, failed int) 
 // enough to use. A search that finds nothing relevant is a legitimate outcome
 // rather than an error, but it still counts against the attempt budget so the
 // article is not searched forever.
-func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichment) bool {
+//
+// Checking that candidates load stops at deadline, the pass's. A Wikimedia
+// probe may take up to 30 s (it waits for a render and retries once), so a
+// run of hanging candidates could otherwise hold the pass minutes past its
+// deadline and make the scheduler skip the next one. An article whose checks
+// are cut short gets no image this pass; like any failed image step, that
+// uses one of its attempts.
+func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichment, deadline time.Time) bool {
 	if s.searcher == nil {
 		return false
 	}
@@ -327,7 +337,12 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 		if c.Score < MinImageScore {
 			break
 		}
-		if !s.searcher.Usable(c) {
+		if !time.Now().Before(deadline) {
+			slog.Warn("enrichment: pass deadline reached while checking image candidates",
+				"article_id", a.ID, "checked", i)
+			return false
+		}
+		if !s.searcher.Usable(c, deadline) {
 			continue
 		}
 		u.ImageURL = &scored[i].URL

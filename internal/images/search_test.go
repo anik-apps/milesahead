@@ -387,9 +387,9 @@ func TestProbe_WaitsForWikimediaRenders(t *testing.T) {
 
 // budgetHost stands in for an image host that hangs: a request to a path
 // under /hang/ gets no answer until the client gives up; /throttle/ always
-// answers 429 with Retry-After: 1; /unknown/ answers a range with a total of
-// "*", and /unknown-stall/ does the same but stalls its body. It counts
-// ranged and plain requests separately.
+// answers 429 with Retry-After: 1; /fits/ is a 1 KB image; /unknown/
+// answers a range with a total of "*", and /unknown-stall/ does the same but
+// stalls its body. It counts ranged and plain requests separately.
 type budgetHost struct {
 	mu            sync.Mutex
 	ranged, plain int
@@ -415,6 +415,11 @@ func (h *budgetHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(r.URL.Path, "/throttle/"):
 		w.Header().Set("Retry-After", "1")
 		w.WriteHeader(http.StatusTooManyRequests)
+	case strings.Contains(r.URL.Path, "/fits/"):
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Range", "bytes 0-0/1000")
+		w.WriteHeader(http.StatusPartialContent)
+		w.Write([]byte("j"))
 	case r.Header.Get("Range") == "":
 		hang() // the plain GET that would measure the file
 	default:
@@ -502,6 +507,56 @@ func TestProbe_StaysWithinItsBudget(t *testing.T) {
 	}
 }
 
+// Usable is given the pass's deadline, and no probe runs past it: a hanging
+// host cannot hold a pass beyond its end, however long a single probe may
+// take on its own.
+func TestUsable_StopsAtItsDeadline(t *testing.T) {
+	host := &budgetHost{}
+	s := stubSearcher(t, host.ServeHTTP) // production timeouts: 15 s a render, 30 s a probe
+	const wm = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/L.jpg/"
+	c := ImageCandidate{URL: wm + "hang/1280px-L.jpg", Thumbnail: wm + "hang/500px-L.jpg"}
+
+	// The thumbnail hangs; or it loads, and the display image hangs.
+	for _, c := range []ImageCandidate{c, {URL: c.URL, Thumbnail: wm + "fits/500px-L.jpg"}} {
+		start := time.Now()
+		if s.Usable(c, start.Add(150*time.Millisecond)) {
+			t.Errorf("Usable(%s) = true for a host that never answers", c.Thumbnail)
+		}
+		if elapsed := time.Since(start); elapsed > time.Second {
+			t.Errorf("Usable(%s) took %v; its deadline was 150 ms away", c.Thumbnail, elapsed)
+		}
+	}
+	// A deadline already past sends nothing.
+	if s.Usable(c, time.Now().Add(-time.Second)) {
+		t.Error("Usable = true past its deadline")
+	}
+	if ranged, _ := host.counts(); ranged != 3 {
+		t.Errorf("%d requests; want 3, and none once the deadline had passed", ranged)
+	}
+}
+
+// Warm runs outside any pass deadline, so it waits for one render timeout
+// and no longer: no retry after a timeout, as a probe would make. A render
+// cut off by the timeout carries on at Wikimedia regardless.
+func TestWarm_WaitsOneRenderTimeout(t *testing.T) {
+	const path = "/wikipedia/commons/thumb/6/6c/L.jpg/500px-L.jpg"
+	host := &slowHost{calls: map[string]int{}, plan: map[string][]time.Duration{
+		path: {300 * time.Millisecond},
+	}}
+	s := stubSearcher(t, host.ServeHTTP)
+	s.renderTimeout = 100 * time.Millisecond
+	s.probeBudget = time.Second
+
+	start := time.Now()
+	s.Warm([]string{"https://upload.wikimedia.org" + path})
+	if elapsed := time.Since(start); elapsed > 250*time.Millisecond {
+		t.Errorf("Warm took %v; want about the 100 ms render timeout", elapsed)
+	}
+	if got := host.count(path); got != 1 {
+		t.Errorf("%d requests; want 1, no retry", got)
+	}
+}
+
 // Warm asks for the Wikimedia thumbnails in a list, once each, so the vision
 // model is not the first client to request a size that has to be rendered.
 // Other URLs are served from stored files and are left alone.
@@ -555,7 +610,7 @@ func TestUsable_EnforcesByteCaps(t *testing.T) {
 		{"shared URL, heavy", ImageCandidate{URL: h + "thumb-huge.jpg", Thumbnail: h + "thumb-huge.jpg"}, false},
 	}
 	for _, tt := range tests {
-		if got := s.Usable(tt.c); got != tt.want {
+		if got := s.Usable(tt.c, time.Time{}); got != tt.want {
 			t.Errorf("%s: Usable = %v, want %v", tt.name, got, tt.want)
 		}
 	}
@@ -602,10 +657,10 @@ func TestCheckFit(t *testing.T) {
 			t.Errorf("CheckFit(%s) = %v, want %v", tt.path, got, tt.want)
 		}
 	}
-	if s.Usable(ImageCandidate{URL: h + "ok.jpg", Thumbnail: h + "error-page.jpg"}) {
+	if s.Usable(ImageCandidate{URL: h + "ok.jpg", Thumbnail: h + "error-page.jpg"}, time.Time{}) {
 		t.Error("Usable accepted a thumbnail that answers with an HTML page")
 	}
-	if s.Usable(ImageCandidate{URL: h + "error-page.jpg", Thumbnail: h + "ok.jpg"}) {
+	if s.Usable(ImageCandidate{URL: h + "error-page.jpg", Thumbnail: h + "ok.jpg"}, time.Time{}) {
 		t.Error("Usable accepted a display image that answers with an HTML page")
 	}
 }

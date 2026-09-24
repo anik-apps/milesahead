@@ -596,6 +596,13 @@ func (p Probe) IsImage() bool {
 // "*"; with measureUpTo > 0 the body is then read up to one byte past that
 // limit, so an oversized file is caught either way.
 func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
+	return s.probeUntil(rawURL, measureUpTo, time.Time{})
+}
+
+// probeUntil is Probe ending by the earlier of maxProbeDuration from now and
+// by (a zero by adds no bound). A probe that runs out of time reports the URL
+// as not fetchable.
+func (s *Searcher) probeUntil(rawURL string, measureUpTo int64, by time.Time) Probe {
 	if rawURL == "" {
 		return Probe{Size: -1}
 	}
@@ -604,6 +611,9 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 		perRequest = s.renderTimeout
 	}
 	deadline := time.Now().Add(s.probeBudget)
+	if !by.IsZero() && by.Before(deadline) {
+		deadline = by
+	}
 	timeoutRetried := false
 	for attempt := 1; ; attempt++ {
 		req, err := s.newRequest(rawURL)
@@ -614,8 +624,8 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			// Only reachable after a wait or retry; a zero Timeout would
-			// mean none at all.
+			// After a wait or retry, or when by had already passed. A zero
+			// or negative Timeout would mean none at all.
 			slog.Warn("image liveness probe ran out of time", "url", rawURL)
 			return Probe{Size: -1}
 		}
@@ -686,15 +696,21 @@ func rendersOnDemand(rawURL string) bool {
 }
 
 // Warm requests each Wikimedia thumbnail in urls once, so that the size has
-// been rendered before another client asks for it. The vision model fetches
+// been rendered before another client asks for it. The vision scorer fetches
 // candidates' thumbnails itself, and as the first client to ask for a new
 // size it met a slow render or a 429 -- and the candidate took the scorer's
 // failure penalty however good the image was. Other URLs are served from
-// stored files and are skipped. The requests run side by side, so warming
-// takes as long as the slowest probe (at most maxProbeDuration).
+// stored files and are skipped.
+//
+// The requests run side by side, and each is given renderTimeout with no
+// retry after a timeout: warming is a courtesy that runs outside any pass
+// deadline, and a render cut off by the timeout carries on at Wikimedia
+// anyway. So warming takes at most renderTimeout, plus any 429 waits within
+// it.
 func (s *Searcher) Warm(urls []string) {
 	var wg sync.WaitGroup
 	seen := map[string]bool{}
+	by := time.Now().Add(s.renderTimeout)
 	for _, u := range urls {
 		if seen[u] || !rendersOnDemand(u) {
 			continue
@@ -703,7 +719,7 @@ func (s *Searcher) Warm(urls []string) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s.Probe(u, 0)
+			s.probeUntil(u, 0, by)
 		}()
 	}
 	wg.Wait()
@@ -756,11 +772,19 @@ func (s *Searcher) measureWhole(rawURL string, limit int64, deadline time.Time) 
 // Usable reports whether a candidate can go on the page: its URLs fetch as
 // images, and neither is heavier than its slot allows. When both fields hold
 // the same URL it is shown as a thumbnail, so the tighter cap applies.
-func (s *Searcher) Usable(c ImageCandidate) bool {
-	if s.CheckFit(c.Thumbnail, MaxThumbnailBytes) != Fits {
+//
+// No request runs past by (a zero by adds no bound), so a caller with a
+// deadline of its own is not held past it by a slow host; a candidate that
+// cannot be confirmed by then is not usable.
+func (s *Searcher) Usable(c ImageCandidate, by time.Time) bool {
+	if fit, _ := s.weighUntil(c.Thumbnail, MaxThumbnailBytes, by); fit != Fits {
 		return false
 	}
-	return c.URL == c.Thumbnail || s.CheckFit(c.URL, MaxImageBytes) == Fits
+	if c.URL == c.Thumbnail {
+		return true
+	}
+	fit, _ := s.weighUntil(c.URL, MaxImageBytes, by)
+	return fit == Fits
 }
 
 // Fit is how a URL compares with the slot it would fill.
@@ -793,7 +817,12 @@ func (s *Searcher) CheckFit(rawURL string, limit int64) Fit {
 // known exactly, or -1: for an unusable URL, and for a file whose size was
 // counted from the body and so is only known to exceed limit.
 func (s *Searcher) Weigh(rawURL string, limit int64) (Fit, int64) {
-	p := s.Probe(rawURL, limit)
+	return s.weighUntil(rawURL, limit, time.Time{})
+}
+
+// weighUntil is Weigh with its probe ending by by, as in probeUntil.
+func (s *Searcher) weighUntil(rawURL string, limit int64, by time.Time) (Fit, int64) {
+	p := s.probeUntil(rawURL, limit, by)
 	switch {
 	case !p.OK:
 		return Unusable, -1

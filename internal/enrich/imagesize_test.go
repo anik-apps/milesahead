@@ -768,6 +768,76 @@ func TestFindImage_SkipsCandidatesThatDoNotFit(t *testing.T) {
 	}
 }
 
+// Integration, pick path: upload.wikimedia.org hangs. A Wikimedia probe may
+// take 30 s (15 s for a render, then one retry), so walking three hanging
+// candidates took 90 s past the pass deadline -- enough, with a slow model
+// call, to make the scheduler skip the next pass. The checks now stop at the
+// pass deadline.
+func TestFindImage_StopsAtThePassDeadline(t *testing.T) {
+	d := testDB(t)
+	id := seedArticle(t, d)
+
+	var mu sync.Mutex
+	var probes, afterDeadline int
+	var deadline time.Time
+	release := make(chan struct{})
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Host {
+		case "api.openverse.org":
+			w.Write([]byte(`{"results":[
+				{"title":"Lounge","url":"` + wm + `1/1a/Lounge.jpg","creator":"a","source":"wikimedia","width":6048},
+				{"title":"Lobby","url":"` + lobby + `","creator":"b","source":"wikimedia","width":6048},
+				{"title":"Gate","url":"` + wm + `2/2b/Gate.jpg","creator":"c","source":"wikimedia","width":6048}]}`))
+		case "commons.wikimedia.org":
+			w.Write([]byte(`{}`))
+		default:
+			mu.Lock()
+			probes++
+			if !deadline.IsZero() && time.Now().After(deadline) {
+				afterDeadline++
+			}
+			mu.Unlock()
+			select { // never answers; gives up with the client
+			case <-r.Context().Done():
+			case <-release:
+			}
+		}
+	})
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	// Cleanups run last first: this frees any request still held open.
+	t.Cleanup(func() { close(release) })
+	// Production probe timing: 15 s a render, 30 s a probe.
+	searcher := images.NewSearcher("", "")
+	searcher.SetTransport(hostRouter{srv.Listener.Addr().String()})
+	client := &scriptedClient{reply: map[string]string{
+		"image editor": `{"scores":[{"index":0,"score":9},{"index":1,"score":8},{"index":2,"score":7}]}`,
+	}}
+	s := New(d, client, []string{"m1"}, "Scout", searcher, images.NewScorer(client, "m1"))
+	s.Pace = 0
+	s.MaxDuration = 400 * time.Millisecond
+
+	start := time.Now()
+	mu.Lock()
+	deadline = start.Add(s.MaxDuration)
+	mu.Unlock()
+	s.Run()
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("pass ran %v; its deadline was %v", elapsed, s.MaxDuration)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if probes == 0 {
+		t.Fatal("no candidate was checked; the test is not exercising the walk")
+	}
+	if afterDeadline > 0 {
+		t.Errorf("%d image requests were sent after the pass deadline", afterDeadline)
+	}
+	if url, thumb, attempts := storedImage(t, d, id); url != "" || thumb != "" || attempts != 1 {
+		t.Errorf("image = %q / %q after %d attempts; want none stored, one attempt", url, thumb, attempts)
+	}
+}
+
 // The width lookup runs before the per-pass row cap, so it is bounded on its
 // own: one Commons request a pass, newest rows first, and none once the
 // budget is spent. With 45 unknown originals the old lookup made 3 requests

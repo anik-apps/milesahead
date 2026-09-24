@@ -81,7 +81,8 @@ often a size nobody has asked for, which Wikimedia renders on the first
 request -- usually in 0.2-3 s, sometimes 4-10 s, or with a 429 -- and a failed
 fetch costs the candidate a x0.6 penalty. So before any thumbnail is sent,
 the Wikimedia ones among the top 5 are requested once, side by side
-(`Searcher.Warm`), and the vision model finds them rendered.
+(`Searcher.Warm`), and the vision model finds them rendered. Warming waits at
+most 15 s, with no retry: a render cut off then carries on at Wikimedia.
 
 ## Selection Process
 
@@ -123,8 +124,12 @@ cap; a size that cannot be determined is refused. The same check
 Each probe request waits up to 8 s. A Wikimedia thumbnail may be rendered on
 that very request, so it waits up to 15 s and gets one retry after a timeout,
 as it does after a 429: a render cut off by the timeout carries on at
-Wikimedia, and the retry usually finds it done. A whole probe, retries
-included, never takes more than 30 s.
+Wikimedia, and the retry usually finds it done. A whole probe, retries,
+waits and the GET that measures a file of unknown size included, never takes
+more than 30 s. At pick time the probes also stop at the enrichment pass's
+deadline, so a hanging image host cannot hold a pass past its end (and make
+the scheduler skip the next one); an article cut short there gets no image
+that pass.
 
 Rows stored before this existed are converted by the enrichment reconciler
 (`internal/enrich/imagesize.go`). At the start of every pass, including the
