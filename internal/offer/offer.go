@@ -132,25 +132,44 @@ var staleLabelRE = regexp.MustCompile(`\b(?:original|originally|previous|previou
 // the end.
 var benefitDeadlineRE = regexp.MustCompile(`\b(?:use|using|usage|credits?|discounts?|redeem|redeeming|redemptions?|spend|spending|statement)\b`)
 
-func classify(label string) labelKind {
+// takeDeadlineRE marks a deadline for taking the offer even when a benefit
+// word is in the label too: "Credit Card Application Deadline", "Promo Code
+// Use Deadline", "Statement Credit Offer Deadline". "Offer" counts only
+// right before "deadline": an "Offer Spend Deadline" is still a spend.
+var takeDeadlineRE = regexp.MustCompile(`\b(?:appl(?:y|ication)|enroll(?:ing|ment)?|regist(?:er|ering|ration)|sign[\s-]?ups?|book(?:ing)?|codes?|offer\s+deadline)\b`)
+
+// creditCardRE is the product, not a statement credit: "Credit Card
+// Application Deadline" is not about a credit.
+var creditCardRE = regexp.MustCompile(`\bcredit\s+cards?\b`)
+
+// replacementLabelRE names a deadline that replaces the others in the same
+// article: "Extended Deadline", "New End Date", "Extended To".
+var replacementLabelRE = regexp.MustCompile(`^(?:extended|new|revised|updated|current)\s+(?:deadline|end\s+date|end|expiration(?:\s+date)?|to|through|thru|until|till)$`)
+
+// classify says how a label relates to the offer's end, and whether it
+// names a replacement for the other end dates in the article.
+func classify(label string) (labelKind, bool) {
 	l := strings.ToLower(strings.TrimSpace(label))
 	l = strings.TrimRight(l, ":")
 	l = spaceRE.ReplaceAllString(l, " ")
+	if replacementLabelRE.MatchString(l) {
+		return deadlineLabel, true
+	}
 	if staleLabelRE.MatchString(l) {
-		return notAnEnd
+		return notAnEnd, false
 	}
 	switch {
 	case strings.Contains(l, "deadline"):
-		if benefitDeadlineRE.MatchString(l) {
-			return notAnEnd
+		if benefitDeadlineRE.MatchString(creditCardRE.ReplaceAllString(l, "")) && !takeDeadlineRE.MatchString(l) {
+			return notAnEnd, false
 		}
-		return deadlineLabel
+		return deadlineLabel, false
 	case endLabels[l]:
-		return deadlineLabel
+		return deadlineLabel, false
 	case periodLabels[l]:
-		return periodLabel
+		return periodLabel, false
 	}
-	return notAnEnd
+	return notAnEnd, false
 }
 
 // monthNames matches a month name or abbreviation. Its first three letters
@@ -162,14 +181,20 @@ const monthNames = `(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|
 // deliberately does not match: its last day would be a guess.
 var monthDateRE = regexp.MustCompile(`(?i)\b` + monthNames + `(?:\.\s*|\s+)(\d{1,2})(?:st|nd|rd|th)?\b(?:(?:,\s*|\s+)(\d{4})\b)?`)
 
+// timeAfterDayRE follows a number that is an hour, not a day: the "11" of
+// "30 June 11:59pm", which monthDateRE would otherwise read as June 11.
+var timeAfterDayRE = regexp.MustCompile(`(?i)^(?:st|nd|rd|th)?(?::\d|\.\d\d\s*[ap]|\s*(?:[ap]\.?\s?m\b|[ap]\.m\.))`)
+
 // dayRangeRE continues a match of monthDateRE when a range shares its month:
 // the "-10" in "July 7-10, 2026". Values are normalized first, so every dash
 // is "-" by now.
 var dayRangeRE = regexp.MustCompile(`(?i)^\s*(?:-|to|through|thru|until|till)\s*(\d{1,2})(?:st|nd|rd|th)?\b`)
 
-// notADayRE follows a number that is a time or an amount rather than a day:
-// the "11" of "June 30 - 11:59 PM", the "5" of "June 30 - 5 PM".
-var notADayRE = regexp.MustCompile(`(?i)^\s*(?::|%|[ap]\.?\s?m\b|[ap]\.m\.)`)
+// notADayRE follows a number that is a time, an amount or part of a numeric
+// date rather than a day: the "11" of "June 30 - 11:59 PM", the "5" of "June
+// 30 - 5 PM ET", the "10" of "June 13 - 10 ET", the "75" of "June 30 -
+// 75,000 points", the "07" of "March 1 - 07/01/2026".
+var notADayRE = regexp.MustCompile(`(?i)^\s*(?::|/|\.\d|,\d{3}\b|%|x\b|k\b|[ap]\.?\s?m\b|[ap]\.m\.|noon\b|midnight\b|(?:e|c|m|p|h|ak)[sd]?t\b|utc\b|gmt\b|bst\b|(?:eastern|central|mountain|pacific)\b|(?:points?|pts|miles?|nights?|avios)\b)`)
 
 // yearAfterRE reads the year after a day: ", 2026" or " 2026".
 var yearAfterRE = regexp.MustCompile(`^(?:,\s*|\s+)(\d{4})\b`)
@@ -186,8 +211,8 @@ var (
 // isoDateRE matches "2026-07-29", and the date of "2026-07-29T23:59".
 var isoDateRE = regexp.MustCompile(`\b(\d{4})-(\d{2})-(\d{2})(?:T|\b)`)
 
-// numericDateRE matches a US month/day/year date, "6/30/2026". Only a
-// four-digit year makes it a date: "5/24" is a card rule, not May 24.
+// numericDateRE matches a numeric date with a four-digit year, "6/30/2026".
+// Only the year makes it a date: "5/24" is a card rule, not May 24.
 var numericDateRE = regexp.MustCompile(`\b(\d{1,2})/(\d{1,2})/(\d{4})\b`)
 
 // beforeRE catches "before July 29", whose last day is July 28. orBeforeRE
@@ -202,29 +227,63 @@ var (
 // when it is the only date in a period.
 var startRE = regexp.MustCompile(`(?i)\b(?:start(?:s|ed|ing)?|begin(?:s|ning)?|began|begun|from|effective|as\s+of|launch(?:es|ed|ing)?|after|since|open(?:s|ed|ing)?|kick(?:s|ed|ing)?\s+off|(?:went|goes|go|going)\s+live|return(?:s|ed|ing)|debut(?:s|ed)?|introduced|rolled\s+out)\s+(?:on\s+)?$`)
 
-// supersededRE catches a date something else replaced ("was September 30",
-// "instead of June 30", "old deadline June 30"), and pastEndRE one already
-// over ("expired May 31"). Such a date gives way to any other date in the
+// startAfterRE catches a date the text after it calls a start: "June 1
+// (start date; no end announced)", "June 1 start, no end date".
+var startAfterRE = regexp.MustCompile(`(?i)^\s*(?:\(\s*)?(?:start\s+date\b|start(?:s|ed)?\s*(?:$|[,;)]))`)
+
+// supersededRE catches a date something else replaced or pushed past: "was
+// September 30", "instead of June 30", "old deadline June 30", "the original
+// June 30 deadline", "was scheduled to end June 30", "extended past June
+// 30", "no longer June 30". pastEndRE catches one already over ("expired May
+// 31", "ended early: June 5"). Such a date gives way to any other date in the
 // value; alone, it stands only when the value says the offer is over.
 var (
-	supersededRE = regexp.MustCompile(`(?i)(?:\b(?:was|were|previously|originally|formerly|initially|instead\s+of|rather\s+than|replac(?:es|ed|ing)|not)|\b(?:old|original|previous|prior|earlier|former|initial)\s+(?:deadline|end\s+date|end|date|expiration(?:\s+date)?)(?:\s+(?:was|of|is))?\s*:?)\s+(?:on\s+)?$`)
-	pastEndRE    = regexp.MustCompile(`(?i)\b(?:ended|expired|closed|lapsed)\s+(?:on\s+)?$`)
+	supersededRE = regexp.MustCompile(`(?i)(?:` +
+		`\b(?:was|were|previously|originally|formerly|initially|instead\s+of|rather\s+than|replac(?:es|ed|ing)|not|no\s+longer)` +
+		`|\b(?:past|beyond)(?:\s+the)?` +
+		`|\b(?:old|original|previous|prior|earlier|former|initial|usual|planned)` +
+		`|\b(?:old|original|previous|prior|earlier|former|initial)\s+(?:deadline|end\s+date|end|date|expiration(?:\s+date)?)(?:\s+(?:was|of|is))?\s*:?` +
+		`|\b(?:was|were|had\s+been)\s+(?:originally\s+|initially\s+|first\s+)?(?:scheduled|set|due|supposed|slated|planned|meant|expected)(?:\s+to\s+(?:end|expire|close|finish|run))?(?:\s+(?:on|through|thru|until|till|for|by))?` +
+		`|\b(?:earlier|previous|prior|initial|original|old|first)\s+(?:reports?|listings?|terms|announcements?|coverage)\s+(?:said|stated|listed|showed|had|gave)` +
+		`|\b(?:days?|weeks?|months?)\s+later\s+than(?:\s+the)?` +
+		`)\s+(?:on\s+)?$`)
+	pastEndRE = regexp.MustCompile(`(?i)\b(?:ended|expired|closed|lapsed)(?:\s+early)?\s*:?\s+(?:on\s+)?$`)
 )
 
-// replacementRE catches a date that replaces every date written before it:
-// the "July 31" of "June 30, now extended through July 31", "June 30 (replaced
-// by July 31)" and "New deadline July 31". A "now" has to open its clause: in
-// "book now through June 30" it means from today.
-var replacementRE = regexp.MustCompile(`(?i)(?:\b(?:extended|extends|extension|pushed(?:\s+back)?|moved|postponed|delayed|changed|(?:replaced|superseded)\s+by|new\s+(?:deadline|end\s+date|end|date))|(?:^|[,;(])\s*now)\s*:?\s*(?:(?:to|through|thru|until|till|into|out\s+to)\s+)?(?:on\s+)?$`)
+// extendedAfterRE and beenExtendedRE catch a date the text after it says
+// was extended: "June 30, 2026 (extended indefinitely)", "June 30 has been
+// extended". "June 30 was extended from May 31" is left alone: there June 30
+// is the new date.
+var (
+	extendedAfterRE = regexp.MustCompile(`(?i)^\s*[,;:(-]?\s*(?:(?:has|have|had)\s+been\s+|(?:was|is)\s+(?:now\s+)?|now\s+)?extended\s+(?:indefinitely|until\s+further\s+notice|with\s+no\s+(?:new\s+)?end)\b`)
+	beenExtendedRE  = regexp.MustCompile(`(?i)^\s*[,;:(-]?\s*(?:(?:it\s+)?(?:has|have|had)\s+been|was)\s+extended\b(\s+from\b)?`)
+)
+
+// replacementRE catches a date that replaces the dates it pushes back: the
+// "July 31" of "June 30, now extended through July 31", "June 30 (replaced
+// by July 31)", "Chase has extended it to July 31" and "New deadline July
+// 31". A "now" has to open its clause: in "book now through June 30" it
+// means from today. resolve decides which dates it replaces.
+var replacementRE = regexp.MustCompile(`(?i)(?:\b(?:extended|extends|extension|pushed(?:\s+back)?|moved|postponed|delayed|changed|(?:replaced|superseded)\s+by|new\s+(?:deadline|end\s+date|end|date))(?:\s+(?:it|this|again|once\s+more|the\s+(?:offer|deadline|promo(?:tion)?|sale|bonus|end(?:\s+date)?)))?|(?:^|[,;(!.:-])\s*now)\s*:?\s*(?:(?:to|through|thru|until|till|into|out\s+to)\s+)?(?:on\s+)?$`)
 
 // endedWordRE finds a value that says the offer is over ("Was September 19,
 // 2026 (offer has ended)"), which keeps a superseded date that stands alone.
 var endedWordRE = regexp.MustCompile(`(?i)\b(?:ended|expired|is\s+over|now\s+over|no\s+longer\s+(?:available|offered|live|running)|discontinued)\b`)
 
+// stillOpenRE finds a value that says the offer has no end yet, or denies it
+// ended ("Ongoing (the 60K offer ended June 1)", "hasn't ended yet"). The
+// "ended" in it is then about something else, and keeps no date.
+var stillOpenRE = regexp.MustCompile(`(?i)(?:\b(?:ongoing|unknown|unannounced|indefinite(?:ly)?|open[\s-]ended|tb[adc]|until\s+further\s+notice|to\s+be\s+(?:announced|determined|confirmed)|not\s+(?:yet\s+)?(?:announced|set|known|specified|disclosed)|no\s+(?:set\s+|fixed\s+|firm\s+|announced\s+|known\s+|official\s+)?(?:end(?:\s+date)?|expiration(?:\s+date)?|deadline)|still\s+(?:live|available|open|running|active)|never\s+expires?)\b|(?:n't|\bnot|\bnever)\s+(?:yet\s+)?(?:been\s+)?(?:ended|expired|over)\b)`)
+
 // historyRE finds a clause about an earlier run of the offer ("last year's
-// version ended June 30, 2025", "prior offer expired May 31"). Its dates are
-// never this offer's end.
-var historyRE = regexp.MustCompile(`(?i)\b(?:last\s+(?:year|time|round|version|promo(?:tion)?|offer|sale|run)|(?:prior|previous|earlier|past)\s+(?:years?|offers?|promos?|promotions?|versions?|rounds?|sales?|bonus(?:es)?|runs?))\b`)
+// version ended June 30, 2025", "prior offer expired May 31", "a similar
+// promo expired March 31"). Its dates are never this offer's end.
+var historyRE = regexp.MustCompile(`(?i)\b(?:last\s+(?:\w+\s+)?(?:year|time|round|version|promo(?:tion)?|offer|sale|run|deal)|(?:prior|previous|earlier|past|similar|older)\s+(?:\w+\s+)?(?:years?|offers?|promos?|promotions?|versions?|rounds?|sales?|bonus(?:es)?|runs?|deals?))\b`)
+
+// historyYearRE finds a clause about a run of the offer in a given year
+// ("the 2025 version ran June 1 - July 15"). It is history when the year is
+// before the one the value was written in.
+var historyYearRE = regexp.MustCompile(`(?i)\b((?:19|20)\d\d)(?:'s)?\s+(?:version|offer|promo(?:tion)?|edition|run|sale|round|bonus)s?\b`)
 
 // clauseBreakRE splits a value into clauses, so a history marker reaches
 // only the dates in its own clause.
@@ -240,20 +299,32 @@ var incidentalRE = regexp.MustCompile(`(?i)\b(?:updated|posted|published|announc
 
 // openEndRE follows a date that opens a window with no end yet: "June 1 -
 // TBD", "June 1 - ongoing", "June 1, 2026 until further notice", "June 1
-// onward". Only these explicit words make the date a start. A dash is also
-// how the generator sets off a remark ("September 30, 2026 - act fast"), and
-// "through" can name a channel ("June 30 through the Chase portal"), so
-// either followed by anything else leaves the date as the end.
-var openEndRE = regexp.MustCompile(`(?i)^\s*,?\s*(?:(?:-|to|through|thru|until|till)\s*(?:tbd|tba|tbc|to\s+be\s+(?:announced|determined|confirmed)|ongoing|present|open[\s-]?ended|indefinite(?:ly)?|further\s+notice|(?:while|as\s+long\s+as)\s+supplies|supplies\s+last|(?:the\s+)?end\s+of\s+(?:the\s+)?(?:year|month|quarter|season|summer|winter|spring|fall|autumn)|year[\s-]end|no\s+(?:set\s+|fixed\s+)?end(?:\s+date)?|not\s+(?:yet\s+)?(?:announced|set|known))|onwards?|(?:and|or)\s+(?:later|beyond|onwards?))\b`)
+// onward", "June 1 - (no end date announced)". Only these explicit words make
+// the date a start in every label. A dash is also how the generator sets off
+// a remark ("September 30, 2026 - act fast"), and "through" can name a
+// channel ("June 30 through the Chase portal"), so in a deadline either
+// followed by anything else leaves the date as the end.
+var openEndRE = regexp.MustCompile(`(?i)^\s*,?\s*(?:(?:-|to|through|thru|until|till)\s*\(?\s*(?:tbd|tba|tbc|to\s+be\s+(?:announced|determined|confirmed)|ongoing|present|open[\s-]?ended|indefinite(?:ly)?|further\s+notice|(?:while|as\s+long\s+as)\s+supplies|supplies\s+last|(?:the\s+)?end\s+of\s+(?:the\s+)?(?:year|month|quarter|season|summer|winter|spring|fall|autumn)|year[\s-]end|no\s+(?:set\s+|fixed\s+|announced\s+)?end(?:\s+date)?|not\s+(?:yet\s+)?(?:announced|set|known)|unknown|unannounced|end\s+date\s+(?:unknown|tbd|not\s+(?:yet\s+)?announced|unannounced))|onwards?|(?:and|or)\s+(?:later|beyond|onwards?|ongoing))\b`)
 
 // danglingJoinRE follows a date that opens a range whose end is missing:
-// "Promotion Period: June 1 -".
-var danglingJoinRE = regexp.MustCompile(`(?i)^\s*(?:-|to|through|thru|until|till)\s*(?:$|[);.])`)
+// "Promotion Period: June 1 -", "June 1 - ?".
+var danglingJoinRE = regexp.MustCompile(`(?i)^\s*(?:-|to|through|thru|until|till)\s*(?:$|[);.?])`)
+
+// periodJoinRE follows a date in a period that a joiner leaves open: in
+// "Promotion Period: June 1 - Labor Day" or "June 1 until Chase pulls it"
+// no end can be read, and the one date is the start. endPrefixRE comes
+// before a date that already closes a window ("through June 9", "April 6 -
+// June 7"), which stays the end whatever follows it.
+var (
+	periodJoinRE = regexp.MustCompile(`(?i)^\s*,?\s*(?:-|(?:to|through|thru|until|till)\b)`)
+	endPrefixRE  = regexp.MustCompile(`(?i)(?:-|\b(?:to|through|thru|until|till|by|ends?|ending|expires?|closes?))\s*(?:on\s+)?$`)
+)
 
 // monthOnlyEndRE is a range that ends on a month with no day: "June 1
-// through July" runs to July 31. The month must end the clause, so "June 30
-// - may end early" is not read as running to May.
-var monthOnlyEndRE = regexp.MustCompile(`(?i)^\s*(?:-|to|through|thru|until|till)\s*\b` + monthNames + `\b\.?(?:(?:,\s*|\s+)(\d{4})\b)?\s*(?:$|[;,.()])`)
+// through July", "June 1 - mid-July" and "June 1 - end of July" run to July
+// 31. The month must end the clause, so "June 30 - may end early" is not
+// read as running to May.
+var monthOnlyEndRE = regexp.MustCompile(`(?i)^\s*(?:-|to|through|thru|until|till)\s*(?:(?:mid|early|late)[\s-]*|(?:the\s+)?end\s+of\s+)?\b` + monthNames + `\b\.?(?:(?:,\s*|\s+)(\d{4})\b)?\s*(?:$|[;,.()])`)
 
 var months = map[string]time.Month{
 	"jan": time.January, "feb": time.February, "mar": time.March,
@@ -270,21 +341,26 @@ type found struct {
 	day        int  // unused when monthEnd
 	monthEnd   bool // "through July": the last day of the month
 	numeric    bool // ISO or 6/30/2026: without a plausible year it is no date at all
+	swappable  bool // 1/7/2026: either number can be the month
 	dayBefore  bool // "before July 29": the last day is the day before
 	start      bool // "starting May 1": opens a window, so it is not an end
+	rangeEnd   bool // closes a range: "April 6 - June 7"
 	superseded bool // "was September 30": replaced by another date, if any
+	pastEnd    bool // "ended June 5": superseded, but says when the offer ended
 	history    bool // "last year's version ended June 30": an earlier run
 	incidental bool // "updated May 1": not about the offer's end at all
-	replaces   bool // "now extended to July 31": the dates before it are superseded
+	replaces   bool // "now extended to July 31": the dates it pushes back are superseded
+	dropped    bool // not a usable date after all
 }
 
 // candidate reports whether f can be the end in its own right.
 func (f found) candidate() bool {
-	return !f.start && !f.superseded && !f.history && !f.incidental
+	return !f.start && !f.superseded && !f.history && !f.incidental && !f.dropped
 }
 
-// readPrefix sets what the words just before a date in s say about it.
-func (f *found) readPrefix(s string) {
+// readPrefix sets what the words just before a date in s say about it. The
+// value was written at anchor, which tells a year's earlier run from this one.
+func (f *found) readPrefix(s string, anchor time.Time) {
 	prefix := s[:f.pos]
 	if beforeRE.MatchString(prefix) && !orBeforeRE.MatchString(prefix) {
 		f.dayBefore = true
@@ -292,8 +368,12 @@ func (f *found) readPrefix(s string) {
 	if startRE.MatchString(prefix) {
 		f.start = true
 	}
-	if supersededRE.MatchString(prefix) || pastEndRE.MatchString(prefix) {
+	if supersededRE.MatchString(prefix) {
 		f.superseded = true
+	}
+	if pastEndRE.MatchString(prefix) {
+		f.superseded = true
+		f.pastEnd = true
 	}
 	if incidentalRE.MatchString(prefix) {
 		f.incidental = true
@@ -308,12 +388,32 @@ func (f *found) readPrefix(s string) {
 	if h := historyRE.FindAllStringIndex(clause, -1); h != nil && !backToNowRE.MatchString(clause[h[len(h)-1][1]:]) {
 		f.history = true
 	}
+	for _, h := range historyYearRE.FindAllStringSubmatchIndex(clause, -1) {
+		if y, _ := strconv.Atoi(clause[h[2]:h[3]]); y < anchor.Year() && !backToNowRE.MatchString(clause[h[1]:]) {
+			f.history = true
+		}
+	}
+}
+
+// readSuffix sets what the words just after a date in s say about it.
+func (f *found) readSuffix(s string) {
+	rest := s[f.end:]
+	if extendedAfterRE.MatchString(rest) {
+		f.superseded = true
+	}
+	if m := beenExtendedRE.FindStringSubmatchIndex(rest); m != nil && m[2] < 0 {
+		f.superseded = true
+	}
+	if startAfterRE.MatchString(rest) {
+		f.start = true
+	}
 }
 
 // sameMonthEnd reads the end of a range sharing its start's month, the "10,
 // 2026" of "July 7-10, 2026", from the text after the start f. A number that
-// is a time ("June 30 - 11:59 PM") or no later than the start day is not a
-// range end.
+// is a time ("June 30 - 11:59 PM") or an amount ("June 30 - 75,000
+// points"), that is no later than the start day, or that is not a day of the
+// month is not a range end.
 func sameMonthEnd(s string, f found) (found, bool) {
 	rest := s[f.end:]
 	r := dayRangeRE.FindStringSubmatchIndex(rest)
@@ -321,7 +421,8 @@ func sameMonthEnd(s string, f found) (found, bool) {
 		return found{}, false
 	}
 	day, _ := strconv.Atoi(rest[r[2]:r[3]])
-	if day <= f.day {
+	// 2028 is a leap year, so February 29 passes here.
+	if day <= f.day || !valid(2028, f.month, day) {
 		return found{}, false
 	}
 	e := found{pos: f.end + r[2], end: f.end + r[1], month: f.month, day: day}
@@ -341,7 +442,7 @@ func monthOnlyEnd(s string, f found, next int) (found, bool) {
 	if m == nil || !unicode.IsUpper(rune(gap[m[2]])) {
 		return found{}, false
 	}
-	e := found{pos: f.end + m[2], end: f.end + m[3], month: months[strings.ToLower(gap[m[2]:m[2]+3])], monthEnd: true}
+	e := found{pos: f.end + m[2], end: f.end + m[3], month: months[strings.ToLower(gap[m[2]:m[2]+3])], monthEnd: true, rangeEnd: true}
 	switch {
 	case m[4] >= 0:
 		e.year, _ = strconv.Atoi(gap[m[4]:m[5]])
@@ -354,11 +455,16 @@ func monthOnlyEnd(s string, f found, next int) (found, bool) {
 	return e, true
 }
 
-// scanDates returns the dates written in s, in the order they appear, with
-// what the text around each says about it.
-func scanDates(s string) []found {
+// scanDates returns the dates written in s, a value of a label of kind
+// written at anchor, in the order they appear, with what the text around
+// each says about it.
+func scanDates(s string, kind labelKind, anchor time.Time) []found {
 	var out []found
 	for _, m := range monthDateRE.FindAllStringSubmatchIndex(s, -1) {
+		if timeAfterDayRE.MatchString(s[m[5]:]) {
+			// "30 June 11:59pm": the number is an hour.
+			continue
+		}
 		mon := months[strings.ToLower(s[m[2]:m[2]+3])]
 		day, _ := strconv.Atoi(s[m[4]:m[5]])
 		year := 0
@@ -371,6 +477,7 @@ func scanDates(s string) []found {
 			// year belongs to both ends.
 			if e, ok := sameMonthEnd(s, f); ok {
 				f.start = true
+				e.rangeEnd = true
 				out = append(out, f, e)
 				continue
 			}
@@ -384,15 +491,26 @@ func scanDates(s string) []found {
 		out = append(out, found{pos: m[0], end: m[1], year: year, month: time.Month(mon), day: day, numeric: true})
 	}
 	for _, m := range numericDateRE.FindAllStringSubmatchIndex(s, -1) {
-		mon, _ := strconv.Atoi(s[m[2]:m[3]])
-		day, _ := strconv.Atoi(s[m[4]:m[5]])
+		a, _ := strconv.Atoi(s[m[2]:m[3]])
+		b, _ := strconv.Atoi(s[m[4]:m[5]])
 		year, _ := strconv.Atoi(s[m[6]:m[7]])
-		out = append(out, found{pos: m[0], end: m[1], year: year, month: time.Month(mon), day: day, numeric: true})
+		f := found{pos: m[0], end: m[1], year: year, month: time.Month(a), day: b, numeric: true}
+		switch {
+		case a > 12 && b >= 1 && b <= 12:
+			// "30/6/2026" can only be day first.
+			f.month, f.day = time.Month(b), a
+		case a >= 1 && a <= 12 && b >= 1 && b <= 12 && a != b:
+			// "1/7/2026": US order unless that falls long before the
+			// article; resolve decides.
+			f.swappable = true
+		}
+		out = append(out, f)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].pos < out[j].pos })
 
 	for i := range out {
-		out[i].readPrefix(s)
+		out[i].readPrefix(s, anchor)
+		out[i].readSuffix(s)
 	}
 
 	var monthEnds []found
@@ -406,12 +524,15 @@ func scanDates(s string) []found {
 			continue
 		}
 		gap := s[f.end:next]
+		joined := false
 		switch {
 		// "April 6 - June 7, 2026": the first date of a range opens it.
 		case i+1 < len(out) && rangeJoinRE.MatchString(gap):
-			f.start = true
+			f.start, joined = true, true
+			out[i+1].rangeEnd = true
 		case i+1 < len(out) && andJoinRE.MatchString(gap) && betweenRE.MatchString(s[:f.pos]):
-			f.start = true
+			f.start, joined = true, true
+			out[i+1].rangeEnd = true
 		// "June 1 - TBD", "June 1 -": a window with no end yet.
 		case openEndRE.MatchString(s[f.end:]) || danglingJoinRE.MatchString(s[f.end:]):
 			f.start = true
@@ -419,26 +540,24 @@ func scanDates(s string) []found {
 			// "June 1 through July": the window ends with July.
 			if e, ok := monthOnlyEnd(s, *f, next); ok {
 				f.start = true
+				e.superseded = f.superseded
 				monthEnds = append(monthEnds, e)
+			} else if kind == periodLabel && !f.rangeEnd && !endPrefixRE.MatchString(s[:f.pos]) && periodJoinRE.MatchString(gap) {
+				// "Promotion Period: June 1 - Labor Day": no end to read.
+				f.start = true
 			}
+		}
+		// "was June 1 - June 30": the whole range was replaced.
+		if joined && f.superseded {
+			out[i+1].superseded = true
 		}
 	}
 	if len(monthEnds) > 0 {
 		for i := range monthEnds {
-			monthEnds[i].readPrefix(s)
+			monthEnds[i].readPrefix(s, anchor)
 		}
 		out = append(out, monthEnds...)
 		sort.SliceStable(out, func(i, j int) bool { return out[i].pos < out[j].pos })
-	}
-
-	// "June 30, now extended through July 31": the extension supersedes
-	// every date written before it.
-	for i := range out {
-		if out[i].replaces {
-			for j := 0; j < i; j++ {
-				out[j].superseded = true
-			}
-		}
 	}
 	return out
 }
@@ -448,12 +567,18 @@ func scanDates(s string) []found {
 // next year's.
 const yearlessGraceDays = 14
 
-// plausibleYear reports whether year can be in an offer's dates when the
-// value was written at anchor: "December 31, 1000 bonus points" does not
-// name the year 1000.
-func plausibleYear(year int, anchor time.Time) bool {
-	return year >= anchor.Year()-2 && year <= anchor.Year()+5
-}
+// staleEndDays is how long before the article a lone past-tense date ("was
+// June 30", "expired June 30") may fall and still be read as when this
+// offer ended. Older than that, it is about some earlier offer.
+const staleEndDays = 30
+
+// yearsBack and yearsAhead bound the years an offer's dates can be in,
+// around the year the value was written: "December 31, 1000 bonus points"
+// does not name the year 1000, and "March 31, 2500 points" not 2500.
+const (
+	yearsBack  = 2
+	yearsAhead = 5
+)
 
 // valid reports whether y-m-d is a real calendar day (no February 30).
 func valid(y int, m time.Month, d int) bool {
@@ -472,104 +597,263 @@ func (f found) dayIn(y int) int {
 	return f.day
 }
 
-// resolve turns the dates found in value into the calendar days that can be
-// its end.
+// in is f's date in year y, if that is a real day.
+func (f found) in(y int) (time.Time, bool) {
+	if !valid(y, f.month, f.dayIn(y)) {
+		return time.Time{}, false
+	}
+	return time.Date(y, f.month, f.dayIn(y), 0, 0, 0, 0, time.UTC), true
+}
+
+// nextOccurrence is the first f on or after floor, trying the years around
+// anchor's.
+func (f found) nextOccurrence(floor, anchor time.Time) (time.Time, bool) {
+	for _, y := range []int{anchor.Year() - 1, anchor.Year(), anchor.Year() + 1} {
+		if t, ok := f.in(y); ok && !t.Before(floor) {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// nearest is the occurrence of f closest to written, the later one on a tie.
+func (f found) nearest(written, anchor time.Time) time.Time {
+	var best time.Time
+	var bestGap time.Duration
+	for _, y := range []int{anchor.Year() - 1, anchor.Year(), anchor.Year() + 1} {
+		t, ok := f.in(y)
+		if !ok {
+			continue
+		}
+		gap := t.Sub(written)
+		if gap < 0 {
+			gap = -gap
+		}
+		if best.IsZero() || gap <= bestGap {
+			best, bestGap = t, gap
+		}
+	}
+	return best
+}
+
+// onOrAfter is the first occurrence of f on or after from.
+func (f found) onOrAfter(from time.Time) (time.Time, bool) {
+	if from.IsZero() {
+		return time.Time{}, false
+	}
+	for y := from.Year(); y <= from.Year()+4; y++ {
+		if t, ok := f.in(y); ok && !t.Before(from) {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// saysEnded reports whether value says the offer is over, and does not also
+// say it runs on ("Ongoing (the 60K offer ended June 1)") or deny it ended
+// ("but the offer hasn't ended yet").
+func saysEnded(value string) bool {
+	return endedWordRE.MatchString(value) && !stillOpenRE.MatchString(value)
+}
+
+// resolve turns the dates found in value, written at anchor, into the
+// calendar days that can be its end. Wherever a date could be read two
+// ways, it takes the later reading.
 //
-// A year outside plausibleYear is not a year: a month-name date keeps its
-// month and day and is read as yearless, and an ISO or numeric date is not a
-// date at all.
+// Years. A year more than yearsAhead after the one written in is no date at
+// all ("December 31, 2099" is not an end to count down to). One more than
+// yearsBack before it is not a year: a month-name date keeps its month and
+// day and is read as yearless, and an ISO or numeric date is no date.
 //
-// A date written without a year takes the year of the next date in the same
-// value that has one ("April 6 - June 7, 2026"), stepping back a year when it
-// falls after that date ("December 17 - January 5, 2027"). With no year
-// anywhere in the value ("Deadline: June 30"), it is the first occurrence of
-// that day no more than yearlessGraceDays before the article was written.
-// Offers are written about while they run, so a yearless deadline is almost
-// always still ahead ("through December 31" written in May is this December,
-// not the one gone); the grace covers a story written just after an offer
-// closed.
+// A numeric date that reads either way ("1/7/2026") is month first, unless
+// that falls more than yearlessGraceDays before the article; then it takes
+// the later of the two readings.
+//
+// A date written without a year is the first occurrence of that day no more
+// than yearlessGraceDays before the article was written. Offers are written
+// about while they run, so a yearless deadline is almost always still ahead
+// ("through December 31" written in May is this December, not the one
+// gone); the grace covers a story written just after an offer closed. When a
+// later date in the value has a year ("April 6 - June 7, 2026", "December 17
+// - January 5, 2027"), the date may take that year instead, stepping back one
+// when it falls after that date -- but only when that reads later. The later
+// date may be a start or an earlier run's, so its year is no better a guess:
+// "June 30 (launched May 1, 2026)" is not June 30, 2025. A range's end
+// without a year falls after its start, taken as the occurrence nearest the
+// writing: written in June, "September 30 - mid-July" runs to next July.
 //
 // Dates that open a window, that belong to an earlier run of the offer, or
 // that only say when the text was written are skipped: they are never the
-// end. A superseded date ("was September 30") is skipped when the value names
-// another end, and kept alone only when the value says the offer is over:
-// "Was September 19 (offer has ended)" says when it ended, while "Extended
-// indefinitely (was June 30)" says there is no end date now.
+// end. When nothing else in the value can be, an earlier run's date with a
+// year on or after the day the value was written is this run's after all --
+// an earlier run lies in the past ("Same as last year: September 30, 2026").
+//
+// An extension supersedes every date in the value that it pushes back: in
+// "June 30, now extended to July 31" and "Extended again: July 31 (after
+// being extended once to June 30)" June 30 is gone. An extension to a date
+// earlier than one written before it is an older one: in "Extended to July
+// 31 (after it was first extended to June 30)" June 30 is gone, and in
+// "June 1 - August 31; now through July 15 for double points" July 15 does
+// not cut the period short.
+//
+// A superseded date ("was September 30") is skipped when the value names
+// another end, and kept alone only when the value says the offer is over and
+// the date is no more than staleEndDays before the article: "Was September
+// 19 (offer has ended)" says when it ended, while "Extended indefinitely (was
+// June 30)" says there is no end date now. Among kept dates, one the value
+// says the offer ended on wins: in "Ended June 5 (was scheduled through June
+// 30)" the offer ended on June 5.
 //
 // Last, a date before the article was written gives way to one on or after
 // it. The article describes an offer that is running, so in "July 31, 2026
 // (launched June 1)" written in July the earlier date is history.
 func resolve(dates []found, value string, anchor time.Time) []time.Time {
+	written := time.Date(anchor.Year(), anchor.Month(), anchor.Day(), 0, 0, 0, 0, time.UTC)
+	floor := written.AddDate(0, 0, -yearlessGraceDays)
+
 	for i := range dates {
-		if dates[i].year != 0 && !plausibleYear(dates[i].year, anchor) {
-			dates[i].year = 0
-			if dates[i].numeric {
-				// Not a date: take it out of the running.
-				dates[i].start = true
+		f := &dates[i]
+		switch {
+		case f.year == 0:
+		case f.year > anchor.Year()+yearsAhead:
+			f.dropped = true
+		case f.year < anchor.Year()-yearsBack:
+			if f.numeric {
+				f.dropped = true
+			} else {
+				f.year = 0
 			}
 		}
 	}
-	anyCandidate := false
-	for _, f := range dates {
-		if f.candidate() {
-			anyCandidate = true
-			break
-		}
-	}
-	keepSuperseded := !anyCandidate && endedWordRE.MatchString(value)
 
-	written := time.Date(anchor.Year(), anchor.Month(), anchor.Day(), 0, 0, 0, 0, time.UTC)
-	var out []time.Time
-	for i, f := range dates {
-		if f.start || f.incidental || f.history || (f.superseded && !keepSuperseded) {
+	days := make([]time.Time, len(dates))
+	// Dates with a year first: their days lend years to the rest.
+	for i := range dates {
+		f := &dates[i]
+		if f.dropped || f.year == 0 {
 			continue
 		}
-		year := f.year
-		if year == 0 {
-			for _, later := range dates[i+1:] {
-				if later.year == 0 {
-					continue
-				}
-				year = later.year
-				if f.month > later.month || (f.month == later.month && f.dayIn(year) > later.dayIn(year)) {
-					year--
-				}
+		t, ok := f.in(f.year)
+		if f.swappable && (!ok || t.Before(floor)) {
+			swapped := *f
+			swapped.month, swapped.day = time.Month(f.day), int(f.month)
+			if u, uok := swapped.in(f.year); uok && (!ok || u.After(t)) {
+				t, ok = u, true
+			}
+		}
+		if !ok {
+			f.dropped = true
+			continue
+		}
+		days[i] = t
+	}
+	for i := range dates {
+		f := &dates[i]
+		if f.dropped || f.year != 0 {
+			continue
+		}
+		t, ok := f.nextOccurrence(floor, anchor)
+		for _, later := range dates[i+1:] {
+			if later.year == 0 || later.dropped {
+				continue
+			}
+			y := later.year
+			if f.month > later.month || (f.month == later.month && f.dayIn(y) > later.dayIn(y)) {
+				y--
+			}
+			if b, bok := f.in(y); bok && (!ok || b.After(t)) {
+				t, ok = b, true
+			}
+			break
+		}
+		if !ok {
+			f.dropped = true
+			continue
+		}
+		// A range ends after it starts: written in June, "September 30 -
+		// mid-July" runs to next July. The start comes just before its end,
+		// and without a year it is the occurrence nearest the writing.
+		if f.rangeEnd && i > 0 && dates[i-1].start && !dates[i-1].dropped {
+			from := days[i-1]
+			if s := dates[i-1]; s.year == 0 {
+				from = s.nearest(written, anchor)
+			}
+			if u, uok := f.onOrAfter(from); uok && u.After(t) {
+				t = u
+			}
+		}
+		days[i] = t
+	}
+	for i := range dates {
+		if dates[i].dayBefore && !dates[i].dropped {
+			days[i] = days[i].AddDate(0, 0, -1)
+		}
+	}
+
+	// Extensions, in the order written.
+	for i := range dates {
+		r := &dates[i]
+		if !r.replaces || r.dropped || r.superseded || r.history || r.incidental {
+			continue
+		}
+		older := false
+		for j := range dates[:i] {
+			if dates[j].candidate() && days[j].After(days[i]) {
+				older = true
 				break
 			}
 		}
-		var t time.Time
-		if year != 0 {
-			if !valid(year, f.month, f.dayIn(year)) {
-				continue
-			}
-			t = time.Date(year, f.month, f.dayIn(year), 0, 0, 0, 0, time.UTC)
-		} else {
-			ok := false
-			floor := written.AddDate(0, 0, -yearlessGraceDays)
-			for _, y := range []int{anchor.Year() - 1, anchor.Year(), anchor.Year() + 1} {
-				if !valid(y, f.month, f.dayIn(y)) {
-					continue
-				}
-				if c := time.Date(y, f.month, f.dayIn(y), 0, 0, 0, 0, time.UTC); !c.Before(floor) {
-					t, ok = c, true
-					break
-				}
-			}
-			if !ok {
-				continue
+		if older {
+			r.superseded = true
+			continue
+		}
+		for j := range dates {
+			if j != i && !dates[j].dropped && !days[j].After(days[i]) {
+				dates[j].superseded = true
 			}
 		}
-		if f.dayBefore {
-			t = t.AddDate(0, 0, -1)
-		}
-		out = append(out, t)
 	}
 
+	var ends []int
+	for i, f := range dates {
+		if f.candidate() {
+			ends = append(ends, i)
+		}
+	}
+	if len(ends) == 0 {
+		// An earlier run lies in the past: "Same as last year: September
+		// 30, 2026", written before that day, is this run's end.
+		for i, f := range dates {
+			if f.history && f.year != 0 && !f.start && !f.superseded && !f.incidental && !f.dropped && !days[i].Before(written) {
+				ends = append(ends, i)
+			}
+		}
+	}
+	if len(ends) == 0 && saysEnded(value) {
+		stale := written.AddDate(0, 0, -staleEndDays)
+		var past, replaced []int
+		for i, f := range dates {
+			if !f.superseded || f.dropped || f.start || f.history || f.incidental || days[i].Before(stale) {
+				continue
+			}
+			if f.pastEnd {
+				past = append(past, i)
+			} else {
+				replaced = append(replaced, i)
+			}
+		}
+		ends = replaced
+		if len(past) > 0 {
+			ends = past
+		}
+	}
+
+	out := make([]time.Time, 0, len(ends))
 	current := false
-	for _, t := range out {
-		if !t.Before(written) {
+	for _, i := range ends {
+		out = append(out, days[i])
+		if !days[i].Before(written) {
 			current = true
-			break
 		}
 	}
 	if current {
@@ -593,7 +877,8 @@ func resolve(dates []found, value string, anchor time.Time) []time.Time {
 //
 // When several details state an end -- a registration deadline and a travel
 // deadline, say -- the earliest wins: after it, a reader can no longer take
-// the offer.
+// the offer. A detail labelled as a replacement ("Extended Deadline", "New
+// End Date") sets aside the others: the deadline it extends is over.
 func EndDate(keyDetailsJSON string, anchor time.Time) string {
 	s := strings.TrimSpace(keyDetailsJSON)
 	if s == "" || s == "[]" || s == "null" {
@@ -603,14 +888,14 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 	if err := json.Unmarshal([]byte(s), &details); err != nil {
 		return ""
 	}
-	var end time.Time
+	var end, replacement time.Time
 	for _, d := range details {
-		kind := classify(normalize(d.Label))
+		kind, replaces := classify(normalize(d.Label))
 		if kind == notAnEnd {
 			continue
 		}
 		value := normalize(d.Value)
-		dates := resolve(scanDates(value), value, anchor)
+		dates := resolve(scanDates(value, kind, anchor), value, anchor)
 		if len(dates) == 0 {
 			continue
 		}
@@ -620,9 +905,18 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 				pick = t
 			}
 		}
+		if replaces {
+			if replacement.IsZero() || pick.Before(replacement) {
+				replacement = pick
+			}
+			continue
+		}
 		if end.IsZero() || pick.Before(end) {
 			end = pick
 		}
+	}
+	if !replacement.IsZero() {
+		end = replacement
 	}
 	if end.IsZero() {
 		return ""
@@ -634,9 +928,11 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 // ASCII, so the patterns above -- whose \s matches only ASCII whitespace --
 // read "July 29, 2026" and "June 15‑July 15" exactly like
 // "July 29, 2026" and "June 15-July 15". Every Unicode space becomes " " and
-// every dash (hyphens, en and em dashes, the minus sign) becomes "-".
+// every dash (hyphens, en and em dashes, the minus sign) becomes "-". So
+// does an arrow ("June 30 → July 31", "June 30 -> July 31"), which joins a
+// range or an extension the way a dash does.
 func normalize(s string) string {
-	return strings.Map(func(r rune) rune {
+	s = strings.Map(func(r rune) rune {
 		switch {
 		case r < 0x80:
 			return r
@@ -644,9 +940,12 @@ func normalize(s string) string {
 			return ' '
 		case unicode.Is(unicode.Pd, r) || r == '−':
 			return '-'
+		case r == '→' || r == '⟶' || r == '⇒' || r == '➔' || r == '➜':
+			return '-'
 		}
 		return r
 	}, s)
+	return strings.ReplaceAll(s, "->", "-")
 }
 
 // Location loads a configured timezone, falling back to UTC for an empty or

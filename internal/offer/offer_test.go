@@ -445,16 +445,25 @@ func TestEndDate_LabelsThatAreNotTheOffersEnd(t *testing.T) {
 
 // A four-digit number after a date is only its year when it is a plausible
 // one: "December 31, 1000 bonus points" is December 31, not the year 1000.
+// A year too far ahead is no date at all: reading it as this year's would
+// end an offer that the text says runs for years.
 func TestEndDate_ImplausibleYears(t *testing.T) {
 	runEndDateCases(t, []endDateCase{
 		{"points after the date", "Deadline", "December 31, 1000 bonus points", "2026-05-08", "2026-12-31"},
-		{"far-future number", "Deadline", "March 31, 2500 points", "2026-03-01", "2026-03-31"},
-		{"two years back is a year", "Deadline", "Was September 19, 2024 (offer has ended)", "2026-03-01", "2024-09-19"},
+		{"far-future number", "Deadline", "March 31, 2500 points", "2026-03-01", ""},
+		{"two years back is a year", "Deadline", "September 19, 2024", "2026-03-01", "2024-09-19"},
 		{"five years ahead is a year", "Deadline", "December 31, 2031", "2026-03-01", "2031-12-31"},
-		{"six years ahead is not", "Deadline", "December 31, 2032", "2026-03-01", "2026-12-31"},
+		{"six years ahead is no date", "Deadline", "December 31, 2032", "2026-03-01", ""},
+		// Read as this year's, these ended the offer on January 1.
+		{"2099 expiration", "Expiration Date", "December 31, 2099", "2026-06-10", ""},
+		{"2099 deadline", "Deadline", "December 31, 2099", "2026-06-10", ""},
+		{"2099 listed as no expiration", "Deadline", "No expiration (listed as December 31, 2099)", "2026-06-10", ""},
+		{"2032 valid through", "Valid Through", "December 31, 2032", "2026-06-10", ""},
+		{"far-future range end", "Promotion Period", "June 1 - December 31, 2099", "2026-05-20", ""},
 		// An ISO or numeric date with an implausible year is no date.
 		{"iso", "Deadline", "1000-12-31", "2026-03-01", ""},
 		{"numeric", "Deadline", "6/30/1999", "2026-03-01", ""},
+		{"numeric far ahead", "Deadline", "6/30/2500", "2026-03-01", ""},
 		// Nor does a bogus year lend itself to a yearless date before it.
 		{"no lending", "Promotion Period", "June 1 - June 30, 1000", "2026-05-20", "2026-06-30"},
 	})
@@ -482,6 +491,236 @@ func TestEndDate_MoreDateFormats(t *testing.T) {
 		{"numeric without year", "Deadline", "Ends 4/15", "2026-04-01", ""},
 		{"not a real day", "Deadline", "2/30/2026", "2026-01-01", ""},
 	})
+}
+
+// A numeric date is month first, but one written day first must not end an
+// offer the day it is published: read month first, "01/07/2026" in June is
+// January 7, long gone, so it is July 1.
+func TestEndDate_NumericDayFirst(t *testing.T) {
+	runEndDateCases(t, []endDateCase{
+		{"day first, zero-padded", "Deadline", "01/07/2026", "2026-06-10", "2026-07-01"},
+		{"day first, with a UK time", "Deadline", "1/7/2026 11:59pm BST", "2026-06-10", "2026-07-01"},
+		{"only day first is a date", "Deadline", "30/06/2026", "2026-06-10", "2026-06-30"},
+		// Month first when that is still ahead, or only just gone.
+		{"month first ahead", "Deadline", "1/5/2027", "2026-06-10", "2027-01-05"},
+		{"month first just gone", "Deadline", "6/1/2026", "2026-06-10", "2026-06-01"},
+		{"same both ways", "Deadline", "12/12/2026", "2026-06-10", "2026-12-12"},
+		// Both readings long gone: the later.
+		{"both gone", "Deadline", "03/04/2026", "2026-06-10", "2026-04-03"},
+		// The "07" of a numeric date is not the end of a range from March 1.
+		{"range to a numeric date", "Promotion Period", "March 1 - 07/01/2026", "2026-05-20", "2026-07-01"},
+	})
+}
+
+// An hour right after a day-first date is not a day: "30 June 11:59pm" is
+// not June 11. The day-first date itself is not read, which leaves no date
+// rather than a wrong one.
+func TestEndDate_TimeAfterDayFirstDate(t *testing.T) {
+	runEndDateCases(t, []endDateCase{
+		{"BST", "Deadline", "30 June 11:59pm BST", "2026-06-10", ""},
+		{"weekday", "Deadline", "Sat 27 June 11:59pm", "2026-06-10", ""},
+		{"abbreviated month", "Deadline", "30 Sept 11:59pm", "2026-06-10", ""},
+		{"24-hour time", "Deadline", "30 June 23:59 BST", "2026-06-10", ""},
+		{"dotted time", "Deadline", "30 June 11.59pm", "2026-06-10", ""},
+		{"hour only", "Deadline", "June 11 PM", "2026-06-10", ""},
+		// A time after a month-first date is still just a time.
+		{"month first", "Deadline", "June 12 11:59 PM PT", "2026-06-10", "2026-06-12"},
+		{"month first with year", "Deadline", "June 30, 2026 at 11:59 PM PT", "2026-06-10", "2026-06-30"},
+	})
+}
+
+// A number after a dash is not a range's end when it is a time or an amount.
+// Reading the amount as the end left June 30 as a range's start, and the
+// deadline was lost.
+func TestEndDate_NumberAfterDashIsNotARange(t *testing.T) {
+	runEndDateCases(t, []endDateCase{
+		{"points", "Deadline", "June 30 - 75,000 bonus points after $5K spend", "2026-06-10", "2026-06-30"},
+		{"small amount", "Deadline", "June 3 - 10,000 points", "2026-06-01", "2026-06-03"},
+		{"nights", "Deadline", "July 7 – 15 nights", "2026-06-10", "2026-07-07"},
+		{"multiplier", "Deadline", "June 1 - 5x points", "2026-05-20", "2026-06-01"},
+		{"time zone", "Deadline", "June 13 – 10 ET", "2026-06-10", "2026-06-13"},
+		{"noon", "Deadline", "June 3 - 12 noon ET", "2026-06-01", "2026-06-03"},
+		{"dotted time", "Deadline", "June 13 - 11.59pm ET", "2026-06-10", "2026-06-13"},
+	})
+}
+
+// A date without a year may borrow one from a later date in the value, but
+// never to read earlier than it would alone. A start, a replaced date or an
+// earlier run's date is no guide to the end's year: borrowing "May 1, 2026"
+// made "June 30" June 30, 2025, ended on publication.
+func TestEndDate_BorrowedYearNeverReadsEarlier(t *testing.T) {
+	runEndDateCases(t, []endDateCase{
+		{"launch date", "Deadline", "June 30 (launched May 1, 2026)", "2026-06-10", "2026-06-30"},
+		{"last year's version", "Deadline", "July 31 (last year's version ended June 30, 2025)", "2026-06-10", "2026-07-31"},
+		{"last year's offer, same day", "Deadline", "September 30 (last year's offer ended September 30, 2025)", "2026-09-01", "2026-09-30"},
+		{"last year", "Deadline", "March 31 (last year: March 31, 2025)", "2026-03-01", "2026-03-31"},
+		{"a year's version", "Deadline", "June 30; the 2025 version ran June 1 - July 15, 2025", "2026-06-10", "2026-06-30"},
+		{"2025's version", "Deadline", "March 31 (2025's version ended February 28, 2025)", "2026-03-01", "2026-03-31"},
+		{"originally", "Deadline", "January 15 (originally December 31, 2026)", "2026-12-10", "2027-01-15"},
+		{"extended from", "Deadline", "January 31 (extended from December 31, 2026)", "2026-12-10", "2027-01-31"},
+		{"launched in December", "Deadline", "February 15 (launched December 1, 2026)", "2026-12-10", "2027-02-15"},
+		{"prior offer", "Deadline", "January 15 (prior offer expired May 31, 2026)", "2026-12-01", "2027-01-15"},
+		{"replaced range", "Promotion Period", "Extended through January 31 (was December 1 - December 31, 2026)", "2026-12-10", "2027-01-31"},
+		// Borrowing still reads a later year when that is what it gives.
+		{"later lender", "Deadline", "December 31 (launched January 15, 2027)", "2026-01-10", "2026-12-31"},
+	})
+}
+
+// A range's end falls after its start. Written in June, "September 30 -
+// mid-July" runs to next July; read alone, July 31 had the offer end before
+// it began.
+func TestEndDate_RangeEndFollowsItsStart(t *testing.T) {
+	runEndDateCases(t, []endDateCase{
+		{"crosses the new year", "Promotion Period", "Sept. 30 - mid-July", "2026-06-10", "2027-07-31"},
+		{"within a year, running", "Promotion Period", "May 15 – June 15", "2026-06-10", "2026-06-15"},
+		{"over the holidays, written after it began", "Promotion Period", "December 17 - January 5", "2027-01-02", "2027-01-05"},
+		{"over the holidays, written before it began", "Promotion Period", "December 17 - January 5", "2026-12-01", "2027-01-05"},
+	})
+}
+
+// An extension replaces the dates it pushes back, never a later one. Marking
+// every earlier-written date as replaced cut periods short: "Through July
+// 31, 2026 (originally extended to June 30)" ended on June 30.
+func TestEndDate_ExtensionOnlyReplacesEarlierDates(t *testing.T) {
+	const written = "2026-06-10"
+	runEndDateCases(t, []endDateCase{
+		{"originally extended to", "Promotion Period", "Through July 31, 2026 (originally extended to June 30)", written, "2026-07-31"},
+		{"first moved to", "Offer Period", "April 1 – July 31, 2026 (extended; the offer was first moved to June 30)", written, "2026-07-31"},
+		{"now through, for some", "Promotion Period", "June 1 – August 31, 2026; now through July 15 for double points", written, "2026-08-31"},
+		{"now through, for non-members", "Sale Period", "June 1 - July 31, 2026 (now through June 30 for non-members)", written, "2026-07-31"},
+		{"extended twice, newest first", "Deadline", "Extended to July 31, 2026 (after it was first extended to June 30)", written, "2026-07-31"},
+		{"extended twice, older one after", "Deadline", "Extended again: July 31, 2026 (after being extended once to June 30)", written, "2026-07-31"},
+		{"was, then extended to", "Deadline", "July 31, 2026 (was June 30; before that it had been extended to June 15)", "2026-06-01", "2026-07-31"},
+		{"newest extension last", "Deadline", "June 30, 2026, extended to July 15, 2026, now extended to August 31, 2026", written, "2026-08-31"},
+	})
+}
+
+// More ways of saying a deadline was extended. With no new date given there
+// is no end date; with one, the new date is the end.
+func TestEndDate_MoreExtensionWordings(t *testing.T) {
+	const written = "2026-06-10"
+	runEndDateCases(t, []endDateCase{
+		{"extended indefinitely, after", "Deadline", "June 30, 2026 (extended indefinitely)", written, ""},
+		{"has been extended indefinitely", "Deadline", "June 30, 2026 has been extended indefinitely", written, ""},
+		{"extended past", "Deadline", "Extended past June 30, 2026", written, ""},
+		{"extended beyond", "Deadline", "Extended beyond June 30 (new date not announced)", written, ""},
+		{"beyond the deadline", "Deadline", "Extended indefinitely beyond the June 30, 2026 deadline", written, ""},
+		{"no longer", "Deadline", "No longer June 30 — extended until further notice", written, ""},
+		{"extended, now", "Deadline", "June 30, 2026 — extended! Now July 15, 2026", written, "2026-07-15"},
+		{"arrow", "Deadline", "June 30, 2026 → July 31, 2026", written, "2026-07-31"},
+		{"ascii arrow", "Deadline", "June 30, 2026 -> July 31, 2026", written, "2026-07-31"},
+		{"after the original", "Deadline", "Extended through July 31, 2026, after the original June 30 deadline", written, "2026-07-31"},
+		{"was scheduled to end", "Deadline", "Now ends July 31, 2026 (was scheduled to end June 30)", written, "2026-07-31"},
+		{"the original end date", "Deadline", "July 31, 2026 (the original June 30 end date was extended)", written, "2026-07-31"},
+		{"had been set to expire", "Deadline", "Extended to July 31, 2026; the offer had been set to expire June 30", written, "2026-07-31"},
+		{"extended it to", "Deadline", "June 30, 2026, but Chase has extended it to July 31, 2026", written, "2026-07-31"},
+		{"earlier reports", "Deadline", "July 31, 2026 (earlier reports said June 30)", written, "2026-07-31"},
+		{"later than the usual", "Deadline", "July 31, 2026, a month later than the usual June 30", written, "2026-07-31"},
+		{"not as previously reported", "Deadline", "July 31, 2026 (not June 30 as previously reported)", written, "2026-07-31"},
+		// "Extended from" names the old date: the date before it is the new one.
+		{"extended from", "Deadline", "June 30 (extended from May 31)", written, "2026-06-30"},
+		{"was extended from", "Deadline", "June 30 was extended from May 31", written, "2026-06-30"},
+	})
+}
+
+// An extension in its own detail replaces the deadline beside it.
+func TestEndDate_ReplacementLabels(t *testing.T) {
+	for _, label := range []string{"Extended Deadline", "New Deadline", "New End Date", "Extended To", "Revised Deadline"} {
+		kd := details(t, "Deadline", "June 30, 2026", label, "July 31, 2026")
+		if got := EndDate(kd, day("2026-06-10")); got != "2026-07-31" {
+			t.Errorf("EndDate(Deadline: June 30, 2026; %s: July 31, 2026) = %q, want 2026-07-31", label, got)
+		}
+	}
+	kd := details(t, "Deadline", "June 30, 2026 (extended)", "Extended To", "July 31, 2026")
+	if got := EndDate(kd, day("2026-06-10")); got != "2026-07-31" {
+		t.Errorf("EndDate with Extended To = %q, want 2026-07-31", got)
+	}
+	// "New" as part of an ordinary label is not a replacement.
+	kd = details(t, "New Cardmember Deadline", "June 30, 2026", "Travel Deadline", "July 31, 2026")
+	if got := EndDate(kd, day("2026-06-10")); got != "2026-06-30" {
+		t.Errorf("EndDate with New Cardmember Deadline = %q, want 2026-06-30", got)
+	}
+}
+
+// A lone past-tense date is kept only when the value says this offer is
+// over. "Ended" about another offer, next to "ongoing" or "no end date", or
+// denied ("hasn't ended"), keeps nothing; nor does a date long before the
+// article.
+func TestEndDate_LoneEndedDateAboutAnotherOffer(t *testing.T) {
+	const written = "2026-06-10"
+	runEndDateCases(t, []endDateCase{
+		{"ongoing, another offer ended", "Deadline", "Ongoing (the 60K offer ended June 1; the current 75K has no end date)", written, ""},
+		{"unannounced, last similar offer", "Deadline", "Unannounced. The last similar offer ended June 30, 2025.", written, ""},
+		{"unknown, a year's version", "Deadline", "Unknown; the 2025 version ended September 30, 2025", written, ""},
+		{"no end date, previously ended", "Deadline", "No end date; previously ended June 30, 2025", written, ""},
+		{"hasn't ended", "Deadline", "Originally June 30, 2026 — but the offer hasn't ended yet", written, ""},
+		{"ongoing, a similar promo", "Deadline", "Ongoing; a similar promo expired March 31", written, ""},
+		{"never expires", "Deadline", "Never expires (was December 31, 2026)", written, ""},
+		{"a year before the article", "Deadline", "Expired June 30, 2025", written, ""},
+		// Said to be over, recently: the date is when it ended.
+		{"expired recently", "Deadline", "Expired May 20, 2026", written, "2026-05-20"},
+		{"ended recently", "Deadline", "Ended June 5, 2026", written, "2026-06-05"},
+		// Ended early: the day it ended, not the day it was meant to.
+		{"ended earlier than planned", "Deadline", "Offer ended June 5, 2026 (earlier than the planned June 30)", written, "2026-06-05"},
+		{"ended early, was scheduled", "Deadline", "Ended early: June 5, 2026 (was scheduled through June 30, 2026)", written, "2026-06-05"},
+	})
+}
+
+// A window with a start and nothing readable after its joiner has no end
+// date. In a period that holds whatever follows the joiner; in a deadline
+// only explicit words do ("September 30, 2026 - act fast" still ends).
+func TestEndDate_PeriodsWithNoReadableEnd(t *testing.T) {
+	const written = "2026-06-10"
+	runEndDateCases(t, []endDateCase{
+		{"mid-month", "Promotion Period", "June 1 - mid-July", written, "2026-07-31"},
+		{"end of a month", "Promotion Period", "June 1 – end of July", written, "2026-07-31"},
+		{"early month", "Promotion Period", "June 1 – early July", written, "2026-07-31"},
+		{"holiday", "Promotion Period", "June 1 – Labor Day", written, ""},
+		{"limited time", "Promotion Period", "June 1 – limited time", written, ""},
+		{"no end date announced", "Promotion Period", "June 1 - (no end date announced)", written, ""},
+		{"end date unknown", "Promotion Period", "June 1 – end date unknown", written, ""},
+		{"unannounced", "Promotion Period", "June 1 – unannounced", written, ""},
+		{"question mark", "Promotion Period", "June 1 - ?", written, ""},
+		{"N/A", "Promotion Period", "June 1 – N/A", written, ""},
+		{"start date", "Promotion Period", "June 1 (start date; no end announced)", written, ""},
+		{"start", "Promotion Period", "June 1 start, no end date", written, ""},
+		{"until withdrawn", "Promotion Period", "June 1 until the promotion is withdrawn", written, ""},
+		{"until pulled", "Promotion Period", "June 1 until Chase pulls it", written, ""},
+		{"and ongoing", "Promotion Period", "June 1 and ongoing", written, ""},
+		// A date that already closes the window stays the end.
+		{"range then remark", "Promotion Period", "April 6 - June 7, 2026 - register now", "2026-04-01", "2026-06-07"},
+		{"through then remark", "Promotion Period", "Through June 9, 2026 - hurry", "2026-04-01", "2026-06-09"},
+		{"deadline remark", "Deadline", "September 30, 2026 - limited time", "2026-09-01", "2026-09-30"},
+	})
+}
+
+// A history marker used to compare ("Unlike last year", "Same as last year")
+// does not make this year's date history.
+func TestEndDate_ComparedWithLastYear(t *testing.T) {
+	const written = "2026-06-10"
+	runEndDateCases(t, []endDateCase{
+		{"unlike last year", "Deadline", "Unlike last year, the offer runs through September 30, 2026", written, "2026-09-30"},
+		{"same as last year", "Deadline", "Same as last year: September 30, 2026", written, "2026-09-30"},
+		// A past date in the history is still history.
+		{"last year's date", "Deadline", "Not announced; last year's ran through September 30, 2025", written, ""},
+		// And a future-dated "history" never cuts a real deadline short.
+		{"future-dated history beside the end", "Deadline", "January 15, 2027; prior offer ran June 30, 2026", "2026-01-10", "2027-01-15"},
+	})
+}
+
+// A benefit word in a deadline's label does not make it a benefit's deadline
+// when the label is about taking the offer.
+func TestEndDate_TakingTheOfferDespiteABenefitWord(t *testing.T) {
+	for _, label := range []string{"Credit Card Application Deadline", "Promo Code Use Deadline", "Discount Code Deadline", "Statement Credit Offer Deadline"} {
+		if got := EndDate(details(t, label, "June 30, 2026"), day("2026-06-10")); got != "2026-06-30" {
+			t.Errorf("EndDate(%s: June 30, 2026) = %q, want 2026-06-30", label, got)
+		}
+	}
+	for _, label := range []string{"Offer Spend Deadline", "Deadline to Use Credit", "Discount Deadline"} {
+		if got := EndDate(details(t, label, "June 30, 2026"), day("2026-06-10")); got != "" {
+			t.Errorf("EndDate(%s: June 30, 2026) = %q, want no end date", label, got)
+		}
+	}
 }
 
 // The last day is still live; the offer has ended from the next day.
