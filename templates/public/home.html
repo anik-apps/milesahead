@@ -45,12 +45,13 @@
     {{end}}
 
     <div class="sidebar-stack">
-        {{range .Sidebar}}
+        {{range $i, $_ := .Sidebar}}
         <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}">
             <a href="/article/{{.Slug}}">
                 {{if .ImageThumbnail}}
                 <div class="card-thumb">
-                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}" width="300" height="200" decoding="async">
+                    {{/* Only the first sidebar card is in the first screen on desktop. */}}
+                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}" width="300" height="200"{{if $i}} loading="lazy"{{end}} decoding="async">
                 </div>
                 {{end}}
                 <div class="card-body">

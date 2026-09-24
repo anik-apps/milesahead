@@ -1,6 +1,8 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -74,7 +76,8 @@ func TestHome_ImageLoadingHints(t *testing.T) {
 		t.Error("featured image is lazy-loaded; it is the likely largest paint")
 	}
 
-	// Sidebar: at the top of the page on desktop, so not lazy.
+	// Sidebar: the first card is in the first screen on desktop, so it loads
+	// eagerly; the two below it are past the fold at 1440x900 and on phones.
 	for i := 1; i <= 3; i++ {
 		tag := imgTag(t, body, fmt.Sprintf("https://img.example/thumb-%d.jpg", i))
 		for _, want := range []string{`width="300"`, `height="200"`, `decoding="async"`} {
@@ -82,8 +85,8 @@ func TestHome_ImageLoadingHints(t *testing.T) {
 				t.Errorf("sidebar thumbnail %d %s lacks %s", i, tag, want)
 			}
 		}
-		if strings.Contains(tag, `loading="lazy"`) {
-			t.Errorf("sidebar thumbnail %d is lazy-loaded", i)
+		if lazy := strings.Contains(tag, `loading="lazy"`); lazy != (i > 1) {
+			t.Errorf("sidebar thumbnail %d: lazy = %v, want %v", i, lazy, i > 1)
 		}
 	}
 
@@ -155,4 +158,44 @@ func cssRule(t *testing.T, css, selector string) string {
 		t.Fatalf("no %q rule in style.css", selector)
 	}
 	return m[1]
+}
+
+// Integration: the stylesheet URL carries a hash of the file, so a page whose
+// markup depends on new CSS rules is never laid out by a copy the browser
+// cached before the deploy.
+func TestLayout_StylesheetURLIsVersionedByContent(t *testing.T) {
+	app := setupRealTemplateCardApp(t)
+	body := getPage(t, app, "/")
+	sum := sha256.Sum256([]byte(readStylesheet(t)))
+	want := `<link rel="stylesheet" href="/static/css/style.css?v=` + hex.EncodeToString(sum[:])[:12] + `">`
+	if !strings.Contains(body, want) {
+		t.Errorf("home page should link the stylesheet as %s", want)
+	}
+}
+
+func TestVersionedStylesheet(t *testing.T) {
+	static := t.TempDir()
+	if got := versionedStylesheet(static); got != "/static/css/style.css" {
+		t.Errorf("missing file: %q, want the unversioned path", got)
+	}
+	if err := os.MkdirAll(filepath.Join(static, "css"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(css string) string {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(static, "css", "style.css"), []byte(css), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return versionedStylesheet(static)
+	}
+	v1 := write(".a { color: red; }")
+	if !regexp.MustCompile(`^/static/css/style\.css\?v=[0-9a-f]{12}$`).MatchString(v1) {
+		t.Fatalf("versioned URL = %q", v1)
+	}
+	if again := write(".a { color: red; }"); again != v1 {
+		t.Errorf("same content, different version: %q vs %q", again, v1)
+	}
+	if v2 := write(".a { color: blue; }"); v2 == v1 {
+		t.Errorf("changed content kept version %q", v1)
+	}
 }
