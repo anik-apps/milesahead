@@ -66,6 +66,11 @@ type Service struct {
 	// long the pass it is yielding to has been running.
 	startedAt atomic.Int64
 
+	// originalWidths caches the pixel widths of Wikimedia originals that
+	// resizeStoredImages has looked up; 0 records a file Commons reports as
+	// deleted. Only touched inside Run, which never overlaps itself.
+	originalWidths map[string]int
+
 	// running guards against overlapping passes. robfig/cron's "@every" does
 	// NOT skip a tick when the previous run is still going, and a pass can
 	// outlast its interval when the provider is degraded -- each field may
@@ -79,16 +84,17 @@ type Service struct {
 func New(database *db.Database, client ai.HFClientInterface, models []string,
 	persona string, searcher *images.Searcher, scorer *images.Scorer) *Service {
 	return &Service{
-		db:          database,
-		client:      client,
-		models:      models,
-		persona:     persona,
-		searcher:    searcher,
-		scorer:      scorer,
-		MaxAttempts: 3,
-		BatchSize:   10,
-		Pace:        2 * time.Second,
-		MaxDuration: 10 * time.Minute,
+		db:             database,
+		client:         client,
+		models:         models,
+		persona:        persona,
+		searcher:       searcher,
+		scorer:         scorer,
+		MaxAttempts:    3,
+		BatchSize:      10,
+		Pace:           2 * time.Second,
+		MaxDuration:    10 * time.Minute,
+		originalWidths: map[string]int{},
 	}
 }
 
@@ -122,6 +128,9 @@ func (s *Service) Run() {
 		metrics.EnrichmentPassDuration.Observe(time.Since(start).Seconds())
 		s.refreshDegradedGauge()
 	}()
+
+	// Before any model calls, so a degraded provider cannot hold it up.
+	s.resizeStoredImages(deadline)
 
 	articles, err := s.db.ListArticlesNeedingEnrichment(s.MaxAttempts, s.BatchSize)
 	if err != nil {

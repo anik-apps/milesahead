@@ -83,7 +83,39 @@ If all vision API calls fail, the pipeline falls back to the text-phase scores w
 3. Enforce source diversity: max 3 images per source, cap total at 15
 4. Phase 1 text scoring narrows to top 5 candidates
 5. Phase 2 vision scoring picks the best match
-6. The highest-scored candidate becomes the article's image
+6. Walking down the scores, the first candidate whose URLs actually load and
+   fit their byte caps becomes the article's image (see below)
+
+## Image Sizes
+
+Openverse returns each provider's full-size file, and a Wikimedia Commons
+original can be a 6000 px, 13 MB camera image. Before any candidate is scored,
+URLs on hosts that can serve a smaller copy are rewritten to one
+(`internal/images/sizing.go`):
+
+| Host | Display image (`image_url`) | Thumbnail (`image_thumbnail`) |
+|------|-----------------------------|-------------------------------|
+| upload.wikimedia.org | 1280 px `/thumb/` step | 500 px step |
+| Flickr | unchanged (`_b`, 1024 px) | 500 px size (no suffix) |
+| Unsplash, Pexels | the API's `regular` / `large` | the API's `small` / `medium` |
+
+Wikimedia only serves its standard steps (20, 40, 60, 120, 250, 330, 500, 960,
+1280, 1920, 3840); any other width is a 400. It does not refuse a step wider
+than the original, it upscales, so the original's width (from Openverse or
+the Commons API) decides the step and an original of unknown width is left
+alone. Wikimedia also rejects generic HTTP clients, so every request carries
+a `MilesAhead/1.0` User-Agent.
+
+At pick time each candidate's URLs are fetched with a ranged GET and must
+answer 200/206 within a byte cap: 1 MiB for the display image, 512 KiB for the
+thumbnail. A host that does not state the size has it measured, up to the cap.
+
+Rows stored before this existed are converted by the enrichment reconciler: at
+the start of every pass, including the one ~90 s after each deploy, it swaps
+Wikimedia originals and oversized Wikimedia/Flickr thumbnails for sized URLs,
+fetching each one first and leaving any field it cannot confirm unchanged. A
+Wikimedia file that Commons reports deleted, and whose URL answers 404, is
+cleared so enrichment picks a new image.
 
 ## Stored Fields
 
@@ -91,6 +123,6 @@ The selected image is stored on the `generated_articles` record:
 
 | Field | Description |
 |-------|-------------|
-| `image_url` | Full-size image URL for the article page |
-| `image_thumbnail` | Smaller image URL for homepage cards |
+| `image_url` | Display image: article hero, featured card and `og:image`; at most ~1280 px wide where the host allows |
+| `image_thumbnail` | Homepage card image; about 500 px wide where the host allows |
 | `image_attribution` | Credit line (e.g. "Photo by X on Unsplash") |
