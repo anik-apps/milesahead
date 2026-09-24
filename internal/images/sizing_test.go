@@ -58,6 +58,9 @@ func TestSized(t *testing.T) {
 		// The old image search stored these at 800px, which answers 400.
 		{"long name, unserved width", longThumbs + "800px-thumbnail.jpg", 0, ThumbnailWidth, longThumbs + "500px-" + longName},
 		{"long name, served width", longThumbs + "500px-thumbnail.jpg", 0, ThumbnailWidth, ""},
+		// Only "thumbnail" plus the file's own extension stands in for it.
+		{"long name, other stand-in", longThumbs + "800px-thumbnail-2.jpg", 0, ThumbnailWidth, ""},
+		{"long name, other extension", longThumbs + "800px-thumbnail.png", 0, ThumbnailWidth, ""},
 		{"thumbnail of another file", lobbyThumbs + "800px-Other.jpg", 0, ThumbnailWidth, ""},
 		// The Commons API now hands out thumb.wikimedia.org; keep its host.
 		{"thumb host", "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/" + lobbyName + "/960px-" + lobbyName + "?utm_source=commons.wikimedia.org", 0, ThumbnailWidth,
