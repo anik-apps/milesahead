@@ -454,3 +454,44 @@ func TestArticle_EndedNewsStoryBannerWording(t *testing.T) {
 		t.Error("a news story is not an offer")
 	}
 }
+
+// The RSS feed lists ended offers too, marked: a category, and the ended note
+// at the start of the description. Titles stay as they were, since feed
+// readers have already stored them.
+func TestFeed_MarksEndedOffers(t *testing.T) {
+	app := offerApp(t)
+	seedOffers(t, app)
+
+	req := httptest.NewRequest(http.MethodGet, "/feed.xml", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	body := rec.Body.String()
+
+	item := func(slug string) string {
+		for _, it := range strings.Split(body, "<item>")[1:] {
+			if strings.Contains(it, "<link>https://localhost/article/"+slug+"</link>") {
+				return it
+			}
+		}
+		return ""
+	}
+	ended := item("ended")
+	if ended == "" {
+		t.Fatalf("the feed should still list the ended offer:\n%s", body)
+	}
+	for _, want := range []string{
+		`<title>Citi 25% Transfer Bonus to Leading Hotels of the World</title>`,
+		`<description>This offer ended on September 19, 2026. `,
+		`<category>Ended</category>`,
+	} {
+		if !strings.Contains(ended, want) {
+			t.Errorf("the ended feed item should contain %s:\n%s", want, ended)
+		}
+	}
+	for _, slug := range []string{"ends-today", "ends-next-week", "no-deadline"} {
+		it := item(slug)
+		if it == "" || strings.Contains(it, "<category>Ended</category>") || strings.Contains(it, "ended on") {
+			t.Errorf("live feed item %q should not be marked ended:\n%s", slug, it)
+		}
+	}
+}

@@ -600,8 +600,16 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `<link>https://%s</link>`, html.EscapeString(domain))
 	fmt.Fprint(w, `<description>Curated news and analysis</description>`)
 
+	today := app.offerToday()
 	for _, a := range articles {
 		excerpt := truncate(a.Content, 200)
+		// An ended offer is marked, not dropped: a category, and the ended
+		// note leading the description. Its title is left alone because
+		// feed readers have already stored it.
+		ended := offer.Ended(a.ExpiresOn, today)
+		if ended {
+			excerpt = endedNote(a.Type, a.ExpiresOn) + " " + excerpt
+		}
 		link := fmt.Sprintf("https://%s/article/%s", domain, a.Slug)
 		pubDate := ""
 		if a.PublishedAt != nil {
@@ -612,6 +620,9 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<title>%s</title>`, html.EscapeString(a.Title))
 		fmt.Fprintf(w, `<link>%s</link>`, html.EscapeString(link))
 		fmt.Fprintf(w, `<description>%s</description>`, html.EscapeString(excerpt))
+		if ended {
+			fmt.Fprint(w, `<category>Ended</category>`)
+		}
 		if pubDate != "" {
 			fmt.Fprintf(w, `<pubDate>%s</pubDate>`, pubDate)
 		}
