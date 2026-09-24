@@ -88,19 +88,24 @@ type publicArticleRow struct {
 	ImageThumbnail   string
 	ImageAttribution string
 	// ThumbSrcset offers the display image as a sharper stand-in for the
-	// thumbnail where a card shows it wide; see thumbSrcset.
+	// thumbnail where a grid card shows it wide; see thumbSrcset.
 	ThumbSrcset string
 }
 
 // thumbSrcset returns a srcset of the thumbnail and the display image, each
-// with the width its URL fixes, or "" unless the two URLs are sizes of one
-// picture (see images.SrcsetWidths) and the display image is the wider. Only
-// the two URLs the row stores -- each confirmed to load before it was
-// written -- are ever referenced.
+// with the width its URL fixes, for the bottom grid's two-column layout
+// (769-1024 px wide). There a card is up to 466 CSS px wide, so a 500px
+// thumbnail is soft on a 2x screen. home.html offers it only in that range:
+// at three columns a card is at most 361 px, and a 2x screen fetching the
+// display image for all 16 cards more than doubled the page's image bytes.
 //
-// It exists for the bottom grid: at 769-1024 px its thumbnails are up to ~470
-// CSS px wide, so a 500px file is soft on a 2x screen. A URL with a comma or
-// a space in it is left out, since both separate srcset entries.
+// It returns "" unless:
+//
+//   - the URLs are two sizes of one picture (see images.SrcsetWidths). Only
+//     the two URLs the row stores -- each confirmed to load before it was
+//     written -- are ever referenced.
+//   - the display image is the wider of the two.
+//   - neither URL has a comma or white space, which separate srcset entries.
 func thumbSrcset(thumbnail, image string) string {
 	tw, iw, ok := images.SrcsetWidths(thumbnail, image)
 	if !ok || iw <= tw || strings.ContainsAny(thumbnail+image, ", \t\n\r\f") {

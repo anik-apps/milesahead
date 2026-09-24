@@ -203,16 +203,25 @@ func TestVersionedStylesheet(t *testing.T) {
 	}
 }
 
-// Integration: at 769-1024 px the bottom-grid thumbnails are up to ~470 CSS
-// px wide, and on a 2x screen a 500px file is soft there. The grid offers the
-// row's display image as a larger candidate -- only the two URLs the row
-// stores, when they are two sizes of one picture, with the widths their URLs
-// fix -- and says how wide the slot is.
+// Integration: at 769-1024 px the bottom-grid thumbnails are up to 466 CSS px
+// wide, and on a 2x screen a 500px file is soft there. The grid offers the
+// row's display image as a larger candidate in that range only -- at three
+// columns a card is at most 361 px, and offering it there had every 2x
+// desktop fetch 16 display images, 2.6x the page's image bytes. It lists only
+// the two URLs the row stores, when they are two sizes of one picture, with
+// the widths their URLs fix.
 func TestHome_GridThumbnailsOfferTheDisplayImage(t *testing.T) {
-	app := setupRealTemplateCardApp(t)
-	const wm = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Lobby.jpg/"
-	const us = "https://images.unsplash.com/photo-1?fit=max&fm=jpg&q=80&w="
-	const comma = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Paris,_France.jpg/"
+	const (
+		wm     = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Lobby.jpg/"
+		other  = "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Gate.jpg/"
+		comma  = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Paris,_France.jpg/"
+		us     = "https://images.unsplash.com/photo-1?fit=max&fm=jpg&q=80&w="
+		fl     = "https://live.staticflickr.com/65535/54420209608_0aa8ea537a"
+		media  = "(min-width: 769px) and (max-width: 1024px)"
+		sizes  = "calc((100vw - 92px) / 2)"
+		lobby  = wm + "500px-Lobby.jpg 500w, " + wm + "1280px-Lobby.jpg 1280w"
+		flickr = fl + ".jpg 500w, " + fl + "_b.jpg 1024w"
+	)
 	rows := []struct{ image, thumb, srcset string }{
 		// featured, sidebar: never get one.
 		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
@@ -220,26 +229,27 @@ func TestHome_GridThumbnailsOfferTheDisplayImage(t *testing.T) {
 		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
 		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
 		// grid
-		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", wm + "500px-Lobby.jpg 500w, " + wm + "1280px-Lobby.jpg 1280w"},
+		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", lobby},
+		{fl + "_b.jpg", fl + ".jpg", flickr},
 		{us + "1080", us + "400", us + "400 400w, " + us + "1080 1080w"},
+		// Two different crops of one photo (row 58 in the dev database).
+		{"https://images.unsplash.com/photo-2?w=1200&h=400&fit=crop", "https://images.unsplash.com/photo-2?w=500&h=300&fit=crop", ""},
+		// The display image is no wider than the thumbnail.
+		{wm + "500px-Lobby.jpg", wm + "960px-Lobby.jpg", ""},
+		{wm + "500px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
+		// Two different files, or photos.
+		{other + "1280px-Gate.jpg", wm + "500px-Lobby.jpg", ""},
+		{"https://live.staticflickr.com/65535/1_abc_b.jpg", fl + ".jpg", ""},
+		// A comma separates srcset entries.
+		{comma + "1280px-Paris,_France.jpg", comma + "500px-Paris,_France.jpg", ""},
 		// A Wikimedia original: its width is unknown, and it may be the
 		// multi-megabyte file the resize has not replaced yet.
 		{"https://upload.wikimedia.org/wikipedia/commons/6/6c/Lobby.jpg", wm + "500px-Lobby.jpg", ""},
 		// Pexels URLs do not fix the width.
 		{"https://images.pexels.com/photos/1/p.jpeg?h=650&w=940", "https://images.pexels.com/photos/1/p.jpeg?h=350", ""},
-		// Two different crops of one photo (row 58 in the dev database): a
-		// 2x screen would get a 3:1 banner where a 1x screen gets a card.
-		{"https://images.unsplash.com/photo-2?w=1200&h=400&fit=crop", "https://images.unsplash.com/photo-2?w=400&h=250&fit=crop", ""},
-		// Two different files, or photos.
-		{"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Gate.jpg/1280px-Gate.jpg", wm + "500px-Lobby.jpg", ""},
-		{"https://live.staticflickr.com/65535/1_abc_b.jpg", "https://live.staticflickr.com/65535/2_def.jpg", ""},
-		// The display image is no wider than the thumbnail.
-		{wm + "500px-Lobby.jpg", wm + "960px-Lobby.jpg", ""},
-		{wm + "500px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
-		// A comma separates srcset entries.
-		{comma + "1280px-Paris,_France.jpg", comma + "500px-Paris,_France.jpg", ""},
 	}
-	seedHomeArticles(t, app, len(rows)) // featured, 3 sidebar, the rest in the grid
+	app := setupRealTemplateCardApp(t)
+	seedHomeArticles(t, app, len(rows))
 	for i, r := range rows {
 		if _, err := app.db.DB().Exec(`UPDATE generated_articles SET image_url = ?, image_thumbnail = ? WHERE slug = ?`,
 			r.image, r.thumb, fmt.Sprintf("home-story-%d", i)); err != nil {
@@ -248,35 +258,50 @@ func TestHome_GridThumbnailsOfferTheDisplayImage(t *testing.T) {
 	}
 	body := getPage(t, app, "/")
 
-	tags := regexp.MustCompile(`<img[^>]*>`).FindAllString(body, -1)
-	var cards []string // sidebar and grid thumbnails, in page order
-	for _, tag := range tags {
-		if strings.Contains(tag, `width="300" height="200"`) {
-			cards = append(cards, tag)
-		}
-	}
-	if len(cards) != len(rows)-1 {
-		t.Fatalf("found %d card thumbnails, want %d", len(cards), len(rows)-1)
-	}
-	for i, tag := range cards {
-		want := rows[i+1].srcset
-		got := html.UnescapeString(attr(tag, "srcset"))
-		if got != want {
-			t.Errorf("card %d srcset = %q, want %q", i+1, got, want)
-		}
-		if src := html.UnescapeString(attr(tag, "src")); src != rows[i+1].thumb {
-			t.Errorf("card %d src = %q, want the thumbnail %q", i+1, src, rows[i+1].thumb)
-		}
-		sizes := attr(tag, "sizes")
-		if (want != "") != (sizes != "") {
-			t.Errorf("card %d: sizes %q with srcset %q", i+1, sizes, want)
-		}
-		if want != "" && !strings.HasPrefix(sizes, "(max-width: 768px) 100px") {
-			t.Errorf("card %d sizes = %q; phones show a 100px thumbnail", i+1, sizes)
-		}
+	// Sidebar thumbnails are 100 px wide at every size: the thumbnail alone.
+	sidebar := body[strings.Index(body, `class="sidebar-stack"`):strings.Index(body, `class="bottom-grid"`)]
+	if strings.Contains(sidebar, "<picture") || strings.Contains(sidebar, "srcset") {
+		t.Error("a sidebar card offers the display image")
 	}
 	if strings.Contains(imgTag(t, body, wm+"1280px-Lobby.jpg"), "srcset") {
 		t.Error("the featured image got a srcset")
+	}
+
+	grid := regexp.MustCompile(`(?s)<picture>(.*?)</picture>`).FindAllStringSubmatch(body, -1)
+	if len(grid) != len(rows)-4 {
+		t.Fatalf("found %d grid thumbnails, want %d", len(grid), len(rows)-4)
+	}
+	for i, m := range grid {
+		row := rows[i+4]
+		img := regexp.MustCompile(`<img[^>]*>`).FindString(m[1])
+		if src := html.UnescapeString(attr(img, "src")); src != row.thumb {
+			t.Errorf("grid card %d src = %q, want the thumbnail %q", i, src, row.thumb)
+		}
+		// Outside the source's range, every screen gets the thumbnail.
+		if strings.Contains(img, "srcset") || strings.Contains(img, "sizes") {
+			t.Errorf("grid card %d: the <img> itself has a srcset: %s", i, img)
+		}
+		source := regexp.MustCompile(`<source[^>]*>`).FindString(m[1])
+		if got := html.UnescapeString(attr(source, "srcset")); got != row.srcset {
+			t.Errorf("grid card %d srcset = %q, want %q", i, got, row.srcset)
+		}
+		if row.srcset == "" {
+			if source != "" {
+				t.Errorf("grid card %d has a <source> with no srcset: %s", i, source)
+			}
+			continue
+		}
+		if got := html.UnescapeString(attr(source, "media")); got != media {
+			t.Errorf("grid card %d media = %q, want %q", i, got, media)
+		}
+		if got := html.UnescapeString(attr(source, "sizes")); got != sizes {
+			t.Errorf("grid card %d sizes = %q, want %q", i, got, sizes)
+		}
+	}
+
+	// The <picture> must not change how the <img> is laid out.
+	if rule := cssRule(t, readStylesheet(t), ".card-thumb picture"); !strings.Contains(rule, "display: contents") {
+		t.Errorf(".card-thumb picture must not take part in layout: %s", rule)
 	}
 }
 

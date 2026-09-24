@@ -188,14 +188,21 @@ The selected image is stored on the `generated_articles` record:
 | `image_thumbnail` | Homepage card image; about 500 px wide where the host allows |
 | `image_attribution` | Credit line (e.g. "Photo by X on Unsplash") |
 
-On the home page, the bottom-grid cards list both URLs in a `srcset`, each
-with the width its URL fixes (a Wikimedia step, a Flickr size, Unsplash's
-`w=`), and a `sizes` that follows the grid: 100 px on phones, two columns to
-1024 px, three above. At 769-1024 px a card is up to ~470 CSS px wide, so a
-2x screen takes the display image there instead of a soft 500 px file. Only
-two sizes of one picture are listed: the same Wikimedia file, the same
-Flickr photo, or Unsplash URLs that differ only in `w=` (one that sets `h=`,
-`ar=` or anything else that changes the framing would show a 2x screen a
-different crop). Rows whose widths the URLs do not fix (Pexels, a Wikimedia
-original) keep the thumbnail alone, and no other URL is ever referenced. The sidebar cards are
-100 px wide at every size, so they use the thumbnail alone.
+On the home page, a bottom-grid card offers its display image as a sharper
+alternative to the thumbnail, through a `<picture>` source that applies only
+at 769-1024 px. There the grid has two columns and a card is up to 466 CSS px
+wide, so a 500 px thumbnail is soft on a 2x screen, which takes the display
+image instead. At three columns (above 1024 px) a card is at most 361 px, and
+offering it there had every 2x desktop fetch all 16 display images: 2.6 times
+the page's image bytes. The source lists the two URLs the row stores, no
+other, each with the width its URL fixes, and only when:
+
+- they are two sizes of one picture: the same Wikimedia file at two steps,
+  the same Flickr photo at two sizes, or two Unsplash API sizes whose URLs
+  differ only in `w=` (a URL that sets `h=`, `ar=` or anything else that
+  changes the framing is left out);
+- the display image is the wider, and neither URL has a comma or a space.
+
+Phones and 1x screens, and every screen outside 769-1024 px, load the
+thumbnail as before. The sidebar cards are 100 px wide at every size, so
+they use the thumbnail alone.

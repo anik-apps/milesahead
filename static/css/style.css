@@ -402,6 +402,12 @@ main {
     display: block;
 }
 
+/* The grid wraps its thumbnails in <picture> for a srcset; lay the <img> out
+   as if it were not there. */
+.card-thumb picture {
+    display: contents;
+}
+
 .card-body {
     flex: 1;
     min-width: 0;

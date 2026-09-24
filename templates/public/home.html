@@ -75,12 +75,17 @@
         <a href="/article/{{.Slug}}">
             {{if .ImageThumbnail}}
             <div class="card-thumb">
-                {{/* sizes is the width of .bottom-grid .card-thumb: 100px on
-                     phones; above that, two columns to 1024px and three
-                     beyond, each the column less the card's 2px border, in
-                     main's 64px of padding, 24px gaps and 1200px cap. On a 2x
-                     screen the wide slots take the display image. */}}
-                <img src="{{.ImageThumbnail}}"{{with .ThumbSrcset}} srcset="{{.}}" sizes="(max-width: 768px) 100px, (max-width: 1024px) calc((100vw - 92px) / 2), (max-width: 1200px) calc((100vw - 118px) / 3), 361px"{{end}} alt="{{.Title}}" width="300" height="200" loading="lazy" decoding="async">
+                {{/* At 769-1024px the grid has two columns and a card is up to
+                     466 CSS px wide, too wide for a 500px thumbnail on a 2x
+                     screen, so there the display image is offered as well
+                     (see thumbSrcset). sizes is the width of .bottom-grid
+                     .card-thumb in that range: the column less the card's
+                     2px border, in main's 64px of padding and a 24px gap.
+                     Elsewhere every screen gets the thumbnail. */}}
+                <picture>
+                    {{with .ThumbSrcset}}<source media="(min-width: 769px) and (max-width: 1024px)" srcset="{{.}}" sizes="calc((100vw - 92px) / 2)">{{end}}
+                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}" width="300" height="200" loading="lazy" decoding="async">
+                </picture>
             </div>
             {{end}}
             <div class="card-body">
