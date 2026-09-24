@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,11 +34,21 @@ type ImageResult struct {
 	Query       string
 }
 
+// userAgent identifies every request the searcher makes. Wikimedia refuses
+// generic client agents outright -- Go's default "Go-http-client/1.1" gets 403
+// "Please set a user-agent and respect our robot policy" from both
+// upload.wikimedia.org and the Commons API -- so without this every Wikimedia
+// candidate failed its liveness probe and could never be picked.
+const userAgent = "MilesAhead/1.0 (+https://milesahead.kumaranik.com)"
+
 // Searcher searches multiple image APIs.
 type Searcher struct {
 	unsplashKey string
 	pexelsKey   string
 	httpClient  *http.Client
+
+	// sleep waits before retrying a throttled probe; replaced in tests.
+	sleep func(time.Duration)
 }
 
 // NewSearcher creates a new Searcher with the given API keys.
@@ -46,7 +57,25 @@ func NewSearcher(unsplashKey, pexelsKey string) *Searcher {
 		unsplashKey: unsplashKey,
 		pexelsKey:   pexelsKey,
 		httpClient:  &http.Client{Timeout: 15 * time.Second},
+		sleep:       time.Sleep,
 	}
+}
+
+// SetTransport routes every request the searcher makes -- searches, probes
+// and lookups -- through rt. It exists so tests can stand in for the image
+// hosts without the network.
+func (s *Searcher) SetTransport(rt http.RoundTripper) {
+	s.httpClient.Transport = rt
+}
+
+// newRequest builds a GET carrying the searcher's User-Agent.
+func (s *Searcher) newRequest(rawURL string) (*http.Request, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	return req, nil
 }
 
 // Search queries all APIs in parallel and returns deduplicated candidates.
@@ -209,7 +238,7 @@ func (s *Searcher) searchUnsplash(query string) ([]ImageCandidate, error) {
 	reqURL := fmt.Sprintf("https://api.unsplash.com/search/photos?query=%s&per_page=3&orientation=landscape",
 		url.QueryEscape(query))
 
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := s.newRequest(reqURL)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -273,7 +302,7 @@ func (s *Searcher) searchPexels(query string) ([]ImageCandidate, error) {
 	reqURL := fmt.Sprintf("https://api.pexels.com/v1/search?query=%s&per_page=3&orientation=landscape",
 		url.QueryEscape(query))
 
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := s.newRequest(reqURL)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
@@ -318,7 +347,10 @@ type openverseResponse struct {
 		Thumbnail string `json:"thumbnail"`
 		Creator   string `json:"creator"`
 		Source    string `json:"source"`
-		Tags      []struct {
+		// Width is the pixel width of the image at URL; for Wikimedia that
+		// is the full-size original. Absent (0) for some results.
+		Width int `json:"width"`
+		Tags  []struct {
 			Name string `json:"name"`
 		} `json:"tags"`
 	} `json:"results"`
@@ -328,7 +360,11 @@ func (s *Searcher) searchOpenverse(query string) ([]ImageCandidate, error) {
 	reqURL := fmt.Sprintf("https://api.openverse.org/v1/images/?q=%s&page_size=3",
 		url.QueryEscape(query))
 
-	resp, err := s.httpClient.Get(reqURL)
+	req, err := s.newRequest(reqURL)
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("http request: %w", err)
 	}
@@ -360,8 +396,12 @@ func (s *Searcher) searchOpenverse(query string) ([]ImageCandidate, error) {
 		// published. The direct URL points at the provider's own CDN
 		// (live.staticflickr.com, upload.wikimedia.org) and is stable, so
 		// prefer it and keep the proxy only as a last resort.
-		direct, thumb := r.URL, r.URL
-		if direct == "" {
+		//
+		// The direct URL is the provider's full-size file, though, which for
+		// Wikimedia is often a multi-megabyte camera original. Where the host
+		// can serve a smaller copy, ask for one sized to each slot.
+		direct, thumb := sizedPair(r.URL, r.Width)
+		if r.URL == "" {
 			// Nothing better exists for this result, so both fields fall back
 			// to the proxy. Leaving URL empty would make the candidate
 			// unusable downstream, where an article with no image_url is
@@ -393,22 +433,28 @@ type wikimediaResponse struct {
 			ImageInfo []struct {
 				URL      string `json:"url"`
 				ThumbURL string `json:"thumburl"`
+				Width    int    `json:"width"`
 			} `json:"imageinfo"`
 		} `json:"pages"`
 	} `json:"query"`
 }
 
+// commonsAPI is the Wikimedia Commons API endpoint.
+const commonsAPI = "https://commons.wikimedia.org/w/api.php"
+
 func (s *Searcher) searchWikimedia(query string) ([]ImageCandidate, error) {
+	// iiurlwidth asks the API to render a thumbnail too. It is used only for
+	// formats Sized leaves alone (SVG, TIFF, PDF), which a browser either
+	// cannot show as-is or should not be sent at full size.
 	reqURL := fmt.Sprintf(
-		"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=%s&gsrnamespace=6&gsrlimit=3&prop=imageinfo&iiprop=url&iiurlwidth=800&format=json",
-		url.QueryEscape(query),
+		"%s?action=query&generator=search&gsrsearch=%s&gsrnamespace=6&gsrlimit=3&prop=imageinfo&iiprop=url|size&iiurlwidth=%d&format=json",
+		commonsAPI, url.QueryEscape(query), ThumbnailWidth,
 	)
 
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := s.newRequest(reqURL)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
-	req.Header.Set("User-Agent", "MilesAhead/1.0 (image search)")
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
@@ -433,9 +479,16 @@ func (s *Searcher) searchWikimedia(query string) ([]ImageCandidate, error) {
 		}
 		info := page.ImageInfo[0]
 
-		imageURL := info.ThumbURL
-		if imageURL == "" {
-			imageURL = info.URL
+		original := withoutQuery(info.URL)
+		display, thumb := sizedPair(original, info.Width)
+		if _, known := parseWikimedia(original); !known {
+			// Not a format Sized can resize. The API's own rendering is the
+			// safe choice; it never upscales, returning the original instead.
+			display = withoutQuery(info.ThumbURL)
+			if display == "" {
+				display = original
+			}
+			thumb = display
 		}
 
 		// Use the file title as description (strip "File:" prefix)
@@ -450,8 +503,8 @@ func (s *Searcher) searchWikimedia(query string) ([]ImageCandidate, error) {
 		}
 
 		candidates = append(candidates, ImageCandidate{
-			URL:         imageURL,
-			Thumbnail:   imageURL,
+			URL:         display,
+			Thumbnail:   thumb,
 			Source:      "wikimedia",
 			Attribution: "Wikimedia Commons",
 			Description: desc,
@@ -467,7 +520,43 @@ func (s *Searcher) searchWikimedia(query string) ([]ImageCandidate, error) {
 // homepage, and findImage may probe several candidates in a row.
 const reachableTimeout = 8 * time.Second
 
-// Reachable reports whether a browser could actually fetch this URL right now.
+// Byte caps for a picked image. Sized URLs sit far below them -- a 1280px
+// Wikimedia step is ~300 KB, a 500px one ~60 KB, Unsplash and Pexels ship
+// 30-200 KB and Flickr's 1024px size up to ~260 KB -- while the originals
+// that made the homepage weigh 16.5 MB were 2.4 to 13.2 MB each.
+const (
+	// MaxImageBytes caps the display image: featured card, article hero and
+	// og:image, the last of which Facebook refuses above 8 MB.
+	MaxImageBytes int64 = 1 << 20
+	// MaxThumbnailBytes caps a homepage card thumbnail.
+	MaxThumbnailBytes int64 = 512 << 10
+)
+
+// A throttled probe is retried, because Wikimedia answers 429 (Retry-After: 1)
+// while it renders a thumbnail size nobody has asked for yet, then serves it.
+const (
+	maxProbeAttempts = 3
+	maxRetryWait     = 5 * time.Second
+)
+
+// Probe is what a ranged GET of an image URL showed.
+type Probe struct {
+	// OK means 200 or 206: a browser could fetch the URL.
+	OK          bool
+	Status      int // 0 when the request itself failed
+	ContentType string
+	// Size is the whole file's size in bytes, or -1 when the host did not
+	// say and it was not measured.
+	Size int64
+}
+
+// IsImage reports whether the host labelled the response as an image.
+func (p Probe) IsImage() bool {
+	return strings.HasPrefix(strings.ToLower(p.ContentType), "image/")
+}
+
+// Probe reports whether a browser could fetch rawURL right now, and how large
+// the file is.
 //
 // Image hosts hand out links that are signed, proxied, or generated on demand,
 // and such a URL is indistinguishable from a durable one until it is already
@@ -476,31 +565,192 @@ const reachableTimeout = 8 * time.Second
 //
 // This issues a ranged GET rather than a HEAD because several image CDNs --
 // Openverse's thumbnail proxy among them -- answer HEAD with 405 while serving
-// GET perfectly well, which would reject good candidates.
-func (s *Searcher) Reachable(rawURL string) bool {
+// GET perfectly well, which would reject good candidates. The size comes from
+// Content-Range, or Content-Length when the host ignores Range. Some hosts
+// (Flickr, rawpixel) state neither; with measureUpTo > 0 the body is then read
+// up to one byte past that limit, so an oversized file is caught either way.
+func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 	if rawURL == "" {
-		return false
+		return Probe{Size: -1}
 	}
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
-	if err != nil {
-		return false
-	}
-	req.Header.Set("Range", "bytes=0-0")
+	client := &http.Client{Timeout: reachableTimeout, Transport: s.httpClient.Transport}
+	for attempt := 1; ; attempt++ {
+		req, err := s.newRequest(rawURL)
+		if err != nil {
+			return Probe{Size: -1}
+		}
+		req.Header.Set("Range", "bytes=0-0")
 
-	client := &http.Client{Timeout: reachableTimeout}
-	resp, err := client.Do(req)
-	if err != nil {
-		slog.Warn("image liveness probe failed", "url", rawURL, "error", err)
+		resp, err := client.Do(req)
+		if err != nil {
+			slog.Warn("image liveness probe failed", "url", rawURL, "error", err)
+			return Probe{Size: -1}
+		}
+		p := Probe{
+			Status:      resp.StatusCode,
+			ContentType: resp.Header.Get("Content-Type"),
+			Size:        declaredSize(resp),
+			OK:          resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent,
+		}
+		if p.OK && p.Size < 0 && measureUpTo > 0 && resp.StatusCode == http.StatusOK {
+			n, err := io.Copy(io.Discard, io.LimitReader(resp.Body, measureUpTo+1))
+			if err != nil {
+				// A body that cannot be read to the end will not load in a
+				// browser either.
+				p.OK = false
+				slog.Warn("image body could not be read", "url", rawURL, "error", err)
+			}
+			p.Size = n
+		} else {
+			// The response may be the whole file if the host ignored Range,
+			// so drain only what is needed to let the connection be reused.
+			io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxProbeAttempts {
+			s.sleep(retryAfter(resp.Header.Get("Retry-After")))
+			continue
+		}
+		if !p.OK && p.Status != 0 {
+			slog.Warn("image URL is not fetchable", "url", rawURL, "status", p.Status)
+		}
+		return p
+	}
+}
+
+// Usable reports whether a candidate can go on the page: its URLs fetch, and
+// neither is heavier than its slot allows. When both fields hold the same URL
+// it is shown as a thumbnail, so the tighter cap applies.
+func (s *Searcher) Usable(c ImageCandidate) bool {
+	if !s.fitsCap(c.Thumbnail, MaxThumbnailBytes) {
 		return false
 	}
-	// The response may be the whole file if the host ignored Range, so drain
-	// only what is needed to let the connection be reused and move on.
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
-	resp.Body.Close()
+	return c.URL == c.Thumbnail || s.fitsCap(c.URL, MaxImageBytes)
+}
 
-	ok := resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent
-	if !ok {
-		slog.Warn("image URL is not fetchable", "url", rawURL, "status", resp.StatusCode)
+func (s *Searcher) fitsCap(rawURL string, limit int64) bool {
+	p := s.Probe(rawURL, limit)
+	if !p.OK {
+		return false
 	}
-	return ok
+	if p.Size > limit {
+		slog.Info("image candidate is too heavy for its slot",
+			"url", rawURL, "bytes", p.Size, "limit", limit)
+		return false
+	}
+	return true
+}
+
+// declaredSize reads the file size a response states: the total in
+// Content-Range for a 206, or Content-Length for a 200. -1 if neither.
+func declaredSize(resp *http.Response) int64 {
+	if resp.StatusCode == http.StatusPartialContent {
+		// "bytes 0-0/13218990"; the total may be "*" when unknown.
+		if _, total, found := strings.Cut(resp.Header.Get("Content-Range"), "/"); found {
+			if n, err := strconv.ParseInt(strings.TrimSpace(total), 10, 64); err == nil {
+				return n
+			}
+		}
+		return -1
+	}
+	return resp.ContentLength
+}
+
+// retryAfter reads a Retry-After header given in seconds, bounded so one slow
+// host cannot stall a pass. Anything unparseable waits one second.
+func retryAfter(h string) time.Duration {
+	secs, err := strconv.Atoi(strings.TrimSpace(h))
+	if err != nil || secs <= 0 {
+		return time.Second
+	}
+	return min(time.Duration(secs)*time.Second, maxRetryWait)
+}
+
+// commonsTitlesPerRequest keeps a lookup's URL comfortably short; Commons
+// file names can run past 200 bytes each.
+const commonsTitlesPerRequest = 20
+
+// WikimediaWidths looks up the pixel widths of Commons originals, which their
+// URLs do not carry but Sized needs to avoid upscaling. The result is keyed by
+// the URLs passed in. A width of 0 means Commons reports the file as missing,
+// i.e. deleted. URLs that are not Commons originals, or that the API gave no
+// answer for, are absent: unknown, not zero.
+func (s *Searcher) WikimediaWidths(originals []string) (map[string]int, error) {
+	byTitle := map[string][]string{}
+	var titles []string
+	for _, u := range originals {
+		if !IsWikimediaOriginal(u) {
+			continue
+		}
+		f, _ := parseWikimedia(u)
+		name, err := url.PathUnescape(f.name)
+		if err != nil {
+			continue
+		}
+		title := "File:" + strings.ReplaceAll(name, "_", " ")
+		if _, seen := byTitle[title]; !seen {
+			titles = append(titles, title)
+		}
+		byTitle[title] = append(byTitle[title], u)
+	}
+
+	out := map[string]int{}
+	for start := 0; start < len(titles); start += commonsTitlesPerRequest {
+		batch := titles[start:min(start+commonsTitlesPerRequest, len(titles))]
+		q := url.Values{
+			"action":        {"query"},
+			"titles":        {strings.Join(batch, "|")},
+			"prop":          {"imageinfo"},
+			"iiprop":        {"size"},
+			"format":        {"json"},
+			"formatversion": {"2"},
+		}
+		req, err := s.newRequest(commonsAPI + "?" + q.Encode())
+		if err != nil {
+			return out, err
+		}
+		resp, err := s.httpClient.Do(req)
+		if err != nil {
+			return out, fmt.Errorf("commons API: %w", err)
+		}
+		var result struct {
+			Query struct {
+				Pages []struct {
+					Title     string `json:"title"`
+					Missing   bool   `json:"missing"`
+					ImageInfo []struct {
+						Width int `json:"width"`
+					} `json:"imageinfo"`
+				} `json:"pages"`
+			} `json:"query"`
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return out, fmt.Errorf("commons API: status %d", resp.StatusCode)
+		}
+		err = json.NewDecoder(resp.Body).Decode(&result)
+		resp.Body.Close()
+		if err != nil {
+			return out, fmt.Errorf("commons API: decoding: %w", err)
+		}
+		for _, p := range result.Query.Pages {
+			for _, u := range byTitle[p.Title] {
+				switch {
+				case p.Missing:
+					out[u] = 0
+				case len(p.ImageInfo) > 0 && p.ImageInfo[0].Width > 0:
+					out[u] = p.ImageInfo[0].Width
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// withoutQuery drops a URL's query string. The Commons API now appends utm_*
+// tracking parameters to every URL it returns.
+func withoutQuery(raw string) string {
+	base, _, _ := strings.Cut(raw, "?")
+	return base
 }

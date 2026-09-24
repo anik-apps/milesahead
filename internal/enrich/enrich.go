@@ -289,19 +289,17 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 			"article_id", a.ID, "top_score", scored[0].Score)
 		return false
 	}
-	// Walk down in score order until one is both relevant enough and actually
-	// fetchable. Scoring alone is not enough: an image host can return a URL
-	// that is already dead or that dies later, and without this check the
-	// first anyone learns of it is a broken thumbnail on the homepage.
+	// Walk down in score order until one is relevant enough, actually
+	// fetchable and light enough for the page. Scoring alone is not enough: an
+	// image host can return a URL that is already dead or that dies later, and
+	// without this check the first anyone learns of it is a broken thumbnail
+	// on the homepage -- or, as with the Wikimedia originals, a 13 MB one.
 	for i := range scored {
 		c := scored[i]
 		if c.Score < MinImageScore {
 			break
 		}
-		if !s.searcher.Reachable(c.Thumbnail) {
-			continue
-		}
-		if c.URL != c.Thumbnail && !s.searcher.Reachable(c.URL) {
+		if !s.searcher.Usable(c) {
 			continue
 		}
 		u.ImageURL = &scored[i].URL
