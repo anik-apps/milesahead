@@ -105,7 +105,7 @@
                 <section class="card-section" id="section-{{.Key}}">
                     <h2>{{.Title}}</h2>
                     <div class="card-section-content">
-                        {{.Content | safeHTML}}
+                        {{scrollTables (printf "%s table" .Title) .Content | safeHTML}}
                     </div>
                 </section>
                 {{end}}

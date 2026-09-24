@@ -350,6 +350,11 @@ func formatTopEarning(earningRatesJSON string, n int) string {
 	return strings.Join(parts, " · ")
 }
 
+// minVotesToShowCounts is how many votes an article needs before its helpful /
+// not helpful counts are shown. Below that, a count says more about traffic than
+// about the article.
+const minVotesToShowCounts = 10
+
 func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 
@@ -462,6 +467,7 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"Sources":            sources,
 		"Upvotes":            upvotes,
 		"Downvotes":          downvotes,
+		"ShowVoteCounts":     upvotes+downvotes >= minVotesToShowCounts,
 		"PublishedAt":        publishedAt,
 		"UnderReview":        false,
 		"TLDR":               article.TLDR,
