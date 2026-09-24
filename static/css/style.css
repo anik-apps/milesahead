@@ -1967,6 +1967,79 @@ tr.flagged { background: #fef2f2; }
     }
 }
 
+/* --- Ended offers ---
+   An article whose offer has passed its end date stays listed in filtered
+   views, search and card pages, marked "Ended" and toned down. Only the
+   image is faded: the badge and title keep WCAG AA contrast (4.5:1+) in
+   both themes. Contrast, light / dark: badge 10.3 / 12.3, title 7.6 / 8.7,
+   article banner 8.8 / 12.7. */
+:root {
+    --ended-badge-bg: #374151;
+    --ended-badge-fg: #ffffff;
+    --ended-text: #4b5563;
+    --ended-banner-bg: #fffbeb;
+    --ended-banner-fg: #78350f;
+    --ended-banner-border: #d97706;
+}
+[data-theme="dark"] {
+    --ended-badge-bg: #c9d1d9;
+    --ended-badge-fg: #0d1117;
+    --ended-text: #a8b1bb;
+    --ended-banner-bg: #2a2110;
+    --ended-banner-fg: #fde68a;
+    --ended-banner-border: #b45309;
+}
+
+.ended-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--ended-badge-bg);
+    color: var(--ended-badge-fg);
+}
+
+.article-card.is-ended {
+    background: var(--bg);
+    border-style: dashed;
+}
+.article-card.is-ended h3,
+.search-item.is-ended .search-item-title,
+.changes-list li.is-ended .change-summary {
+    color: var(--ended-text);
+}
+.article-card.is-ended .card-thumb img {
+    opacity: 0.45;
+    filter: grayscale(100%);
+}
+/* The featured slot only holds an ended offer when every article in the view
+   has ended. Grey the photo without touching the overlay text. */
+.featured-card.is-ended {
+    background-color: #4b5563;
+    background-blend-mode: luminosity;
+}
+/* The featured overlay is dark in both themes, so its badge is always the
+   light chip (#111827 on #e5e7eb, 14.3:1). */
+.featured-card .ended-badge {
+    background: #e5e7eb;
+    color: #111827;
+}
+
+.offer-ended-banner {
+    margin: 0 0 1.25rem;
+    padding: 0.85rem 1.1rem;
+    border: 1px solid var(--ended-banner-border);
+    border-left-width: 5px;
+    border-radius: 8px;
+    background: var(--ended-banner-bg);
+    color: var(--ended-banner-fg);
+    font-weight: 600;
+    line-height: 1.5;
+}
+
 /* --- Search --- */
 
 /* Nav search */
@@ -2643,77 +2716,4 @@ footer .footer-links a, .footer-pillars a { color: #15307a; }
 }
 @media (max-width: 400px) {
     nav .brand-logo .brand-tag { display: none; }
-}
-
-/* --- Ended offers ---
-   An article whose offer has passed its end date stays listed in filtered
-   views, search and card pages, marked "Ended" and toned down. Only the
-   image is faded: the badge and title keep WCAG AA contrast (4.5:1+) in
-   both themes. Contrast, light / dark: badge 10.3 / 12.3, title 7.6 / 8.7,
-   article banner 8.8 / 12.7. */
-:root {
-    --ended-badge-bg: #374151;
-    --ended-badge-fg: #ffffff;
-    --ended-text: #4b5563;
-    --ended-banner-bg: #fffbeb;
-    --ended-banner-fg: #78350f;
-    --ended-banner-border: #d97706;
-}
-[data-theme="dark"] {
-    --ended-badge-bg: #c9d1d9;
-    --ended-badge-fg: #0d1117;
-    --ended-text: #a8b1bb;
-    --ended-banner-bg: #2a2110;
-    --ended-banner-fg: #fde68a;
-    --ended-banner-border: #b45309;
-}
-
-.ended-badge {
-    display: inline-block;
-    padding: 0.2rem 0.6rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    background: var(--ended-badge-bg);
-    color: var(--ended-badge-fg);
-}
-
-.article-card.is-ended {
-    background: var(--bg);
-    border-style: dashed;
-}
-.article-card.is-ended h3,
-.search-item.is-ended .search-item-title,
-.changes-list li.is-ended .change-summary {
-    color: var(--ended-text);
-}
-.article-card.is-ended .card-thumb img {
-    opacity: 0.45;
-    filter: grayscale(100%);
-}
-/* The featured slot only holds an ended offer when every article in the view
-   has ended. Grey the photo without touching the overlay text. */
-.featured-card.is-ended {
-    background-color: #4b5563;
-    background-blend-mode: luminosity;
-}
-/* The featured overlay is dark in both themes, so its badge is always the
-   light chip (#111827 on #e5e7eb, 14.3:1). */
-.featured-card .ended-badge {
-    background: #e5e7eb;
-    color: #111827;
-}
-
-.offer-ended-banner {
-    margin: 0 0 1.25rem;
-    padding: 0.85rem 1.1rem;
-    border: 1px solid var(--ended-banner-border);
-    border-left-width: 5px;
-    border-radius: 8px;
-    background: var(--ended-banner-bg);
-    color: var(--ended-banner-fg);
-    font-weight: 600;
-    line-height: 1.5;
 }
