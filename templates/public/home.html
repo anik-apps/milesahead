@@ -26,7 +26,14 @@
 
 <div class="magazine-grid">
     {{if .Featured}}
-    <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}"{{if .Featured.ImageURL}} style="background-image: url('{{.Featured.ImageURL}}'); background-size: cover; background-position: center;"{{end}}>
+    <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}">
+        {{if .Featured.ImageURL}}
+        {{/* A real <img> rather than a CSS background: the preload scanner finds
+             it in the HTML instead of after the stylesheet, and it can ask for
+             priority as the likely largest paint. alt is empty because the
+             link beside it already carries the headline. */}}
+        <img class="featured-image" src="{{.Featured.ImageURL}}" alt="" width="1280" height="720" fetchpriority="high">
+        {{end}}
         <a href="/article/{{.Featured.Slug}}">
             <div class="featured-overlay">
                 <span class="type-badge badge-{{.Featured.Type}}">{{.Featured.Type}}</span>
@@ -43,7 +50,7 @@
             <a href="/article/{{.Slug}}">
                 {{if .ImageThumbnail}}
                 <div class="card-thumb">
-                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}">
+                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}" width="300" height="200" decoding="async">
                 </div>
                 {{end}}
                 <div class="card-body">
@@ -67,7 +74,7 @@
         <a href="/article/{{.Slug}}">
             {{if .ImageThumbnail}}
             <div class="card-thumb">
-                <img src="{{.ImageThumbnail}}" alt="{{.Title}}">
+                <img src="{{.ImageThumbnail}}" alt="{{.Title}}" width="300" height="200" loading="lazy" decoding="async">
             </div>
             {{end}}
             <div class="card-body">

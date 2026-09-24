@@ -234,6 +234,18 @@ main {
     justify-content: flex-end;
     min-height: 400px;
     color: #ffffff;
+    position: relative; /* paints over .featured-image */
+}
+
+/* Covers the whole card (cover, centred) without taking part in layout, so
+   the card is still sized by its text, as it was with a background image. */
+.featured-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
 }
 
 .featured-card a:hover {
@@ -395,9 +407,9 @@ main {
     min-width: 0;
 }
 
-/* Featured card with image */
+/* Featured card with image: the photo covers the card, so drop the gradient. */
 .featured-card.has-image {
-    background-image: none; /* override the gradient when image is set via inline style */
+    background-image: none;
 }
 
 /* Bottom grid thumbnail layout */
