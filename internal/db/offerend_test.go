@@ -259,10 +259,11 @@ func TestOfferEndsBySlugAndSearch(t *testing.T) {
 	}
 }
 
-// The backfill runs while the server is already up. A row rewritten between
-// its read and its write -- an enrichment pass storing new key details and
-// their end date -- keeps the newer value rather than getting one derived
-// from the details it replaced.
+// Another process can write the database while the backfill runs (the
+// server, when a command opens the same file). A row rewritten between the
+// backfill's read and its write -- by an enrichment pass storing new key
+// details and their end date -- keeps the newer value rather than getting
+// one derived from the details it replaced.
 func TestBackfillOfferEndDates_KeepsRowsWrittenSinceTheRead(t *testing.T) {
 	d := openTestDB(t)
 	moved := approvedWithDeadline(t, d, "moved", "July 29, 2026")

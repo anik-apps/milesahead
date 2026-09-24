@@ -293,12 +293,14 @@ func offerEndChanges(conn *sql.DB) ([]offerEndChange, error) {
 	return changes, rows.Err()
 }
 
-// applyOfferEndChanges writes the derived end dates. The read cursor is
-// closed by now, and the server is already serving, so a row may have been
-// rewritten since it was read -- an enrichment pass storing new key details
-// and their end date, say. Each UPDATE therefore applies only if the row
-// still holds the key details and end date it was read with; a row that
-// moved on keeps its newer value. It returns how many rows it changed.
+// applyOfferEndChanges writes the derived end dates. Another process can be
+// writing the same database meanwhile -- the running server when a command
+// such as seed-structured opens it, or the outgoing container during a
+// deploy -- so a row may have been rewritten since it was read: an
+// enrichment pass storing new key details and their end date, say. Each
+// UPDATE therefore applies only if the row still holds the key details and
+// end date it was read with; a row that moved on keeps its newer value. It
+// returns how many rows it changed.
 func applyOfferEndChanges(conn *sql.DB, changes []offerEndChange) (int, error) {
 	tx, err := conn.Begin()
 	if err != nil {
