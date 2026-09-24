@@ -651,7 +651,7 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 			// Left at -1, the size would pass any byte cap.
 			io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
 			resp.Body.Close()
-			p.Size, p.Measured = s.measureWhole(client, rawURL, measureUpTo)
+			p.Size, p.Measured = s.measureWhole(rawURL, measureUpTo, deadline)
 		default:
 			// The response may be the whole file if the host ignored Range,
 			// so drain only what is needed to let the connection be reused.
@@ -721,13 +721,18 @@ func measureBody(rawURL string, body io.Reader, limit int64) (size int64, ok boo
 }
 
 // measureWhole fetches rawURL without a range and returns its stated length,
-// or counts it up to one byte past limit (counted is then true). It returns
-// -1 if neither works.
-func (s *Searcher) measureWhole(client *http.Client, rawURL string, limit int64) (size int64, counted bool) {
+// or counts it up to one byte past limit (counted is then true), by deadline.
+// It returns -1 if neither works.
+func (s *Searcher) measureWhole(rawURL string, limit int64, deadline time.Time) (size int64, counted bool) {
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return -1, false
+	}
 	req, err := s.newRequest(rawURL)
 	if err != nil {
 		return -1, false
 	}
+	client := &http.Client{Timeout: min(s.probeTimeout, remaining), Transport: s.httpClient.Transport}
 	resp, err := client.Do(req)
 	if err != nil {
 		slog.Warn("image size could not be measured", "url", rawURL, "error", err)

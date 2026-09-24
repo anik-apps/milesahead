@@ -361,7 +361,7 @@ func (s *Service) pickSized(candidates []string, limit int64, current string) (s
 	}
 	cur := s.searcher.Probe(current, 0)
 	switch {
-	case cur.Status == 0:
+	case cur.Status == 0 || cur.Status == http.StatusTooManyRequests || cur.Status >= 500:
 		return "", sizedUnconfirmed // the request failed; compare next time
 	case !cur.OK || cur.Size < 0 || lightestSize >= cur.Size:
 		slog.Info("image resize: every sized copy is over its cap and none is lighter; keeping the current file",

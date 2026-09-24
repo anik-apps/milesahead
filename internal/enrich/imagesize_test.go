@@ -38,6 +38,8 @@ const (
 	heavier      = wm + "2/2c/" + heavierFile
 	denseFile    = "Dense_scan.png"
 	dense        = wm + "2/2d/" + denseFile
+	flakyFile    = "Flaky_host.png"
+	flaky        = wm + "2/2e/" + flakyFile
 	detailedFile = "Detailed_map.png"
 	detailed     = wm + "3/3c/" + detailedFile
 	stillFile    = "Still_served.jpg"
@@ -72,6 +74,10 @@ var stepBytes = map[string]int{
 	"1280px-" + denseFile: 2_000_000,
 	"960px-" + denseFile:  1_800_000,
 	"500px-" + denseFile:  1_600_000,
+	// Over 1 MiB at every display width; its original answers 503.
+	"1280px-" + flakyFile: 2_000_000,
+	"960px-" + flakyFile:  1_800_000,
+	"500px-" + flakyFile:  1_600_000,
 	// Over the cap at the first step, within it at the next one down.
 	"1280px-" + detailedFile: 1_500_000,
 	"960px-" + detailedFile:  700_000,
@@ -117,6 +123,7 @@ func (h *imageHosts) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			{"title":"File:Heavy render.png","imageinfo":[{"width":5000}]},
 			{"title":"File:Heavier render.png","imageinfo":[{"width":5000}]},
 			{"title":"File:Dense scan.png","imageinfo":[{"width":5000}]},
+			{"title":"File:Flaky host.png","imageinfo":[{"width":5000}]},
 			{"title":"File:Detailed map.png","imageinfo":[{"width":3000}]},
 			{"title":"File:Still served.jpg","missing":true},
 			{"title":"File:Old search.jpg","imageinfo":[{"width":6048}]},
@@ -132,6 +139,8 @@ func (h *imageHosts) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("<html>upstream error</html>"))
 	case strings.Contains(p, "Capital_One"):
 		w.WriteHeader(http.StatusNotFound)
+	case strings.HasSuffix(p, "/2/2e/"+flakyFile):
+		w.WriteHeader(http.StatusServiceUnavailable) // the original only
 	case strings.Contains(p, "/thumb/"):
 		name := p[strings.LastIndex(p, "/")+1:]
 		width, _, _ := strings.Cut(name, "px-")
@@ -542,6 +551,7 @@ func TestRun_ResizeDisplayImageOverCapAtEveryWidth(t *testing.T) {
 	heavyRow := seedImage(t, d, heavy, heavy)
 	heavierRow := seedImage(t, d, heavier, heavier)
 	denseRow := seedImage(t, d, dense, dense)
+	flakyRow := seedImage(t, d, flaky, flaky)
 	s.Run()
 
 	thumbs := func(dir, file string) string { return wm + "thumb/" + dir + "/" + file + "/" }
@@ -556,6 +566,8 @@ func TestRun_ResizeDisplayImageOverCapAtEveryWidth(t *testing.T) {
 		{"lighter than the original", heavierRow, thumbs("2/2c", heavierFile) + "500px-" + heavierFile, thumbs("2/2c", heavierFile) + "330px-" + heavierFile},
 		// Every sized copy is heavier than the 1.5 MB original: it stays.
 		{"heavier than the original", denseRow, dense, thumbs("2/2d", denseFile) + "330px-" + denseFile},
+		// The original could not be weighed this time: it stays for now.
+		{"original did not answer", flakyRow, flaky, thumbs("2/2e", flakyFile) + "330px-" + flakyFile},
 	} {
 		url, thumb, _ := storedImage(t, d, c.id)
 		if url != c.url || thumb != c.thumb {
@@ -564,14 +576,15 @@ func TestRun_ResizeDisplayImageOverCapAtEveryWidth(t *testing.T) {
 	}
 	hosts.noNonStandardWidths(t)
 
-	// Nothing is left that a later pass could convert, so the unsized gauge
-	// can reach 0; the row that keeps its file is reported on its own.
-	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 0 || got2 != 1 {
-		t.Errorf("gauges: unsized %v, unconvertible %v; want 0 and 1", got, got2)
+	// Only the row whose original did not answer may still convert, so the
+	// unsized gauge counts it alone; the row that keeps its file is reported
+	// on its own.
+	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 1 || got2 != 1 {
+		t.Errorf("gauges: unsized %v, unconvertible %v; want 1 and 1", got, got2)
 	}
 
-	// The converted rows are done, and the other is set aside: nothing is
-	// fetched again.
+	// The converted rows are done, and the unconvertible one is set aside:
+	// nothing about them is fetched again. The other is tried again.
 	before := hosts.total()
 	s.Run()
 	for _, file := range []string{heavyFile, heavierFile, denseFile} {
@@ -579,8 +592,11 @@ func TestRun_ResizeDisplayImageOverCapAtEveryWidth(t *testing.T) {
 			t.Errorf("second pass fetched %s again %d times", file, n)
 		}
 	}
-	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 0 || got2 != 1 {
-		t.Errorf("second pass gauges: unsized %v, unconvertible %v; want 0 and 1", got, got2)
+	if n := countIn(hosts.since(before), flakyFile); n == 0 {
+		t.Errorf("second pass did not retry %s", flakyFile)
+	}
+	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 1 || got2 != 1 {
+		t.Errorf("second pass gauges: unsized %v, unconvertible %v; want 1 and 1", got, got2)
 	}
 }
 
