@@ -15,6 +15,9 @@ const (
 	deltaName   = "Delta_Airlines_aircraft_over_Eastfield_from_the_air_-_geograph.org.uk_-_6039028.jpg"
 	brisbane960 = "https://upload.wikimedia.org/wikipedia/commons/thumb/f/fb/Flight_departure_board_at_Brisbane_Airport%2C_December_2022.jpg/960px-Flight_departure_board_at_Brisbane_Airport%2C_December_2022.jpg"
 	flickrLarge = "https://live.staticflickr.com/65535/54420209608_0aa8ea537a_b.jpg"
+	// 161 bytes: MediaWiki names this file's thumbnails "<width>px-thumbnail.jpg".
+	longName   = "DZ6_0956_A_glowing_blue_nighttime_scene_of_an_outdoor_bar_or_lounge_decorated_with_carnival_masks_and_illuminated_tents_creating_a_festive_surreal_atmosphere.jpg"
+	longThumbs = "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/" + longName + "/"
 )
 
 func TestSized(t *testing.T) {
@@ -51,6 +54,11 @@ func TestSized(t *testing.T) {
 		// 800px is not a step, so upload.wikimedia.org answers 400; move to
 		// the widest step below it rather than keep a broken URL.
 		{"non-step thumb", lobbyThumbs + "800px-" + lobbyName, 0, HeroWidth, lobbyThumbs + "500px-" + lobbyName},
+		// A file name over 160 bytes is not repeated in its thumbnails' names.
+		// The old image search stored these at 800px, which answers 400.
+		{"long name, unserved width", longThumbs + "800px-thumbnail.jpg", 0, ThumbnailWidth, longThumbs + "500px-" + longName},
+		{"long name, served width", longThumbs + "500px-thumbnail.jpg", 0, ThumbnailWidth, ""},
+		{"thumbnail of another file", lobbyThumbs + "800px-Other.jpg", 0, ThumbnailWidth, ""},
 		// The Commons API now hands out thumb.wikimedia.org; keep its host.
 		{"thumb host", "https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/" + lobbyName + "/960px-" + lobbyName + "?utm_source=commons.wikimedia.org", 0, ThumbnailWidth,
 			"https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/" + lobbyName + "/500px-" + lobbyName},
@@ -102,6 +110,34 @@ func TestSized_IsIdempotent(t *testing.T) {
 			if again, changed := Sized(first, 0, target); changed {
 				t.Errorf("Sized(%q) = %q, then %q again", u, first, again)
 			}
+		}
+	}
+}
+
+// The old image search stored 800px Commons renderings, a width Wikimedia no
+// longer serves. The resize sizes their display image from the original, so
+// it needs the original's URL (for the width lookup) from either name form.
+func TestUnservedWikimediaThumbs(t *testing.T) {
+	for _, tt := range []struct {
+		url      string
+		unserved bool
+		original string
+	}{
+		{lobbyThumbs + "800px-" + lobbyName, true, lobby},
+		{longThumbs + "800px-thumbnail.jpg", true, "https://upload.wikimedia.org/wikipedia/commons/4/4e/" + longName},
+		{"https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/" + lobbyName + "/800px-" + lobbyName, true, lobby},
+		{lobbyThumbs + "500px-" + lobbyName, false, lobby},
+		{brisbane960, false, "https://upload.wikimedia.org/wikipedia/commons/f/fb/Flight_departure_board_at_Brisbane_Airport%2C_December_2022.jpg"},
+		{lobby, false, ""},
+		{"https://upload.wikimedia.org/wikipedia/en/thumb/a/ab/Local.jpg/800px-Local.jpg", false, ""}, // not on Commons
+		{flickrLarge, false, ""},
+	} {
+		if got := IsUnservedWikimediaThumb(tt.url); got != tt.unserved {
+			t.Errorf("IsUnservedWikimediaThumb(%q) = %v, want %v", tt.url, got, tt.unserved)
+		}
+		got, ok := WikimediaOriginalOf(tt.url)
+		if got != tt.original || ok != (tt.original != "") {
+			t.Errorf("WikimediaOriginalOf(%q) = %q, %v; want %q", tt.url, got, ok, tt.original)
 		}
 	}
 }

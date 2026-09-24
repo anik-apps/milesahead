@@ -53,9 +53,10 @@ type resizeJob struct {
 	urls, thumbs []string
 	// deleted: Commons reports the display image's file as deleted.
 	deleted bool
-	// heavy: the row holds a full-size Wikimedia original, the case that is
-	// megabytes rather than hundreds of kilobytes, so it goes first.
-	heavy bool
+	// first: the row holds a full-size Wikimedia original, the case that is
+	// megabytes rather than hundreds of kilobytes, or a thumbnail width
+	// Wikimedia no longer serves, which is a broken image; either goes first.
+	first bool
 }
 
 // resizeOutcome is what resizeOne did with a row.
@@ -126,13 +127,14 @@ func (s *Service) resizeStoredImages(deadline time.Time) {
 	for _, a := range stored {
 		job := resizeJob{
 			row:     a,
-			urls:    sizedSteps(a.URL, s.originalWidths[a.URL], displaySteps),
+			urls:    s.displayCandidates(a.URL),
 			thumbs:  sizedSteps(a.Thumbnail, s.originalWidths[a.Thumbnail], thumbnailSteps),
-			deleted: s.deletedOnCommons(a.URL),
-			heavy:   images.IsWikimediaOriginal(a.URL) || images.IsWikimediaOriginal(a.Thumbnail),
+			deleted: s.deletedOnCommons(displayWidthKey(a.URL)),
+			first: images.IsWikimediaOriginal(a.URL) || images.IsWikimediaOriginal(a.Thumbnail) ||
+				images.IsUnservedWikimediaThumb(a.URL) || images.IsUnservedWikimediaThumb(a.Thumbnail),
 		}
 		if job.urls == nil && job.thumbs == nil && !job.deleted {
-			if s.widthUnknown(a.URL) || s.widthUnknown(a.Thumbnail) {
+			if s.waitingOnWidth(a) {
 				unsized++ // waiting on a width lookup that failed
 			}
 			continue
@@ -145,8 +147,8 @@ func (s *Service) resizeStoredImages(deadline time.Time) {
 		jobs = append(jobs, job)
 	}
 	sort.SliceStable(jobs, func(i, j int) bool {
-		if jobs[i].heavy != jobs[j].heavy {
-			return jobs[i].heavy
+		if jobs[i].first != jobs[j].first {
+			return jobs[i].first
 		}
 		return jobs[i].row.ID > jobs[j].row.ID // the homepage shows the newest
 	})
@@ -287,6 +289,66 @@ func (s *Service) noteResizeFailure(id int64) {
 	}
 }
 
+// displayCandidates returns the sized URLs to try for a stored display image,
+// best first, or nil when it stays as it is (for now).
+//
+// A Commons thumbnail at a width Wikimedia no longer serves -- the 800px
+// renderings the image search once stored -- is sized from its original
+// rather than from its own width: the widest step below 800 is 500, far too
+// few pixels for the featured card and the article hero. That waits for the
+// original's width; with it, the display image gets the 1280 or 960 step, or
+// the original itself when it is no wider than the slot and no step comes
+// close to its width.
+func (s *Service) displayCandidates(u string) []string {
+	if !images.IsUnservedWikimediaThumb(u) {
+		return sizedSteps(u, s.originalWidths[u], displaySteps)
+	}
+	orig := displayWidthKey(u)
+	w := s.originalWidths[orig]
+	if w <= 0 {
+		return nil // not looked up yet, or deleted (see resizeJob.deleted)
+	}
+	first, ok := images.Sized(orig, w, displaySteps[0])
+	if !ok {
+		first = orig
+	}
+	out := []string{first}
+	for _, step := range displaySteps[1:] {
+		if sized, ok := images.Sized(orig, w, step); ok && !slices.Contains(out, sized) {
+			out = append(out, sized)
+		}
+	}
+	return out
+}
+
+// displayWidthKey returns the Commons original whose width sizing the display
+// image u needs, or "": u itself if it is an original, or the original behind
+// a thumbnail at a width Wikimedia no longer serves.
+func displayWidthKey(u string) string {
+	if images.IsWikimediaOriginal(u) {
+		return u
+	}
+	if images.IsUnservedWikimediaThumb(u) {
+		orig, _ := images.WikimediaOriginalOf(u)
+		return orig
+	}
+	return ""
+}
+
+// widthKeys returns the Commons originals whose widths sizing a needs. A
+// thumbnail at an unserved width does not need one: its own width already
+// bounds the original's from below, and the card slot is narrower still.
+func widthKeys(a db.StoredArticleImage) []string {
+	var keys []string
+	if k := displayWidthKey(a.URL); k != "" {
+		keys = append(keys, k)
+	}
+	if images.IsWikimediaOriginal(a.Thumbnail) && !slices.Contains(keys, a.Thumbnail) {
+		keys = append(keys, a.Thumbnail)
+	}
+	return keys
+}
+
 // sizedSteps returns the sized URLs to try for one stored field, best first,
 // or nil when the field should stay as it is.
 func sizedSteps(raw string, originalWidth int, steps []int) []string {
@@ -341,8 +403,8 @@ func (s *Service) lookUpOriginalWidths(stored []db.StoredArticleImage, deadline 
 	sort.SliceStable(newest, func(i, j int) bool { return newest[i].ID > newest[j].ID })
 	var unknown []string
 	for _, a := range newest {
-		for _, u := range []string{a.URL, a.Thumbnail} {
-			if s.widthUnknown(u) && !slices.Contains(unknown, u) {
+		for _, u := range widthKeys(a) {
+			if _, known := s.originalWidths[u]; !known && !slices.Contains(unknown, u) {
 				unknown = append(unknown, u)
 			}
 		}
@@ -363,25 +425,34 @@ func (s *Service) lookUpOriginalWidths(stored []db.StoredArticleImage, deadline 
 	}
 }
 
-// widthUnknown reports whether u is a Commons original whose width has not
+// waitingOnWidth reports whether sizing a needs a Commons width that has not
 // been looked up yet (or whose lookup failed).
-func (s *Service) widthUnknown(u string) bool {
-	_, known := s.originalWidths[u]
-	return !known && images.IsWikimediaOriginal(u)
+func (s *Service) waitingOnWidth(a db.StoredArticleImage) bool {
+	for _, k := range widthKeys(a) {
+		if _, known := s.originalWidths[k]; !known {
+			return true
+		}
+	}
+	return false
 }
 
 // deletedOnCommons reports whether the Commons API said this original's file
 // page does not exist.
-func (s *Service) deletedOnCommons(u string) bool {
-	w, known := s.originalWidths[u]
+func (s *Service) deletedOnCommons(orig string) bool {
+	if orig == "" {
+		return false
+	}
+	w, known := s.originalWidths[orig]
 	return known && w == 0
 }
 
 // clearIfGone clears an article image whose Commons file was deleted, but only
-// once the URL itself is seen to answer 404 or 410 -- the API saying so is
-// not enough on its own to take an image off a live article.
+// once the file itself is seen to answer 404 or 410 -- the API saying so is
+// not enough on its own to take an image off a live article. For a thumbnail
+// at a width Wikimedia no longer serves, which answers 400 whether or not the
+// file exists, the original is asked instead.
 func (s *Service) clearIfGone(a db.StoredArticleImage) bool {
-	p := s.searcher.Probe(a.URL, 0)
+	p := s.searcher.Probe(displayWidthKey(a.URL), 0)
 	if p.Status != http.StatusNotFound && p.Status != http.StatusGone {
 		slog.Info("image resize: Commons reports the file deleted but its URL did not answer 404/410; keeping it",
 			"article_id", a.ID, "image_url", a.URL, "status", p.Status)

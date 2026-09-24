@@ -64,6 +64,27 @@ func IsWikimediaOriginal(rawURL string) bool {
 	return ok && f.width == 0 && f.project == "wikipedia/commons"
 }
 
+// IsUnservedWikimediaThumb reports whether rawURL is a Commons thumbnail at a
+// width upload.wikimedia.org no longer serves, so it answers 400: the 800px
+// thumbnails the image search stored while it asked the API for iiurlwidth=800.
+// Sized moves them to the widest step below, 500px; that suits a card
+// thumbnail, but a display image should be sized from the original instead
+// (see WikimediaOriginalOf).
+func IsUnservedWikimediaThumb(rawURL string) bool {
+	f, ok := parseWikimedia(rawURL)
+	return ok && f.width > 0 && !isWikimediaStep(f.width) && f.project == "wikipedia/commons"
+}
+
+// WikimediaOriginalOf returns the full-size file behind a Commons thumbnail
+// URL, on upload.wikimedia.org, whose width WikimediaWidths can look up.
+func WikimediaOriginalOf(rawURL string) (string, bool) {
+	f, ok := parseWikimedia(rawURL)
+	if !ok || f.width == 0 || f.project != "wikipedia/commons" {
+		return "", false
+	}
+	return fmt.Sprintf("https://upload.wikimedia.org/%s/%s/%s", f.project, f.hash, f.name), true
+}
+
 // sizedPair returns the display and thumbnail URLs for one picture, each
 // downsized where the host allows it.
 func sizedPair(rawURL string, originalWidth int) (display, thumb string) {
@@ -131,12 +152,22 @@ func parseWikimedia(raw string) (wikimediaFile, bool) {
 	if isThumb {
 		prefix, name, found := strings.Cut(rest[3], "px-")
 		w, err := strconv.Atoi(prefix)
-		if !found || err != nil || w <= 0 || name != f.name {
+		if !found || err != nil || w <= 0 || (name != f.name && !isShortThumbName(name, f.name)) {
 			return wikimediaFile{}, false
 		}
 		f.width = w
 	}
 	return f, true
+}
+
+// isShortThumbName reports whether name is the stand-in MediaWiki gives the
+// thumbnails of a file whose name is too long to repeat: "thumbnail" plus the
+// file's extension in lower case, as in .../<long name>.jpg/800px-thumbnail.jpg
+// (the Commons API returns this form for names over 160 bytes). Wikimedia
+// also serves those thumbnails under the full name, which is what thumbURL
+// builds; checked live on 2026-09-24, both forms return the same file.
+func isShortThumbName(name, fileName string) bool {
+	return strings.EqualFold(name, "thumbnail"+extension(fileName))
 }
 
 // isHashDirs checks the two hash directories MediaWiki files live under: the

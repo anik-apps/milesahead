@@ -131,6 +131,14 @@ Rows stored before this existed are converted by the enrichment reconciler
 one ~90 s after each deploy, it swaps Wikimedia originals and oversized
 Wikimedia/Flickr thumbnails for sized URLs:
 
+- Thumbnails stored at 800 px -- the Commons API rendering the image search
+  used to ask for, a width Wikimedia now answers with 400 -- are repaired. The
+  card thumbnail moves to 500 px; the display image is sized from the
+  original, whose width is looked up from the same file name (1280 or 960 px,
+  or the original itself if no step comes close to its width), so the
+  featured card is not a 500 px image stretched to 1280. This covers files
+  whose names run past 160 bytes, whose thumbnails MediaWiki names
+  `<width>px-thumbnail.jpg`.
 - Each new URL is fetched first; a field that cannot be confirmed keeps its
   current URL. If a step is an image over the byte cap, the next step down is
   tried (960 px for the display image, 330 px for the thumbnail).

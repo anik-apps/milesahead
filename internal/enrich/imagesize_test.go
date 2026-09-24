@@ -38,8 +38,19 @@ const (
 	detailed     = wm + "3/3c/" + detailedFile
 	stillFile    = "Still_served.jpg"
 	stillServed  = wm + "4/4d/" + stillFile
-	flickrB      = "https://live.staticflickr.com/65535/54420209608_0aa8ea537a_b.jpg"
-	unsplash     = "https://images.unsplash.com/photo-1?w=1080"
+	// Stored while the image search asked the Commons API for 800px
+	// renderings, a width upload.wikimedia.org no longer serves (400).
+	oldFile  = "Old_search.jpg"
+	old800   = wm + "thumb/8/8e/" + oldFile + "/800px-" + oldFile
+	longFile = "DZ6_0956_A_glowing_blue_nighttime_scene_of_an_outdoor_bar_or_lounge_decorated_with_carnival_masks_and_illuminated_tents_creating_a_festive_surreal_atmosphere.jpg"
+	// Names over 160 bytes are not repeated in their thumbnails' names.
+	long800 = wm + "thumb/9/9a/" + longFile + "/800px-thumbnail.jpg"
+	// 900 px wide: the only step below it is 500.
+	narrowFile = "Narrow_original.jpg"
+	narrow800  = wm + "thumb/5/5f/" + narrowFile + "/800px-" + narrowFile
+
+	flickrB  = "https://live.staticflickr.com/65535/54420209608_0aa8ea537a_b.jpg"
+	unsplash = "https://images.unsplash.com/photo-1?w=1080"
 )
 
 // stepBytes is what a thumbnail step weighs where it is not the usual 60 KB:
@@ -90,6 +101,9 @@ func (h *imageHosts) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			{"title":"File:Heavy render.png","imageinfo":[{"width":5000}]},
 			{"title":"File:Detailed map.png","imageinfo":[{"width":3000}]},
 			{"title":"File:Still served.jpg","missing":true},
+			{"title":"File:Old search.jpg","imageinfo":[{"width":6048}]},
+			{"title":"File:DZ6 0956 A glowing blue nighttime scene of an outdoor bar or lounge decorated with carnival masks and illuminated tents creating a festive surreal atmosphere.jpg","imageinfo":[{"width":6048}]},
+			{"title":"File:Narrow original.jpg","imageinfo":[{"width":900}]},
 			{"title":"File:Capital One advert, Newport.jpg","missing":true}]}}`))
 	case strings.Contains(p, "Uncached.jpg/"):
 		// A thumbnail the host keeps failing to render.
@@ -114,6 +128,8 @@ func (h *imageHosts) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		image(60_000)
 	case r.Host == "live.staticflickr.com":
 		image(70_000)
+	case strings.HasSuffix(p, "/"+narrowFile):
+		image(400_000) // a 900 px original
 	default:
 		image(13_218_990) // an original
 	}
@@ -127,6 +143,20 @@ func (h *imageHosts) noNonStandardWidths(t *testing.T) {
 	defer h.mu.Unlock()
 	for _, r := range h.requests {
 		if m := stepInPath.FindStringSubmatch(r); m != nil && !standardSteps[m[1]] {
+			t.Errorf("requested a non-standard thumbnail width: %s", r)
+		}
+	}
+}
+
+// noNonStandardWidths800 is noNonStandardWidths for tests that seed 800px
+// URLs: the stored URL itself may be requested (to check a deleted file),
+// but no other non-standard width.
+func (h *imageHosts) noNonStandardWidths800(t *testing.T) {
+	t.Helper()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.requests {
+		if m := stepInPath.FindStringSubmatch(r); m != nil && !standardSteps[m[1]] && m[1] != "800" {
 			t.Errorf("requested a non-standard thumbnail width: %s", r)
 		}
 	}
@@ -280,6 +310,47 @@ func TestRun_ResizesStoredImages(t *testing.T) {
 	}
 	if url, thumb, _ := storedImage(t, d, lobbyRow); !strings.HasSuffix(url, "/1280px-"+lobbyFile) || !strings.HasSuffix(thumb, "/500px-"+lobbyFile) {
 		t.Errorf("second pass changed a converted row: %q / %q", url, thumb)
+	}
+}
+
+// The image search used to store the Commons API's 800px rendering as both
+// fields. Wikimedia no longer serves 800px (400), and the widest step below it
+// is 500px -- fine for a card thumbnail, but the featured card and article
+// hero would be a 500px image stretched to 1280. The display image is sized
+// from the original instead, whose width is looked up from the same title.
+func TestRun_ResizeRepairsOld800pxThumbnails(t *testing.T) {
+	d := testDB(t)
+	hosts := &imageHosts{}
+	s := newResizeService(t, d, hosts)
+
+	oldRow := seedImage(t, d, old800, old800)
+	longRow := seedImage(t, d, long800, long800)
+	narrowRow := seedImage(t, d, narrow800, narrow800)
+	s.Run()
+
+	thumbs := func(dir, file string) string { return wm + "thumb/" + dir + "/" + file + "/" }
+	for _, c := range []struct {
+		name       string
+		id         int64
+		url, thumb string
+	}{
+		{"6048 px original", oldRow, thumbs("8/8e", oldFile) + "1280px-" + oldFile, thumbs("8/8e", oldFile) + "500px-" + oldFile},
+		// .../800px-thumbnail.jpg did not parse, so the row stayed broken.
+		{"long file name", longRow, thumbs("9/9a", longFile) + "1280px-" + longFile, thumbs("9/9a", longFile) + "500px-" + longFile},
+		// No step between 500 and 900 px: the original itself, 400 KB.
+		{"900 px original", narrowRow, wm + "5/5f/" + narrowFile, thumbs("5/5f", narrowFile) + "500px-" + narrowFile},
+	} {
+		url, thumb, _ := storedImage(t, d, c.id)
+		if url != c.url || thumb != c.thumb {
+			t.Errorf("%s:\n url   %q\n want  %q\n thumb %q\n want  %q", c.name, url, c.url, thumb, c.thumb)
+		}
+	}
+	hosts.noNonStandardWidths800(t)
+	if n := hosts.count("titles="); n != 1 {
+		t.Errorf("made %d width lookups, want one batched request", n)
+	}
+	if got := unsizedGauge(t); got != 0 {
+		t.Errorf("unsized gauge = %v, want 0", got)
 	}
 }
 
