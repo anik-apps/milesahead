@@ -168,6 +168,38 @@ func TestEndDate_NoEndDate(t *testing.T) {
 	}
 }
 
+// The generator writes typographic spaces and dashes inside dates: 7 of the
+// 87 live titles do ("Ends July\u202f29,\u202f2026", "June\u202f15\u2011July\u202f15"), and
+// Key Details values carry U+202F too. They must read exactly like their
+// ASCII forms: missing one leaves an ended offer looking current, and reading
+// only the first half of a range ends a live offer early.
+func TestEndDate_UnicodeSpacesAndDashes(t *testing.T) {
+	cases := []struct {
+		name, label, value, anchor, want string
+	}{
+		{"narrow no-break spaces", "Deadline", "July\u202f29,\u202f2026", "2026-07-22", "2026-07-29"},
+		{"no-break space", "Deadline", "July\u00a029, 2026", "2026-07-22", "2026-07-29"},
+		{"thin and figure spaces", "Deadline", "Sep\u200930\u20072026", "2026-07-22", "2026-09-30"},
+		// Read as a range, June 15 opens it. Misread, June 15 was taken as
+		// the deadline, a month early.
+		{"non-breaking hyphen across months", "Deadline", "June\u202f15\u2011July\u202f15,\u202f2026", "2026-06-10", "2026-07-15"},
+		{"non-breaking hyphen in a period", "Promotion Period", "June 15\u2011July 15, 2026", "2026-06-10", "2026-07-15"},
+		{"non-breaking hyphen within a month", "Promotion Period", "July 7\u201110, 2026", "2026-07-01", "2026-07-10"},
+		{"hyphen U+2010", "Booking Window", "July 7\u201010, 2026", "2026-07-01", "2026-07-10"},
+		{"minus sign", "Booking Window", "July 7\u221210, 2026", "2026-07-01", "2026-07-10"},
+		{"en dash with spaces", "Promotion Period", "April 6 \u2013 June 7, 2026", "2026-03-28", "2026-06-07"},
+		{"no-break space in the label", "Offer\u00a0ends", "May 21, 2026", "2026-04-02", "2026-05-21"},
+		{"narrow no-break space in the label", "Promotion\u202fPeriod", "April 6 - June 7, 2026", "2026-03-28", "2026-06-07"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := EndDate(details(t, c.label, c.value), day(c.anchor)); got != c.want {
+				t.Errorf("EndDate(%q: %q) = %q, want %q", c.label, c.value, got, c.want)
+			}
+		})
+	}
+}
+
 func TestEndDate_BadInput(t *testing.T) {
 	for _, in := range []string{"", "[]", "null", "{", "not json", `{"Label":"Deadline"}`, `[{"Label":"Deadline","Value":""}]`} {
 		if got := EndDate(in, day("2026-04-01")); got != "" {

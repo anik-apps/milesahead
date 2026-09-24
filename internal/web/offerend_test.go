@@ -115,6 +115,25 @@ func TestHome_LastDayIsJudgedInSiteTimezone(t *testing.T) {
 	}
 }
 
+// The generator writes dates with typographic spaces. A transfer bonus whose
+// deadline reads "June\u202f11,\u202f2026" ended in June and must be treated
+// like any other ended offer, not left on the home page as current.
+func TestHome_DeadlineWithUnicodeSpacesIsRead(t *testing.T) {
+	app := offerApp(t)
+	seedOffers(t, app)
+	publishOffer(t, app, "cathay-marriott", "Cathay 25% Bonus on Marriott Transfers", "deal", "June\u202f11,\u202f2026", `["transfer-bonuses"]`)
+
+	if strings.Contains(getPage(t, app, "/"), "/article/cathay-marriott") {
+		t.Error("an offer that ended on June 11 is on the default home view")
+	}
+	if card := cardFor(getPage(t, app, "/?tag=transfer-bonuses"), "cathay-marriott"); !strings.Contains(card, endedBadge) {
+		t.Errorf("the tag view should badge the ended offer, got:\n%s", card)
+	}
+	if !strings.Contains(getPage(t, app, "/article/cathay-marriott"), "This offer ended on June 11, 2026.") {
+		t.Error("the ended offer's page should carry the banner")
+	}
+}
+
 // Filtered views still list ended offers, badged next to the type badge and
 // de-emphasised, and never put one in the featured slot while a live article
 // is available.

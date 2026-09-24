@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // DateLayout is how an end date is stored and compared. ISO dates compare
@@ -119,11 +120,12 @@ func classify(label string) labelKind {
 var monthDateRE = regexp.MustCompile(`(?i)\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4})\b)?`)
 
 // dayRangeRE continues a match of monthDateRE when a range shares its month:
-// the "-10, 2026" in "July 7-10, 2026".
-var dayRangeRE = regexp.MustCompile(`^\s*(?:-|–|—|to|through|thru)\s*(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4})\b)?`)
+// the "-10, 2026" in "July 7-10, 2026". Values are normalized first, so every
+// dash is "-" by now.
+var dayRangeRE = regexp.MustCompile(`^\s*(?:-|to|through|thru)\s*(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4})\b)?`)
 
 // rangeJoinRE is the text between the two ends of a range.
-var rangeJoinRE = regexp.MustCompile(`(?i)^\s*(?:-|–|—|to|through|thru|until)\s*$`)
+var rangeJoinRE = regexp.MustCompile(`(?i)^\s*(?:-|to|through|thru|until)\s*$`)
 
 // isoDateRE matches "2026-07-29".
 var isoDateRE = regexp.MustCompile(`\b(\d{4})-(\d{2})-(\d{2})\b`)
@@ -298,11 +300,11 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 	}
 	var end time.Time
 	for _, d := range details {
-		kind := classify(d.Label)
+		kind := classify(normalize(d.Label))
 		if kind == notAnEnd {
 			continue
 		}
-		dates := resolve(scanDates(d.Value), anchor)
+		dates := resolve(scanDates(normalize(d.Value)), anchor)
 		if len(dates) == 0 {
 			continue
 		}
@@ -320,6 +322,25 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 		return ""
 	}
 	return end.Format(DateLayout)
+}
+
+// normalize turns the typographic spaces and dashes the generator writes into
+// ASCII, so the patterns above -- whose \s matches only ASCII whitespace --
+// read "July\u202f29,\u202f2026" and "June 15\u2011July 15" exactly like
+// "July 29, 2026" and "June 15-July 15". Every Unicode space becomes " " and
+// every dash (hyphens, en and em dashes, the minus sign) becomes "-".
+func normalize(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r < 0x80:
+			return r
+		case unicode.IsSpace(r):
+			return ' '
+		case unicode.Is(unicode.Pd, r) || r == '\u2212':
+			return '-'
+		}
+		return r
+	}, s)
 }
 
 // Location loads the site's timezone, falling back to UTC for an empty or
