@@ -24,6 +24,7 @@ var templateFuncs = template.FuncMap{
 		return template.HTML(s)
 	},
 	"scrollTables": scrollTables,
+	"endedLabel":   endedLabel,
 	"deref": func(v interface{}) string {
 		if v == nil {
 			return ""

@@ -325,11 +325,19 @@ func (d *Database) ListLivePublishedArticles(today string, limit, offset int) ([
 	return scanGeneratedArticles(rows)
 }
 
-// OfferEndDatesBySlug returns expires_on for the approved articles among
-// slugs that have one, keyed by slug. Pages that link to articles (a card's
-// recent changes) use it to mark the ones whose offer has ended.
-func (d *Database) OfferEndDatesBySlug(slugs []string) (map[string]string, error) {
-	out := map[string]string{}
+// OfferEnd is an article's offer end date and its type, which says how an
+// ended one is labelled.
+type OfferEnd struct {
+	EndsOn      string // "2006-01-02"
+	ArticleType string
+}
+
+// OfferEndsBySlug returns the end date and type of the approved articles
+// among slugs that have an end date, keyed by slug. Pages that link to
+// articles (a card's recent changes) use it to mark the ones whose offer has
+// ended.
+func (d *Database) OfferEndsBySlug(slugs []string) (map[string]OfferEnd, error) {
+	out := map[string]OfferEnd{}
 	if len(slugs) == 0 {
 		return out, nil
 	}
@@ -341,7 +349,7 @@ func (d *Database) OfferEndDatesBySlug(slugs []string) (map[string]string, error
 		args = append(args, s)
 	}
 	rows, err := d.db.Query(
-		`SELECT slug, expires_on FROM generated_articles
+		`SELECT slug, expires_on, type FROM generated_articles
 		WHERE status = ? AND expires_on IS NOT NULL AND slug IN (`+strings.Join(placeholders, ",")+`)`,
 		args...,
 	)
@@ -350,11 +358,12 @@ func (d *Database) OfferEndDatesBySlug(slugs []string) (map[string]string, error
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var slug, endsOn string
-		if err := rows.Scan(&slug, &endsOn); err != nil {
+		var slug string
+		var end OfferEnd
+		if err := rows.Scan(&slug, &end.EndsOn, &end.ArticleType); err != nil {
 			return nil, err
 		}
-		out[slug] = endsOn
+		out[slug] = end
 	}
 	return out, rows.Err()
 }
@@ -1247,6 +1256,9 @@ type SearchResult struct {
 	Slug    string
 	Excerpt string
 	Type    string // "article" or "card"
+	// ArticleType is the article's own type ("deal", "summary", ...); "" for
+	// cards.
+	ArticleType string
 	// ExpiresOn is the article's offer end date ("2006-01-02"), or "" when it
 	// has none. Always "" for cards.
 	ExpiresOn string
@@ -1255,7 +1267,7 @@ type SearchResult struct {
 // SearchArticles performs a full-text search on articles, returning only approved ones.
 func (d *Database) SearchArticles(query string, limit, offset int) ([]SearchResult, error) {
 	rows, err := d.db.Query(
-		`SELECT a.id, a.title, a.slug, snippet(articles_fts, 2, '<mark>', '</mark>', '...', 40) AS excerpt, COALESCE(a.expires_on, '')
+		`SELECT a.id, a.title, a.slug, snippet(articles_fts, 2, '<mark>', '</mark>', '...', 40) AS excerpt, a.type, COALESCE(a.expires_on, '')
 		FROM articles_fts f
 		JOIN generated_articles a ON a.id = f.rowid
 		WHERE articles_fts MATCH ? AND a.status = ?
@@ -1271,7 +1283,7 @@ func (d *Database) SearchArticles(query string, limit, offset int) ([]SearchResu
 	var results []SearchResult
 	for rows.Next() {
 		var r SearchResult
-		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt, &r.ExpiresOn); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt, &r.ArticleType, &r.ExpiresOn); err != nil {
 			return nil, err
 		}
 		r.Type = "article"

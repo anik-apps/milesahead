@@ -230,17 +230,17 @@ func TestListLivePublishedArticles(t *testing.T) {
 	}
 }
 
-func TestOfferEndDatesBySlugAndSearch(t *testing.T) {
+func TestOfferEndsBySlugAndSearch(t *testing.T) {
 	d := openTestDB(t)
 	approvedWithDeadline(t, d, "ended", "July 29, 2026")
 	approvedWithDeadline(t, d, "no-deadline", "")
 
-	m, err := d.OfferEndDatesBySlug([]string{"ended", "no-deadline", "missing"})
+	m, err := d.OfferEndsBySlug([]string{"ended", "no-deadline", "missing"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(m) != 1 || m["ended"] != "2026-07-29" {
-		t.Errorf("OfferEndDatesBySlug = %v, want only ended=2026-07-29", m)
+	if want := (OfferEnd{EndsOn: "2026-07-29", ArticleType: "deal"}); len(m) != 1 || m["ended"] != want {
+		t.Errorf("OfferEndsBySlug = %v, want only ended=%v", m, want)
 	}
 
 	results, err := d.SearchArticles(`"Chase"`, 10, 0)
@@ -250,6 +250,9 @@ func TestOfferEndDatesBySlugAndSearch(t *testing.T) {
 	got := map[string]string{}
 	for _, r := range results {
 		got[r.Slug] = r.ExpiresOn
+		if r.ArticleType != "deal" {
+			t.Errorf("search result %s ArticleType = %q, want deal", r.Slug, r.ArticleType)
+		}
 	}
 	if got["ended"] != "2026-07-29" || got["no-deadline"] != "" || len(got) != 2 {
 		t.Errorf("search ExpiresOn = %v", got)

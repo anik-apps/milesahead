@@ -541,3 +541,70 @@ func TestAdminNewsletter_NoteWhenNothingInTheWeekIsLive(t *testing.T) {
 		t.Errorf("preview note = %q, want %q", note[1], want)
 	}
 }
+
+// A news story ("summary") whose deadline has passed is not an offer that
+// ended. Everywhere it is badged -- listings, search, a card's recent
+// changes, its own header and the RSS feed -- it says "Deadline passed";
+// deals keep "Ended".
+func TestEndedNewsStory_SaysDeadlinePassed(t *testing.T) {
+	const passedBadge = `<span class="ended-badge">Deadline passed</span>`
+	app := offerApp(t)
+	seedOffers(t, app)
+	publishOffer(t, app, "bag-fees", "Airlines Keep Raising Bag Fees", "summary", "April 8, 2026", `["transfer-bonuses"]`)
+	if _, err := app.db.CreateReferencePage(&db.ReferencePage{
+		Slug: "southwest-plus", Title: "Southwest Plus", Category: "travel", Issuer: "Chase",
+		SectionsJSON:  `[{"key":"overview","title":"Overview","content":"<p>Overview.</p>"}]`,
+		ScoutsVerdict: "Good.", Status: "published",
+		RecentChangesJSON: `[{"date":"2026-04-08","summary":"Article published: bag fees","article_slug":"bag-fees"},` +
+			`{"date":"2026-09-10","summary":"Article published: Citi 25% to LHW","article_slug":"ended"}]`,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	listing := getPage(t, app, "/?tag=transfer-bonuses")
+	if card := cardFor(listing, "bag-fees"); !strings.Contains(card, `<span class="type-badge badge-summary">summary</span> `+passedBadge) {
+		t.Errorf("the listing should badge the news story %q:\n%s", "Deadline passed", card)
+	}
+	if card := cardFor(listing, "ended"); !strings.Contains(card, endedBadge) {
+		t.Errorf("the listing should still badge the ended deal %q:\n%s", "Ended", card)
+	}
+
+	search := getPage(t, app, "/search?q=Bag")
+	if !strings.Contains(search, `<a href="/article/bag-fees" class="search-item-title">`+passedBadge+` <span class="ended-title">`) {
+		t.Errorf("search should badge the news story %q:\n%s", "Deadline passed", search)
+	}
+	if strings.Contains(search, endedBadge) {
+		t.Error("search calls a news story ended")
+	}
+
+	card := getCardPage(t, app, "southwest-plus")
+	if !strings.Contains(card, `<span class="change-summary">`+passedBadge+` Article published: bag fees</span>`) {
+		t.Errorf("the card page should badge the news story %q:\n%s", "Deadline passed", card)
+	}
+	if !strings.Contains(card, `<span class="change-summary">`+endedBadge+` Article published: Citi 25% to LHW</span>`) {
+		t.Error("the card page should still badge the ended deal \"Ended\"")
+	}
+
+	if page := getPage(t, app, "/article/bag-fees"); !strings.Contains(page, `<span class="type-badge badge-summary">summary</span> `+passedBadge) || strings.Contains(page, endedBadge) {
+		t.Error("the news story's header should carry the \"Deadline passed\" badge, not \"Ended\"")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/feed.xml", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	var story, deal string
+	for _, it := range strings.Split(rec.Body.String(), "<item>")[1:] {
+		switch {
+		case strings.Contains(it, "/article/bag-fees</link>"):
+			story = it
+		case strings.Contains(it, "/article/ended</link>"):
+			deal = it
+		}
+	}
+	if !strings.Contains(story, `<category>Deadline passed</category>`) || strings.Contains(story, `<category>Ended</category>`) {
+		t.Errorf("the feed should categorise the news story \"Deadline passed\":\n%s", story)
+	}
+	if !strings.Contains(deal, `<category>Ended</category>`) {
+		t.Errorf("the feed should still categorise the ended deal \"Ended\":\n%s", deal)
+	}
+}

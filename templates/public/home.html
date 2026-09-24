@@ -29,7 +29,7 @@
     <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}{{if .Featured.Ended}} is-ended{{end}}"{{if .Featured.ImageURL}} style="background-image: url('{{.Featured.ImageURL}}'); background-size: cover; background-position: center;"{{end}}>
         <a href="/article/{{.Featured.Slug}}">
             <div class="featured-overlay">
-                <span class="type-badge badge-{{.Featured.Type}}">{{.Featured.Type}}</span>{{if .Featured.Ended}} <span class="ended-badge">Ended</span>{{end}}
+                <span class="type-badge badge-{{.Featured.Type}}">{{.Featured.Type}}</span>{{if .Featured.Ended}} <span class="ended-badge">{{endedLabel .Featured.Type}}</span>{{end}}
                 <h2 class="featured-title">{{.Featured.Title}}</h2>
                 <p class="featured-excerpt">{{.Featured.Excerpt}}</p>
             </div>
@@ -47,7 +47,7 @@
                 </div>
                 {{end}}
                 <div class="card-body">
-                    <span class="type-badge badge-{{.Type}}">{{.Type}}</span>{{if .Ended}} <span class="ended-badge">Ended</span>{{end}}
+                    <span class="type-badge badge-{{.Type}}">{{.Type}}</span>{{if .Ended}} <span class="ended-badge">{{endedLabel .Type}}</span>{{end}}
                     <h3>{{.Title}}</h3>
                     <p class="excerpt">{{.Excerpt}}</p>
                     <div class="card-meta">
@@ -71,7 +71,7 @@
             </div>
             {{end}}
             <div class="card-body">
-                <span class="type-badge badge-{{.Type}}">{{.Type}}</span>{{if .Ended}} <span class="ended-badge">Ended</span>{{end}}
+                <span class="type-badge badge-{{.Type}}">{{.Type}}</span>{{if .Ended}} <span class="ended-badge">{{endedLabel .Type}}</span>{{end}}
                 <h3>{{.Title}}</h3>
                 <p class="excerpt">{{.Excerpt}}</p>
                 <div class="card-meta">

@@ -127,7 +127,7 @@
                     {{range .RecentChanges}}
                     <li{{if .Ended}} class="is-ended"{{end}}>
                         <span class="change-date">{{.Date}}</span>
-                        <span class="change-summary">{{if .Ended}}<span class="ended-badge">Ended</span> {{end}}{{.Summary}}</span>
+                        <span class="change-summary">{{if .Ended}}<span class="ended-badge">{{endedLabel .ArticleType}}</span> {{end}}{{.Summary}}</span>
                         {{if .ArticleSlug}}
                         <a href="/article/{{.ArticleSlug}}" class="change-link">Read more</a>
                         {{end}}

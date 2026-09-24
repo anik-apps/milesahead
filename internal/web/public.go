@@ -99,10 +99,11 @@ type searchArticleRow struct {
 }
 
 // recentChangeRow is a card's recent change plus whether the offer in the
-// article it links to has ended.
+// article it links to has ended, and that article's type for the badge.
 type recentChangeRow struct {
 	db.RecentChange
-	Ended bool
+	Ended       bool
+	ArticleType string
 }
 
 // sourceInfo holds source data for article detail pages.
@@ -237,6 +238,16 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		}),
 	}
 	app.renderTemplate(w, "home.html", data)
+}
+
+// endedLabel is the badge on an article whose end date has passed: "Ended"
+// for an offer, and "Deadline passed" for a news story ("summary"), which
+// reports a deadline rather than offering a deal.
+func endedLabel(articleType string) string {
+	if articleType == "summary" {
+		return "Deadline passed"
+	}
+	return "Ended"
 }
 
 // endedNote is the sentence telling a reader that an article's offer has
@@ -627,7 +638,7 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<link>%s</link>`, html.EscapeString(link))
 		fmt.Fprintf(w, `<description>%s</description>`, html.EscapeString(excerpt))
 		if ended {
-			fmt.Fprint(w, `<category>Ended</category>`)
+			fmt.Fprintf(w, `<category>%s</category>`, endedLabel(a.Type))
 		}
 		if pubDate != "" {
 			fmt.Fprintf(w, `<pubDate>%s</pubDate>`, pubDate)
@@ -866,14 +877,15 @@ func (app *App) markEndedChanges(changes []db.RecentChange) []recentChangeRow {
 			slugs = append(slugs, c.ArticleSlug)
 		}
 	}
-	ends, err := app.db.OfferEndDatesBySlug(slugs)
+	ends, err := app.db.OfferEndsBySlug(slugs)
 	if err != nil {
 		slog.Warn("loading offer end dates for recent changes", "error", err)
 	}
 	today := app.offerToday()
 	rows := make([]recentChangeRow, len(changes))
 	for i, c := range changes {
-		rows[i] = recentChangeRow{RecentChange: c, Ended: offer.Ended(ends[c.ArticleSlug], today)}
+		end := ends[c.ArticleSlug]
+		rows[i] = recentChangeRow{RecentChange: c, Ended: offer.Ended(end.EndsOn, today), ArticleType: end.ArticleType}
 	}
 	return rows
 }
