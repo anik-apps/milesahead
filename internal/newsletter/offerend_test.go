@@ -3,17 +3,25 @@ package newsletter
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
-// Deadlines far from any run date, so these tests do not depend on the clock:
-// one offer that has long ended and one that has not.
 const (
 	endedTitle = "Citi 25% Transfer Bonus to Leading Hotels of the World"
 	liveTitle  = "Triple United Miles on IHG Stays"
 	plainTitle = "Chase Freedom Flex Drops Its Foreign Transaction Fee"
+)
+
+// Deadlines a month either side of the run date: one offer that has ended
+// and one that has not. They move with the clock because a deadline is read
+// relative to when its article was written -- a year far from that, such as
+// 2020 or 2099, is not taken as a year at all.
+var (
+	endedDeadline = time.Now().AddDate(0, 0, -30).Format("January 2, 2006")
+	liveDeadline  = time.Now().AddDate(0, 0, 30).Format("January 2, 2006")
 )
 
 // publish stores an approved article through the real write path, so its end
@@ -44,8 +52,8 @@ func publish(t *testing.T, database *db.Database, title, slug, deadline string, 
 // the weekly.
 func seed(t *testing.T, database *db.Database) (ended, live, plain int64) {
 	t.Helper()
-	ended = publish(t, database, endedTitle, "citi-lhw", "September 19, 2020", true)
-	live = publish(t, database, liveTitle, "united-ihg", "September 30, 2099", false)
+	ended = publish(t, database, endedTitle, "citi-lhw", endedDeadline, true)
+	live = publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
 	plain = publish(t, database, plainTitle, "freedom-flex", "", false)
 	return
 }
@@ -100,7 +108,7 @@ func TestDaily_NothingLiveSendsNothing(t *testing.T) {
 	setTemplateDir(t)
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
-	publish(t, database, endedTitle, "citi-lhw", "September 19, 2020", false)
+	publish(t, database, endedTitle, "citi-lhw", endedDeadline, false)
 	subscribe(t, database)
 
 	sender := &mockSender{}
@@ -211,7 +219,7 @@ func TestSendWeekly_AllEndedSendsNothing(t *testing.T) {
 	setTemplateDir(t)
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
-	ended := publish(t, database, endedTitle, "citi-lhw", "September 19, 2020", false)
+	ended := publish(t, database, endedTitle, "citi-lhw", endedDeadline, false)
 	subscribe(t, database)
 
 	sender := &mockSender{}
@@ -238,8 +246,8 @@ func TestSendWeekly_UncheckableIssueIsNotSent(t *testing.T) {
 	setTemplateDir(t)
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
-	ended := publish(t, database, endedTitle, "citi-lhw", "September 19, 2020", false)
-	publish(t, database, liveTitle, "united-ihg", "September 30, 2099", false)
+	ended := publish(t, database, endedTitle, "citi-lhw", endedDeadline, false)
+	publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
 	subscribe(t, database)
 
 	sender := &mockSender{}
@@ -278,7 +286,7 @@ func TestSendWeekly_NothingLeftToSendSendsNothing(t *testing.T) {
 	setTemplateDir(t)
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
-	id := publish(t, database, liveTitle, "united-ihg", "September 30, 2099", false)
+	id := publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
 	subscribe(t, database)
 
 	sender := &mockSender{}
