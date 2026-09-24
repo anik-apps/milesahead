@@ -244,7 +244,7 @@ var incidentalRE = regexp.MustCompile(`(?i)\b(?:updated|posted|published|announc
 // how the generator sets off a remark ("September 30, 2026 - act fast"), and
 // "through" can name a channel ("June 30 through the Chase portal"), so
 // either followed by anything else leaves the date as the end.
-var openEndRE = regexp.MustCompile(`(?i)^\s*,?\s*(?:(?:-|to|through|thru|until|till)\s*(?:tbd|tba|tbc|to\s+be\s+(?:announced|determined|confirmed)|ongoing|present|open[\s-]?ended|indefinite(?:ly)?|further\s+notice|(?:while|as\s+long\s+as)\s+supplies|supplies\s+last|(?:the\s+)?end\s+of\s+(?:the\s+)?(?:year|month|quarter|season|summer|winter|spring|fall|autumn)|year[\s-]end|no\s+(?:set\s+|fixed\s+)?end(?:\s+date)?|not\s+(?:yet\s+)?(?:announced|set|known))|onwards?|forward|(?:and|or)\s+(?:later|beyond|after|onwards?))\b`)
+var openEndRE = regexp.MustCompile(`(?i)^\s*,?\s*(?:(?:-|to|through|thru|until|till)\s*(?:tbd|tba|tbc|to\s+be\s+(?:announced|determined|confirmed)|ongoing|present|open[\s-]?ended|indefinite(?:ly)?|further\s+notice|(?:while|as\s+long\s+as)\s+supplies|supplies\s+last|(?:the\s+)?end\s+of\s+(?:the\s+)?(?:year|month|quarter|season|summer|winter|spring|fall|autumn)|year[\s-]end|no\s+(?:set\s+|fixed\s+)?end(?:\s+date)?|not\s+(?:yet\s+)?(?:announced|set|known))|onwards?|(?:and|or)\s+(?:later|beyond|onwards?))\b`)
 
 // danglingJoinRE follows a date that opens a range whose end is missing:
 // "Promotion Period: June 1 -".

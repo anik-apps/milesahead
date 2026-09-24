@@ -373,6 +373,7 @@ func TestEndDate_OpenEndedPeriods(t *testing.T) {
 		// open end: the date is still the deadline.
 		{"remark after a dash", "Deadline", "September 30, 2026 - act fast", "2026-09-01", "2026-09-30"},
 		{"may end early", "Deadline", "September 30, 2026 - may end early", "2026-09-01", "2026-09-30"},
+		{"and after that", "Deadline", "September 30, 2026, and after that the bonus drops", "2026-09-01", "2026-09-30"},
 		{"through a channel", "Deadline", "June 30 through the Chase portal", "2026-06-01", "2026-06-30"},
 		{"between and", "Promotion Period", "Between June 1 and June 30, 2026", "2026-05-20", "2026-06-30"},
 	})
