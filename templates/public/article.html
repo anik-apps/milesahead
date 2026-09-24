@@ -9,7 +9,7 @@
 <article class="article-detail">
     <a href="/" class="back-link">&larr; Back to all articles</a>
     {{if .OfferEnded}}
-    <p class="offer-ended-banner" role="note">This offer ended on {{.OfferEndedOn}}.</p>
+    <p class="offer-ended-banner" role="note">{{.OfferEndedNote}}</p>
     {{end}}
     {{if .Article.ImageURL}}
     <div class="article-hero">

@@ -239,6 +239,21 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	app.renderTemplate(w, "home.html", data)
 }
 
+// endedNote is the sentence telling a reader that an article's offer has
+// ended ("This offer ended on July 29, 2026."), or "" without an end date. A
+// news story ("summary") reports a deadline rather than offering a deal, so
+// it says the deadline passed.
+func endedNote(articleType, endsOn string) string {
+	on := offer.Display(endsOn)
+	if on == "" {
+		return ""
+	}
+	if articleType == "summary" {
+		return "The deadline in this story passed on " + on + "."
+	}
+	return "This offer ended on " + on + "."
+}
+
 // pickFeatured chooses the article for the large featured slot: the first one
 // flagged as featured, else the newest. An ended offer is never put there
 // while a live article is available -- in a filtered view it stays in the
@@ -458,7 +473,7 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"LinkedCardsHeading": article.LinkedCardsHeading,
 		"ScoutsTake":         article.ScoutsTake,
 		"OfferEnded":         offerEnded,
-		"OfferEndedOn":       offer.Display(article.ExpiresOn),
+		"OfferEndedNote":     endedNote(article.Type, article.ExpiresOn),
 		"PersonaName":        app.cfg.Site.PersonaName,
 		"MetaDescription":    metaDesc,
 		"CanonicalURL":       canonicalURL,

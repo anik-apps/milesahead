@@ -434,3 +434,18 @@ func TestAdminNewsletter_MarksCandidatesThatEnded(t *testing.T) {
 		t.Error("a sent issue should not be annotated as if it were still to be sent")
 	}
 }
+
+// A news story ("summary") reports a deadline rather than offering a deal, so
+// its banner says the deadline passed instead of that an offer ended.
+func TestArticle_EndedNewsStoryBannerWording(t *testing.T) {
+	app := offerApp(t)
+	publishOffer(t, app, "bag-fees", "Airlines Keep Raising Bag Fees", "summary", "April 8, 2026", `["airlines"]`)
+
+	body := getPage(t, app, "/article/bag-fees")
+	if want := `<p class="offer-ended-banner" role="note">The deadline in this story passed on April 8, 2026.</p>`; !strings.Contains(body, want) {
+		t.Errorf("a news story's banner should read %s", want)
+	}
+	if strings.Contains(body, "This offer ended") {
+		t.Error("a news story is not an offer")
+	}
+}
