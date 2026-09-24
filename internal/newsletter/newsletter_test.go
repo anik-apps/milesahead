@@ -1,6 +1,8 @@
 package newsletter
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -377,5 +379,36 @@ func TestExcerpt(t *testing.T) {
 	got := excerpt(long, 50)
 	if len(got) > 55 { // 50 + "..."
 		t.Errorf("excerpt too long: %d chars", len(got))
+	}
+}
+
+// The schedule's timezone is resolved once, when the service is made: an
+// unknown name warns once and falls back to UTC, however often the date is
+// looked up.
+func TestNewService_ResolvesTimezoneOnce(t *testing.T) {
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	svc := NewService(nil, &mockSender{}, config.NewsletterConfig{Timezone: "Not/AZone"})
+	for i := 0; i < 3; i++ {
+		svc.todayDate()
+		svc.thisSaturday()
+		svc.nextSaturday()
+	}
+	if svc.loc != time.UTC {
+		t.Errorf("loc = %v, want the UTC fallback", svc.loc)
+	}
+	if n := strings.Count(logged.String(), "level=WARN"); n != 1 || !strings.Contains(logged.String(), "Not/AZone") {
+		t.Errorf("want one warning about the unknown zone, got %d:\n%s", n, logged.String())
+	}
+
+	ny := NewService(nil, &mockSender{}, config.NewsletterConfig{Timezone: "America/New_York"})
+	if ny.loc.String() != "America/New_York" {
+		t.Errorf("loc = %v, want America/New_York", ny.loc)
+	}
+	if got, want := ny.todayDate(), time.Now().In(ny.loc).Format("2006-01-02"); got != want {
+		t.Errorf("todayDate = %s, want %s", got, want)
 	}
 }

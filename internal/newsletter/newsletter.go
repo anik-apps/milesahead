@@ -33,17 +33,15 @@ type Service struct {
 	sender   MailSender
 	ai       ai.HFClientInterface
 	aiModel  string
-	timezone string
 	sendTime string
 	domain   string
+	// loc is the schedule's timezone, resolved once: an unknown name falls
+	// back to UTC with one warning, not one per lookup.
+	loc *time.Location
 }
 
 // NewService creates a new newsletter Service.
 func NewService(database *db.Database, sender MailSender, cfg config.NewsletterConfig) *Service {
-	tz := cfg.Timezone
-	if tz == "" {
-		tz = "UTC"
-	}
 	st := cfg.SendTime
 	if st == "" {
 		st = "08:00"
@@ -51,7 +49,7 @@ func NewService(database *db.Database, sender MailSender, cfg config.NewsletterC
 	return &Service{
 		db:       database,
 		sender:   sender,
-		timezone: tz,
+		loc:      offer.Location(cfg.Timezone),
 		sendTime: st,
 	}
 }
@@ -166,20 +164,12 @@ func containsArticle(articles []db.GeneratedArticle, id int64) bool {
 
 // todayDate returns today's date string in YYYY-MM-DD format for the configured timezone.
 func (s *Service) todayDate() string {
-	loc, err := time.LoadLocation(s.timezone)
-	if err != nil {
-		loc = time.UTC
-	}
-	return time.Now().In(loc).Format("2006-01-02")
+	return time.Now().In(s.loc).Format("2006-01-02")
 }
 
 // nextSaturday returns the date string for the next Saturday (or today if Saturday).
 func (s *Service) nextSaturday() string {
-	loc, err := time.LoadLocation(s.timezone)
-	if err != nil {
-		loc = time.UTC
-	}
-	now := time.Now().In(loc)
+	now := time.Now().In(s.loc)
 	daysUntilSat := (6 - int(now.Weekday()) + 7) % 7
 	if daysUntilSat == 0 {
 		// Today is Saturday.
@@ -190,11 +180,7 @@ func (s *Service) nextSaturday() string {
 
 // thisSaturday returns the most recent Saturday date (today if Saturday, else last Saturday).
 func (s *Service) thisSaturday() string {
-	loc, err := time.LoadLocation(s.timezone)
-	if err != nil {
-		loc = time.UTC
-	}
-	now := time.Now().In(loc)
+	now := time.Now().In(s.loc)
 	daysSinceSat := (int(now.Weekday()) - 6 + 7) % 7
 	return now.AddDate(0, 0, -daysSinceSat).Format("2006-01-02")
 }
