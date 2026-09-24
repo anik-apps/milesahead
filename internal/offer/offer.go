@@ -203,6 +203,11 @@ func scanDates(s string) []found {
 	return out
 }
 
+// yearlessGraceDays is how far before the article's writing a date given
+// without a year may fall and still be read as the one just gone rather than
+// next year's.
+const yearlessGraceDays = 60
+
 // valid reports whether y-m-d is a real calendar day (no February 30).
 func valid(y int, m time.Month, d int) bool {
 	if m < time.January || m > time.December || d < 1 || d > 31 {
@@ -217,10 +222,12 @@ func valid(y int, m time.Month, d int) bool {
 // A date written without a year takes the year of the next date in the same
 // value that has one ("April 6 - June 7, 2026"), stepping back a year when it
 // falls after that date ("December 17 - January 5, 2027"). With no year
-// anywhere in the value ("Deadline: June 30"), it takes the year that puts it
-// nearest the day the article was written: offers are written about while
-// they run, and a yearless date is the writer's shorthand for the nearest one.
-// Dates that open a window are skipped: they are never the end.
+// anywhere in the value ("Deadline: June 30"), it is the first occurrence of
+// that day no more than yearlessGraceDays before the article was written.
+// Offers are written about while they run, so a yearless deadline is almost
+// always still ahead ("through December 31" written in May is this December,
+// not the one gone); the grace covers a story written just after an offer
+// closed. Dates that open a window are skipped: they are never the end.
 func resolve(dates []found, anchor time.Time) []time.Time {
 	var out []time.Time
 	for i, f := range dates {
@@ -248,14 +255,15 @@ func resolve(dates []found, anchor time.Time) []time.Time {
 			t = time.Date(year, f.month, f.day, 0, 0, 0, 0, time.UTC)
 		} else {
 			ok := false
-			a := time.Date(anchor.Year(), anchor.Month(), anchor.Day(), 0, 0, 0, 0, time.UTC)
+			floor := time.Date(anchor.Year(), anchor.Month(), anchor.Day(), 0, 0, 0, 0, time.UTC).
+				AddDate(0, 0, -yearlessGraceDays)
 			for _, y := range []int{anchor.Year() - 1, anchor.Year(), anchor.Year() + 1} {
 				if !valid(y, f.month, f.day) {
 					continue
 				}
-				c := time.Date(y, f.month, f.day, 0, 0, 0, 0, time.UTC)
-				if !ok || absDuration(c.Sub(a)) < absDuration(t.Sub(a)) {
+				if c := time.Date(y, f.month, f.day, 0, 0, 0, 0, time.UTC); !c.Before(floor) {
 					t, ok = c, true
+					break
 				}
 			}
 			if !ok {
@@ -268,13 +276,6 @@ func resolve(dates []found, anchor time.Time) []time.Time {
 		out = append(out, t)
 	}
 	return out
-}
-
-func absDuration(d time.Duration) time.Duration {
-	if d < 0 {
-		return -d
-	}
-	return d
 }
 
 // EndDate returns the last day of the offer described by keyDetailsJSON, as

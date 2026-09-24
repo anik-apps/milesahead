@@ -66,9 +66,11 @@ func TestEndDate_FormatsSeenInRealData(t *testing.T) {
 	}
 }
 
-// Live articles often drop the year ("Deadline: June 30"). The year is the one
-// that puts the date nearest the day the article was written.
-func TestEndDate_YearlessDateTakesTheNearestYear(t *testing.T) {
+// Live articles often drop the year ("Deadline: June 30"). Offers are written
+// about while they run, so the date is its next occurrence after the article
+// was written -- or one that passed shortly before, for a story written just
+// after an offer closed.
+func TestEndDate_YearlessDateTakesItsNextOccurrence(t *testing.T) {
 	cases := []struct {
 		value, anchor, want string
 	}{
@@ -79,9 +81,26 @@ func TestEndDate_YearlessDateTakesTheNearestYear(t *testing.T) {
 		{"January 15", "2026-11-10", "2027-01-15"},
 		// Written in early January about a December deadline: the one just gone.
 		{"December 31", "2027-01-05", "2026-12-31"},
+		// "Through December 31" written in spring or summer means the coming
+		// December. The nearest December is the one gone, which would mark a
+		// live offer ended the moment it was published.
+		{"December 31", "2026-05-08", "2026-12-31"},
+		{"December 31", "2026-06-15", "2026-12-31"},
+		{"October 1", "2026-03-01", "2026-10-01"},
+		{"July 7", "2026-01-05", "2026-07-07"},
+		// A date that passed up to 60 days before the article is the one
+		// just gone; an older one is read as next year's.
+		{"March 1", "2026-04-30", "2026-03-01"},
+		{"March 1", "2026-05-01", "2027-03-01"},
 		// A range whose end carries the year lends it to its start, stepping
 		// back across the new year.
 		{"December 17 - January 5, 2027", "2026-12-01", "2027-01-05"},
+		// With no year anywhere, the range ends on the next January 5.
+		{"December 17 - January 5", "2026-12-01", "2027-01-05"},
+		// February 29 in the coming leap year.
+		{"February 29", "2027-12-01", "2028-02-29"},
+		// No February 29 anywhere near: left empty rather than guessed.
+		{"February 29", "2026-06-01", ""},
 	}
 	for _, c := range cases {
 		got := EndDate(details(t, "Deadline", c.value), day(c.anchor))

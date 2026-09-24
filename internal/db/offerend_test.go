@@ -48,6 +48,8 @@ func TestMigrate_BackfillsOfferEndDatesOnExistingDatabase(t *testing.T) {
 	// Only created_at can place this one: written in early January about the
 	// December deadline just gone, it is 2025, not the coming December.
 	newYear := insert("new-year", `[{"Label":"Deadline","Value":"December 31"}]`, "2026-01-05 09:00:00")
+	// Written in May about the coming year end: this December, not last.
+	yearEnd := insert("year-end", `[{"Label":"Deadline","Value":"December 31"}]`, "2026-05-14 09:00:00")
 	noDeadline := insert("no-deadline", `[{"Label":"Deadline","Value":"Limited-time offer, no hard deadline specified"}]`, "2026-07-22 10:00:00")
 	effective := insert("effective", `[{"Label":"Effective Date","Value":"April 1, 2026"}]`, "2026-03-30 10:00:00")
 	nullDetails := insert("null-details", `null`, "2026-07-01 10:00:00")
@@ -62,9 +64,10 @@ func TestMigrate_BackfillsOfferEndDatesOnExistingDatabase(t *testing.T) {
 
 	want := map[int64]string{
 		aspire:  "2026-07-29",
-		ihg:     "2026-06-30", // yearless: the year nearest created_at
+		ihg:     "2026-06-30", // yearless: the next June 30 after created_at
 		lhw:     "2026-09-19",
 		newYear: "2025-12-31",
+		yearEnd: "2026-12-31",
 	}
 	for id, w := range want {
 		if got := expiresOn(t, d, id); !got.Valid || got.String != w {
