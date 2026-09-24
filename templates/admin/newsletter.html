@@ -74,6 +74,7 @@
                         <strong style="color:#e0e0e0;">{{.ArticleTitle}}</strong>
                         <span style="color:#8b8ba0;font-size:0.85rem;margin-left:0.5rem;">Rank #{{.Rank}}</span>
                         {{if .Featured}}<span class="badge badge-approved" style="margin-left:0.5rem;font-size:0.75rem;">Current Pick</span>{{end}}
+                        {{if .Ended}}<span class="badge" style="margin-left:0.5rem;font-size:0.75rem;background:#c9d1d9;color:#0d1117;">Ended &mdash; left out when sent</span>{{end}}
                     </div>
                 </label>
                 {{end}}
@@ -117,6 +118,9 @@
         {{if .NoContent}}
         <p>No articles to include</p>
         {{else}}
+        {{if .EndedNote}}
+        <p class="preview-note" role="note" style="margin:0 0 0.75rem;padding:0.6rem 0.9rem;border-left:4px solid #b45309;background:#2a2110;color:#fde68a;border-radius:4px;">{{.EndedNote}}</p>
+        {{end}}
         <div class="preview-panel">
             <iframe srcdoc="{{.PreviewHTML}}" sandbox="" style="width:100%;min-height:600px;border:1px solid #2a2a4a;border-radius:6px;background:#0f0f1a;"></iframe>
         </div>

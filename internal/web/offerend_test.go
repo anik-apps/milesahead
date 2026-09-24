@@ -1,6 +1,7 @@
 package web
 
 import (
+	"html"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/offer"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // The review found these on the live home page on Sep 23, 2026, four days
@@ -360,5 +362,75 @@ func TestPickFeatured(t *testing.T) {
 		if got := pickFeatured(c.rows); got != c.want {
 			t.Errorf("%s: pickFeatured = %d, want %d", c.name, got, c.want)
 		}
+	}
+}
+
+// The admin newsletter page previews the weekly issue as it was built on
+// Friday. An offer in it that has ended since is left out when the issue is
+// sent, and the page says so rather than implying it will go out.
+func TestAdminNewsletter_MarksCandidatesThatEnded(t *testing.T) {
+	app := offerApp(t)
+	hash, err := bcrypt.GenerateFromPassword([]byte("testpassword123"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.cfg.Admin.PasswordHash = string(hash)
+	seedOffers(t, app)
+
+	ended, err := app.db.GetGeneratedArticleBySlug("ended")
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := app.db.GetGeneratedArticleBySlug("ends-next-week")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nlID, err := app.db.CreateNewsletter(&db.Newsletter{
+		Date: "2026-09-26", Subject: "MilesAhead Weekly", Status: "auto_approved",
+		HTMLContent: "<p>" + ended.Title + "</p>", ArticleCount: 2, ScoutsPickArticleID: &ended.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, id := range []int64{ended.ID, live.ID} {
+		if err := app.db.CreateNewsletterCandidate(&db.NewsletterCandidate{
+			NewsletterID: nlID, ArticleID: id, Rank: i + 1, Featured: i == 0,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	rec := doAdminGET(t, app, "/admin/newsletter", session)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /admin/newsletter: %d", rec.Code)
+	}
+	body := rec.Body.String()
+
+	candidate := func(title string) string {
+		return regexp.MustCompile(`(?s)<label[^>]*>\s*<input type="radio" name="article_id"[^>]*>\s*<div>\s*<strong[^>]*>` +
+			regexp.QuoteMeta(html.EscapeString(title)) + `</strong>.*?</label>`).FindString(body)
+	}
+	if c := candidate(ended.Title); !strings.Contains(c, "Ended") {
+		t.Errorf("the ended candidate should be marked Ended:\n%s", c)
+	}
+	if c := candidate(live.Title); c == "" || strings.Contains(c, "Ended") {
+		t.Errorf("the live candidate should be listed unmarked:\n%s", c)
+	}
+	note := regexp.MustCompile(`(?s)<p class="preview-note" role="note"[^>]*>(.*?)</p>`).FindStringSubmatch(body)
+	if note == nil {
+		t.Fatal("the preview should carry a note about the ended offer")
+	}
+	if want := "1 offer in this preview has ended since it was built; it is left out when the issue is sent. Scout&#39;s Pick passes to the top article still in it."; note[1] != want {
+		t.Errorf("preview note = %q, want %q", note[1], want)
+	}
+
+	// Once the issue has gone out, the page no longer speaks of a send.
+	if err := app.db.MarkNewsletterSent(nlID); err != nil {
+		t.Fatal(err)
+	}
+	body = doAdminGET(t, app, "/admin/newsletter", session).Body.String()
+	if strings.Contains(body, "preview-note") || strings.Contains(body, "left out when sent") {
+		t.Error("a sent issue should not be annotated as if it were still to be sent")
 	}
 }

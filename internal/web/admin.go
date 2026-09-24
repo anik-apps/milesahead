@@ -14,6 +14,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/linker"
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 // sem limits concurrent card update detection goroutines.
@@ -566,6 +567,9 @@ func maskString(s string) string {
 type adminCandidateRow struct {
 	db.NewsletterCandidate
 	ArticleTitle string
+	// Ended marks a candidate whose offer has ended since the issue was
+	// built; the send leaves it out.
+	Ended bool
 }
 
 // adminCardInfo holds minimal card info for the admin dropdown.
@@ -600,17 +604,41 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 		currentNL = &newsletters[0]
 	}
 
-	// Load candidates for the current newsletter.
+	// Load candidates for the current newsletter. The stored preview was
+	// rendered when the issue was built; an offer that has ended since is
+	// left out when it is sent, so an unsent issue's ended candidates are
+	// marked and counted for the note above the preview.
 	var candidates []adminCandidateRow
+	var endedCount int
+	var pickEnded bool
 	if currentNL != nil {
+		unsent := currentNL.Status != "sent"
+		today := app.offerToday()
 		rawCandidates, _ := app.db.ListCandidatesForNewsletter(currentNL.ID)
 		for _, c := range rawCandidates {
 			row := adminCandidateRow{NewsletterCandidate: c}
 			if article, err := app.db.GetGeneratedArticle(c.ArticleID); err == nil {
 				row.ArticleTitle = article.Title
+				row.Ended = unsent && offer.Ended(article.ExpiresOn, today)
+			}
+			if row.Ended {
+				endedCount++
+				if currentNL.ScoutsPickArticleID != nil && *currentNL.ScoutsPickArticleID == c.ArticleID {
+					pickEnded = true
+				}
 			}
 			candidates = append(candidates, row)
 		}
+	}
+	endedNote := ""
+	switch {
+	case endedCount == 1:
+		endedNote = "1 offer in this preview has ended since it was built; it is left out when the issue is sent."
+	case endedCount > 1:
+		endedNote = fmt.Sprintf("%d offers in this preview have ended since it was built; they are left out when the issue is sent.", endedCount)
+	}
+	if pickEnded {
+		endedNote += " Scout's Pick passes to the top article still in it."
 	}
 
 	// Load current card of the week info.
@@ -658,6 +686,7 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 		"NoContent":         noContent,
 		"CurrentNewsletter": currentNL,
 		"Candidates":        candidates,
+		"EndedNote":         endedNote,
 		"CurrentCard":       currentCard,
 		"AllCards":          allCards,
 		"History":           history,
