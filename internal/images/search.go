@@ -619,27 +619,50 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 	}
 }
 
-// Usable reports whether a candidate can go on the page: its URLs fetch, and
-// neither is heavier than its slot allows. When both fields hold the same URL
-// it is shown as a thumbnail, so the tighter cap applies.
+// Usable reports whether a candidate can go on the page: its URLs fetch as
+// images, and neither is heavier than its slot allows. When both fields hold
+// the same URL it is shown as a thumbnail, so the tighter cap applies.
 func (s *Searcher) Usable(c ImageCandidate) bool {
-	if !s.fitsCap(c.Thumbnail, MaxThumbnailBytes) {
+	if s.CheckFit(c.Thumbnail, MaxThumbnailBytes) != Fits {
 		return false
 	}
-	return c.URL == c.Thumbnail || s.fitsCap(c.URL, MaxImageBytes)
+	return c.URL == c.Thumbnail || s.CheckFit(c.URL, MaxImageBytes) == Fits
 }
 
-func (s *Searcher) fitsCap(rawURL string, limit int64) bool {
+// Fit is how a URL compares with the slot it would fill.
+type Fit int
+
+const (
+	// Unusable means the URL did not answer 200/206 with an image: a dead
+	// link, a throttled or failed request, or an HTML error page. Browsers
+	// will not render a cross-origin HTML response as an image, so a 200
+	// that is not labelled image/* is as broken as a 404. (Every image host
+	// the search uses labels its files image/*, checked 2026-09-23.)
+	Unusable Fit = iota
+	// TooHeavy means an image larger than the slot's byte cap.
+	TooHeavy
+	// Fits means an image within the slot's byte cap.
+	Fits
+)
+
+// CheckFit fetches rawURL as Probe does and reports whether a browser would
+// get an image from it no heavier than limit bytes. Both the pick path and the
+// stored-image resize go through it before a URL is written to an article.
+func (s *Searcher) CheckFit(rawURL string, limit int64) Fit {
 	p := s.Probe(rawURL, limit)
-	if !p.OK {
-		return false
-	}
-	if p.Size > limit {
-		slog.Info("image candidate is too heavy for its slot",
+	switch {
+	case !p.OK:
+		return Unusable
+	case !p.IsImage():
+		slog.Warn("image URL did not return an image",
+			"url", rawURL, "status", p.Status, "content_type", p.ContentType)
+		return Unusable
+	case p.Size > limit:
+		slog.Info("image is too heavy for its slot",
 			"url", rawURL, "bytes", p.Size, "limit", limit)
-		return false
+		return TooHeavy
 	}
-	return true
+	return Fits
 }
 
 // declaredSize reads the file size a response states: the total in

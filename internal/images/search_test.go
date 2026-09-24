@@ -344,6 +344,55 @@ func TestUsable_EnforcesByteCaps(t *testing.T) {
 	}
 }
 
+// CheckFit is the guard every stored image URL passes. A 200 that is not an
+// image -- a host's HTML error or login page -- would be a broken <img>, so it
+// is refused at pick time just as a 404 is.
+func TestCheckFit(t *testing.T) {
+	s := stubSearcher(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/error-page.jpg":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write([]byte("<html>Service unavailable</html>"))
+			return
+		case "/gone.jpg":
+			w.WriteHeader(http.StatusNotFound)
+			return
+		case "/unlabelled.jpg":
+			w.Header()["Content-Type"] = nil // no Content-Type header at all
+		default:
+			w.Header().Set("Content-Type", "image/jpeg")
+		}
+		size := 60_000
+		if r.URL.Path == "/huge.jpg" {
+			size = 2_000_000
+		}
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-0/%d", size))
+		w.WriteHeader(http.StatusPartialContent)
+		w.Write([]byte("j"))
+	})
+	h := "https://img.example/"
+	for _, tt := range []struct {
+		path string
+		want Fit
+	}{
+		{"ok.jpg", Fits},
+		{"huge.jpg", TooHeavy},
+		{"error-page.jpg", Unusable},
+		{"unlabelled.jpg", Unusable},
+		{"gone.jpg", Unusable},
+	} {
+		if got := s.CheckFit(h+tt.path, MaxThumbnailBytes); got != tt.want {
+			t.Errorf("CheckFit(%s) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+	if s.Usable(ImageCandidate{URL: h + "ok.jpg", Thumbnail: h + "error-page.jpg"}) {
+		t.Error("Usable accepted a thumbnail that answers with an HTML page")
+	}
+	if s.Usable(ImageCandidate{URL: h + "error-page.jpg", Thumbnail: h + "ok.jpg"}) {
+		t.Error("Usable accepted a display image that answers with an HTML page")
+	}
+}
+
 func TestWikimediaWidths(t *testing.T) {
 	var titles string
 	s := stubSearcher(t, func(w http.ResponseWriter, r *http.Request) {
