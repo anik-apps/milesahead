@@ -158,37 +158,53 @@ func TestIsWikimediaOriginal(t *testing.T) {
 	}
 }
 
-// ServedWidth is what a srcset may say about a stored URL: only widths the
-// URL itself fixes, and only for URLs that serve one.
-func TestServedWidth(t *testing.T) {
+// SrcsetWidths is what a srcset may say about a row's two stored URLs: the
+// widths the URLs themselves fix, and only for two sizes of one picture.
+func TestSrcsetWidths(t *testing.T) {
+	const us = "https://images.unsplash.com/photo-1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w&ixlib=rb-4.1.0&q=80&w="
+	longOriginal := "https://upload.wikimedia.org/wikipedia/commons/4/4e/" + longName
 	for _, tt := range []struct {
-		url   string
-		width int // 0: unknown
+		name         string
+		thumb, image string
+		thumbW, imgW int // 0, 0: refused
 	}{
-		{lobbyThumbs + "500px-" + lobbyName, 500},
-		{lobbyThumbs + "1280px-" + lobbyName, 1280},
-		{brisbane960, 960},
-		{"https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/" + lobbyName + "/1280px-" + lobbyName, 1280},
-		{longThumbs + "500px-thumbnail.jpg", 500},
+		{"wikimedia steps", lobbyThumbs + "500px-" + lobbyName, lobbyThumbs + "1280px-" + lobbyName, 500, 1280},
+		{"wikimedia thumb host", lobbyThumbs + "500px-" + lobbyName,
+			"https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/" + lobbyName + "/960px-" + lobbyName, 500, 960},
+		// The short and the full thumbnail name are the same file.
+		{"long name", longThumbs + "500px-thumbnail.jpg", longThumbs + "1280px-" + longName, 500, 1280},
+		{"flickr sizes", "https://live.staticflickr.com/65535/54420209608_0aa8ea537a.jpg", flickrLarge, 500, 1024},
+		{"unsplash API sizes", us + "400", us + "1080", 400, 1080},
+
 		// 800px answers 400: not an image at all.
-		{lobbyThumbs + "800px-" + lobbyName, 0},
+		{"unserved width", lobbyThumbs + "500px-" + lobbyName, lobbyThumbs + "800px-" + lobbyName, 0, 0},
 		// An original's width is not in its URL.
-		{lobby, 0},
-		{flickrLarge, 1024},
-		{"https://live.staticflickr.com/65535/54420209608_0aa8ea537a.jpg", 500},
-		{"https://live.staticflickr.com/1/2_abc_k.jpg", 0},
-		// Unsplash's API sizes: regular and small.
-		{"https://images.unsplash.com/photo-1?crop=entropy&fit=max&fm=jpg&q=80&w=1080", 1080},
-		{"https://images.unsplash.com/photo-1?ixlib=rb-4.1.0&q=80&w=400", 400},
-		{"https://images.unsplash.com/photo-1?q=80", 0},
+		{"wikimedia original", lobbyThumbs + "500px-" + lobbyName, lobby, 0, 0},
+		{"different files", lobbyThumbs + "500px-" + lobbyName, "https://upload.wikimedia.org/wikipedia/commons/thumb/0/02/" + deltaName + "/1280px-" + deltaName, 0, 0},
+		{"long name, original", longThumbs + "500px-thumbnail.jpg", longOriginal, 0, 0},
+		{"different photos", "https://live.staticflickr.com/65535/1_abc.jpg", flickrLarge, 0, 0},
+		{"flickr and wikimedia", "https://live.staticflickr.com/65535/54420209608_0aa8ea537a.jpg", lobbyThumbs + "1280px-" + lobbyName, 0, 0},
+		// _k carries its own secret; its URL is not one Sized makes.
+		{"flickr _k", "https://live.staticflickr.com/1/2_abc.jpg", "https://live.staticflickr.com/1/2_abc_k.jpg", 0, 0},
+		// Two crops of one photo: a 1.6:1 card and a 3:1 banner.
+		{"unsplash crops", "https://images.unsplash.com/photo-1?w=400&h=250&fit=crop",
+			"https://images.unsplash.com/photo-1?w=1200&h=400&fit=crop", 0, 0},
+		{"unsplash same height", "https://images.unsplash.com/photo-1?w=400&h=250", "https://images.unsplash.com/photo-1?w=1200&h=250", 0, 0},
+		{"unsplash aspect ratio", us + "400&ar=16:9", us + "1080&ar=16:9", 0, 0},
+		{"unsplash pixel ratio", us + "400&dpr=2", us + "1080&dpr=2", 0, 0},
+		{"unsplash other settings", us + "400", "https://images.unsplash.com/photo-1?fit=max&q=60&w=1080", 0, 0},
+		{"unsplash other photos", us + "400", "https://images.unsplash.com/photo-2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w&ixlib=rb-4.1.0&q=80&w=1080", 0, 0},
+		{"unsplash without w", "https://images.unsplash.com/photo-1?q=80", us + "1080", 0, 0},
+		{"unsplash two w", us + "400&w=500", us + "1080", 0, 0},
+		{"unsplash over http", "http://images.unsplash.com/photo-1?w=400", "http://images.unsplash.com/photo-1?w=1080", 0, 0},
 		// Pexels fixes the height, not the width.
-		{"https://images.pexels.com/photos/1/pexels-photo-1.jpeg?auto=compress&cs=tinysrgb&h=350", 0},
-		{"https://images.pexels.com/photos/1/pexels-photo-1.jpeg?auto=compress&cs=tinysrgb&h=650&w=940", 0},
-		{"", 0},
+		{"pexels", "https://images.pexels.com/photos/1/pexels-photo-1.jpeg?auto=compress&cs=tinysrgb&h=350",
+			"https://images.pexels.com/photos/1/pexels-photo-1.jpeg?auto=compress&cs=tinysrgb&h=650&w=940", 0, 0},
+		{"empty", "", "", 0, 0},
 	} {
-		got, ok := ServedWidth(tt.url)
-		if got != tt.width || ok != (tt.width > 0) {
-			t.Errorf("ServedWidth(%q) = %d, %v; want %d", tt.url, got, ok, tt.width)
+		tw, iw, ok := SrcsetWidths(tt.thumb, tt.image)
+		if tw != tt.thumbW || iw != tt.imgW || ok != (tt.thumbW > 0) {
+			t.Errorf("%s: SrcsetWidths = %d, %d, %v; want %d, %d", tt.name, tw, iw, ok, tt.thumbW, tt.imgW)
 		}
 	}
 }

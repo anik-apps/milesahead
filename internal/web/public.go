@@ -93,19 +93,16 @@ type publicArticleRow struct {
 }
 
 // thumbSrcset returns a srcset of the thumbnail and the display image, each
-// with the width its URL fixes, or "" unless both widths are known and the
-// display image is the wider. Only the two URLs the row stores -- each
-// confirmed to load before it was written -- are ever referenced.
+// with the width its URL fixes, or "" unless the two URLs are sizes of one
+// picture (see images.SrcsetWidths) and the display image is the wider. Only
+// the two URLs the row stores -- each confirmed to load before it was
+// written -- are ever referenced.
 //
 // It exists for the bottom grid: at 769-1024 px its thumbnails are up to ~470
 // CSS px wide, so a 500px file is soft on a 2x screen. A URL with a comma or
 // a space in it is left out, since both separate srcset entries.
 func thumbSrcset(thumbnail, image string) string {
-	tw, ok := images.ServedWidth(thumbnail)
-	if !ok {
-		return ""
-	}
-	iw, ok := images.ServedWidth(image)
+	tw, iw, ok := images.SrcsetWidths(thumbnail, image)
 	if !ok || iw <= tw || strings.ContainsAny(thumbnail+image, ", \t\n\r\f") {
 		return ""
 	}

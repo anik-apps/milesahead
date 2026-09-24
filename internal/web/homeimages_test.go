@@ -206,12 +206,13 @@ func TestVersionedStylesheet(t *testing.T) {
 // Integration: at 769-1024 px the bottom-grid thumbnails are up to ~470 CSS
 // px wide, and on a 2x screen a 500px file is soft there. The grid offers the
 // row's display image as a larger candidate -- only the two URLs the row
-// stores, with the widths their URLs fix -- and says how wide the slot is.
+// stores, when they are two sizes of one picture, with the widths their URLs
+// fix -- and says how wide the slot is.
 func TestHome_GridThumbnailsOfferTheDisplayImage(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
-	seedHomeArticles(t, app, 8) // featured + 3 sidebar + 4 grid
 	const wm = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Lobby.jpg/"
 	const us = "https://images.unsplash.com/photo-1?fit=max&fm=jpg&q=80&w="
+	const comma = "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Paris,_France.jpg/"
 	rows := []struct{ image, thumb, srcset string }{
 		// featured, sidebar: never get one.
 		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
@@ -226,7 +227,19 @@ func TestHome_GridThumbnailsOfferTheDisplayImage(t *testing.T) {
 		{"https://upload.wikimedia.org/wikipedia/commons/6/6c/Lobby.jpg", wm + "500px-Lobby.jpg", ""},
 		// Pexels URLs do not fix the width.
 		{"https://images.pexels.com/photos/1/p.jpeg?h=650&w=940", "https://images.pexels.com/photos/1/p.jpeg?h=350", ""},
+		// Two different crops of one photo (row 58 in the dev database): a
+		// 2x screen would get a 3:1 banner where a 1x screen gets a card.
+		{"https://images.unsplash.com/photo-2?w=1200&h=400&fit=crop", "https://images.unsplash.com/photo-2?w=400&h=250&fit=crop", ""},
+		// Two different files, or photos.
+		{"https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Gate.jpg/1280px-Gate.jpg", wm + "500px-Lobby.jpg", ""},
+		{"https://live.staticflickr.com/65535/1_abc_b.jpg", "https://live.staticflickr.com/65535/2_def.jpg", ""},
+		// The display image is no wider than the thumbnail.
+		{wm + "500px-Lobby.jpg", wm + "960px-Lobby.jpg", ""},
+		{wm + "500px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
+		// A comma separates srcset entries.
+		{comma + "1280px-Paris,_France.jpg", comma + "500px-Paris,_France.jpg", ""},
 	}
+	seedHomeArticles(t, app, len(rows)) // featured, 3 sidebar, the rest in the grid
 	for i, r := range rows {
 		if _, err := app.db.DB().Exec(`UPDATE generated_articles SET image_url = ?, image_thumbnail = ? WHERE slug = ?`,
 			r.image, r.thumb, fmt.Sprintf("home-story-%d", i)); err != nil {
@@ -242,8 +255,8 @@ func TestHome_GridThumbnailsOfferTheDisplayImage(t *testing.T) {
 			cards = append(cards, tag)
 		}
 	}
-	if len(cards) != 7 {
-		t.Fatalf("found %d card thumbnails, want 7", len(cards))
+	if len(cards) != len(rows)-1 {
+		t.Fatalf("found %d card thumbnails, want %d", len(cards), len(rows)-1)
 	}
 	for i, tag := range cards {
 		want := rows[i+1].srcset

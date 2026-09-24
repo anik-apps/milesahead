@@ -192,7 +192,10 @@ On the home page, the bottom-grid cards list both URLs in a `srcset`, each
 with the width its URL fixes (a Wikimedia step, a Flickr size, Unsplash's
 `w=`), and a `sizes` that follows the grid: 100 px on phones, two columns to
 1024 px, three above. At 769-1024 px a card is up to ~470 CSS px wide, so a
-2x screen takes the display image there instead of a soft 500 px file. Rows
-whose widths the URLs do not fix (Pexels, a Wikimedia original) keep the
-thumbnail alone, and no other URL is ever referenced. The sidebar cards are
+2x screen takes the display image there instead of a soft 500 px file. Only
+two sizes of one picture are listed: the same Wikimedia file, the same
+Flickr photo, or Unsplash URLs that differ only in `w=` (one that sets `h=`,
+`ar=` or anything else that changes the framing would show a 2x screen a
+different crop). Rows whose widths the URLs do not fix (Pexels, a Wikimedia
+original) keep the thumbnail alone, and no other URL is ever referenced. The sidebar cards are
 100 px wide at every size, so they use the thumbnail alone.

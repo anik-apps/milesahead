@@ -291,35 +291,79 @@ func (f flickrFile) sized(target int) (string, bool) {
 	return "", false
 }
 
-// ServedWidth returns the pixel width rawURL serves its picture at, when the
-// URL itself fixes it:
+// SrcsetWidths returns the pixel widths thumbnail and image are served at,
+// when the two URLs are sizes of one picture -- same file, same framing --
+// and each fixes its width. Only then may a srcset offer one in place of the
+// other. That holds for:
 //
-//   - a Wikimedia thumbnail at a standard step (other widths answer 400).
-//     The search and the resize only ask for steps no wider than the
-//     original, so the step is the true width.
-//   - a Flickr size, whose suffix fixes the longest side: the width of a
-//     landscape photo, an overstatement for a portrait one (whose display
-//     image is overstated in the same proportion).
-//   - Unsplash's API sizes, which carry w= (regular 1080, small 400).
+//   - two Wikimedia thumbnails of the same file, each at a standard step
+//     (other widths answer 400). The search and the resize only ask for
+//     steps no wider than the original, so the step is the true width.
+//   - two sizes of one Flickr photo. A size fixes the longest side: the
+//     width of a landscape photo, an overstatement for a portrait one, by
+//     the same factor for both sizes.
+//   - two of Unsplash's API sizes of one photo, whose URLs differ only in
+//     w= (regular 1080, small 400) and set nothing else that shapes the
+//     picture. ?w=400&h=250&fit=crop and ?w=1200&h=400&fit=crop are two
+//     different crops, and a srcset of them would show a 2x screen another
+//     picture from the one a 1x screen gets.
 //
-// Anything else is unknown, including Wikimedia originals and Pexels URLs,
-// which fix the height.
-func ServedWidth(rawURL string) (int, bool) {
-	if f, ok := parseWikimedia(rawURL); ok {
-		if f.width > 0 && isWikimediaStep(f.width) {
-			return f.width, true
+// Anything else is refused, including Wikimedia originals (the URL has no
+// width) and Pexels (its URLs fix the height).
+func SrcsetWidths(thumbnail, image string) (tw, iw int, ok bool) {
+	if a, isWiki := parseWikimedia(thumbnail); isWiki {
+		b, bothWiki := parseWikimedia(image)
+		if !bothWiki || a.project != b.project || a.hash != b.hash || a.name != b.name ||
+			!isWikimediaStep(a.width) || !isWikimediaStep(b.width) {
+			return 0, 0, false
 		}
-		return 0, false
+		return a.width, b.width, true
 	}
-	if f, ok := parseFlickr(rawURL); ok {
-		return flickrSizes[f.suffix], true
+	if a, isFlickr := parseFlickr(thumbnail); isFlickr {
+		b, bothFlickr := parseFlickr(image)
+		if !bothFlickr || a.prefix != b.prefix || a.ext != b.ext {
+			return 0, 0, false
+		}
+		return flickrSizes[a.suffix], flickrSizes[b.suffix], true
 	}
-	u, err := url.Parse(rawURL)
+	a, aw, ok := parseUnsplash(thumbnail)
+	if !ok {
+		return 0, 0, false
+	}
+	b, bw, ok := parseUnsplash(image)
+	if !ok || a != b {
+		return 0, 0, false
+	}
+	return aw, bw, true
+}
+
+// unsplashShapeless are the imgix parameters of Unsplash's API sizes that do
+// not change which part of the photo is shown: encoding, and a crop mode that
+// has no effect without h= or ar=.
+var unsplashShapeless = map[string]bool{
+	"auto": true, "cs": true, "fm": true, "q": true, "ixid": true, "ixlib": true,
+	"crop": true, "fit": true,
+}
+
+// parseUnsplash takes apart an images.unsplash.com URL that sets its width
+// with w= and nothing else that shapes the picture. picture is the URL less
+// its w=, the same for every width of one framing of one photo.
+func parseUnsplash(raw string) (picture string, width int, ok bool) {
+	u, err := url.Parse(raw)
 	if err != nil || u.Scheme != "https" || u.Host != "images.unsplash.com" {
-		return 0, false
+		return "", 0, false
 	}
-	if w, err := strconv.Atoi(u.Query().Get("w")); err == nil && w > 0 {
-		return w, true
+	q := u.Query()
+	w, err := strconv.Atoi(q.Get("w"))
+	if err != nil || w <= 0 || len(q["w"]) != 1 {
+		return "", 0, false
 	}
-	return 0, false
+	for k := range q {
+		if k != "w" && !unsplashShapeless[k] {
+			return "", 0, false
+		}
+	}
+	q.Del("w")
+	u.RawQuery = q.Encode() // sorted by key
+	return u.String(), w, true
 }
