@@ -82,7 +82,9 @@ request -- usually in 0.2-3 s, sometimes 4-10 s, or with a 429 -- and a failed
 fetch costs the candidate a x0.6 penalty. So before any thumbnail is sent,
 the Wikimedia ones among the top 5 are requested once, side by side
 (`Searcher.Warm`), and the vision model finds them rendered. Warming waits at
-most 15 s, with no retry: a render cut off then carries on at Wikimedia.
+most 15 s, with no retry: a render cut off then carries on at Wikimedia. The
+searcher is an argument of `Scorer.SetVisionModel`, so vision scoring cannot
+be switched on without it.
 
 ## Selection Process
 

@@ -82,8 +82,7 @@ func TestScore_WarmsThumbnailsBeforeVision(t *testing.T) {
 	defer vision.Close()
 
 	scorer := NewScorer(textScores{8, 7}, "text")
-	scorer.SetVisionModel(vision.URL, "token", "vision")
-	scorer.SetWarmer(searcher.Warm)
+	scorer.SetVisionModel(vision.URL, "token", "vision", searcher)
 
 	const wm = "https://upload.wikimedia.org/wikipedia/commons/thumb/"
 	candidates := []ImageCandidate{

@@ -27,9 +27,15 @@ type Scorer struct {
 	visionToken string
 	visionModel string // e.g., "meta/llama-3.2-90b-vision-instruct"
 	httpClient  *http.Client
-	// warm, if set, is given the thumbnails about to go to the vision
-	// model before any of them is sent. See SetWarmer.
-	warm func(urls []string)
+	// warmer, if set, is given the thumbnails about to go to the vision
+	// model before any of them is sent. See SetVisionModel.
+	warmer Warmer
+}
+
+// Warmer has an image host prepare files before another client fetches them.
+// *Searcher is one: its Warm has Wikimedia render new thumbnail sizes.
+type Warmer interface {
+	Warm(urls []string)
 }
 
 // NewScorer creates a Scorer with a text model for pre-filtering.
@@ -42,19 +48,19 @@ func NewScorer(textClient ai.HFClientInterface, textModel string) *Scorer {
 }
 
 // SetVisionModel enables vision-based scoring for the final selection.
-func (s *Scorer) SetVisionModel(baseURL, token, model string) {
+//
+// warmer is handed the thumbnails Score is about to send, before any is sent
+// (the Searcher that found the candidates, in production). The vision
+// endpoint fetches each thumbnail itself, and for a sized Wikimedia URL it
+// was usually the first client to ask for that size: it met a slow render or
+// a 429, and the candidate took the x0.6 failure penalty however good the
+// image was. It is an argument here, not an option, so that vision scoring
+// cannot be switched on without it by accident; nil means no warming.
+func (s *Scorer) SetVisionModel(baseURL, token, model string, warmer Warmer) {
 	s.visionURL = baseURL
 	s.visionToken = token
 	s.visionModel = model
-}
-
-// SetWarmer has Score hand the thumbnails it is about to send to the vision
-// model to warm first (Searcher.Warm in production). The vision model fetches
-// each thumbnail itself, and for a sized Wikimedia URL it was usually the
-// first client to ask for that size: it met a slow render or a 429, and the
-// candidate took the x0.6 failure penalty however good the image was.
-func (s *Scorer) SetWarmer(warm func(urls []string)) {
-	s.warm = warm
+	s.warmer = warmer
 }
 
 type scoreResponse struct {
@@ -81,12 +87,12 @@ func (s *Scorer) Score(title, tldr string, candidates []ImageCandidate) ([]Image
 		if len(candidates) < top {
 			top = len(candidates)
 		}
-		if s.warm != nil {
+		if s.warmer != nil {
 			thumbs := make([]string, top)
 			for i, c := range candidates[:top] {
 				thumbs[i] = c.Thumbnail
 			}
-			s.warm(thumbs)
+			s.warmer.Warm(thumbs)
 		}
 		scored := s.visionScore(title, tldr, candidates[:top])
 		copy(candidates[:top], scored)
