@@ -1359,7 +1359,7 @@
       },
       "hotels_portal": {
         "rate": "5x",
-        "note": "Hotels, vacation rentals, rental cars and activities via Capital One Travel"
+        "note": "Hotels, vacation rentals and rental cars via Capital One Travel"
       },
       "car_rental_direct": {
         "rate": "2x",
@@ -1374,8 +1374,8 @@
         "note": ""
       },
       "other_travel_portal": {
-        "rate": "N/A",
-        "note": ""
+        "rate": "5x",
+        "note": "Activities via Capital One Travel"
       },
       "streaming": {
         "rate": "2x",
@@ -4462,7 +4462,7 @@
         },
         {
           "label": "Airline transfers",
-          "note": "Transfer to 37 airline programs, mostly at 3:1; 5K bonus miles per 60K points with most (10K with United)"
+          "note": "Transfer to 38 airlines, mostly at 3:1; 5K bonus miles per 60K points with most (10K with United)"
         }
       ]
     },
@@ -4495,6 +4495,10 @@
         {
           "label": "15 Elite Night Credits",
           "note": "Applied annually toward Gold (25 nights) or Platinum (50 nights) status; plus 1 night credit per $5,000 spent, and Gold Elite outright after $35,000 in calendar-year spend"
+        },
+        {
+          "label": "Instacart credit",
+          "note": "$10/month with an active Instacart+ membership through 12/31/2027 (3 months of Instacart+ free after enrolling the card)"
         }
       ]
     },
@@ -4531,6 +4535,10 @@
         {
           "label": "Free Night Award",
           "note": "Annual certificate up to 35K points"
+        },
+        {
+          "label": "DashPass",
+          "note": "12 months free when activated by 12/31/2027, then auto-renews; $10 off one non-restaurant DoorDash order a quarter through 12/31/2027"
         }
       ]
     },
@@ -4559,9 +4567,9 @@
     },
     "transfer_partners": {
       "program": "Marriott Bonvoy",
-      "count": "37 airline programs, mostly 3:1",
+      "count": "38 airlines, mostly 3:1",
       "key_partners": [],
-      "note": "Earns Marriott Bonvoy directly; points transfer to 37 airline programs, mostly at 3:1"
+      "note": "Earns Marriott Bonvoy directly; points transfer to 38 airlines, mostly at 3:1"
     }
   },
   {
