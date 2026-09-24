@@ -438,6 +438,15 @@ func unsizedGauge(t *testing.T) float64 {
 	return m.GetGauge().GetValue()
 }
 
+func unconvertibleGauge(t *testing.T) float64 {
+	t.Helper()
+	var m dto.Metric
+	if err := metrics.ArticleImagesUnconvertible.Write(&m); err != nil {
+		t.Fatalf("gauge read: %v", err)
+	}
+	return m.GetGauge().GetValue()
+}
+
 // The guarantees the resize makes before it writes a URL, one row per way a
 // sized URL can fail to be a usable image: a field whose sized URL is not
 // confirmed keeps what it had, and a deleted-on-Commons file whose URL still
@@ -453,6 +462,7 @@ func TestRun_ResizeWritesOnlyConfirmedImages(t *testing.T) {
 	stillRow := seedImage(t, d, stillServed, stillThumb)
 
 	resizedBefore, unconfirmedBefore, clearedBefore := resizeCount(t, "resized"), resizeCount(t, "unconfirmed"), resizeCount(t, "cleared")
+	unconvertibleBefore := resizeCount(t, "unconvertible")
 	s.Run()
 
 	thumbs := func(dir, file string) string { return wm + "thumb/" + dir + "/" + file + "/" }
@@ -482,33 +492,40 @@ func TestRun_ResizeWritesOnlyConfirmedImages(t *testing.T) {
 	if got := resizeCount(t, "resized") - resizedBefore; got != 1 {
 		t.Errorf("resized counter +%v, want +1 (only the row where every field converted)", got)
 	}
-	if got := resizeCount(t, "unconfirmed") - unconfirmedBefore; got != 2 {
-		t.Errorf("unconfirmed counter +%v, want +2", got)
+	if got := resizeCount(t, "unconfirmed") - unconfirmedBefore; got != 1 {
+		t.Errorf("unconfirmed counter +%v, want +1 (the HTML page)", got)
+	}
+	// A file Commons calls deleted that still loads can never be sized; it
+	// is not a conversion that is stuck.
+	if got := resizeCount(t, "unconvertible") - unconvertibleBefore; got != 1 {
+		t.Errorf("unconvertible counter +%v, want +1 (the file still served)", got)
 	}
 	if got := resizeCount(t, "cleared") - clearedBefore; got != 0 {
 		t.Errorf("cleared counter +%v, want 0", got)
 	}
-	if got := unsizedGauge(t); got != 2 {
-		t.Errorf("unsized gauge = %v, want 2 rows still waiting", got)
+	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 1 || got2 != 1 {
+		t.Errorf("gauges: unsized %v, unconvertible %v; want 1 and 1", got, got2)
 	}
 
-	// Second pass: the two rows that failed are tried once more...
+	// Second pass: the row that failed is tried once more; the unconvertible
+	// one is set aside at once...
 	before := hosts.total()
 	s.Run()
-	for _, file := range []string{htmlFile, stillFile} {
-		if n := countIn(hosts.since(before), file); n == 0 {
-			t.Errorf("second pass did not retry %s", file)
-		}
+	if n := countIn(hosts.since(before), htmlFile); n == 0 {
+		t.Errorf("second pass did not retry %s", htmlFile)
 	}
-	// ...and, having failed twice running, are set aside rather than probed
-	// on every pass.
+	if n := countIn(hosts.since(before), stillFile); n != 0 {
+		t.Errorf("second pass probed %s, which cannot be converted, %d times", stillFile, n)
+	}
+	// ...and, having failed twice running, the first is set aside too
+	// rather than probed on every pass.
 	before = hosts.total()
 	s.Run()
 	if again := hosts.since(before); len(again) != 0 {
 		t.Errorf("third pass probed rows that are backing off: %v", again)
 	}
-	if got := unsizedGauge(t); got != 2 {
-		t.Errorf("unsized gauge = %v after backing off, want 2 (still unconverted)", got)
+	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 1 || got2 != 1 {
+		t.Errorf("gauges after backing off: unsized %v, unconvertible %v; want 1 and 1", got, got2)
 	}
 }
 
@@ -547,13 +564,23 @@ func TestRun_ResizeDisplayImageOverCapAtEveryWidth(t *testing.T) {
 	}
 	hosts.noNonStandardWidths(t)
 
-	// The converted rows are done: nothing about them is fetched again.
+	// Nothing is left that a later pass could convert, so the unsized gauge
+	// can reach 0; the row that keeps its file is reported on its own.
+	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 0 || got2 != 1 {
+		t.Errorf("gauges: unsized %v, unconvertible %v; want 0 and 1", got, got2)
+	}
+
+	// The converted rows are done, and the other is set aside: nothing is
+	// fetched again.
 	before := hosts.total()
 	s.Run()
-	for _, file := range []string{heavyFile, heavierFile} {
+	for _, file := range []string{heavyFile, heavierFile, denseFile} {
 		if n := countIn(hosts.since(before), file); n != 0 {
 			t.Errorf("second pass fetched %s again %d times", file, n)
 		}
+	}
+	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 0 || got2 != 1 {
+		t.Errorf("second pass gauges: unsized %v, unconvertible %v; want 0 and 1", got, got2)
 	}
 }
 
@@ -822,6 +849,11 @@ func TestRun_UnansweredWidthsDoNotBlockOlderRows(t *testing.T) {
 			t.Errorf("row %d not resized after its width was answered: %q", i, url)
 		}
 	}
+	// The unanswered rows cannot convert until Commons answers; they are not
+	// counted as a conversion in progress.
+	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 0 || got2 != rows-answered {
+		t.Errorf("gauges: unsized %v, unconvertible %v; want 0 and %d", got, got2, rows-answered)
+	}
 }
 
 // An 800px display image waits for its original's width. If Commons has no
@@ -843,5 +875,9 @@ func TestRun_Old800pxWithoutAnsweredWidthTakes500(t *testing.T) {
 	want := wm + "thumb/8/8e/" + oldFile + "/500px-" + oldFile
 	if url, thumb, _ := storedImage(t, d, id); url != want || thumb != want {
 		t.Errorf("image = %q / %q, want the 500px step in both", url, thumb)
+	}
+	// Converted: it no longer waits on the unanswered width.
+	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 0 || got2 != 0 {
+		t.Errorf("gauges: unsized %v, unconvertible %v; want 0 and 0", got, got2)
 	}
 }

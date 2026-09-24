@@ -152,14 +152,24 @@ Wikimedia/Flickr thumbnails for sized URLs:
 - A Wikimedia file that Commons reports deleted, and whose URL answers 404 or
   410, is cleared so enrichment picks a new image. If the URL still loads it
   is kept.
-- The step has its own budget so it cannot starve enrichment: at most 90 s
-  (and never more than a quarter of the pass), and at most 25 rows per pass,
-  Wikimedia originals and the newest articles first. The rest wait for the
-  next pass. A row that fails two passes running is set aside for 6 hours.
+- The step has its own budget so it cannot starve enrichment: 90 s, and no
+  more than a quarter of the pass. The budget is checked between rows, so
+  the row in progress when it runs out can overrun it by that row's own
+  requests (each probe is capped at 30 s, and a field stops at the first
+  copy that does not load). At most 25 rows go to the network per pass,
+  Wikimedia originals, 800 px thumbnails and the newest articles first. The
+  rest wait for the next pass. A row that fails two passes running is set
+  aside for 6 hours.
+- Some rows cannot be converted: every sized copy is heavier than the file
+  they hold, Commons reports the file deleted but its URL still loads, or
+  Commons has no width for it. They keep their current, working file, are
+  set aside for 6 hours at once and rechecked after.
 - `milesahead_article_images_unsized` is the number of rows still waiting
-  after the last pass (it should reach 0 a few passes after a deploy), and
+  after the last pass, not counting those that cannot be converted, so it
+  should reach 0 a few passes after a deploy and stay there.
+  `milesahead_article_images_unconvertible` counts the others, and
   `milesahead_image_resize_total{outcome}` counts rows resized, left
-  unchanged (`unconfirmed`) and cleared.
+  unchanged (`unconfirmed`), cleared and found `unconvertible`.
 
 ## Stored Fields
 

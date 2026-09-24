@@ -18,9 +18,11 @@ import (
 // "deadline", and the liveness timestamp would stop moving for as long as the
 // host stayed slow.
 const (
-	// defaultResizeMaxDuration bounds the step, and it never takes more than
-	// a quarter of the pass (see resizeBudget). It is checked between rows,
-	// so the true ceiling is this plus one row's worst case.
+	// defaultResizeMaxDuration bounds the step, and the budget is never more
+	// than a quarter of the pass (see resizeBudget). It is checked between
+	// rows, so the true ceiling is the budget plus one row's worst case:
+	// each probe is capped at 30 s, and a field stops at the first copy
+	// that does not load.
 	defaultResizeMaxDuration = 90 * time.Second
 	// defaultResizeMaxRows bounds how many rows one pass sends to the
 	// network. The rest wait for the next pass, 15 minutes later.
@@ -41,10 +43,12 @@ var (
 	thumbnailSteps = []int{images.ThumbnailWidth, 330}
 )
 
-// resizeRetry tracks a row whose resize keeps failing.
+// resizeRetry tracks a row whose resize keeps failing, or that cannot be
+// converted at all (permanent).
 type resizeRetry struct {
 	failures  int
 	notBefore time.Time
+	permanent bool
 }
 
 // resizeJob is one stored row the resize step has network work for.
@@ -71,6 +75,11 @@ const (
 	// resizeIncomplete: at least one field could not be confirmed and keeps
 	// its current URL. The row counts towards the backoff.
 	resizeIncomplete
+	// resizeUnconvertible: every field was either converted or cannot be:
+	// all its sized copies are heavier than its current file, or Commons
+	// reports the file deleted but its URL still loads. Nothing a later pass
+	// does would change that soon, so the row is set aside at once.
+	resizeUnconvertible
 	// resizeSkipped: the row changed under us, or the write failed; it is
 	// looked at afresh next pass, without counting as a failure.
 	resizeSkipped
@@ -107,7 +116,14 @@ const (
 // It is bounded: it stops at deadline (Run passes the resize budget, not the
 // whole pass's), sends at most ResizeMaxRows rows to the network per pass,
 // heaviest and newest first, and sets aside for resizeBackoff any row that
-// has failed resizeFailuresBeforeBackoff passes running.
+// has failed resizeFailuresBeforeBackoff passes running, or that cannot be
+// converted at all (resizeUnconvertible). The deadline is checked between
+// rows, so the row in progress can overrun it by its own probes.
+//
+// milesahead_article_images_unsized counts the rows that could still be
+// converted, so it can reach 0; the ones that cannot -- no copy lighter than
+// their file, deleted on Commons but still served, no width from Commons --
+// are counted in milesahead_article_images_unconvertible.
 //
 // It is idempotent: a sized URL is left alone by images.Sized, so once a row
 // is converted later passes skip it without any network traffic.
@@ -124,7 +140,18 @@ func (s *Service) resizeStoredImages(deadline time.Time) {
 
 	now := time.Now()
 	var jobs []resizeJob
-	unsized, setAside := 0, 0 // rows still to convert; rows backing off
+	// Rows still to convert, rows that cannot be, and rows backing off.
+	unsized, unconvertible, setAside := 0, 0, 0
+	// countWaiting counts a row with nothing left to try this pass that may
+	// still be waiting on a Commons width.
+	countWaiting := func(a db.StoredArticleImage) {
+		switch pending, unanswered := s.widthWaits(a, now); {
+		case pending:
+			unsized++
+		case unanswered:
+			unconvertible++
+		}
+	}
 	for _, a := range stored {
 		job := resizeJob{
 			row:     a,
@@ -135,14 +162,16 @@ func (s *Service) resizeStoredImages(deadline time.Time) {
 				images.IsUnservedWikimediaThumb(a.URL) || images.IsUnservedWikimediaThumb(a.Thumbnail),
 		}
 		if job.urls == nil && job.thumbs == nil && !job.deleted {
-			if s.waitingOnWidth(a) {
-				unsized++ // waiting on a width lookup that failed
-			}
+			countWaiting(a)
 			continue
 		}
-		unsized++
 		if r := s.resizeRetries[a.ID]; r != nil && now.Before(r.notBefore) {
 			setAside++
+			if pending, _ := s.widthWaits(a, now); r.permanent && !pending {
+				unconvertible++
+			} else {
+				unsized++
+			}
 			continue
 		}
 		jobs = append(jobs, job)
@@ -159,7 +188,7 @@ func (s *Service) resizeStoredImages(deadline time.Time) {
 		jobs = jobs[:limit]
 	}
 
-	var resized, unconfirmed, cleared int
+	var resized, unconfirmed, cleared, foundUnconvertible int
 	for i, job := range jobs {
 		// Space out rows. Wikimedia throttles clients asking for thumbnails it
 		// has not rendered yet.
@@ -172,60 +201,88 @@ func (s *Service) resizeStoredImages(deadline time.Time) {
 				"rows_left", len(jobs)-i)
 			break
 		}
-		switch s.resizeOne(job) {
+		outcome, row := s.resizeOne(job)
+		switch outcome {
 		case resizeDone:
 			resized++
-			unsized--
+			countWaiting(row) // a field may still wait on its width
 		case resizeCleared:
 			cleared++
-			unsized--
+		case resizeUnconvertible:
+			foundUnconvertible++
+			if pending, _ := s.widthWaits(row, now); pending {
+				unsized++
+			} else {
+				unconvertible++
+			}
 		case resizeIncomplete:
 			unconfirmed++
+			unsized++
+		default: // resizeSkipped
+			unsized++
 		}
 	}
+	unsized += deferred
 
 	metrics.ImageResizeTotal.WithLabelValues("resized").Add(float64(resized))
 	metrics.ImageResizeTotal.WithLabelValues("unconfirmed").Add(float64(unconfirmed))
 	metrics.ImageResizeTotal.WithLabelValues("cleared").Add(float64(cleared))
+	metrics.ImageResizeTotal.WithLabelValues("unconvertible").Add(float64(foundUnconvertible))
 	metrics.ArticleImagesUnsized.Set(float64(unsized))
+	metrics.ArticleImagesUnconvertible.Set(float64(unconvertible))
 	if len(jobs) > 0 || setAside > 0 || deferred > 0 {
 		slog.Info("image resize pass complete", "resized", resized,
 			"left_unchanged_unconfirmed", unconfirmed, "cleared_deleted", cleared,
-			"deferred_to_next_pass", deferred, "set_aside_after_failures", setAside,
-			"still_unsized", unsized)
+			"found_unconvertible", foundUnconvertible,
+			"deferred_to_next_pass", deferred, "set_aside", setAside,
+			"still_unsized", unsized, "unconvertible", unconvertible)
 	}
 }
 
-// resizeOne converts one row, writing only what it could confirm.
-func (s *Service) resizeOne(job resizeJob) resizeOutcome {
+// resizeOne converts one row, writing only what it could confirm. It returns
+// the row as it now stands.
+func (s *Service) resizeOne(job resizeJob) (resizeOutcome, db.StoredArticleImage) {
 	a := job.row
-	incomplete := false
+	// transient: something failed that may work next time. permanent: a
+	// field cannot be converted as things stand.
+	transient, permanent := false, false
 	if job.deleted {
-		if s.clearIfGone(a) {
+		switch s.clearIfGone(a) {
+		case goneCleared:
 			delete(s.resizeRetries, a.ID)
-			return resizeCleared
+			return resizeCleared, db.StoredArticleImage{ID: a.ID}
+		case goneStillServed:
+			// Commons calls the file missing, but its URL still loads (a
+			// CDN still serving it): not a broken image, so it stays. Its
+			// width is unknown, so it cannot be sized; the thumbnail below
+			// still can be. It is rechecked on the backoff schedule.
+			permanent = true
+		default:
+			transient = true
 		}
-		// Commons calls the file missing, but its URL did not answer 404 or
-		// 410: a CDN still serving it, or a request that failed. Either way it
-		// is not a broken image, so it stays. Its width is unknown, so it
-		// cannot be sized; the thumbnail below still can be. The row counts as
-		// a failure so it is rechecked on the backoff schedule, not every pass.
-		incomplete = true
 	}
 
 	newURL, newThumb := a.URL, a.Thumbnail
-	if job.urls != nil {
-		if u, found := s.pickSized(job.urls, images.MaxImageBytes, a.URL); found == sizedFound {
-			newURL = u
-		} else {
-			incomplete = true
-		}
+	fields := []struct {
+		candidates []string
+		limit      int64
+		current    string
+		out        *string
+	}{
+		{job.urls, images.MaxImageBytes, a.URL, &newURL},
+		{job.thumbs, images.MaxThumbnailBytes, a.Thumbnail, &newThumb},
 	}
-	if job.thumbs != nil {
-		if u, found := s.pickSized(job.thumbs, images.MaxThumbnailBytes, a.Thumbnail); found == sizedFound {
-			newThumb = u
-		} else {
-			incomplete = true
+	for _, f := range fields {
+		if f.candidates == nil {
+			continue
+		}
+		switch u, found := s.pickSized(f.candidates, f.limit, f.current); found {
+		case sizedFound:
+			*f.out = u
+		case sizedNoLighter:
+			permanent = true
+		default:
+			transient = true
 		}
 	}
 
@@ -233,23 +290,28 @@ func (s *Service) resizeOne(job resizeJob) resizeOutcome {
 		ok, err := s.db.ReplaceArticleImage(a, newURL, newThumb)
 		if err != nil {
 			slog.Warn("image resize: could not save", "article_id", a.ID, "error", err)
-			return resizeSkipped
+			return resizeSkipped, a
 		}
 		if !ok {
 			// The row changed under us; next pass will look at it afresh.
-			return resizeSkipped
+			return resizeSkipped, a
 		}
 		slog.Info("image resize: article image replaced with a sized copy", "article_id", a.ID,
 			"image_url_from", a.URL, "image_url_to", newURL,
 			"thumbnail_from", a.Thumbnail, "thumbnail_to", newThumb)
 	}
 
-	if incomplete {
-		s.noteResizeFailure(a.ID)
-		return resizeIncomplete
+	after := db.StoredArticleImage{ID: a.ID, URL: newURL, Thumbnail: newThumb}
+	switch {
+	case transient:
+		s.noteResizeFailure(a.ID, false)
+		return resizeIncomplete, after
+	case permanent:
+		s.noteResizeFailure(a.ID, true)
+		return resizeUnconvertible, after
 	}
 	delete(s.resizeRetries, a.ID)
-	return resizeDone
+	return resizeDone, after
 }
 
 // sizedFind is what pickSized found for one field.
@@ -313,8 +375,10 @@ func (s *Service) pickSized(candidates []string, limit int64, current string) (s
 
 // noteResizeFailure counts a failed pass for a row and, once it has failed
 // resizeFailuresBeforeBackoff passes running, sets it aside for resizeBackoff.
-// The record lives in memory: a restart gives every row a fresh start.
-func (s *Service) noteResizeFailure(id int64) {
+// A permanent failure -- the row cannot be converted as things stand -- sets
+// it aside at once. The record lives in memory: a restart gives every row a
+// fresh start.
+func (s *Service) noteResizeFailure(id int64, permanent bool) {
 	if s.resizeRetries == nil {
 		s.resizeRetries = map[int64]*resizeRetry{}
 	}
@@ -324,7 +388,13 @@ func (s *Service) noteResizeFailure(id int64) {
 		s.resizeRetries[id] = r
 	}
 	r.failures++
-	if r.failures >= resizeFailuresBeforeBackoff {
+	r.permanent = permanent
+	switch {
+	case permanent:
+		r.notBefore = time.Now().Add(resizeBackoff)
+		slog.Info("image resize: row cannot be converted; setting it aside", "article_id", id,
+			"retry_after", resizeBackoff)
+	case r.failures >= resizeFailuresBeforeBackoff:
 		r.notBefore = time.Now().Add(resizeBackoff)
 		slog.Warn("image resize: row keeps failing; setting it aside", "article_id", id,
 			"failures", r.failures, "retry_after", resizeBackoff)
@@ -504,15 +574,21 @@ func (s *Service) widthUnanswered(u string, now time.Time) bool {
 	return ok && now.Before(until)
 }
 
-// waitingOnWidth reports whether sizing a needs a Commons width that has not
-// been looked up yet (or whose lookup failed).
-func (s *Service) waitingOnWidth(a db.StoredArticleImage) bool {
+// widthWaits reports whether sizing a needs a Commons width that is not
+// known: pending if one has not been looked up yet (or its lookup failed),
+// unanswered if one is set aside because Commons had no answer for it.
+func (s *Service) widthWaits(a db.StoredArticleImage, now time.Time) (pending, unanswered bool) {
 	for _, k := range widthKeys(a) {
-		if _, known := s.originalWidths[k]; !known {
-			return true
+		if _, known := s.originalWidths[k]; known {
+			continue
+		}
+		if s.widthUnanswered(k, now) {
+			unanswered = true
+		} else {
+			pending = true
 		}
 	}
-	return false
+	return pending, unanswered
 }
 
 // deletedOnCommons reports whether the Commons API said this original's file
@@ -525,26 +601,39 @@ func (s *Service) deletedOnCommons(orig string) bool {
 	return known && w == 0
 }
 
+// goneCheck is what clearIfGone found.
+type goneCheck int
+
+const (
+	goneCleared     goneCheck = iota // the file answers 404/410; the image was cleared
+	goneStillServed                  // the file still loads; the image stays
+	goneUnknown                      // the check or the write failed; try again later
+)
+
 // clearIfGone clears an article image whose Commons file was deleted, but only
 // once the file itself is seen to answer 404 or 410 -- the API saying so is
 // not enough on its own to take an image off a live article. For a thumbnail
 // at a width Wikimedia no longer serves, which answers 400 whether or not the
 // file exists, the original is asked instead.
-func (s *Service) clearIfGone(a db.StoredArticleImage) bool {
+func (s *Service) clearIfGone(a db.StoredArticleImage) goneCheck {
 	p := s.searcher.Probe(displayWidthKey(a.URL), 0)
 	if p.Status != http.StatusNotFound && p.Status != http.StatusGone {
 		slog.Info("image resize: Commons reports the file deleted but its URL did not answer 404/410; keeping it",
 			"article_id", a.ID, "image_url", a.URL, "status", p.Status)
-		return false
+		if p.OK {
+			return goneStillServed
+		}
+		return goneUnknown
 	}
 	ok, err := s.db.ClearArticleImage(a)
 	if err != nil {
 		slog.Warn("image resize: could not clear deleted image", "article_id", a.ID, "error", err)
-		return false
+		return goneUnknown
 	}
-	if ok {
-		slog.Warn("image resize: article image was deleted from Wikimedia Commons; "+
-			"cleared so enrichment picks a new one", "article_id", a.ID, "image_url", a.URL)
+	if !ok {
+		return goneUnknown // the row changed under us
 	}
-	return ok
+	slog.Warn("image resize: article image was deleted from Wikimedia Commons; "+
+		"cleared so enrichment picks a new one", "article_id", a.ID, "image_url", a.URL)
+	return goneCleared
 }
