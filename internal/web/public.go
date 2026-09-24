@@ -254,6 +254,12 @@ func pickFeatured(rows []publicArticleRow) int {
 			return i
 		}
 	}
+	// Everything has ended: fall back to the usual rule.
+	for i, r := range rows {
+		if r.Featured {
+			return i
+		}
+	}
 	return 0
 }
 

@@ -324,3 +324,22 @@ func TestHome_AllEndedEmptyState(t *testing.T) {
 		t.Error("a site with nothing published keeps its original empty state")
 	}
 }
+
+func TestPickFeatured(t *testing.T) {
+	cases := []struct {
+		name string
+		rows []publicArticleRow
+		want int
+	}{
+		{"featured and live", []publicArticleRow{{}, {Featured: true}}, 1},
+		{"featured but ended: newest live instead", []publicArticleRow{{Featured: true, Ended: true}, {Ended: true}, {}}, 2},
+		{"nothing featured", []publicArticleRow{{Ended: true}, {}, {}}, 1},
+		{"all ended: featured still wins", []publicArticleRow{{Ended: true}, {Featured: true, Ended: true}}, 1},
+		{"all ended, none featured", []publicArticleRow{{Ended: true}, {Ended: true}}, 0},
+	}
+	for _, c := range cases {
+		if got := pickFeatured(c.rows); got != c.want {
+			t.Errorf("%s: pickFeatured = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
