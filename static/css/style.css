@@ -2011,6 +2011,12 @@ tr.flagged { background: #fef2f2; }
 .changes-list li.is-ended .change-summary {
     color: var(--ended-text);
 }
+/* A muted search title loses the accent colour that marks it as a link, so
+   it keeps an underline instead. */
+.search-item.is-ended .search-item-title {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
 .article-card.is-ended .card-thumb img {
     opacity: 0.45;
     filter: grayscale(100%);

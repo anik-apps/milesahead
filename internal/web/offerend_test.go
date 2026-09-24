@@ -187,6 +187,11 @@ func TestSearch_MarksEndedOffers(t *testing.T) {
 	if !strings.Contains(item, `<li class="search-item is-ended">`) || !strings.Contains(item, endedBadge) {
 		t.Errorf("the ended search result should carry the badge and ended class:\n%s", item)
 	}
+	// Inside the link, so a screen reader moving between links hears
+	// "Ended" with the title.
+	if want := `<a href="/article/ended" class="search-item-title">` + endedBadge + ` Citi 25% Transfer Bonus`; !strings.Contains(item, want) {
+		t.Errorf("the Ended badge should be part of the result's link, want %s in:\n%s", want, item)
+	}
 	live := regexp.MustCompile(`(?s)<li class="search-item[^"]*">\s*<a href="/article/ends-next-week".*?</li>`).FindString(body)
 	if live == "" || strings.Contains(live, "is-ended") {
 		t.Errorf("a live search result should not be marked ended:\n%s", live)
