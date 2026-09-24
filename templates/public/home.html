@@ -75,7 +75,12 @@
         <a href="/article/{{.Slug}}">
             {{if .ImageThumbnail}}
             <div class="card-thumb">
-                <img src="{{.ImageThumbnail}}" alt="{{.Title}}" width="300" height="200" loading="lazy" decoding="async">
+                {{/* sizes is the width of .bottom-grid .card-thumb: 100px on
+                     phones; above that, two columns to 1024px and three
+                     beyond, each the column less the card's 2px border, in
+                     main's 64px of padding, 24px gaps and 1200px cap. On a 2x
+                     screen the wide slots take the display image. */}}
+                <img src="{{.ImageThumbnail}}"{{with .ThumbSrcset}} srcset="{{.}}" sizes="(max-width: 768px) 100px, (max-width: 1024px) calc((100vw - 92px) / 2), (max-width: 1200px) calc((100vw - 118px) / 3), 361px"{{end}} alt="{{.Title}}" width="300" height="200" loading="lazy" decoding="async">
             </div>
             {{end}}
             <div class="card-body">

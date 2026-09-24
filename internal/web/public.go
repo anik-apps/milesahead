@@ -13,6 +13,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/images"
 )
 
 // templateKeyDetail holds a key detail for template rendering.
@@ -86,6 +87,29 @@ type publicArticleRow struct {
 	ImageURL         string
 	ImageThumbnail   string
 	ImageAttribution string
+	// ThumbSrcset offers the display image as a sharper stand-in for the
+	// thumbnail where a card shows it wide; see thumbSrcset.
+	ThumbSrcset string
+}
+
+// thumbSrcset returns a srcset of the thumbnail and the display image, each
+// with the width its URL fixes, or "" unless both widths are known and the
+// display image is the wider. Only the two URLs the row stores -- each
+// confirmed to load before it was written -- are ever referenced.
+//
+// It exists for the bottom grid: at 769-1024 px its thumbnails are up to ~470
+// CSS px wide, so a 500px file is soft on a 2x screen. A URL with a comma or
+// a space in it is left out, since both separate srcset entries.
+func thumbSrcset(thumbnail, image string) string {
+	tw, ok := images.ServedWidth(thumbnail)
+	if !ok {
+		return ""
+	}
+	iw, ok := images.ServedWidth(image)
+	if !ok || iw <= tw || strings.ContainsAny(thumbnail+image, ", \t\n\r\f") {
+		return ""
+	}
+	return fmt.Sprintf("%s %dw, %s %dw", thumbnail, tw, image, iw)
 }
 
 // sourceInfo holds source data for article detail pages.
@@ -137,6 +161,7 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 			ImageURL:         a.ImageURL,
 			ImageThumbnail:   a.ImageThumbnail,
 			ImageAttribution: a.ImageAttribution,
+			ThumbSrcset:      thumbSrcset(a.ImageThumbnail, a.ImageURL),
 		}
 		if a.PublishedAt != nil {
 			row.PublishedAt = a.PublishedAt.Format("Jan 2, 2006")

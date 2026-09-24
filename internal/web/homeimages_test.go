@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -101,6 +102,8 @@ func TestHome_ImageLoadingHints(t *testing.T) {
 	}
 
 	// The display image is only for the featured card; the rest use thumbnails.
+	// (Grid cards may list it in a srcset when its width is known; these
+	// URLs do not say their width.)
 	for i := 1; i <= 6; i++ {
 		if strings.Contains(body, fmt.Sprintf("https://img.example/hero-%d.jpg", i)) {
 			t.Errorf("home page references the full-size image of story %d", i)
@@ -198,4 +201,77 @@ func TestVersionedStylesheet(t *testing.T) {
 	if v2 := write(".a { color: blue; }"); v2 == v1 {
 		t.Errorf("changed content kept version %q", v1)
 	}
+}
+
+// Integration: at 769-1024 px the bottom-grid thumbnails are up to ~470 CSS
+// px wide, and on a 2x screen a 500px file is soft there. The grid offers the
+// row's display image as a larger candidate -- only the two URLs the row
+// stores, with the widths their URLs fix -- and says how wide the slot is.
+func TestHome_GridThumbnailsOfferTheDisplayImage(t *testing.T) {
+	app := setupRealTemplateCardApp(t)
+	seedHomeArticles(t, app, 8) // featured + 3 sidebar + 4 grid
+	const wm = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/Lobby.jpg/"
+	const us = "https://images.unsplash.com/photo-1?fit=max&fm=jpg&q=80&w="
+	rows := []struct{ image, thumb, srcset string }{
+		// featured, sidebar: never get one.
+		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
+		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
+		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
+		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", ""},
+		// grid
+		{wm + "1280px-Lobby.jpg", wm + "500px-Lobby.jpg", wm + "500px-Lobby.jpg 500w, " + wm + "1280px-Lobby.jpg 1280w"},
+		{us + "1080", us + "400", us + "400 400w, " + us + "1080 1080w"},
+		// A Wikimedia original: its width is unknown, and it may be the
+		// multi-megabyte file the resize has not replaced yet.
+		{"https://upload.wikimedia.org/wikipedia/commons/6/6c/Lobby.jpg", wm + "500px-Lobby.jpg", ""},
+		// Pexels URLs do not fix the width.
+		{"https://images.pexels.com/photos/1/p.jpeg?h=650&w=940", "https://images.pexels.com/photos/1/p.jpeg?h=350", ""},
+	}
+	for i, r := range rows {
+		if _, err := app.db.DB().Exec(`UPDATE generated_articles SET image_url = ?, image_thumbnail = ? WHERE slug = ?`,
+			r.image, r.thumb, fmt.Sprintf("home-story-%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	body := getPage(t, app, "/")
+
+	tags := regexp.MustCompile(`<img[^>]*>`).FindAllString(body, -1)
+	var cards []string // sidebar and grid thumbnails, in page order
+	for _, tag := range tags {
+		if strings.Contains(tag, `width="300" height="200"`) {
+			cards = append(cards, tag)
+		}
+	}
+	if len(cards) != 7 {
+		t.Fatalf("found %d card thumbnails, want 7", len(cards))
+	}
+	for i, tag := range cards {
+		want := rows[i+1].srcset
+		got := html.UnescapeString(attr(tag, "srcset"))
+		if got != want {
+			t.Errorf("card %d srcset = %q, want %q", i+1, got, want)
+		}
+		if src := html.UnescapeString(attr(tag, "src")); src != rows[i+1].thumb {
+			t.Errorf("card %d src = %q, want the thumbnail %q", i+1, src, rows[i+1].thumb)
+		}
+		sizes := attr(tag, "sizes")
+		if (want != "") != (sizes != "") {
+			t.Errorf("card %d: sizes %q with srcset %q", i+1, sizes, want)
+		}
+		if want != "" && !strings.HasPrefix(sizes, "(max-width: 768px) 100px") {
+			t.Errorf("card %d sizes = %q; phones show a 100px thumbnail", i+1, sizes)
+		}
+	}
+	if strings.Contains(imgTag(t, body, wm+"1280px-Lobby.jpg"), "srcset") {
+		t.Error("the featured image got a srcset")
+	}
+}
+
+// attr returns the value of the named attribute in an HTML tag, or "".
+func attr(tag, name string) string {
+	m := regexp.MustCompile(`\s` + name + `="([^"]*)"`).FindStringSubmatch(tag)
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }

@@ -154,3 +154,38 @@ func TestIsWikimediaOriginal(t *testing.T) {
 		}
 	}
 }
+
+// ServedWidth is what a srcset may say about a stored URL: only widths the
+// URL itself fixes, and only for URLs that serve one.
+func TestServedWidth(t *testing.T) {
+	for _, tt := range []struct {
+		url   string
+		width int // 0: unknown
+	}{
+		{lobbyThumbs + "500px-" + lobbyName, 500},
+		{lobbyThumbs + "1280px-" + lobbyName, 1280},
+		{brisbane960, 960},
+		{"https://thumb.wikimedia.org/wikipedia/commons/thumb/6/6c/" + lobbyName + "/1280px-" + lobbyName, 1280},
+		{longThumbs + "500px-thumbnail.jpg", 500},
+		// 800px answers 400: not an image at all.
+		{lobbyThumbs + "800px-" + lobbyName, 0},
+		// An original's width is not in its URL.
+		{lobby, 0},
+		{flickrLarge, 1024},
+		{"https://live.staticflickr.com/65535/54420209608_0aa8ea537a.jpg", 500},
+		{"https://live.staticflickr.com/1/2_abc_k.jpg", 0},
+		// Unsplash's API sizes: regular and small.
+		{"https://images.unsplash.com/photo-1?crop=entropy&fit=max&fm=jpg&q=80&w=1080", 1080},
+		{"https://images.unsplash.com/photo-1?ixlib=rb-4.1.0&q=80&w=400", 400},
+		{"https://images.unsplash.com/photo-1?q=80", 0},
+		// Pexels fixes the height, not the width.
+		{"https://images.pexels.com/photos/1/pexels-photo-1.jpeg?auto=compress&cs=tinysrgb&h=350", 0},
+		{"https://images.pexels.com/photos/1/pexels-photo-1.jpeg?auto=compress&cs=tinysrgb&h=650&w=940", 0},
+		{"", 0},
+	} {
+		got, ok := ServedWidth(tt.url)
+		if got != tt.width || ok != (tt.width > 0) {
+			t.Errorf("ServedWidth(%q) = %d, %v; want %d", tt.url, got, ok, tt.width)
+		}
+	}
+}

@@ -290,3 +290,36 @@ func (f flickrFile) sized(target int) (string, bool) {
 	}
 	return "", false
 }
+
+// ServedWidth returns the pixel width rawURL serves its picture at, when the
+// URL itself fixes it:
+//
+//   - a Wikimedia thumbnail at a standard step (other widths answer 400).
+//     The search and the resize only ask for steps no wider than the
+//     original, so the step is the true width.
+//   - a Flickr size, whose suffix fixes the longest side: the width of a
+//     landscape photo, an overstatement for a portrait one (whose display
+//     image is overstated in the same proportion).
+//   - Unsplash's API sizes, which carry w= (regular 1080, small 400).
+//
+// Anything else is unknown, including Wikimedia originals and Pexels URLs,
+// which fix the height.
+func ServedWidth(rawURL string) (int, bool) {
+	if f, ok := parseWikimedia(rawURL); ok {
+		if f.width > 0 && isWikimediaStep(f.width) {
+			return f.width, true
+		}
+		return 0, false
+	}
+	if f, ok := parseFlickr(rawURL); ok {
+		return flickrSizes[f.suffix], true
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme != "https" || u.Host != "images.unsplash.com" {
+		return 0, false
+	}
+	if w, err := strconv.Atoi(u.Query().Get("w")); err == nil && w > 0 {
+		return w, true
+	}
+	return 0, false
+}

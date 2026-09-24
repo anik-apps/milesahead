@@ -180,3 +180,12 @@ The selected image is stored on the `generated_articles` record:
 | `image_url` | Display image: article hero, featured card and `og:image`; at most ~1280 px wide where the host allows |
 | `image_thumbnail` | Homepage card image; about 500 px wide where the host allows |
 | `image_attribution` | Credit line (e.g. "Photo by X on Unsplash") |
+
+On the home page, the bottom-grid cards list both URLs in a `srcset`, each
+with the width its URL fixes (a Wikimedia step, a Flickr size, Unsplash's
+`w=`), and a `sizes` that follows the grid: 100 px on phones, two columns to
+1024 px, three above. At 769-1024 px a card is up to ~470 CSS px wide, so a
+2x screen takes the display image there instead of a soft 500 px file. Rows
+whose widths the URLs do not fix (Pexels, a Wikimedia original) keep the
+thumbnail alone, and no other URL is ever referenced. The sidebar cards are
+100 px wide at every size, so they use the thumbnail alone.
