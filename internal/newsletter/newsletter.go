@@ -802,10 +802,11 @@ var ErrNothingLive = errors.New("nothing sent: no article from the last 24 hours
 
 // isWeekly reports whether nl is a weekly issue. A weekly is dated the
 // Saturday it goes out, so on a Saturday it holds the date a daily would.
-// Only a weekly has a Scout's Pick, a Card of the Week or candidates, and its
-// subject says so.
+// Only BuildWeekly writes the weekly subject or candidates. (A Scout's Pick
+// or Card of the Week is no sign: the admin page can set either on whichever
+// issue is current, a daily included.)
 func (s *Service) isWeekly(nl *db.Newsletter) (bool, error) {
-	if nl.ScoutsPickArticleID != nil || nl.CardOfWeekID != nil || strings.HasPrefix(nl.Subject, weeklySubject) {
+	if strings.HasPrefix(nl.Subject, weeklySubject) {
 		return true, nil
 	}
 	candidates, err := s.db.ListCandidatesForNewsletter(nl.ID)
@@ -819,11 +820,10 @@ func (s *Service) isWeekly(nl *db.Newsletter) (bool, error) {
 // generating it first if there is none. The admin's "send" button calls it.
 //
 // The issue is rendered again from the last 24 hours' live articles as it
-// is sent. Its stored HTML was rendered when it was generated, perhaps days
-// of admin inaction earlier, and may hold an offer that has ended since; it
-// is never sent. Today's issue is not sent at all when it is the weekly one
-// (SendWeekly sends that, on its own checks) or an admin has held or skipped
-// it.
+// is sent. Its stored HTML was rendered when it was generated, hours earlier
+// perhaps, and may hold an offer that has ended since; it is never sent.
+// Today's issue is not sent at all when it is the weekly one (SendWeekly
+// sends that, on its own checks) or an admin has held or skipped it.
 func (s *Service) SendDaily() error {
 	date := s.todayDate()
 

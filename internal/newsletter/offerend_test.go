@@ -469,3 +469,30 @@ func TestSendWeekly_NothingLeftToSendSendsNothing(t *testing.T) {
 		t.Error("sent a weekly whose articles are no longer published")
 	}
 }
+
+// A Scout's Pick or Card of the Week set on a daily from the admin page does
+// not make it the weekly: it is still sent, re-rendered.
+func TestSendDaily_DailyWithAdminPicksIsStillSent(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	live := publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	subscribe(t, database)
+
+	sender := &mockSender{}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	id := storeDaily(t, database, svc, "approved", "<p>"+liveTitle+"</p>")
+	if err := database.UpdateNewsletterScoutsPick(id, live); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpdateNewsletterCardOfWeek(id, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.SendDaily(); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.calls) != 1 || !strings.Contains(sender.calls[0].html, liveTitle) {
+		t.Error("the daily should have been sent")
+	}
+}
