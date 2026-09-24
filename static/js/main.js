@@ -27,48 +27,67 @@
 })();
 
 // Vote Handler
+// Matches the article template's .vote-buttons group; data-vote is "up" or
+// "down", which is what /api/vote accepts.
 document.addEventListener('DOMContentLoaded', function() {
-    var voteSection = document.querySelector('.vote-section');
-    if (!voteSection) return;
+    var group = document.querySelector('.vote-buttons[data-article-id]');
+    if (!group) return;
 
-    var articleId = voteSection.getAttribute('data-article-id');
+    var card = group.closest('.vote-card');
+    var status = card ? card.querySelector('.vote-status') : null;
+    var articleId = parseInt(group.getAttribute('data-article-id'), 10);
     var votedKey = 'voted_' + articleId;
+    var btns = group.querySelectorAll('.vote-btn');
 
-    // Check if already voted.
-    if (localStorage.getItem(votedKey)) {
-        var btns = voteSection.querySelectorAll('.vote-btn');
-        btns.forEach(function(btn) { btn.disabled = true; });
+    function finish(choice, message) {
+        btns.forEach(function(b) {
+            var chosen = b.getAttribute('data-vote') === choice;
+            b.disabled = true;
+            b.setAttribute('aria-pressed', chosen ? 'true' : 'false');
+            b.classList.toggle('active', chosen);
+        });
+        if (status) status.textContent = message;
+    }
+
+    var previous = localStorage.getItem(votedKey);
+    if (previous) {
+        finish(previous, 'Thanks for your feedback.');
         return;
     }
 
-    voteSection.addEventListener('click', function(e) {
+    group.addEventListener('click', function(e) {
         var btn = e.target.closest('.vote-btn');
         if (!btn || btn.disabled) return;
-
-        var vote = parseInt(btn.getAttribute('data-vote'), 10);
+        var choice = btn.getAttribute('data-vote');
+        btns.forEach(function(b) { b.disabled = true; });
 
         fetch('/api/vote', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ article_id: parseInt(articleId, 10), vote: vote })
+            body: JSON.stringify({ article_id: articleId, vote: choice })
         })
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-            if (data.status === 'ok') {
-                var upEl = voteSection.querySelector('.upvotes');
-                var downEl = voteSection.querySelector('.downvotes');
-                if (upEl) upEl.textContent = data.upvotes;
-                if (downEl) downEl.textContent = data.downvotes;
-
-                btn.classList.add('active');
-                var btns = voteSection.querySelectorAll('.vote-btn');
-                btns.forEach(function(b) { b.disabled = true; });
-
-                localStorage.setItem(votedKey, '1');
+        .then(function(res) {
+            if (res.status === 409) {
+                // Voted before from this network; which way is not known here.
+                localStorage.setItem(votedKey, 'voted');
+                finish('', "You've already voted on this article. Thanks!");
+                return null;
             }
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
         })
-        .catch(function(err) {
-            console.error('Vote failed:', err);
+        .then(function(data) {
+            if (!data) return;
+            var upEl = group.querySelector('.upvotes');
+            var downEl = group.querySelector('.downvotes');
+            if (upEl) upEl.textContent = data.upvotes;
+            if (downEl) downEl.textContent = data.downvotes;
+            localStorage.setItem(votedKey, choice);
+            finish(choice, 'Thanks for your feedback.');
+        })
+        .catch(function() {
+            btns.forEach(function(b) { b.disabled = false; });
+            if (status) status.textContent = "Sorry, your vote didn't go through. Please try again.";
         });
     });
 });

@@ -2676,3 +2676,13 @@ footer .footer-links a, .footer-pillars a { color: #15307a; }
 .table-scroll > table { margin: 0; }
 .table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .card-layout > *, .article-layout > * { min-width: 0; }
+
+/* Vote feedback: the status line reserves its height so the card does not jump. */
+.vote-card .vote-status {
+    min-height: 1.4em;
+    margin-top: 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+/* White on the dark theme's light-blue accent is 2.5:1; dark text is about 7.5:1. */
+[data-theme="dark"] .vote-btn.active { color: var(--bg); }
