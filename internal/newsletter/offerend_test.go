@@ -1,6 +1,7 @@
 package newsletter
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -103,7 +104,7 @@ func TestDaily_LeavesOutEndedOffers(t *testing.T) {
 }
 
 // Nothing but ended offers means no daily at all, rather than one that sends
-// them.
+// them, and the admin is told why.
 func TestDaily_NothingLiveSendsNothing(t *testing.T) {
 	setTemplateDir(t)
 	database, cleanup := setupTestDB(t)
@@ -113,11 +114,170 @@ func TestDaily_NothingLiveSendsNothing(t *testing.T) {
 
 	sender := &mockSender{}
 	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
-	if err := svc.SendDaily(); err != nil {
-		t.Fatal(err)
+	if err := svc.SendDaily(); !errors.Is(err, ErrNothingLive) {
+		t.Errorf("SendDaily() = %v, want ErrNothingLive", err)
 	}
 	if len(sender.calls) != 0 {
 		t.Errorf("sent a daily made only of ended offers")
+	}
+}
+
+// storeDaily saves today's daily as GenerateDaily would have, earlier, when
+// everything in html was still live.
+func storeDaily(t *testing.T, database *db.Database, svc *Service, status, html string) int64 {
+	t.Helper()
+	id, err := database.CreateNewsletter(&db.Newsletter{
+		Date: svc.todayDate(), Subject: "MilesAhead Daily Digest — " + svc.todayDate(),
+		HTMLContent: html, Status: status, ArticleCount: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// The admin "send" button sends today's stored daily. It was rendered when
+// it was generated, and an offer in it may have ended since, so the issue is
+// rendered again from what is live when it is sent.
+func TestSendDaily_RerendersTheStoredIssue(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	publish(t, database, endedTitle, "citi-lhw", endedDeadline, true)
+	publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	subscribe(t, database)
+
+	sender := &mockSender{}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	storeDaily(t, database, svc, "draft", "<p>"+endedTitle+"</p><p>"+liveTitle+"</p>")
+
+	if err := svc.SendDaily(); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("want one send, got %d", len(sender.calls))
+	}
+	html := sender.calls[0].html
+	if strings.Contains(html, endedTitle) {
+		t.Error("the daily sent an offer that ended after the issue was stored")
+	}
+	if !strings.Contains(html, liveTitle) || !strings.Contains(html, "/article/united-ihg") {
+		t.Error("the daily should be the re-rendered issue with the live offer")
+	}
+	nl, err := database.GetNewsletterByDate(svc.todayDate())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nl.Status != "sent" {
+		t.Errorf("status = %q, want sent", nl.Status)
+	}
+	if nl.HTMLContent != html {
+		t.Error("the stored issue should be what was sent")
+	}
+}
+
+// If everything in the stored daily has ended by the time it is sent, it is
+// not sent at all.
+func TestSendDaily_StoredIssueAllEndedSendsNothing(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	publish(t, database, endedTitle, "citi-lhw", endedDeadline, false)
+	subscribe(t, database)
+
+	sender := &mockSender{}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	storeDaily(t, database, svc, "approved", "<p>"+endedTitle+"</p>")
+
+	if err := svc.SendDaily(); !errors.Is(err, ErrNothingLive) {
+		t.Errorf("SendDaily() = %v, want ErrNothingLive", err)
+	}
+	if len(sender.calls) != 0 {
+		t.Errorf("sent the stored issue:\n%s", sender.calls[0].html)
+	}
+	if nl, _ := database.GetNewsletterByDate(svc.todayDate()); nl == nil || nl.Status == "sent" {
+		t.Error("the issue should be left unsent")
+	}
+}
+
+// An issue an admin held or skipped is not sent from the daily path.
+func TestSendDaily_RefusesHeldAndSkippedIssues(t *testing.T) {
+	for _, status := range []string{"hold", "skipped"} {
+		t.Run(status, func(t *testing.T) {
+			setTemplateDir(t)
+			database, cleanup := setupTestDB(t)
+			defer cleanup()
+			publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+			subscribe(t, database)
+
+			sender := &mockSender{}
+			svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+			storeDaily(t, database, svc, status, "<p>"+liveTitle+"</p>")
+
+			if err := svc.SendDaily(); err == nil {
+				t.Error("SendDaily should say the issue was not sent")
+			}
+			if len(sender.calls) != 0 {
+				t.Errorf("sent a %s issue", status)
+			}
+			nl, err := database.GetNewsletterByDate(svc.todayDate())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if nl.Status != status {
+				t.Errorf("status = %q, want it left %q", nl.Status, status)
+			}
+		})
+	}
+}
+
+// On a Saturday, today's issue is the weekly one BuildWeekly made on Friday.
+// SendWeekly sends it on its own schedule and checks; the daily path does
+// not send it.
+func TestSendDaily_RefusesTheWeeklyIssue(t *testing.T) {
+	cases := []struct {
+		name  string
+		build func(svc *Service, database *db.Database, pick int64) *db.Newsletter
+	}{
+		{"as built", func(svc *Service, _ *db.Database, pick int64) *db.Newsletter {
+			return &db.Newsletter{Date: svc.todayDate(), Subject: weeklySubject + " — " + svc.todayDate(),
+				Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &pick}
+		}},
+		// Known only by its candidates.
+		{"renamed, no pick", func(svc *Service, _ *db.Database, _ int64) *db.Newsletter {
+			return &db.Newsletter{Date: svc.todayDate(), Subject: "This week", Status: "approved", ArticleCount: 1}
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			setTemplateDir(t)
+			database, cleanup := setupTestDB(t)
+			defer cleanup()
+			live := publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+			subscribe(t, database)
+
+			sender := &mockSender{}
+			svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+			nl := c.build(svc, database, live)
+			nl.HTMLContent = "<p>" + liveTitle + "</p>"
+			id, err := database.CreateNewsletter(nl)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := database.CreateNewsletterCandidate(&db.NewsletterCandidate{NewsletterID: id, ArticleID: live, Rank: 1, Featured: true}); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := svc.SendDaily(); err == nil || !strings.Contains(err.Error(), "weekly") {
+				t.Errorf("SendDaily() = %v, want a refusal naming the weekly issue", err)
+			}
+			if len(sender.calls) != 0 {
+				t.Error("the daily path sent the weekly issue")
+			}
+			if got, _ := database.GetNewsletterByDate(svc.todayDate()); got == nil || got.Status == "sent" {
+				t.Error("the weekly issue should be left for SendWeekly")
+			}
+		})
 	}
 }
 

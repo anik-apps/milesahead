@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -26,6 +27,9 @@ type MailSender interface {
 
 // templateDir is the base directory for email templates. Override for testing.
 var templateDir = "templates/email"
+
+// weeklySubject opens every weekly issue's subject.
+const weeklySubject = "MilesAhead Weekly"
 
 // Service handles newsletter generation and delivery.
 type Service struct {
@@ -417,7 +421,7 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	// Create newsletter record with status draft.
 	nl := &db.Newsletter{
 		Date:         sendDate,
-		Subject:      fmt.Sprintf("MilesAhead Weekly — %s", sendDate),
+		Subject:      fmt.Sprintf("%s — %s", weeklySubject, sendDate),
 		HTMLContent:  "", // Will be rendered at send time.
 		Status:       "draft",
 		ArticleCount: len(articles),
@@ -792,7 +796,34 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 	return nl, nil
 }
 
-// SendDaily generates (if needed) and sends the daily newsletter to all confirmed subscribers.
+// ErrNothingLive is SendDaily's answer when no article from the last 24 hours
+// is still live, so there was nothing to send.
+var ErrNothingLive = errors.New("nothing sent: no article from the last 24 hours is still live")
+
+// isWeekly reports whether nl is a weekly issue. A weekly is dated the
+// Saturday it goes out, so on a Saturday it holds the date a daily would.
+// Only a weekly has a Scout's Pick, a Card of the Week or candidates, and its
+// subject says so.
+func (s *Service) isWeekly(nl *db.Newsletter) (bool, error) {
+	if nl.ScoutsPickArticleID != nil || nl.CardOfWeekID != nil || strings.HasPrefix(nl.Subject, weeklySubject) {
+		return true, nil
+	}
+	candidates, err := s.db.ListCandidatesForNewsletter(nl.ID)
+	if err != nil {
+		return false, err
+	}
+	return len(candidates) > 0, nil
+}
+
+// SendDaily sends today's daily newsletter to all confirmed subscribers,
+// generating it first if there is none. The admin's "send" button calls it.
+//
+// The issue is rendered again from the last 24 hours' live articles as it
+// is sent. Its stored HTML was rendered when it was generated, perhaps days
+// of admin inaction earlier, and may hold an offer that has ended since; it
+// is never sent. Today's issue is not sent at all when it is the weekly one
+// (SendWeekly sends that, on its own checks) or an admin has held or skipped
+// it.
 func (s *Service) SendDaily() error {
 	date := s.todayDate()
 
@@ -808,14 +839,26 @@ func (s *Service) SendDaily() error {
 			return fmt.Errorf("generating newsletter: %w", err)
 		}
 		if nl == nil {
-			// No articles to send.
-			return nil
+			return ErrNothingLive
 		}
 	}
 
-	// Already sent?
-	if nl.Status == "sent" {
+	switch nl.Status {
+	case "sent":
 		return nil
+	case "draft", "approved", "auto_approved":
+		// Sendable.
+	case "hold":
+		return fmt.Errorf("today's newsletter is on hold, so it was not sent")
+	default:
+		return fmt.Errorf("today's newsletter is %s, so it was not sent", nl.Status)
+	}
+	weekly, err := s.isWeekly(nl)
+	if err != nil {
+		return fmt.Errorf("checking whether today's newsletter is the weekly: %w", err)
+	}
+	if weekly {
+		return fmt.Errorf("today's newsletter is the weekly issue, which goes out on its own schedule; it was not sent")
 	}
 
 	// Fetch confirmed subscribers.
@@ -827,12 +870,29 @@ func (s *Service) SendDaily() error {
 		return nil
 	}
 
+	articles, err := s.listRecentApproved()
+	if err != nil {
+		return fmt.Errorf("reloading articles for send: %w", err)
+	}
+	if len(articles) == 0 {
+		slog.Warn("daily newsletter not sent: no article in it is still live", "date", date)
+		return ErrNothingLive
+	}
+	htmlContent, err := renderNewsletter(articles, date, s.baseURL())
+	if err != nil {
+		return fmt.Errorf("re-rendering newsletter at send time: %w", err)
+	}
+	// Keep the stored copy as sent, for the admin's history.
+	if err := s.db.UpdateNewsletterHTML(nl.ID, htmlContent); err != nil {
+		slog.Warn("failed to store the daily newsletter as sent", "error", err, "id", nl.ID)
+	}
+
 	recipients := make([]string, len(subscribers))
 	for i, sub := range subscribers {
 		recipients[i] = sub.Email
 	}
 
-	if err := s.sender.SendNewsletter(nl.Subject, nl.HTMLContent, recipients); err != nil {
+	if err := s.sender.SendNewsletter(nl.Subject, htmlContent, recipients); err != nil {
 		slog.Error("newsletter send failed", "error", err)
 		return fmt.Errorf("sending newsletter: %w", err)
 	}
