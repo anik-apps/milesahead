@@ -131,7 +131,12 @@ func summary(content string) string {
 // listRecentApproved fetches approved articles published in the last 24
 // hours whose offer has not ended.
 func (s *Service) listRecentApproved() ([]db.GeneratedArticle, error) {
-	since := time.Now().UTC().Add(-24 * time.Hour)
+	return s.listLiveSince(time.Now().UTC().Add(-24 * time.Hour))
+}
+
+// listLiveSince fetches approved articles published since since whose offer
+// has not ended.
+func (s *Service) listLiveSince(since time.Time) ([]db.GeneratedArticle, error) {
 	articles, err := s.db.ListApprovedArticlesSince(since)
 	if err != nil {
 		return nil, err
@@ -777,12 +782,14 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 
 	subject := fmt.Sprintf("MilesAhead Daily Digest — %s", date)
 
+	created := time.Now().UTC()
 	nl := &db.Newsletter{
 		Date:         date,
 		Subject:      subject,
 		HTMLContent:  htmlContent,
 		Status:       "draft",
 		ArticleCount: len(articles),
+		CreatedAt:    &created,
 	}
 
 	id, err := s.db.CreateNewsletter(nl)
@@ -796,9 +803,36 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 	return nl, nil
 }
 
-// ErrNothingLive is SendDaily's answer when no article from the last 24 hours
-// is still live, so there was nothing to send.
-var ErrNothingLive = errors.New("nothing sent: no article from the last 24 hours is still live")
+// SendDaily's answers when it sends nothing, so the admin is never told a
+// newsletter went out when none did.
+var (
+	// ErrNothingLive: no article for today's issue is still live.
+	ErrNothingLive = errors.New("nothing sent: no article for today's newsletter is still live")
+	// ErrAlreadySent: today's issue has gone out already.
+	ErrAlreadySent = errors.New("nothing sent: today's newsletter was already sent")
+	// ErrNoSubscribers: there is no one to send it to.
+	ErrNoSubscribers = errors.New("nothing sent: there are no confirmed subscribers")
+)
+
+// dailySince is when the articles in today's daily nl may have been
+// published from: 24 hours before it was generated, or before now if that
+// is earlier. An issue generated in the morning and sent in the afternoon
+// keeps its morning articles. An issue stored before generation times were
+// recorded counts from 24 hours before the start of its date, which covers
+// whenever that day it was generated.
+func (s *Service) dailySince(nl *db.Newsletter, now time.Time) time.Time {
+	since := now.Add(-24 * time.Hour)
+	var from time.Time
+	if nl.CreatedAt != nil {
+		from = nl.CreatedAt.Add(-24 * time.Hour)
+	} else if day, err := time.ParseInLocation("2006-01-02", nl.Date, s.loc); err == nil {
+		from = day.Add(-24 * time.Hour)
+	}
+	if !from.IsZero() && from.Before(since) {
+		since = from
+	}
+	return since.UTC()
+}
 
 // isWeekly reports whether nl is a weekly issue. A weekly is dated the
 // Saturday it goes out, so on a Saturday it holds the date a daily would.
@@ -819,11 +853,13 @@ func (s *Service) isWeekly(nl *db.Newsletter) (bool, error) {
 // SendDaily sends today's daily newsletter to all confirmed subscribers,
 // generating it first if there is none. The admin's "send" button calls it.
 //
-// The issue is rendered again from the last 24 hours' live articles as it
-// is sent. Its stored HTML was rendered when it was generated, hours earlier
-// perhaps, and may hold an offer that has ended since; it is never sent.
-// Today's issue is not sent at all when it is the weekly one (SendWeekly
-// sends that, on its own checks) or an admin has held or skipped it.
+// The issue is rendered again as it is sent, from the live articles of the
+// 24 hours before it was generated and any published since (dailySince).
+// Its stored HTML was rendered when it was generated, hours earlier perhaps,
+// and may hold an offer that has ended since; it is never sent. Today's
+// issue is not sent at all when it is the weekly one (SendWeekly sends that,
+// on its own checks) or an admin has held or skipped it. Whenever nothing
+// goes out, SendDaily returns an error saying why.
 func (s *Service) SendDaily() error {
 	date := s.todayDate()
 
@@ -845,7 +881,7 @@ func (s *Service) SendDaily() error {
 
 	switch nl.Status {
 	case "sent":
-		return nil
+		return ErrAlreadySent
 	case "draft", "approved", "auto_approved":
 		// Sendable.
 	case "hold":
@@ -867,10 +903,10 @@ func (s *Service) SendDaily() error {
 		return fmt.Errorf("listing subscribers: %w", err)
 	}
 	if len(subscribers) == 0 {
-		return nil
+		return ErrNoSubscribers
 	}
 
-	articles, err := s.listRecentApproved()
+	articles, err := s.listLiveSince(s.dailySince(nl, time.Now()))
 	if err != nil {
 		return fmt.Errorf("reloading articles for send: %w", err)
 	}

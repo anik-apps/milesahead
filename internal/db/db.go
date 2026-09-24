@@ -562,10 +562,15 @@ func (d *Database) HasVoted(articleID int64, ipHash string) (bool, error) {
 
 // --- Newsletter CRUD ---
 
+// CreateNewsletter stores n. Its CreatedAt is now unless n sets it.
 func (d *Database) CreateNewsletter(n *Newsletter) (int64, error) {
+	created := time.Now().UTC()
+	if n.CreatedAt != nil {
+		created = n.CreatedAt.UTC()
+	}
 	res, err := d.db.Exec(
-		`INSERT INTO newsletters (date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		n.Date, n.Subject, n.HTMLContent, n.Status, n.ArticleCount, n.CardOfWeekID, n.ScoutsPickArticleID,
+		`INSERT INTO newsletters (date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		n.Date, n.Subject, n.HTMLContent, n.Status, n.ArticleCount, n.CardOfWeekID, n.ScoutsPickArticleID, created,
 	)
 	if err != nil {
 		return 0, err
@@ -576,8 +581,8 @@ func (d *Database) CreateNewsletter(n *Newsletter) (int64, error) {
 func (d *Database) GetNewsletterByDate(date string) (*Newsletter, error) {
 	n := &Newsletter{}
 	err := d.db.QueryRow(
-		`SELECT id, date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, sent_at FROM newsletters WHERE date = ?`, date,
-	).Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.CardOfWeekID, &n.ScoutsPickArticleID, &n.SentAt)
+		`SELECT id, date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, sent_at, created_at FROM newsletters WHERE date = ?`, date,
+	).Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.CardOfWeekID, &n.ScoutsPickArticleID, &n.SentAt, &n.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -592,7 +597,7 @@ func (d *Database) MarkNewsletterSent(id int64) error {
 // ListNewsletters returns all newsletters ordered by date descending.
 func (d *Database) ListNewsletters() ([]Newsletter, error) {
 	rows, err := d.db.Query(
-		`SELECT id, date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, sent_at FROM newsletters ORDER BY date DESC`,
+		`SELECT id, date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, sent_at, created_at FROM newsletters ORDER BY date DESC`,
 	)
 	if err != nil {
 		return nil, err
@@ -602,7 +607,7 @@ func (d *Database) ListNewsletters() ([]Newsletter, error) {
 	var newsletters []Newsletter
 	for rows.Next() {
 		var n Newsletter
-		if err := rows.Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.CardOfWeekID, &n.ScoutsPickArticleID, &n.SentAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.CardOfWeekID, &n.ScoutsPickArticleID, &n.SentAt, &n.CreatedAt); err != nil {
 			return nil, err
 		}
 		newsletters = append(newsletters, n)

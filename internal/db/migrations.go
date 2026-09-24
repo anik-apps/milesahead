@@ -187,6 +187,9 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE generated_articles ADD COLUMN linked_cards_heading TEXT DEFAULT ''`,
 		`ALTER TABLE newsletters ADD COLUMN card_of_week_id INTEGER DEFAULT NULL`,
 		`ALTER TABLE newsletters ADD COLUMN scouts_pick_article_id INTEGER DEFAULT NULL`,
+		// When an issue was generated: a daily sent later is re-rendered
+		// from the articles it was generated from.
+		`ALTER TABLE newsletters ADD COLUMN created_at DATETIME DEFAULT NULL`,
 		`ALTER TABLE reference_pages ADD COLUMN annual_fee_amount INTEGER DEFAULT 0`,
 		`ALTER TABLE reference_pages ADD COLUMN annual_fee_note TEXT DEFAULT ''`,
 		`ALTER TABLE reference_pages ADD COLUMN welcome_bonus_text TEXT DEFAULT ''`,

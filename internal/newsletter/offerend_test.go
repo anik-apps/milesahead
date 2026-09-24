@@ -496,3 +496,107 @@ func TestSendDaily_DailyWithAdminPicksIsStillSent(t *testing.T) {
 		t.Error("the daily should have been sent")
 	}
 }
+
+// publishedAt moves an article's publication time, as if it had gone out
+// then.
+func publishedAt(t *testing.T, database *db.Database, id int64, at time.Time) {
+	t.Helper()
+	if _, err := database.DB().Exec(`UPDATE generated_articles SET published_at = ? WHERE id = ?`, at.UTC(), id); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A daily generated in the morning and sent in the afternoon is re-rendered
+// from the articles it was generated from. Re-rendering from the 24 hours
+// before the send silently dropped the morning's older articles.
+func TestSendDaily_KeepsTheStoredIssuesArticles(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	now := time.Now()
+	// Published 30 hours ago: in an issue generated 10 hours ago, but more
+	// than 24 hours before the send.
+	early := publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	publishedAt(t, database, early, now.Add(-30*time.Hour))
+	gone := publish(t, database, endedTitle, "citi-lhw", endedDeadline, false)
+	publishedAt(t, database, gone, now.Add(-30*time.Hour))
+	subscribe(t, database)
+
+	sender := &mockSender{}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	generated := now.Add(-10 * time.Hour)
+	if _, err := database.CreateNewsletter(&db.Newsletter{
+		Date: svc.todayDate(), Subject: "MilesAhead Daily Digest — " + svc.todayDate(),
+		HTMLContent: "<p>" + liveTitle + "</p><p>" + endedTitle + "</p>", Status: "draft", ArticleCount: 2,
+		CreatedAt: &generated,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.SendDaily(); err != nil {
+		t.Fatalf("SendDaily() = %v, want the stored issue's live article sent", err)
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("want one send, got %d", len(sender.calls))
+	}
+	html := sender.calls[0].html
+	if !strings.Contains(html, "/article/united-ihg") {
+		t.Error("the re-rendered daily dropped a live article the stored issue held")
+	}
+	if strings.Contains(html, endedTitle) {
+		t.Error("the re-rendered daily sent an ended offer")
+	}
+}
+
+// An issue stored before generation times were recorded has none; its
+// articles are taken from 24 hours before the start of its date.
+func TestSendDaily_IssueWithoutAGenerationTime(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	sender := &mockSender{}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	startOfToday, err := time.ParseInLocation("2006-01-02", svc.todayDate(), time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Late on the day before yesterday's end: in any issue generated today.
+	early := publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	publishedAt(t, database, early, startOfToday.Add(-23*time.Hour))
+	subscribe(t, database)
+	id := storeDaily(t, database, svc, "approved", "<p>"+liveTitle+"</p>")
+	if _, err := database.DB().Exec(`UPDATE newsletters SET created_at = NULL WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if nl, err := database.GetNewsletterByDate(svc.todayDate()); err != nil || nl.CreatedAt != nil {
+		t.Fatalf("want a stored issue with no generation time, got %+v, %v", nl, err)
+	}
+
+	if err := svc.SendDaily(); err != nil {
+		t.Fatalf("SendDaily() = %v", err)
+	}
+	if len(sender.calls) != 1 || !strings.Contains(sender.calls[0].html, "/article/united-ihg") {
+		t.Error("the daily should have been sent with the article from its day")
+	}
+}
+
+// The generation time is recorded, and read back.
+func TestGenerateDaily_RecordsWhenItWasGenerated(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	svc := NewService(database, &mockSender{}, config.NewsletterConfig{Timezone: "UTC"})
+
+	before := time.Now().Add(-time.Second)
+	if _, err := svc.GenerateDaily(); err != nil {
+		t.Fatal(err)
+	}
+	nl, err := database.GetNewsletterByDate(svc.todayDate())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nl.CreatedAt == nil || nl.CreatedAt.Before(before) || nl.CreatedAt.After(time.Now().Add(time.Second)) {
+		t.Errorf("CreatedAt = %v, want about now", nl.CreatedAt)
+	}
+}

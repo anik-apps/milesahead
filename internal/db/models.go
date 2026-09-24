@@ -121,6 +121,9 @@ type Newsletter struct {
 	CardOfWeekID        *int64     `json:"card_of_week_id"`
 	ScoutsPickArticleID *int64     `json:"scouts_pick_article_id"`
 	SentAt              *time.Time `json:"sent_at"`
+	// CreatedAt is when the issue was generated. Issues stored before it
+	// was recorded have none.
+	CreatedAt *time.Time `json:"created_at"`
 }
 
 type NewsletterCandidate struct {

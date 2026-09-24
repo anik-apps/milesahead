@@ -2,6 +2,7 @@ package newsletter
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -257,8 +258,9 @@ func TestSendDaily_NoSubscribers(t *testing.T) {
 	sender := &mockSender{}
 	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
 
-	if err := svc.SendDaily(); err != nil {
-		t.Fatalf("SendDaily() error: %v", err)
+	// Nothing goes out, and the admin is told so rather than "sent".
+	if err := svc.SendDaily(); !errors.Is(err, ErrNoSubscribers) {
+		t.Fatalf("SendDaily() = %v, want ErrNoSubscribers", err)
 	}
 
 	// Sender should not have been called.
@@ -293,9 +295,10 @@ func TestSendDaily_AlreadySent(t *testing.T) {
 		t.Fatalf("expected 1 send call, got %d", len(sender.calls))
 	}
 
-	// Send again — should be a no-op.
-	if err := svc.SendDaily(); err != nil {
-		t.Fatalf("second SendDaily() error: %v", err)
+	// Send again — nothing goes out, and the admin is told so rather than
+	// "sent".
+	if err := svc.SendDaily(); !errors.Is(err, ErrAlreadySent) {
+		t.Fatalf("second SendDaily() = %v, want ErrAlreadySent", err)
 	}
 	if len(sender.calls) != 1 {
 		t.Errorf("expected still 1 send call after resend, got %d", len(sender.calls))
