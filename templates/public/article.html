@@ -8,6 +8,9 @@
 {{else}}
 <article class="article-detail">
     <a href="/" class="back-link">&larr; Back to all articles</a>
+    {{if .OfferEnded}}
+    <p class="offer-ended-banner" role="note">This offer ended on {{.OfferEndedOn}}.</p>
+    {{end}}
     {{if .Article.ImageURL}}
     <div class="article-hero">
         <img src="{{.Article.ImageURL}}" alt="{{.Article.Title}}">
@@ -18,7 +21,7 @@
     {{end}}
 
     <header class="article-header">
-        <span class="type-badge badge-{{.Article.Type}}">{{.Article.Type}}</span>
+        <span class="type-badge badge-{{.Article.Type}}">{{.Article.Type}}</span>{{if .OfferEnded}} <span class="ended-badge">Ended</span>{{end}}
         <h1>{{.Article.Title}}</h1>
         <time class="published-date">{{.PublishedAt}}</time>
         {{if .ArticleTags}}

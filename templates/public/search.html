@@ -18,8 +18,8 @@
             <h2>Articles</h2>
             <ul class="search-list">
                 {{range .Articles}}
-                <li class="search-item">
-                    <a href="/article/{{.Slug}}" class="search-item-title">{{.Title}}</a>
+                <li class="search-item{{if .Ended}} is-ended{{end}}">
+                    {{if .Ended}}<span class="ended-badge">Ended</span> {{end}}<a href="/article/{{.Slug}}" class="search-item-title">{{.Title}}</a>
                     <p class="search-item-excerpt">{{.Excerpt | safeHTML}}</p>
                 </li>
                 {{end}}

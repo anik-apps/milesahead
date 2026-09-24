@@ -14,6 +14,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/offer"
 	"github.com/kumaranik/milesahead/internal/vote"
 )
 
@@ -76,6 +77,17 @@ type App struct {
 	// infographicVersions is a content hash per card slug, appended to that
 	// card's infographic URLs so a replaced image is not served from cache.
 	infographicVersions map[string]string
+	// now is the clock offers are judged against; tests replace it.
+	now func() time.Time
+	// siteLoc is the site's timezone. An offer's end date is a calendar day
+	// there, so "has it ended" depends on the date in this zone, not UTC's.
+	siteLoc *time.Location
+}
+
+// offerToday is the site's current date ("2006-01-02"), the calendar offer
+// end dates are compared against.
+func (app *App) offerToday() string {
+	return offer.Today(app.now(), app.siteLoc)
 }
 
 // WaitBackground blocks until handler-started background work finishes.
@@ -96,6 +108,10 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 		shutdownCtx:    shutdownCtx,
 		mux:            http.NewServeMux(),
 		startedAt:      time.Now(),
+		now:            time.Now,
+		// newsletter.timezone is the app's one configured timezone; the
+		// newsletter schedule already uses it.
+		siteLoc: offer.Location(cfg.Newsletter.Timezone),
 	}
 
 	if err := app.loadTemplates("templates"); err != nil {
@@ -119,6 +135,10 @@ func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *artic
 		shutdownCtx:    shutdownCtx,
 		mux:            http.NewServeMux(),
 		startedAt:      time.Now(),
+		now:            time.Now,
+		// newsletter.timezone is the app's one configured timezone; the
+		// newsletter schedule already uses it.
+		siteLoc: offer.Location(cfg.Newsletter.Timezone),
 	}
 
 	if err := app.loadTemplates(templateDir); err != nil {
