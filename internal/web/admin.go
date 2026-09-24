@@ -632,13 +632,20 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 	}
 	endedNote := ""
 	switch {
+	case endedCount > 0 && !app.weekHasLiveArticle(currentNL.Date):
+		// SendWeekly re-renders from the week's live articles and skips the
+		// issue when there are none, so there is no Scout's Pick to pass on.
+		endedNote = "No article from this issue's week is still live, so it will not be sent."
 	case endedCount == 1:
 		endedNote = "1 offer in this preview has ended since it was built; it is left out when the issue is sent."
+		if pickEnded {
+			endedNote += " Scout's Pick passes to the top article still in it."
+		}
 	case endedCount > 1:
 		endedNote = fmt.Sprintf("%d offers in this preview have ended since it was built; they are left out when the issue is sent.", endedCount)
-	}
-	if pickEnded {
-		endedNote += " Scout's Pick passes to the top article still in it."
+		if pickEnded {
+			endedNote += " Scout's Pick passes to the top article still in it."
+		}
 	}
 
 	// Load current card of the week info.
@@ -1514,4 +1521,27 @@ func parseSectionsFromForm(r *http.Request) []db.ReferenceSection {
 		})
 	}
 	return sections
+}
+
+// weekHasLiveArticle reports whether the weekly issue dated sendDate would go
+// out: SendWeekly sends the approved articles of the seven days before
+// sendDate whose offers have not ended, and nothing when none are left. On
+// an unreadable date or a database error it assumes the issue goes out,
+// which keeps the preview's usual note.
+func (app *App) weekHasLiveArticle(sendDate string) bool {
+	day, err := time.Parse("2006-01-02", sendDate)
+	if err != nil {
+		return true
+	}
+	articles, err := app.db.ListApprovedArticlesSince(day.AddDate(0, 0, -7))
+	if err != nil {
+		return true
+	}
+	today := app.offerToday()
+	for _, a := range articles {
+		if !offer.Ended(a.ExpiresOn, today) {
+			return true
+		}
+	}
+	return false
 }

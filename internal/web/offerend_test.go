@@ -496,3 +496,41 @@ func TestFeed_MarksEndedOffers(t *testing.T) {
 		}
 	}
 }
+
+// When every article of the issue's week has ended, SendWeekly sends nothing,
+// so the preview says the issue will not go out and does not promise a new
+// Scout's Pick.
+func TestAdminNewsletter_NoteWhenNothingInTheWeekIsLive(t *testing.T) {
+	app := offerApp(t)
+	hash, err := bcrypt.GenerateFromPassword([]byte("testpassword123"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.cfg.Admin.PasswordHash = string(hash)
+	publishOffer(t, app, "only-offer", "The Only Offer This Week", "deal", "April 8, 2026", `["hotels"]`)
+	only, err := app.db.GetGeneratedArticleBySlug("only-offer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sendDate := time.Now().AddDate(0, 0, 3).Format("2006-01-02")
+	nlID, err := app.db.CreateNewsletter(&db.Newsletter{
+		Date: sendDate, Subject: "MilesAhead Weekly", Status: "auto_approved",
+		HTMLContent: "<p>" + only.Title + "</p>", ArticleCount: 1, ScoutsPickArticleID: &only.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.db.CreateNewsletterCandidate(&db.NewsletterCandidate{NewsletterID: nlID, ArticleID: only.ID, Rank: 1, Featured: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	body := doAdminGET(t, app, "/admin/newsletter", session).Body.String()
+	note := regexp.MustCompile(`(?s)<p class="preview-note" role="note"[^>]*>(.*?)</p>`).FindStringSubmatch(body)
+	if note == nil {
+		t.Fatal("the preview should carry a note")
+	}
+	if want := "No article from this issue&#39;s week is still live, so it will not be sent."; note[1] != want {
+		t.Errorf("preview note = %q, want %q", note[1], want)
+	}
+}
