@@ -133,6 +133,9 @@ func main() {
 	if cfg.AI.HFBaseURL != "" {
 		imageScorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, visionModel)
 	}
+	// Have Wikimedia render new thumbnail sizes before the vision model
+	// fetches them, so a slow first render does not fail its scoring.
+	imageScorer.SetWarmer(imageSearcher.Warm)
 
 	// Enrichment runs as a reconciliation pass rather than inline in article
 	// creation. Inline, each step was a best-effort call that logged a warning

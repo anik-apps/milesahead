@@ -2,9 +2,11 @@ package images
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -49,15 +51,21 @@ type Searcher struct {
 
 	// sleep waits before retrying a throttled probe; replaced in tests.
 	sleep func(time.Duration)
+	// Probe timing: reachableTimeout, renderTimeout and maxProbeDuration,
+	// held here so tests can shorten them.
+	probeTimeout, renderTimeout, probeBudget time.Duration
 }
 
 // NewSearcher creates a new Searcher with the given API keys.
 func NewSearcher(unsplashKey, pexelsKey string) *Searcher {
 	return &Searcher{
-		unsplashKey: unsplashKey,
-		pexelsKey:   pexelsKey,
-		httpClient:  &http.Client{Timeout: 15 * time.Second},
-		sleep:       time.Sleep,
+		unsplashKey:   unsplashKey,
+		pexelsKey:     pexelsKey,
+		httpClient:    &http.Client{Timeout: 15 * time.Second},
+		sleep:         time.Sleep,
+		probeTimeout:  reachableTimeout,
+		renderTimeout: renderTimeout,
+		probeBudget:   maxProbeDuration,
 	}
 }
 
@@ -515,10 +523,23 @@ func (s *Searcher) searchWikimedia(query string) ([]ImageCandidate, error) {
 	return candidates, nil
 }
 
-// reachableTimeout bounds a single liveness probe. It is deliberately short:
-// a provider that cannot answer in a few seconds is not one we want on the
-// homepage, and findImage may probe several candidates in a row.
+// reachableTimeout bounds one request of a liveness probe. It is deliberately
+// short: a provider that cannot answer in a few seconds is not one we want on
+// the homepage, and findImage may probe several candidates in a row.
 const reachableTimeout = 8 * time.Second
+
+// Wikimedia renders a thumbnail size the first time anyone asks for it, and
+// the sized URLs the search builds are often sizes nobody has asked for. On
+// ~30 fresh sizes that took 0.2-3 s mostly, 4-7 s several times and ~10 s
+// once -- past reachableTimeout, so the best candidate was sometimes refused
+// for being slow once. A Wikimedia thumbnail therefore gets renderTimeout per
+// request and, like a 429, one retry after a timeout. maxProbeDuration bounds
+// a whole probe, retries and waits included: no retry starts, and no request
+// runs, past it.
+const (
+	renderTimeout    = 15 * time.Second
+	maxProbeDuration = 30 * time.Second
+)
 
 // Byte caps for a picked image. Sized URLs sit far below them -- a 1280px
 // Wikimedia step is ~300 KB, a 500px one ~60 KB, Unsplash and Pexels ship
@@ -574,7 +595,12 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 	if rawURL == "" {
 		return Probe{Size: -1}
 	}
-	client := &http.Client{Timeout: reachableTimeout, Transport: s.httpClient.Transport}
+	perRequest, renders := s.probeTimeout, rendersOnDemand(rawURL)
+	if renders {
+		perRequest = s.renderTimeout
+	}
+	deadline := time.Now().Add(s.probeBudget)
+	timeoutRetried := false
 	for attempt := 1; ; attempt++ {
 		req, err := s.newRequest(rawURL)
 		if err != nil {
@@ -582,8 +608,23 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 		}
 		req.Header.Set("Range", "bytes=0-0")
 
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			// Only reachable after a wait or retry; a zero Timeout would
+			// mean none at all.
+			slog.Warn("image liveness probe ran out of time", "url", rawURL)
+			return Probe{Size: -1}
+		}
+		client := &http.Client{Timeout: min(perRequest, remaining), Transport: s.httpClient.Transport}
 		resp, err := client.Do(req)
 		if err != nil {
+			if renders && isTimeout(err) && !timeoutRetried &&
+				attempt < maxProbeAttempts && time.Until(deadline) > 0 {
+				timeoutRetried = true
+				slog.Info("image probe timed out while Wikimedia may be rendering the size; retrying",
+					"url", rawURL, "timeout", client.Timeout)
+				continue
+			}
 			slog.Warn("image liveness probe failed", "url", rawURL, "error", err)
 			return Probe{Size: -1}
 		}
@@ -614,14 +655,53 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxProbeAttempts {
-			s.sleep(retryAfter(resp.Header.Get("Retry-After")))
-			continue
+			if wait := retryAfter(resp.Header.Get("Retry-After")); time.Until(deadline) > wait {
+				s.sleep(wait)
+				continue
+			}
 		}
 		if !p.OK && p.Status != 0 {
 			slog.Warn("image URL is not fetchable", "url", rawURL, "status", p.Status)
 		}
 		return p
 	}
+}
+
+// isTimeout reports whether a request failed by running out of time.
+func isTimeout(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
+}
+
+// rendersOnDemand reports whether rawURL is a Wikimedia thumbnail, which the
+// host renders the first time that size is asked for.
+func rendersOnDemand(rawURL string) bool {
+	f, ok := parseWikimedia(rawURL)
+	return ok && f.width > 0
+}
+
+// Warm requests each Wikimedia thumbnail in urls once, so that the size has
+// been rendered before another client asks for it. The vision model fetches
+// candidates' thumbnails itself, and as the first client to ask for a new
+// size it met a slow render or a 429 -- and the candidate took the scorer's
+// failure penalty however good the image was. Other URLs are served from
+// stored files and are skipped. The requests run side by side, so warming
+// takes as long as the slowest probe (at most maxProbeDuration).
+func (s *Searcher) Warm(urls []string) {
+	var wg sync.WaitGroup
+	seen := map[string]bool{}
+	for _, u := range urls {
+		if seen[u] || !rendersOnDemand(u) {
+			continue
+		}
+		seen[u] = true
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.Probe(u, 0)
+		}()
+	}
+	wg.Wait()
 }
 
 // measureBody counts body up to one byte past limit. ok is false if it cannot

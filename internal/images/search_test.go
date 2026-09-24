@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -307,6 +309,113 @@ func TestProbe_RetriesThrottledRequests(t *testing.T) {
 	calls = -100
 	if s.Probe("https://upload.wikimedia.org/x.jpg", 0).OK {
 		t.Error("Probe OK for a host that only ever answers 429")
+	}
+}
+
+// slowHost answers every request with a tiny image, after the delay planned
+// for that path's nth request (none once the plan runs out), and counts the
+// requests per path.
+type slowHost struct {
+	mu    sync.Mutex
+	plan  map[string][]time.Duration
+	calls map[string]int
+}
+
+func (h *slowHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.mu.Lock()
+	n := h.calls[r.URL.Path]
+	h.calls[r.URL.Path]++
+	var delay time.Duration
+	if plan := h.plan[r.URL.Path]; n < len(plan) {
+		delay = plan[n]
+	}
+	h.mu.Unlock()
+	time.Sleep(delay)
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Write([]byte("j"))
+}
+
+func (h *slowHost) count(path string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.calls[path]
+}
+
+// Wikimedia renders a thumbnail size the first time anyone asks for it. On
+// ~30 fresh sizes that took 0.2-3 s mostly, 4-7 s several times and ~10 s
+// once, and the probe gave up at 8 s without a retry, so the best Wikimedia
+// candidate was sometimes refused for being slow once. Its thumbnails get a
+// longer timeout and one retry after a timeout, within a bound on the whole
+// probe; everything else keeps the short timeout and no retry.
+func TestProbe_WaitsForWikimediaRenders(t *testing.T) {
+	const thumb = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/L.jpg/"
+	slow, slower := 100*time.Millisecond, 250*time.Millisecond
+	host := &slowHost{calls: map[string]int{}, plan: map[string][]time.Duration{
+		"/wikipedia/commons/thumb/6/6c/L.jpg/500px-L.jpg":  {slow},
+		"/wikipedia/commons/thumb/6/6c/L.jpg/960px-L.jpg":  {slower},
+		"/wikipedia/commons/thumb/6/6c/L.jpg/1280px-L.jpg": {slower, slower, slower},
+		"/wikipedia/commons/6/6c/L.jpg":                    {slow},
+		"/other.jpg":                                       {slow},
+	}}
+	s := stubSearcher(t, host.ServeHTTP)
+	s.probeTimeout = 50 * time.Millisecond
+	s.renderTimeout = 150 * time.Millisecond
+	s.probeBudget = time.Second
+
+	for _, tt := range []struct {
+		name  string
+		url   string
+		ok    bool
+		calls int
+	}{
+		{"render slower than the usual timeout", thumb + "500px-L.jpg", true, 1},
+		{"render slower than the render timeout, then done", thumb + "960px-L.jpg", true, 2},
+		{"retried once, not again", thumb + "1280px-L.jpg", false, 2},
+		// Originals and other hosts serve stored files: nothing to render.
+		{"Wikimedia original", "https://upload.wikimedia.org/wikipedia/commons/6/6c/L.jpg", false, 1},
+		{"other host", "https://img.example/other.jpg", false, 1},
+	} {
+		u, _ := url.Parse(tt.url)
+		if got := s.Probe(tt.url, 0).OK; got != tt.ok {
+			t.Errorf("%s: OK = %v, want %v", tt.name, got, tt.ok)
+		}
+		if got := host.count(u.Path); got != tt.calls {
+			t.Errorf("%s: %d requests, want %d", tt.name, got, tt.calls)
+		}
+	}
+
+	// The whole probe, retry included, stays within its budget.
+	s.probeBudget = 200 * time.Millisecond
+	host.plan["/wikipedia/commons/thumb/7/7e/M.jpg/500px-M.jpg"] = []time.Duration{slower, slower}
+	start := time.Now()
+	s.Probe("https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/M.jpg/500px-M.jpg", 0)
+	if elapsed := time.Since(start); elapsed > 350*time.Millisecond {
+		t.Errorf("probe took %v; its budget is 200 ms", elapsed)
+	}
+}
+
+// Warm asks for the Wikimedia thumbnails in a list, once each, so the vision
+// model is not the first client to request a size that has to be rendered.
+// Other URLs are served from stored files and are left alone.
+func TestWarm_RequestsOnlyWikimediaThumbnails(t *testing.T) {
+	host := &slowHost{calls: map[string]int{}}
+	s := stubSearcher(t, host.ServeHTTP)
+	a := "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/A.jpg/500px-A.jpg"
+	b := "https://thumb.wikimedia.org/wikipedia/commons/thumb/7/7e/B.jpg/500px-B.jpg"
+	s.Warm([]string{a, b, a,
+		"https://upload.wikimedia.org/wikipedia/commons/6/6c/A.jpg",
+		"https://live.staticflickr.com/1/2_abc.jpg",
+		"",
+	})
+	for path, want := range map[string]int{
+		"/wikipedia/commons/thumb/6/6c/A.jpg/500px-A.jpg": 1,
+		"/wikipedia/commons/thumb/7/7e/B.jpg/500px-B.jpg": 1,
+		"/wikipedia/commons/6/6c/A.jpg":                   0,
+		"/1/2_abc.jpg":                                    0,
+	} {
+		if got := host.count(path); got != want {
+			t.Errorf("%s: %d requests, want %d", path, got, want)
+		}
 	}
 }
 

@@ -76,6 +76,13 @@ The vision model (`meta/llama-3.2-90b-vision-instruct`) receives the actual imag
 
 If all vision API calls fail, the pipeline falls back to the text-phase scores with no penalty.
 
+The vision model fetches each thumbnail itself. A sized Wikimedia thumbnail is
+often a size nobody has asked for, which Wikimedia renders on the first
+request -- usually in 0.2-3 s, sometimes 4-10 s, or with a 429 -- and a failed
+fetch costs the candidate a x0.6 penalty. So before any thumbnail is sent,
+the Wikimedia ones among the top 5 are requested once, side by side
+(`Searcher.Warm`), and the vision model finds them rendered.
+
 ## Selection Process
 
 1. Search all 5 APIs in parallel with the article's query terms
@@ -109,8 +116,15 @@ a `MilesAhead/1.0` User-Agent.
 At pick time each candidate's URLs are fetched with a ranged GET and must
 answer 200/206 with an `image/*` content type, within a byte cap: 1 MiB for
 the display image, 512 KiB for the thumbnail. A host that does not state the
-size has it measured, up to the cap. The same check (`Searcher.CheckFit`)
-guards every URL the resize step below writes.
+size (no length, or a `Content-Range` total of `*`) has it measured, up to the
+cap; a size that cannot be determined is refused. The same check
+(`Searcher.CheckFit`) guards every URL the resize step below writes.
+
+Each probe request waits up to 8 s. A Wikimedia thumbnail may be rendered on
+that very request, so it waits up to 15 s and gets one retry after a timeout,
+as it does after a 429: a render cut off by the timeout carries on at
+Wikimedia, and the retry usually finds it done. A whole probe, retries
+included, never takes more than 30 s.
 
 Rows stored before this existed are converted by the enrichment reconciler
 (`internal/enrich/imagesize.go`). At the start of every pass, including the
