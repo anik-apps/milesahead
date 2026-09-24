@@ -16,6 +16,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 // MailSender is the interface for sending newsletter emails.
@@ -125,10 +126,42 @@ func summary(content string) string {
 	return excerpt(content, 120)
 }
 
-// listRecentApproved fetches approved articles published in the last 24 hours.
+// listRecentApproved fetches approved articles published in the last 24
+// hours whose offer has not ended.
 func (s *Service) listRecentApproved() ([]db.GeneratedArticle, error) {
 	since := time.Now().UTC().Add(-24 * time.Hour)
-	return s.db.ListApprovedArticlesSince(since)
+	articles, err := s.db.ListApprovedArticlesSince(since)
+	if err != nil {
+		return nil, err
+	}
+	return s.liveOffers(articles), nil
+}
+
+// liveOffers drops articles whose offer has ended, judged by today's date in
+// the newsletter's timezone. An offer is live through its last day. A reader
+// acting on an ended transfer bonus makes a transfer that cannot be undone,
+// so an ended offer is never sent, featured or made Scout's Pick.
+func (s *Service) liveOffers(articles []db.GeneratedArticle) []db.GeneratedArticle {
+	today := offer.Today(time.Now(), offer.Location(s.timezone))
+	live := make([]db.GeneratedArticle, 0, len(articles))
+	for _, a := range articles {
+		if offer.Ended(a.ExpiresOn, today) {
+			slog.Info("newsletter: leaving out an ended offer", "article_id", a.ID, "ended", a.ExpiresOn)
+			continue
+		}
+		live = append(live, a)
+	}
+	return live
+}
+
+// containsArticle reports whether id is among articles.
+func containsArticle(articles []db.GeneratedArticle, id int64) bool {
+	for _, a := range articles {
+		if a.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // todayDate returns today's date string in YYYY-MM-DD format for the configured timezone.
@@ -381,6 +414,9 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listing approved articles: %w", err)
 	}
+	// Ended offers are dropped before ranking, so neither the candidates nor
+	// Scout's Pick can be one.
+	articles = s.liveOffers(articles)
 	if len(articles) == 0 {
 		slog.Info("no articles for weekly newsletter", "date", sendDate)
 		return nil, nil
@@ -660,14 +696,20 @@ func (s *Service) SendWeekly() error {
 		slog.Error("failed to reload articles for send", "error", err)
 		// Fall back to stored HTML.
 	} else if len(articles) > 0 {
+		// The newsletter was built the evening before; an offer in it may
+		// have ended overnight.
+		articles = s.liveOffers(articles)
+		if len(articles) == 0 {
+			// The stored HTML holds exactly those ended offers, so falling
+			// back to it would send them.
+			slog.Warn("weekly newsletter not sent: every article in it has ended", "date", sendDate)
+			return nil
+		}
+
 		// Reload card of week and scout's pick data.
 		var cow *cardOfWeekData
 		if nl.CardOfWeekID != nil {
 			cow = s.loadCardOfWeekData(*nl.CardOfWeekID)
-		}
-		var sp *scoutsPickData
-		if nl.ScoutsPickArticleID != nil {
-			sp = s.loadScoutsPickData(*nl.ScoutsPickArticleID)
 		}
 
 		// Re-rank articles using candidates order.
@@ -678,6 +720,22 @@ func (s *Service) SendWeekly() error {
 				candidateIDs[i] = c.ArticleID
 			}
 			articles = reorderArticles(articles, candidateIDs)
+		}
+
+		var sp *scoutsPickData
+		if nl.ScoutsPickArticleID != nil {
+			pickID := *nl.ScoutsPickArticleID
+			if !containsArticle(articles, pickID) {
+				// Scout's Pick has ended (or been unpublished) since it was
+				// chosen. Hand the slot to the top article still being sent.
+				slog.Info("weekly newsletter: replacing Scout's Pick that is no longer live",
+					"was", pickID, "now", articles[0].ID)
+				pickID = articles[0].ID
+				if err := s.db.UpdateNewsletterScoutsPick(nl.ID, pickID); err != nil {
+					slog.Error("failed to update scout's pick", "error", err)
+				}
+			}
+			sp = s.loadScoutsPickData(pickID)
 		}
 
 		htmlContent, err := renderWeeklyNewsletter(articles, sendDate, s.baseURL(), cow, sp)
@@ -812,7 +870,7 @@ func (s *Service) PreviewNext() (string, error) {
 		return "", err
 	}
 	if len(articles) == 0 {
-		return "", fmt.Errorf("no approved articles in the last 24 hours")
+		return "", fmt.Errorf("no live approved articles in the last 24 hours")
 	}
 
 	date := s.todayDate()

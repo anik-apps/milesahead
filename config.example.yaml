@@ -91,6 +91,9 @@ mail:
 
 newsletter:
   send_time: "08:00"
+  # Also the site's timezone for offer end dates: an article whose Key Details
+  # say "Deadline: July 29, 2026" counts as ended from July 30 in this zone,
+  # on the site and in the newsletter. Defaults to UTC when empty.
   timezone: "America/New_York"
 
 votes:
