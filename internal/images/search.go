@@ -567,8 +567,9 @@ func (p Probe) IsImage() bool {
 // Openverse's thumbnail proxy among them -- answer HEAD with 405 while serving
 // GET perfectly well, which would reject good candidates. The size comes from
 // Content-Range, or Content-Length when the host ignores Range. Some hosts
-// (Flickr, rawpixel) state neither; with measureUpTo > 0 the body is then read
-// up to one byte past that limit, so an oversized file is caught either way.
+// (Flickr, rawpixel) state neither, and some answer the range with a total of
+// "*"; with measureUpTo > 0 the body is then read up to one byte past that
+// limit, so an oversized file is caught either way.
 func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 	if rawURL == "" {
 		return Probe{Size: -1}
@@ -592,21 +593,25 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 			Size:        declaredSize(resp),
 			OK:          resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent,
 		}
-		if p.OK && p.Size < 0 && measureUpTo > 0 && resp.StatusCode == http.StatusOK {
-			n, err := io.Copy(io.Discard, io.LimitReader(resp.Body, measureUpTo+1))
-			if err != nil {
-				// A body that cannot be read to the end will not load in a
-				// browser either.
-				p.OK = false
-				slog.Warn("image body could not be read", "url", rawURL, "error", err)
-			}
-			p.Size = n
-		} else {
+		measure := p.OK && p.Size < 0 && measureUpTo > 0
+		switch {
+		case measure && resp.StatusCode == http.StatusOK:
+			p.Size, p.OK = measureBody(rawURL, resp.Body, measureUpTo)
+			resp.Body.Close()
+		case measure:
+			// A 206 whose Content-Range total is "*", or missing: the host
+			// honoured the range without saying how large the file is. Ask
+			// again without a range and count, as for a 200 with no length.
+			// Left at -1, the size would pass any byte cap.
+			io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+			resp.Body.Close()
+			p.Size = s.measureWhole(client, rawURL, measureUpTo)
+		default:
 			// The response may be the whole file if the host ignored Range,
 			// so drain only what is needed to let the connection be reused.
 			io.Copy(io.Discard, io.LimitReader(resp.Body, 1024))
+			resp.Body.Close()
 		}
-		resp.Body.Close()
 
 		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxProbeAttempts {
 			s.sleep(retryAfter(resp.Header.Get("Retry-After")))
@@ -617,6 +622,44 @@ func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
 		}
 		return p
 	}
+}
+
+// measureBody counts body up to one byte past limit. ok is false if it cannot
+// be read to the end, which a browser would not manage either.
+func measureBody(rawURL string, body io.Reader, limit int64) (size int64, ok bool) {
+	n, err := io.Copy(io.Discard, io.LimitReader(body, limit+1))
+	if err != nil {
+		slog.Warn("image body could not be read", "url", rawURL, "error", err)
+		return n, false
+	}
+	return n, true
+}
+
+// measureWhole fetches rawURL without a range and counts it up to one byte
+// past limit, or returns -1 if that fails.
+func (s *Searcher) measureWhole(client *http.Client, rawURL string, limit int64) int64 {
+	req, err := s.newRequest(rawURL)
+	if err != nil {
+		return -1
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Warn("image size could not be measured", "url", rawURL, "error", err)
+		return -1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("image size could not be measured", "url", rawURL, "status", resp.StatusCode)
+		return -1
+	}
+	if n := resp.ContentLength; n >= 0 {
+		return n
+	}
+	n, ok := measureBody(rawURL, resp.Body, limit)
+	if !ok {
+		return -1
+	}
+	return n
 }
 
 // Usable reports whether a candidate can go on the page: its URLs fetch as
@@ -637,7 +680,9 @@ const (
 	// link, a throttled or failed request, or an HTML error page. Browsers
 	// will not render a cross-origin HTML response as an image, so a 200
 	// that is not labelled image/* is as broken as a 404. (Every image host
-	// the search uses labels its files image/*, checked 2026-09-23.)
+	// the search uses labels its files image/*, checked 2026-09-23.) An
+	// image whose size neither the host states nor a plain GET can measure
+	// is unusable too: its weight cannot be confirmed.
 	Unusable Fit = iota
 	// TooHeavy means an image larger than the slot's byte cap.
 	TooHeavy
@@ -656,6 +701,10 @@ func (s *Searcher) CheckFit(rawURL string, limit int64) Fit {
 	case !p.IsImage():
 		slog.Warn("image URL did not return an image",
 			"url", rawURL, "status", p.Status, "content_type", p.ContentType)
+		return Unusable
+	case p.Size < 0:
+		// Neither stated nor measurable: its weight cannot be confirmed.
+		slog.Warn("image size is unknown", "url", rawURL, "status", p.Status)
 		return Unusable
 	case p.Size > limit:
 		slog.Info("image is too heavy for its slot",

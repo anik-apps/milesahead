@@ -393,6 +393,51 @@ func TestCheckFit(t *testing.T) {
 	}
 }
 
+// A 206 whose Content-Range total is "*" says nothing about the file's size.
+// Read as -1, it passed every byte cap, so a multi-megabyte file could be
+// stored; the size has to be measured like a 200 that states no length.
+func TestCheckFit_UnknownRangeTotalIsMeasured(t *testing.T) {
+	sizes := map[string]int{"/light.jpg": 60_000, "/heavy.jpg": 2_000_000}
+	var unranged int
+	s := stubSearcher(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		if r.Header.Get("Range") != "" {
+			w.Header().Set("Content-Range", "bytes 0-0/*")
+			w.WriteHeader(http.StatusPartialContent)
+			w.Write([]byte("j"))
+			return
+		}
+		unranged++
+		if r.URL.Path == "/unmeasurable.jpg" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Write([]byte(strings.Repeat("x", sizes[r.URL.Path])))
+	})
+	h := "https://img.example/"
+	for _, tt := range []struct {
+		path string
+		want Fit
+	}{
+		{"light.jpg", Fits},
+		{"heavy.jpg", TooHeavy},
+		// Neither the range nor a plain GET says how large it is.
+		{"unmeasurable.jpg", Unusable},
+	} {
+		if got := s.CheckFit(h+tt.path, MaxThumbnailBytes); got != tt.want {
+			t.Errorf("CheckFit(%s) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+	if unranged != 3 {
+		t.Errorf("made %d unranged requests, want one per URL to measure it", unranged)
+	}
+	// A status-only probe does not need the size and does not fetch the file.
+	unranged = 0
+	if p := s.Probe(h+"heavy.jpg", 0); !p.OK || unranged != 0 {
+		t.Errorf("Probe(_, 0) = %+v with %d unranged requests; want OK and none", p, unranged)
+	}
+}
+
 func TestWikimediaWidths(t *testing.T) {
 	var titles string
 	s := stubSearcher(t, func(w http.ResponseWriter, r *http.Request) {
