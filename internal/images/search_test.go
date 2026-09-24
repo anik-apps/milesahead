@@ -383,14 +383,122 @@ func TestProbe_WaitsForWikimediaRenders(t *testing.T) {
 			t.Errorf("%s: %d requests, want %d", tt.name, got, tt.calls)
 		}
 	}
+}
 
-	// The whole probe, retry included, stays within its budget.
-	s.probeBudget = 200 * time.Millisecond
-	host.plan["/wikipedia/commons/thumb/7/7e/M.jpg/500px-M.jpg"] = []time.Duration{slower, slower}
-	start := time.Now()
-	s.Probe("https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/M.jpg/500px-M.jpg", 0)
-	if elapsed := time.Since(start); elapsed > 350*time.Millisecond {
-		t.Errorf("probe took %v; its budget is 200 ms", elapsed)
+// budgetHost stands in for an image host that hangs: a request to a path
+// under /hang/ gets no answer until the client gives up; /throttle/ always
+// answers 429 with Retry-After: 1; /unknown/ answers a range with a total of
+// "*", and /unknown-stall/ does the same but stalls its body. It counts
+// ranged and plain requests separately.
+type budgetHost struct {
+	mu            sync.Mutex
+	ranged, plain int
+}
+
+func (h *budgetHost) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.mu.Lock()
+	if r.Header.Get("Range") != "" {
+		h.ranged++
+	} else {
+		h.plain++
+	}
+	h.mu.Unlock()
+	hang := func() {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	}
+	switch {
+	case strings.Contains(r.URL.Path, "/hang/"):
+		hang()
+	case strings.Contains(r.URL.Path, "/throttle/"):
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+	case r.Header.Get("Range") == "":
+		hang() // the plain GET that would measure the file
+	default:
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Range", "bytes 0-0/*")
+		w.WriteHeader(http.StatusPartialContent)
+		if strings.Contains(r.URL.Path, "/unknown-stall/") {
+			w.(http.Flusher).Flush()
+			hang()
+		}
+		w.Write([]byte("j"))
+	}
+}
+
+func (h *budgetHost) counts() (ranged, plain int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.ranged, h.plain
+}
+
+// maxProbeDuration bounds a whole probe: every request, the retry after a
+// timeout, 429 waits, and the plain GET that measures a file of unknown size.
+// Each case would run far past the budget, or make a request it should not,
+// if one of those ignored it. (The render timeout and the plain GET's own
+// timeout are set well above the budget, so only the budget can stop them.)
+func TestProbe_StaysWithinItsBudget(t *testing.T) {
+	const budget = 150 * time.Millisecond
+	const wm = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/L.jpg/"
+	for _, tt := range []struct {
+		name        string
+		url         string
+		measureUpTo int64
+		sleep       func(time.Duration)
+		probeBudget time.Duration
+		ranged      int // requests expected
+		plain       int
+		waits       int
+	}{
+		// Without the budget: 2 s, then a 2 s retry.
+		{name: "render that never finishes", url: wm + "hang/500px-L.jpg", ranged: 1},
+		// Without it: two 1 s waits and three requests.
+		{name: "throttled past the budget", url: "https://img.example/throttle/a.jpg", ranged: 1},
+		// A wait that overruns (a busy machine) leaves no time for another
+		// request. Without the check, that request has no timeout at all.
+		{name: "no request after the budget is spent", url: "https://img.example/throttle/b.jpg",
+			sleep: func(time.Duration) { time.Sleep(1200 * time.Millisecond) }, probeBudget: 1100 * time.Millisecond,
+			ranged: 1, waits: 1},
+		// Without it the plain GET waits its own 2 s.
+		{name: "measuring an unknown size", url: "https://img.example/unknown/a.jpg", measureUpTo: 1 << 20,
+			ranged: 1, plain: 1},
+		// The ranged answer's body stalls past the budget: nothing is left
+		// for the plain GET, which is not sent.
+		{name: "no measuring after the budget is spent", url: "https://img.example/unknown-stall/a.jpg", measureUpTo: 1 << 20,
+			ranged: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			host := &budgetHost{}
+			s := stubSearcher(t, host.ServeHTTP)
+			s.probeTimeout, s.renderTimeout, s.probeBudget = 2*time.Second, 2*time.Second, budget
+			if tt.probeBudget > 0 {
+				s.probeBudget = tt.probeBudget
+			}
+			var waits int
+			s.sleep = func(d time.Duration) {
+				waits++
+				if tt.sleep != nil {
+					tt.sleep(d)
+				}
+			}
+			start := time.Now()
+			p := s.Probe(tt.url, tt.measureUpTo)
+			elapsed := time.Since(start)
+			if p.OK && p.Size >= 0 {
+				t.Errorf("Probe = %+v; want no confirmed image", p)
+			}
+			if limit := s.probeBudget + 600*time.Millisecond; elapsed > limit {
+				t.Errorf("probe took %v; its budget is %v", elapsed, s.probeBudget)
+			}
+			ranged, plain := host.counts()
+			if ranged != tt.ranged || plain != tt.plain || waits != tt.waits {
+				t.Errorf("%d ranged, %d plain requests and %d waits; want %d, %d and %d",
+					ranged, plain, waits, tt.ranged, tt.plain, tt.waits)
+			}
+		})
 	}
 }
 
