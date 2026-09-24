@@ -57,25 +57,38 @@ const (
 // it always describes how long points or gift cards stay valid.
 var endLabels = map[string]bool{
 	"ends":                  true,
+	"ends on":               true,
 	"end date":              true,
 	"offer ends":            true,
+	"offer ends on":         true,
 	"offer end":             true,
 	"offer end date":        true,
 	"promotion ends":        true,
+	"promotion end":         true,
 	"promotion end date":    true,
 	"promo ends":            true,
+	"promo end":             true,
 	"sale ends":             true,
 	"bonus ends":            true,
 	"expires":               true,
+	"expires on":            true,
 	"expiration date":       true,
 	"offer expires":         true,
 	"offer expiration":      true,
 	"offer expiration date": true,
 	"valid through":         true,
 	"valid until":           true,
+	"offer valid through":   true,
+	"offer valid until":     true,
 	"available through":     true,
 	"available until":       true,
 	"last day":              true,
+	"book by":               true,
+	"apply by":              true,
+	"register by":           true,
+	"enroll by":             true,
+	"sign up by":            true,
+	"purchase by":           true,
 }
 
 // periodLabels name the window an offer runs in. Travel and stay windows are
@@ -100,12 +113,29 @@ var periodLabels = map[string]bool{
 
 var spaceRE = regexp.MustCompile(`\s+`)
 
+// staleLabelRE marks a label for an end that no longer applies ("Original
+// Deadline", "Previous Deadline"): something has replaced it.
+var staleLabelRE = regexp.MustCompile(`\b(?:original|originally|previous|previously|old|former|formerly|initial|initially|prior)\b`)
+
+// benefitDeadlineRE marks a deadline for using or earning a benefit
+// ("Deadline to Use Credit", "Discount Deadline", "Spend Deadline"), not for
+// taking the offer. The offer can run on past it -- a card's sign-up bonus
+// stays open after its first-year discount window closes -- so it never sets
+// the end.
+var benefitDeadlineRE = regexp.MustCompile(`\b(?:use|using|usage|credits?|discounts?|redeem|redeeming|redemptions?|spend|spending|statement)\b`)
+
 func classify(label string) labelKind {
 	l := strings.ToLower(strings.TrimSpace(label))
 	l = strings.TrimRight(l, ":")
 	l = spaceRE.ReplaceAllString(l, " ")
+	if staleLabelRE.MatchString(l) {
+		return notAnEnd
+	}
 	switch {
 	case strings.Contains(l, "deadline"):
+		if benefitDeadlineRE.MatchString(l) {
+			return notAnEnd
+		}
 		return deadlineLabel
 	case endLabels[l]:
 		return deadlineLabel

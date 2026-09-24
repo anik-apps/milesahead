@@ -258,6 +258,56 @@ func TestEndDate_BothKeySpellings(t *testing.T) {
 	}
 }
 
+// "Deadline" in a label does not always mean the offer's end. An old
+// deadline has been replaced, and a deadline to use or earn a benefit (a
+// credit, a discount, a spend) comes and goes while the offer stays open.
+func TestEndDate_LabelsThatAreNotTheOffersEnd(t *testing.T) {
+	for _, label := range []string{
+		"Original Deadline", "Previous Deadline", "Old Deadline", "Former Deadline", "Initial Deadline", "Prior Deadline",
+		"Statement Credit Deadline", "Discount Deadline", "Redemption Deadline", "Spend Deadline",
+		"Minimum Spend Deadline", "Deadline to Use Credit", "Deadline to Redeem", "Credit Deadline",
+	} {
+		if got := EndDate(details(t, label, "September 30, 2026"), day("2026-04-02")); got != "" {
+			t.Errorf("EndDate(%s: September 30, 2026) = %q, want no end date", label, got)
+		}
+	}
+	// The BofA Atmos Rewards Summit article: its only dated detail is when
+	// the first-year flight discount must be used. The 100K offer may run
+	// on past it, so it must not end the offer on October 1.
+	atmos := details(t,
+		"Sign-up Bonus", "100,000 points",
+		"Spend Requirement", "$6,500 in 90 days",
+		"Discount Deadline", "September 30, 2026",
+	)
+	if got := EndDate(atmos, day("2026-04-02")); got != "" {
+		t.Errorf("Atmos Summit end = %q, want none", got)
+	}
+	// With the current deadline beside the original one, the current one is
+	// the end even though it is later.
+	both := details(t,
+		"Original Deadline", "June 30, 2026",
+		"Deadline", "July 31, 2026",
+	)
+	if got := EndDate(both, day("2026-05-20")); got != "2026-07-31" {
+		t.Errorf("EndDate with an original deadline = %q, want 2026-07-31", got)
+	}
+	// Deadlines about taking the offer still count.
+	for _, label := range []string{"Deadline", "Booking Deadline", "Registration Deadline", "Deadline for sharing ThankYou points", "Extended Deadline", "New Deadline"} {
+		if got := EndDate(details(t, label, "September 30, 2026"), day("2026-04-02")); got != "2026-09-30" {
+			t.Errorf("EndDate(%s: September 30, 2026) = %q, want 2026-09-30", label, got)
+		}
+	}
+}
+
+// More ways the generator labels an offer's end.
+func TestEndDate_MoreEndLabels(t *testing.T) {
+	for _, label := range []string{"Book By", "Apply By", "Register By", "Ends On", "Offer Valid Through", "Promotion End", "Offer Ends", "Offer ends:"} {
+		if got := EndDate(details(t, label, "September 30, 2026"), day("2026-07-01")); got != "2026-09-30" {
+			t.Errorf("EndDate(%s: September 30, 2026) = %q, want 2026-09-30", label, got)
+		}
+	}
+}
+
 // The last day is still live; the offer has ended from the next day.
 func TestEnded(t *testing.T) {
 	cases := []struct {
