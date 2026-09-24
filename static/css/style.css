@@ -2644,3 +2644,45 @@ footer .footer-links a, .footer-pillars a { color: #15307a; }
 @media (max-width: 400px) {
     nav .brand-logo .brand-tag { display: none; }
 }
+
+/* Wide tables in card sections and articles scroll inside their own box
+   (wrapped by scrollTables), so the page itself never gets wider than the
+   screen. Grid columns default to their content's minimum width, so they
+   also need min-width: 0 to let that box shrink. */
+.table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 1rem 0;
+    /* Scroll shadows: an edge darkens only while more of the table is hidden
+       past it. The "local" covers move with the content and hide the shadow
+       once that edge is reached. */
+    background:
+        linear-gradient(to right, var(--bg) 30%, transparent) left center / 40px 100% no-repeat local,
+        linear-gradient(to left, var(--bg) 30%, transparent) right center / 40px 100% no-repeat local,
+        radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.2), transparent) left center / 14px 100% no-repeat scroll,
+        radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.2), transparent) right center / 14px 100% no-repeat scroll;
+}
+[data-theme="dark"] .table-scroll {
+    background:
+        linear-gradient(to right, var(--bg) 30%, transparent) left center / 40px 100% no-repeat local,
+        linear-gradient(to left, var(--bg) 30%, transparent) right center / 40px 100% no-repeat local,
+        radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.7), transparent) left center / 14px 100% no-repeat scroll,
+        radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.7), transparent) right center / 14px 100% no-repeat scroll;
+}
+@media (max-width: 768px) {
+    .table-scroll th, .table-scroll td { padding: 0.55rem 0.65rem; }
+}
+.table-scroll > table { margin: 0; }
+.table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card-layout > *, .article-layout > * { min-width: 0; }
+
+/* Vote feedback: the status line reserves its height so the card does not jump. */
+.vote-card .vote-status {
+    min-height: 1.4em;
+    margin-top: 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+/* White on the dark theme's light-blue accent is 2.5:1; dark text is about 7.5:1. */
+[data-theme="dark"] .vote-btn.active { color: var(--bg); }

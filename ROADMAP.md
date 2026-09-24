@@ -225,6 +225,101 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 - [ ] Social media auto-posting — auto-share to Twitter/X, Bluesky
 - [ ] Mobile app / PWA — offline reading, push notifications
 
+## UX Review (2026-09-23)
+
+Five reviews of the live site (home, articles, card pages, compare and search, site
+chrome, accessibility, performance and mobile), each finding checked independently
+against screenshots, the code and the live site. The newsletter findings are the first
+item under Up Next; the branding, the phone header, the favicon and the default share
+image shipped in #73. Everything else is here, most severe first.
+
+### P0: broken for readers today
+
+- [x] **44 of 52 card pages were wider than a phone screen** — comparison tables in card
+      sections had no scroll box, so the page grew to 566-694px on a 390px phone, slid
+      sideways and lost the sticky header. Each table now scrolls inside its own labelled
+      region, with edge shadows showing there is more; measured 0 of 52 afterwards.
+- [x] **"Was this article helpful?" did nothing** — the script looked for `.vote-section`,
+      which the template never rendered, and sent `1`/`-1` where `/api/vote` accepts
+      `up`/`down`; all 87 articles showed 0 / 0. Votes now record, confirm on screen
+      (announced to screen readers), survive a reload, and counts appear only from ten
+      votes.
+- [ ] **The home page downloads 16.5 MB** — two thumbnails are raw Wikimedia originals
+      (13.2 MB and 3 MB) shown at 100-360px; seven articles use originals.
+      `internal/images/search.go` stores the Openverse original as both image and
+      thumbnail. *Fix:* sized Wikimedia/Flickr URLs at standard widths, corrected existing
+      rows, lazy loading and dimensions on home images. In progress on
+      `fix/home-image-weight`.
+- [ ] **Expired deals are shown as current** — 16 of 87 articles are past the deadline in
+      their own Key Details, 4 of them on the home page (e.g. Hilton Aspire 175K, ended
+      July 29). *Fix:* a stored end date, ended offers left out of the default home feed,
+      an "Ended" badge elsewhere, a banner on the article, and none in the newsletter. In
+      progress on `feat/expired-deals`.
+
+### P1: findability and conversion
+
+- [ ] **Card pages lack a key-facts strip** — the fee appears only mid-sentence, and Scout's
+      Verdict sits at 9,546px of 11,019px on a phone. *Fix:* annual fee, welcome offer, top
+      earn rates and the verdict's first sentence under the H1, from the DB fields.
+- [ ] **Card sidebar taller than a laptop screen** — sticky at `top: 5rem` but 914px tall,
+      so "Card Details" and "Compare with…" stay below the fold for the whole page at
+      1440x900 and below. *Fix:* put the CTA and Compare above the TOC, or cap the sidebar
+      at `calc(100vh - 6rem)` with its own scroll.
+- [ ] **Card-page CTA and compare** — "Card Details →" opens the issuer's site in a new tab
+      with no cue; the page ends with no next step; the Compare control does not exist on
+      phones and its `<select>` has no label and navigates on change. *Fix:* "Apply at
+      {issuer} ↗", an end-of-page block (apply, compare with the rivals the page already
+      names, related cards), and a labelled form with a Compare button.
+- [ ] **Article card embeds** — the story's own card is missing (the Freedom Flex article
+      embeds Reserve and Platinum, not Flex), "View card" leaves for the issuer, and "Top
+      earnings" always shows dining and groceries ("1x Dining · 1x Groceries" for Amex
+      Platinum) because `formatTopEarning` walks a fixed category order. *Fix:* primary
+      card first, link to `/cards/{slug}`, rank earn rates numerically including the
+      direct/portal variants.
+- [ ] **Home reaches only 20 of 87 stories** — no pagination (`?page=2` is ignored), and two
+      filter rows that look combinable silently reset each other; "Roundups" and "Alerts"
+      lead to empty pages. *Fix:* "Older stories" paging that keeps filters, one merged
+      filter row, hide empty filters.
+- [ ] **Compare** — 40 caveats per comparison are hover-only `title` tooltips; Benefits and
+      Protections toggles are click-only `<tr>`s keyboard users cannot open; winner stars
+      use only the portal rate in "D | P" rows and "1 year" beats "Yes"; phones see 1.3 of 3
+      cards; no links to card pages. *Fix:* visible notes, `<button aria-expanded>` toggles,
+      split D/P rows, a legend, a mobile layout, links per column.
+- [ ] **Search** — the whole query is one exact FTS phrase, so "sapph", "reserve sapphire"
+      and "csr" find nothing, and card matches sit below ten articles. *Fix:* per-word
+      matching with a prefix on the last word, title weighting, a small synonym map
+      (csr, csp, amex), cards first when a title matches.
+- [ ] **/cards/ index** — 52 cards with no filter, sort or fee; 22 screens on a phone.
+      *Fix:* category, fee band and issuer filters with a live count; fee, offer and top
+      earn rates on each tile; lazy-loaded art with fixed dimensions.
+- [ ] **Trust signals** — article sources are loaded but never rendered; no byline, About,
+      corrections or privacy page, though the site collects emails. *Fix:* a Sources list
+      per article, a byline linking to an About page on how stories are researched, and a
+      privacy page linked next to every email field.
+
+### P2: polish and accessibility
+
+- [ ] **Contrast** — in dark mode, white on the `#58a6ff` accent is 2.53:1 (active filter
+      pills, search button); the DEAL badge is 3.83:1 in both themes; dark-mode links in
+      paragraphs are distinguished by colour alone (2.14:1). *Fix:* an `--on-accent`
+      token, a darker deal red, underlined in-text links.
+- [ ] **404 page** — unknown URLs get Go's bare text "404 page not found"; unpublished
+      articles return 200 "Under Review". *Fix:* a branded 404 through the layout with
+      search and links; 404 or 410 for unpublished articles.
+- [ ] **Compression and caching** — HTML, CSS and JS go out uncompressed (CSS 56 KB, 10 KB
+      gzipped) and nothing sends Cache-Control. *Fix:* `encode zstd gzip` in the Caddy site,
+      then content-hashed static URLs with long cache lifetimes.
+- [ ] **Home on phones** — the featured story's white title sits on a nearly unshaded photo
+      (3.2-4.0:1), and its overlay stops partway, leaving ~475px of unlinked photo on
+      desktop; each feed card is ~400px tall. *Fix:* a guaranteed scrim, a fixed-ratio
+      featured card, clamped excerpts.
+- [ ] **Excerpts** cut mid-word and run headings into sentences, in cards, meta
+      descriptions and RSS. *Fix:* use the TL;DR, or cut at a sentence boundary.
+- [ ] **Smaller accessibility fixes** — skip link; `aria-expanded` and Escape on the Cards
+      and search toggles; Scout's Verdict as a heading; `scroll-padding-top` so anchors
+      clear the sticky header; internal article links no longer forced into new tabs;
+      labels on the search field; a visible `:focus-visible` ring site-wide.
+
 ## Future
 
 - [ ] Multi-user admin with roles
