@@ -253,55 +253,74 @@ func migrate(db *sql.DB) error {
 // also means existing rows pick up any later improvement to the parser on the
 // next deploy, with no manual step. It returns how many rows it changed.
 func backfillOfferEndDates(conn *sql.DB) (int, error) {
+	changes, err := offerEndChanges(conn)
+	if err != nil || len(changes) == 0 {
+		return 0, err
+	}
+	return applyOfferEndChanges(conn, changes)
+}
+
+// offerEndChange is one row whose stored expires_on differs from what its
+// key_details give, with the values it was read with.
+type offerEndChange struct {
+	id      int64
+	details string // key_details as read
+	have    string // expires_on as read
+	want    string // expires_on derived from details
+}
+
+// offerEndChanges reads every article and returns the ones whose stored end
+// date is not the one their key details give.
+func offerEndChanges(conn *sql.DB) ([]offerEndChange, error) {
 	rows, err := conn.Query(`SELECT id, COALESCE(key_details, ''), created_at, COALESCE(expires_on, '') FROM generated_articles`)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	type change struct {
-		id     int64
-		endsOn string
-	}
-	var changes []change
+	defer rows.Close()
+	var changes []offerEndChange
 	for rows.Next() {
 		var (
-			id        int64
-			details   string
+			c         offerEndChange
 			createdAt any
-			have      string
 		)
-		if err := rows.Scan(&id, &details, &createdAt, &have); err != nil {
-			rows.Close()
-			return 0, err
+		if err := rows.Scan(&c.id, &c.details, &createdAt, &c.have); err != nil {
+			return nil, err
 		}
-		if want := offer.EndDate(details, writtenAt(createdAt)); want != have {
-			changes = append(changes, change{id, want})
+		if c.want = offer.EndDate(c.details, writtenAt(createdAt)); c.want != c.have {
+			changes = append(changes, c)
 		}
 	}
-	// Collect first, write after: the read cursor is closed before any UPDATE.
-	if err := rows.Close(); err != nil {
-		return 0, err
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-	if len(changes) == 0 {
-		return 0, nil
-	}
+	return changes, rows.Err()
+}
 
+// applyOfferEndChanges writes the derived end dates. The read cursor is
+// closed by now, and the server is already serving, so a row may have been
+// rewritten since it was read -- an enrichment pass storing new key details
+// and their end date, say. Each UPDATE therefore applies only if the row
+// still holds the key details and end date it was read with; a row that
+// moved on keeps its newer value. It returns how many rows it changed.
+func applyOfferEndChanges(conn *sql.DB, changes []offerEndChange) (int, error) {
 	tx, err := conn.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
+	n := 0
 	for _, c := range changes {
-		if _, err := tx.Exec(`UPDATE generated_articles SET expires_on = ? WHERE id = ?`, nullIfEmpty(c.endsOn), c.id); err != nil {
+		res, err := tx.Exec(`UPDATE generated_articles SET expires_on = ?
+			WHERE id = ? AND COALESCE(expires_on, '') = ? AND COALESCE(key_details, '') = ?`,
+			nullIfEmpty(c.want), c.id, c.have, c.details)
+		if err != nil {
 			return 0, err
+		}
+		if k, err := res.RowsAffected(); err == nil {
+			n += int(k)
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	return len(changes), nil
+	return n, nil
 }
 
 // writtenAt turns a scanned created_at into the anchor offer.EndDate needs.

@@ -258,3 +258,49 @@ func TestOfferEndsBySlugAndSearch(t *testing.T) {
 		t.Errorf("search ExpiresOn = %v", got)
 	}
 }
+
+// The backfill runs while the server is already up. A row rewritten between
+// its read and its write -- an enrichment pass storing new key details and
+// their end date -- keeps the newer value rather than getting one derived
+// from the details it replaced.
+func TestBackfillOfferEndDates_KeepsRowsWrittenSinceTheRead(t *testing.T) {
+	d := openTestDB(t)
+	moved := approvedWithDeadline(t, d, "moved", "July 29, 2026")
+	enriched := approvedWithDeadline(t, d, "enriched", "July 29, 2026")
+	stale := approvedWithDeadline(t, d, "stale", "July 29, 2026")
+	// Wrong stored values, as an older parser would have left them.
+	for _, id := range []int64{moved, enriched, stale} {
+		setFields(t, d, id, "expires_on = '1999-01-01'")
+	}
+
+	changes, err := offerEndChanges(d.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 3 {
+		t.Fatalf("want 3 rows to correct, got %d", len(changes))
+	}
+
+	// Between the read and the write: one row's end date is rewritten, and
+	// another's key details are replaced while its end date is left as it
+	// was, which a check on the end date alone would miss.
+	setFields(t, d, moved, "expires_on = '2026-08-15'")
+	setFields(t, d, enriched, `key_details = '[{"Label":"Deadline","Value":"No deadline announced"}]'`)
+
+	n, err := applyOfferEndChanges(d.DB(), changes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("applied %d changes, want only the untouched row's", n)
+	}
+	if got := expiresOn(t, d, moved); got.String != "2026-08-15" {
+		t.Errorf("a newer end date was overwritten: %v", got)
+	}
+	if got := expiresOn(t, d, enriched); got.String != "1999-01-01" {
+		t.Errorf("an end date was derived from key details that had been replaced: %v", got)
+	}
+	if got := expiresOn(t, d, stale); got.String != "2026-07-29" {
+		t.Errorf("the untouched row was not corrected: %v", got)
+	}
+}
