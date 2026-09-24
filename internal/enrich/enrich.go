@@ -75,9 +75,11 @@ type Service struct {
 
 	// originalWidths caches the pixel widths of Wikimedia originals that
 	// resizeStoredImages has looked up; 0 records a file Commons reports as
-	// deleted. resizeRetries tracks rows whose resize keeps failing. Both are
-	// only touched inside Run, which never overlaps itself.
+	// deleted. widthNoAnswer holds, until when, the originals a lookup had no
+	// answer for. resizeRetries tracks rows whose resize keeps failing. All
+	// are only touched inside Run, which never overlaps itself.
 	originalWidths map[string]int
+	widthNoAnswer  map[string]time.Time
 	resizeRetries  map[int64]*resizeRetry
 
 	// running guards against overlapping passes. robfig/cron's "@every" does
@@ -104,6 +106,7 @@ func New(database *db.Database, client ai.HFClientInterface, models []string,
 		Pace:           2 * time.Second,
 		MaxDuration:    10 * time.Minute,
 		originalWidths: map[string]int{},
+		widthNoAnswer:  map[string]time.Time{},
 		resizeRetries:  map[int64]*resizeRetry{},
 	}
 }

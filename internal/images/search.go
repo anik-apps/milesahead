@@ -885,6 +885,12 @@ func (s *Searcher) WikimediaWidths(originals []string) (map[string]int, error) {
 		}
 		var result struct {
 			Query struct {
+				// Commons answers under the title as it normalizes it
+				// (Unicode NFC among other things) and lists each change.
+				Normalized []struct {
+					From string `json:"from"`
+					To   string `json:"to"`
+				} `json:"normalized"`
 				Pages []struct {
 					Title     string `json:"title"`
 					Missing   bool   `json:"missing"`
@@ -903,8 +909,17 @@ func (s *Searcher) WikimediaWidths(originals []string) (map[string]int, error) {
 		if err != nil {
 			return out, fmt.Errorf("commons API: decoding: %w", err)
 		}
+		asked := map[string][]string{}
+		for _, t := range batch {
+			asked[t] = byTitle[t]
+		}
+		for _, n := range result.Query.Normalized {
+			if urls, ok := asked[n.From]; ok && n.To != n.From {
+				asked[n.To] = append(asked[n.To], urls...)
+			}
+		}
 		for _, p := range result.Query.Pages {
-			for _, u := range byTitle[p.Title] {
+			for _, u := range asked[p.Title] {
 				switch {
 				case p.Missing:
 					out[u] = 0

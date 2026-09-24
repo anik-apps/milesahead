@@ -773,3 +773,75 @@ func TestRun_WidthLookupIsBounded(t *testing.T) {
 		t.Error("the oldest row should wait for a later pass")
 	}
 }
+
+// A width Commons never answers for -- a title that does not match, a
+// redirect -- used to be asked for again on every pass. The lookup takes the
+// newest 20 unknown originals, so 20 such rows would hold every older row
+// back for good. A title with no answer is now set aside like a failing row,
+// and the next pass asks for the older ones.
+func TestRun_UnansweredWidthsDoNotBlockOlderRows(t *testing.T) {
+	d := testDB(t)
+	const rows, answered = 25, 5 // Commons answers only for the 5 oldest
+	var pages []string
+	var ids []int64
+	for i := 0; i < rows; i++ {
+		u := fmt.Sprintf("%sa/ab/Bulk_%02d.jpg", wm, i)
+		ids = append(ids, seedImage(t, d, u, u))
+		if i < answered {
+			pages = append(pages, fmt.Sprintf(`{"title":"File:Bulk %02d.jpg","imageinfo":[{"width":4000}]}`, i))
+		}
+	}
+	var mu sync.Mutex
+	var lookups []string
+	s := newResizeService(t, d, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if titles := r.URL.Query().Get("titles"); titles != "" {
+			mu.Lock()
+			lookups = append(lookups, titles)
+			mu.Unlock()
+			w.Write([]byte(`{"query":{"pages":[` + strings.Join(pages, ",") + `]}}`))
+			return
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Range", "bytes 0-0/60000")
+		w.WriteHeader(http.StatusPartialContent)
+	}))
+
+	s.Run() // asks for the newest 20; none is answered
+	s.Run() // must move on to the 5 older ones
+	mu.Lock()
+	if len(lookups) != 2 {
+		t.Fatalf("made %d width lookups in two passes, want 2", len(lookups))
+	}
+	second := lookups[1]
+	mu.Unlock()
+	if !strings.Contains(second, "Bulk 00.jpg") || strings.Contains(second, "Bulk 24.jpg") {
+		t.Errorf("second lookup asked for %q; want the older rows, not the unanswered ones again", second)
+	}
+	for i := 0; i < answered; i++ {
+		if url, _, _ := storedImage(t, d, ids[i]); !strings.Contains(url, "/thumb/") {
+			t.Errorf("row %d not resized after its width was answered: %q", i, url)
+		}
+	}
+}
+
+// An 800px display image waits for its original's width. If Commons has no
+// answer for the title, it would wait -- broken -- for good; it takes the
+// 500px step instead, a working image.
+func TestRun_Old800pxWithoutAnsweredWidthTakes500(t *testing.T) {
+	d := testDB(t)
+	id := seedImage(t, d, old800, old800)
+	s := newResizeService(t, d, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("titles") != "" {
+			w.Write([]byte(`{"query":{"pages":[]}}`)) // no answer for the title
+			return
+		}
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Header().Set("Content-Range", "bytes 0-0/60000")
+		w.WriteHeader(http.StatusPartialContent)
+	}))
+	s.Run()
+	want := wm + "thumb/8/8e/" + oldFile + "/500px-" + oldFile
+	if url, thumb, _ := storedImage(t, d, id); url != want || thumb != want {
+		t.Errorf("image = %q / %q, want the 500px step in both", url, thumb)
+	}
+}

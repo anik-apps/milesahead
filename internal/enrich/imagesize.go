@@ -346,9 +346,16 @@ func (s *Service) displayCandidates(u string) []string {
 		return sizedSteps(u, s.originalWidths[u], displaySteps)
 	}
 	orig := displayWidthKey(u)
-	w := s.originalWidths[orig]
-	if w <= 0 {
-		return nil // not looked up yet, or deleted (see resizeJob.deleted)
+	w, known := s.originalWidths[orig]
+	switch {
+	case known && w == 0:
+		return nil // deleted; see resizeJob.deleted
+	case !known && s.widthUnanswered(orig, time.Now()):
+		// Commons has no width for it. A 500px step of the thumbnail's own
+		// width is a working image, which beats the broken one.
+		return sizedSteps(u, 0, displaySteps)
+	case !known:
+		return nil // not looked up yet
 	}
 	first, ok := images.Sized(orig, w, displaySteps[0])
 	if !ok {
@@ -434,11 +441,20 @@ const widthLookupsPerPass = 20
 // do not change, so each is asked for once per process; a failed lookup
 // records nothing and is retried next pass. Nothing is asked once deadline
 // has passed.
+//
+// A lookup that goes through but has no answer for an original -- a title
+// Commons does not match, a redirect -- sets it aside for resizeBackoff, as a
+// failing row is. Asked again every pass, the newest widthLookupsPerPass of
+// them would fill every lookup and hold the older rows back for good.
 func (s *Service) lookUpOriginalWidths(stored []db.StoredArticleImage, deadline time.Time) {
 	if s.originalWidths == nil {
 		s.originalWidths = map[string]int{}
 	}
-	if time.Now().After(deadline) {
+	if s.widthNoAnswer == nil {
+		s.widthNoAnswer = map[string]time.Time{}
+	}
+	now := time.Now()
+	if now.After(deadline) {
 		return
 	}
 	newest := append([]db.StoredArticleImage(nil), stored...)
@@ -446,7 +462,8 @@ func (s *Service) lookUpOriginalWidths(stored []db.StoredArticleImage, deadline 
 	var unknown []string
 	for _, a := range newest {
 		for _, u := range widthKeys(a) {
-			if _, known := s.originalWidths[u]; !known && !slices.Contains(unknown, u) {
+			if _, known := s.originalWidths[u]; !known && !s.widthUnanswered(u, now) &&
+				!slices.Contains(unknown, u) {
 				unknown = append(unknown, u)
 			}
 		}
@@ -458,13 +475,33 @@ func (s *Service) lookUpOriginalWidths(stored []db.StoredArticleImage, deadline 
 		unknown = unknown[:widthLookupsPerPass]
 	}
 	widths, err := s.searcher.WikimediaWidths(unknown)
+	for u, w := range widths {
+		s.originalWidths[u] = w
+		delete(s.widthNoAnswer, u)
+	}
 	if err != nil {
 		slog.Warn("image resize: Wikimedia width lookup failed; those images wait for the next pass",
 			"error", err)
+		return
 	}
-	for u, w := range widths {
-		s.originalWidths[u] = w
+	var unanswered []string
+	for _, u := range unknown {
+		if _, answered := widths[u]; !answered {
+			s.widthNoAnswer[u] = now.Add(resizeBackoff)
+			unanswered = append(unanswered, u)
+		}
 	}
+	if len(unanswered) > 0 {
+		slog.Warn("image resize: Commons gave no width for some originals; setting them aside",
+			"count", len(unanswered), "first", unanswered[0], "retry_after", resizeBackoff)
+	}
+}
+
+// widthUnanswered reports whether a lookup of u's width went through without
+// an answer, and u is still set aside for it.
+func (s *Service) widthUnanswered(u string, now time.Time) bool {
+	until, ok := s.widthNoAnswer[u]
+	return ok && now.Before(until)
 }
 
 // waitingOnWidth reports whether sizing a needs a Commons width that has not

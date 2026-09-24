@@ -622,6 +622,29 @@ func TestWikimediaWidths(t *testing.T) {
 	}
 }
 
+// Commons normalizes the titles it is asked for (Unicode NFC among other
+// things) and answers under the normalized title, reporting the mapping. A
+// name decoded from a URL in another form used to get no answer at all.
+func TestWikimediaWidths_FollowsNormalizedTitles(t *testing.T) {
+	const nfd, nfc = "File:Cafe\u0301 lounge.jpg", "File:Caf\u00e9 lounge.jpg"
+	s := stubSearcher(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("titles") != nfd {
+			t.Errorf("titles = %q, want %q", r.URL.Query().Get("titles"), nfd)
+		}
+		w.Write([]byte(`{"query":{
+			"normalized":[{"fromencoded":false,"from":"` + nfd + `","to":"` + nfc + `"}],
+			"pages":[{"title":"` + nfc + `","imageinfo":[{"width":3000}]}]}}`))
+	})
+	u := "https://upload.wikimedia.org/wikipedia/commons/5/5e/Cafe%CC%81_lounge.jpg"
+	got, err := s.WikimediaWidths([]string{u})
+	if err != nil {
+		t.Fatalf("WikimediaWidths: %v", err)
+	}
+	if got[u] != 3000 {
+		t.Errorf("width = %d, %v; want 3000 through the normalized title", got[u], got)
+	}
+}
+
 // stubSearcher returns a Searcher whose every request, whatever its host, is
 // answered by handler.
 func stubSearcher(t *testing.T, handler http.HandlerFunc) *Searcher {
