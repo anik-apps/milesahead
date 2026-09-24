@@ -14,8 +14,8 @@
 // a value is ambiguous, the parser takes the later date, or none.
 //
 // Dates are calendar days, stored as "2006-01-02". An offer runs through the
-// whole of its last day in the site's timezone and has ended from the next
-// day on.
+// whole of its last day and has ended from the next day on, judged in the
+// westernmost US time zone (see Today).
 package offer
 
 import (
@@ -649,31 +649,44 @@ func normalize(s string) string {
 	}, s)
 }
 
-// Location loads the site's timezone, falling back to UTC for an empty or
-// unknown name -- the same fallback the newsletter's send schedule uses, so
-// the site and the newsletter agree on what day it is.
+// Location loads a configured timezone, falling back to UTC for an empty or
+// unknown name. The newsletter's send schedule runs in it.
 func Location(name string) *time.Location {
 	if name == "" {
 		return time.UTC
 	}
 	loc, err := time.LoadLocation(name)
 	if err != nil {
-		// A misspelt zone would silently shift every "has it ended" by the
-		// UTC offset, so say so.
-		slog.Warn("unknown timezone for offer end dates; using UTC", "timezone", name, "error", err)
+		// A misspelt zone would silently shift the schedule by the UTC
+		// offset, so say so.
+		slog.Warn("unknown timezone; using UTC", "timezone", name, "error", err)
 		return time.UTC
 	}
 	return loc
 }
 
-// Today returns now's calendar date in loc, as "2006-01-02".
-func Today(now time.Time, loc *time.Location) string {
-	return now.In(loc).Format(DateLayout)
+// lastDayZone is where an offer's last day is judged to be over: Hawaii
+// (UTC-10, no daylight saving time), the westernmost US time zone.
+//
+// Deadlines are written as "11:59 PM ET", "11:59 PM PT" or "HT", or with no
+// zone at all, and the stored date does not say which. Judged in New York, a
+// Pacific-time offer showed as ended from midnight to 3 AM Eastern on its
+// last night. Judged in Hawaii, no US deadline is called ended before it has
+// passed. The cost falls on the recoverable side: an Eastern-time offer shows
+// as live for up to six hours after it closes, until midnight in Honolulu.
+// The weekly newsletter's Saturday 8 AM Eastern send is past midnight in
+// Hawaii, so an offer that ended the evening before is still left out of it.
+var lastDayZone = time.FixedZone("HST", -10*60*60)
+
+// Today returns the date offer end dates are compared against, as
+// "2006-01-02": now's calendar date in lastDayZone.
+func Today(now time.Time) string {
+	return now.In(lastDayZone).Format(DateLayout)
 }
 
 // Ended reports whether an offer whose last day is endsOn has ended by today.
-// Both are "2006-01-02". An offer with no end date never ends, and the last
-// day itself still counts as live.
+// Both are "2006-01-02", today from Today. An offer with no end date never
+// ends, and the last day itself still counts as live.
 func Ended(endsOn, today string) bool {
 	return endsOn != "" && endsOn < today
 }

@@ -137,12 +137,12 @@ func (s *Service) listRecentApproved() ([]db.GeneratedArticle, error) {
 	return s.liveOffers(articles), nil
 }
 
-// liveOffers drops articles whose offer has ended, judged by today's date in
-// the newsletter's timezone. An offer is live through its last day. A reader
+// liveOffers drops articles whose offer has ended, judged on the same date
+// as the site (offer.Today). An offer is live through its last day. A reader
 // acting on an ended transfer bonus makes a transfer that cannot be undone,
 // so an ended offer is never sent, featured or made Scout's Pick.
 func (s *Service) liveOffers(articles []db.GeneratedArticle) []db.GeneratedArticle {
-	today := offer.Today(time.Now(), offer.Location(s.timezone))
+	today := offer.Today(time.Now())
 	live := make([]db.GeneratedArticle, 0, len(articles))
 	for _, a := range articles {
 		if offer.Ended(a.ExpiresOn, today) {

@@ -501,19 +501,43 @@ func TestEnded(t *testing.T) {
 	}
 }
 
-// "Today" is the site's date, not UTC's: at 11pm in New York on the last day
-// it is already the next day in UTC, but the offer is still live.
-func TestToday_UsesSiteTimezone(t *testing.T) {
-	ny := Location("America/New_York")
-	now := time.Date(2026, 7, 30, 3, 0, 0, 0, time.UTC) // 11pm Jul 29 in New York
-	if got := Today(now, ny); got != "2026-07-29" {
-		t.Errorf("Today in New York = %q, want 2026-07-29", got)
+// An offer ending on a date is live until that date is over in Hawaii, the
+// westernmost US time zone, so a Pacific-time deadline is not called ended
+// while it is still that day in California.
+func TestToday_JudgedInHawaiiTime(t *testing.T) {
+	cases := []struct {
+		name  string
+		now   time.Time
+		today string
+	}{
+		{"11pm Jul 29 New York", time.Date(2026, 7, 30, 3, 0, 0, 0, time.UTC), "2026-07-29"},
+		{"12:30am Jul 30 New York, 9:30pm Jul 29 Los Angeles", time.Date(2026, 7, 30, 4, 30, 0, 0, time.UTC), "2026-07-29"},
+		{"2:59am Jul 30 New York, 11:59pm Jul 29 Los Angeles", time.Date(2026, 7, 30, 6, 59, 0, 0, time.UTC), "2026-07-29"},
+		{"11:59pm Jul 29 Honolulu", time.Date(2026, 7, 30, 9, 59, 0, 0, time.UTC), "2026-07-29"},
+		{"midnight Jul 30 Honolulu", time.Date(2026, 7, 30, 10, 0, 0, 0, time.UTC), "2026-07-30"},
+		// Hawaii keeps no daylight saving time: the same in winter.
+		{"midnight Jan 15 Honolulu", time.Date(2027, 1, 15, 10, 0, 0, 0, time.UTC), "2027-01-15"},
+		{"11:59pm Jan 14 Honolulu", time.Date(2027, 1, 15, 9, 59, 0, 0, time.UTC), "2027-01-14"},
 	}
-	if Ended("2026-07-29", Today(now, ny)) {
-		t.Error("an offer ending Jul 29 must still be live at 11pm Jul 29 New York time")
+	for _, c := range cases {
+		if got := Today(c.now); got != c.today {
+			t.Errorf("%s: Today = %q, want %q", c.name, got, c.today)
+		}
 	}
-	if got := Today(now, time.UTC); got != "2026-07-30" {
-		t.Errorf("Today in UTC = %q, want 2026-07-30", got)
+	// The weekly newsletter goes out at 8 AM New York time; by then an offer
+	// that ended the day before has ended in Hawaii too.
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip("no tzdata:", err)
+	}
+	for _, send := range []time.Time{
+		time.Date(2026, 7, 30, 8, 0, 0, 0, ny), // daylight saving time
+		time.Date(2027, 1, 16, 8, 0, 0, 0, ny), // standard time
+	} {
+		yesterday := send.AddDate(0, 0, -1).Format(DateLayout)
+		if !Ended(yesterday, Today(send)) {
+			t.Errorf("at 8 AM New York on %s, an offer that ended on %s should have ended", send.Format(DateLayout), yesterday)
+		}
 	}
 }
 

@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
-	"github.com/kumaranik/milesahead/internal/offer"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -23,12 +22,11 @@ import (
 const endedBadge = `<span class="ended-badge">Ended</span>`
 
 // offerApp is the real-template app with its clock fixed at 16:00 UTC on
-// Sep 23, 2026 (noon in New York) and the production timezone.
+// Sep 23, 2026 (noon in New York, 6 AM in Hawaii).
 func offerApp(t *testing.T) *App {
 	t.Helper()
 	app := setupRealTemplateCardApp(t)
 	app.now = func() time.Time { return time.Date(2026, 9, 23, 16, 0, 0, 0, time.UTC) }
-	app.siteLoc = offer.Location("America/New_York")
 	return app
 }
 
@@ -100,20 +98,29 @@ func TestHome_DefaultViewExcludesEndedOffers(t *testing.T) {
 	}
 }
 
-// "Today" is the site's date. At 11pm in New York on the last day it is
-// already the next day in UTC, and the offer must still be listed.
-func TestHome_LastDayIsJudgedInSiteTimezone(t *testing.T) {
+// An offer's last day is over only once it is over everywhere in the US.
+// A deadline of "11:59 PM PT" must not show as ended at midnight in New
+// York; the offer leaves the home page at midnight in Hawaii.
+func TestHome_LastDayIsJudgedInHawaiiTime(t *testing.T) {
 	app := offerApp(t)
 	seedOffers(t, app)
-	app.now = func() time.Time { return time.Date(2026, 9, 24, 3, 0, 0, 0, time.UTC) }
 
-	if cardFor(getPage(t, app, "/"), "ends-today") == "" {
-		t.Error("at 11pm New York time on Sep 23 an offer ending Sep 23 should still be live")
-	}
-
-	app.siteLoc = time.UTC
-	if strings.Contains(getPage(t, app, "/"), "/article/ends-today") {
-		t.Error("with a UTC site the same instant is Sep 24, so the offer should have ended")
+	for _, c := range []struct {
+		name string
+		at   time.Time
+		live bool
+	}{
+		{"11pm New York", time.Date(2026, 9, 24, 3, 0, 0, 0, time.UTC), true},
+		{"just after midnight New York", time.Date(2026, 9, 24, 4, 1, 0, 0, time.UTC), true},
+		{"11:59pm Los Angeles", time.Date(2026, 9, 24, 6, 59, 0, 0, time.UTC), true},
+		{"11:59pm Honolulu", time.Date(2026, 9, 24, 9, 59, 0, 0, time.UTC), true},
+		{"midnight Honolulu", time.Date(2026, 9, 24, 10, 0, 0, 0, time.UTC), false},
+	} {
+		app.now = func() time.Time { return c.at }
+		listed := cardFor(getPage(t, app, "/"), "ends-today") != ""
+		if listed != c.live {
+			t.Errorf("at %s on its last day (Sep 23), offer listed = %v, want %v", c.name, listed, c.live)
+		}
 	}
 }
 

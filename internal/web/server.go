@@ -80,24 +80,18 @@ type App struct {
 	infographicVersions map[string]string
 	// now is the clock offers are judged against; tests replace it.
 	now func() time.Time
-	// siteLoc is the site's timezone. An offer's end date is a calendar day
-	// there, so "has it ended" depends on the date in this zone, not UTC's.
-	siteLoc *time.Location
 }
 
-// offerToday is the site's current date ("2006-01-02"), the calendar offer
-// end dates are compared against.
+// offerToday is the date offer end dates are compared against
+// ("2006-01-02"); see offer.Today for the zone it is taken in.
 func (app *App) offerToday() string {
 	// Guarded so an App built without a constructor (a test fixture) still
 	// works rather than panicking on a nil clock.
-	now, loc := time.Now, time.UTC
+	now := time.Now
 	if app.now != nil {
 		now = app.now
 	}
-	if app.siteLoc != nil {
-		loc = app.siteLoc
-	}
-	return offer.Today(now(), loc)
+	return offer.Today(now())
 }
 
 // WaitBackground blocks until handler-started background work finishes.
@@ -119,9 +113,6 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 		mux:            http.NewServeMux(),
 		startedAt:      time.Now(),
 		now:            time.Now,
-		// newsletter.timezone is the app's one configured timezone; the
-		// newsletter schedule already uses it.
-		siteLoc: offer.Location(cfg.Newsletter.Timezone),
 	}
 
 	if err := app.loadTemplates("templates"); err != nil {
@@ -146,9 +137,6 @@ func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *artic
 		mux:            http.NewServeMux(),
 		startedAt:      time.Now(),
 		now:            time.Now,
-		// newsletter.timezone is the app's one configured timezone; the
-		// newsletter schedule already uses it.
-		siteLoc: offer.Location(cfg.Newsletter.Timezone),
 	}
 
 	if err := app.loadTemplates(templateDir); err != nil {

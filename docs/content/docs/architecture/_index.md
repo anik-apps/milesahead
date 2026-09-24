@@ -59,7 +59,7 @@ weight: 2
 | Images | `internal/images` | Multi-source image search and two-phase AI scoring |
 | Metrics | `internal/metrics` | Prometheus metrics for monitoring (critic scores, image search, pipeline) |
 | Newsletter | `internal/newsletter` | Daily newsletter generation and email delivery |
-| Offers | `internal/offer` | Reads an article's offer end date from its Key Details (stored as `expires_on`) and decides whether it has ended in the site's timezone |
+| Offers | `internal/offer` | Reads an article's offer end date from its Key Details (stored as `expires_on`) and decides whether it has ended, judged in Hawaii time so no US deadline is called early |
 | Config | `internal/config` | YAML configuration loading with environment variable interpolation |
 | Votes | `internal/vote` | Reader voting system with anomaly detection alerts |
 
