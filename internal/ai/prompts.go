@@ -109,6 +109,7 @@ Line 5+: KEY_DETAILS_START
 - Detail 1 label: value
 - Detail 2 label: value
 (include 3-6 bullet points with the most important facts: bonus amounts, deadlines, costs, requirements)
+(if the offer has an end date, include exactly one detail labelled "Deadline" whose value is the last day to act, written as Month D, YYYY - e.g. "- Deadline: May 1, 2026". The site reads this line to mark the offer as ended once that day has passed, so never put an effective date, travel window or points-expiry date under "Deadline", and omit the line entirely when the sources give no end date)
 KEY_DETAILS_END
 Line: Empty line
 Line: LINKS_START
@@ -334,6 +335,7 @@ Return this exact JSON format (no other text):
 
 Rules:
 - key_details: 3-6 bullet points with the most important facts (bonus amounts, deadlines, costs, requirements, eligibility)
+- If the offer has an end date, include exactly one key detail with the label "Deadline" whose value is the last day to act, written as Month D, YYYY (e.g. "May 1, 2026"). The site uses it to mark the offer as ended, so never label an effective date, travel window or points-expiry date "Deadline", and leave it out when the article gives no end date.
 - links: 2-4 links to actual deal pages, booking sites, or official program pages found in the article content. Extract real URLs from the HTML <a href> tags. Do NOT invent URLs.
 - If the article has no links, return an empty links array.`, title, truncated)
 }

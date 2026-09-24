@@ -7,6 +7,9 @@ import (
 	"html"
 	"log/slog"
 	"strings"
+	"time"
+
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 func migrate(db *sql.DB) error {
@@ -200,6 +203,11 @@ func migrate(db *sql.DB) error {
 		// a query rather than a guess.
 		`ALTER TABLE generated_articles ADD COLUMN enrichment_attempts INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE generated_articles ADD COLUMN enrichment_last_at DATETIME DEFAULT NULL`,
+		// Last day of the offer an article describes, "2006-01-02", or NULL.
+		// TEXT rather than DATE: the driver would turn a DATE into a
+		// time.Time at midnight UTC, and this is a calendar day in the site's
+		// timezone. ISO strings compare correctly in SQL as they are.
+		`ALTER TABLE generated_articles ADD COLUMN expires_on TEXT DEFAULT NULL`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)
@@ -227,7 +235,91 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("repairing rotted images: %w", err)
 	}
 
+	if n, err := backfillOfferEndDates(db); err != nil {
+		return fmt.Errorf("deriving offer end dates: %w", err)
+	} else if n > 0 {
+		slog.Info("derived offer end dates from key details", "rows", n)
+	}
+
 	return nil
+}
+
+// backfillOfferEndDates derives expires_on from key_details for every
+// article, anchored on the row's created_at exactly as CreateGeneratedArticle
+// anchors on "now".
+//
+// It runs on every startup and writes only the rows whose stored value
+// differs from the derived one, so it converges and then does nothing. That
+// also means existing rows pick up any later improvement to the parser on the
+// next deploy, with no manual step. It returns how many rows it changed.
+func backfillOfferEndDates(conn *sql.DB) (int, error) {
+	rows, err := conn.Query(`SELECT id, COALESCE(key_details, ''), created_at, COALESCE(expires_on, '') FROM generated_articles`)
+	if err != nil {
+		return 0, err
+	}
+	type change struct {
+		id     int64
+		endsOn string
+	}
+	var changes []change
+	for rows.Next() {
+		var (
+			id        int64
+			details   string
+			createdAt any
+			have      string
+		)
+		if err := rows.Scan(&id, &details, &createdAt, &have); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if want := offer.EndDate(details, writtenAt(createdAt)); want != have {
+			changes = append(changes, change{id, want})
+		}
+	}
+	// Collect first, write after: the read cursor is closed before any UPDATE.
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(changes) == 0 {
+		return 0, nil
+	}
+
+	tx, err := conn.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	for _, c := range changes {
+		if _, err := tx.Exec(`UPDATE generated_articles SET expires_on = ? WHERE id = ?`, nullIfEmpty(c.endsOn), c.id); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(changes), nil
+}
+
+// writtenAt turns a scanned created_at into the anchor offer.EndDate needs.
+// The driver returns DATETIME columns as time.Time; anything else (NULL, or
+// text it could not parse) falls back to now rather than failing the
+// migration, since the anchor only matters for a date written without a year.
+func writtenAt(v any) time.Time {
+	switch t := v.(type) {
+	case time.Time:
+		return t
+	case string:
+		for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339Nano, "2006-01-02"} {
+			if p, err := time.Parse(layout, t); err == nil {
+				return p
+			}
+		}
+	}
+	return time.Now().UTC()
 }
 
 // repairRottedImages fixes article images whose stored URL can no longer be

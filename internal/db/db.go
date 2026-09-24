@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kumaranik/milesahead/internal/offer"
 	_ "modernc.org/sqlite"
 )
 
@@ -212,9 +213,12 @@ func (d *Database) GetRawArticlesByIDs(ids []int64) ([]RawArticle, error) {
 // --- GeneratedArticle CRUD ---
 
 func (d *Database) CreateGeneratedArticle(a *GeneratedArticle) (int64, error) {
+	// created_at is "now", the same anchor the startup backfill uses for this
+	// derivation, so the two agree.
+	a.ExpiresOn = offer.EndDate(a.KeyDetails, time.Now().UTC())
 	res, err := d.db.Exec(
-		`INSERT INTO generated_articles (title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.Title, a.Slug, a.Content, a.Type, a.Status, a.SourcesJSON, a.RevisionNumber, a.Featured, a.TLDR, a.KeyDetails, a.Links, a.ImageURL, a.ImageThumbnail, a.ImageAttribution, a.ScoutsTake, a.RelatedCardsJSON, a.TagsJSON,
+		`INSERT INTO generated_articles (title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, expires_on) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.Title, a.Slug, a.Content, a.Type, a.Status, a.SourcesJSON, a.RevisionNumber, a.Featured, a.TLDR, a.KeyDetails, a.Links, a.ImageURL, a.ImageThumbnail, a.ImageAttribution, a.ScoutsTake, a.RelatedCardsJSON, a.TagsJSON, nullIfEmpty(a.ExpiresOn),
 	)
 	if err != nil {
 		return 0, err
@@ -232,8 +236,8 @@ func (d *Database) CreateGeneratedArticle(a *GeneratedArticle) (int64, error) {
 func (d *Database) GetGeneratedArticle(id int64) (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE id = ?`, id,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles WHERE id = ?`, id,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt, &a.ExpiresOn)
 	if err != nil {
 		return nil, err
 	}
@@ -282,7 +286,7 @@ func (d *Database) UpdateArticleStatus(id int64, newStatus string) error {
 
 func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY created_at DESC`, status,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles WHERE status = ? ORDER BY created_at DESC`, status,
 	)
 	if err != nil {
 		return nil, err
@@ -293,7 +297,7 @@ func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, erro
 
 func (d *Database) ListPublishedArticles(limit, offset int) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
 		StatusApproved, limit, offset,
 	)
 	if err != nil {
@@ -303,11 +307,71 @@ func (d *Database) ListPublishedArticles(limit, offset int) ([]GeneratedArticle,
 	return scanGeneratedArticles(rows)
 }
 
+// ListLivePublishedArticles is ListPublishedArticles without the articles
+// whose offer has ended. today is the site's current date as "2006-01-02";
+// an offer is still live on its last day, so only a strictly earlier
+// expires_on is excluded. Articles with no end date are always live.
+func (d *Database) ListLivePublishedArticles(today string, limit, offset int) ([]GeneratedArticle, error) {
+	rows, err := d.db.Query(
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles
+		WHERE status = ? AND (expires_on IS NULL OR expires_on >= ?)
+		ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		StatusApproved, today, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanGeneratedArticles(rows)
+}
+
+// OfferEndDatesBySlug returns expires_on for the approved articles among
+// slugs that have one, keyed by slug. Pages that link to articles (a card's
+// recent changes) use it to mark the ones whose offer has ended.
+func (d *Database) OfferEndDatesBySlug(slugs []string) (map[string]string, error) {
+	out := map[string]string{}
+	if len(slugs) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(slugs))
+	args := make([]interface{}, 0, len(slugs)+1)
+	args = append(args, StatusApproved)
+	for i, s := range slugs {
+		placeholders[i] = "?"
+		args = append(args, s)
+	}
+	rows, err := d.db.Query(
+		`SELECT slug, expires_on FROM generated_articles
+		WHERE status = ? AND expires_on IS NOT NULL AND slug IN (`+strings.Join(placeholders, ",")+`)`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var slug, endsOn string
+		if err := rows.Scan(&slug, &endsOn); err != nil {
+			return nil, err
+		}
+		out[slug] = endsOn
+	}
+	return out, rows.Err()
+}
+
+// nullIfEmpty stores "" as NULL, so "no end date" is one value in SQL.
+func nullIfEmpty(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 func scanGeneratedArticles(rows *sql.Rows) ([]GeneratedArticle, error) {
 	var articles []GeneratedArticle
 	for rows.Next() {
 		var a GeneratedArticle
-		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt, &a.ExpiresOn); err != nil {
 			return nil, err
 		}
 		articles = append(articles, a)
@@ -691,8 +755,8 @@ func (d *Database) CountArticleSources(articleID int64) (int, error) {
 func (d *Database) GetGeneratedArticleBySlug(slug string) (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE slug = ?`, slug,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles WHERE slug = ?`, slug,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt, &a.ExpiresOn)
 	if err != nil {
 		return nil, err
 	}
@@ -702,7 +766,7 @@ func (d *Database) GetGeneratedArticleBySlug(slug string) (*GeneratedArticle, er
 // ListPublishedArticlesByType returns approved articles filtered by type.
 func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset int) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND type = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles WHERE status = ? AND type = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
 		StatusApproved, articleType, limit, offset,
 	)
 	if err != nil {
@@ -715,7 +779,7 @@ func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset
 // ListPublishedArticlesByTag returns approved articles that have the given tag in their tags_json array.
 func (d *Database) ListPublishedArticlesByTag(tag string, limit, offset int) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles
 		WHERE status = 'approved'
 		AND id IN (SELECT ga.id FROM generated_articles ga, json_each(ga.tags_json) je WHERE je.value = ?)
 		ORDER BY published_at DESC LIMIT ? OFFSET ?`, tag, limit, offset,
@@ -730,7 +794,7 @@ func (d *Database) ListPublishedArticlesByTag(tag string, limit, offset int) ([]
 // ListApprovedArticlesSince returns approved articles published since the given time.
 func (d *Database) ListApprovedArticlesSince(since time.Time) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles
 		WHERE status = ? AND published_at >= ?
 		ORDER BY featured DESC, published_at DESC`,
 		StatusApproved, since,
@@ -746,13 +810,13 @@ func (d *Database) ListApprovedArticlesSince(since time.Time) ([]GeneratedArticl
 func (d *Database) GetFeaturedArticle() (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND featured = 1 ORDER BY published_at DESC LIMIT 1`, StatusApproved,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles WHERE status = ? AND featured = 1 ORDER BY published_at DESC LIMIT 1`, StatusApproved,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt, &a.ExpiresOn)
 	if err != nil {
 		// Fallback to most recent approved.
 		err = d.db.QueryRow(
-			`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT 1`, StatusApproved,
-		).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+			`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT 1`, StatusApproved,
+		).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt, &a.ExpiresOn)
 		if err != nil {
 			return nil, err
 		}
@@ -1183,12 +1247,15 @@ type SearchResult struct {
 	Slug    string
 	Excerpt string
 	Type    string // "article" or "card"
+	// ExpiresOn is the article's offer end date ("2006-01-02"), or "" when it
+	// has none. Always "" for cards.
+	ExpiresOn string
 }
 
 // SearchArticles performs a full-text search on articles, returning only approved ones.
 func (d *Database) SearchArticles(query string, limit, offset int) ([]SearchResult, error) {
 	rows, err := d.db.Query(
-		`SELECT a.id, a.title, a.slug, snippet(articles_fts, 2, '<mark>', '</mark>', '...', 40) AS excerpt
+		`SELECT a.id, a.title, a.slug, snippet(articles_fts, 2, '<mark>', '</mark>', '...', 40) AS excerpt, COALESCE(a.expires_on, '')
 		FROM articles_fts f
 		JOIN generated_articles a ON a.id = f.rowid
 		WHERE articles_fts MATCH ? AND a.status = ?
@@ -1204,7 +1271,7 @@ func (d *Database) SearchArticles(query string, limit, offset int) ([]SearchResu
 	var results []SearchResult
 	for rows.Next() {
 		var r SearchResult
-		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt); err != nil {
+		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt, &r.ExpiresOn); err != nil {
 			return nil, err
 		}
 		r.Type = "article"
