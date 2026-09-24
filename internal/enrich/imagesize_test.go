@@ -592,3 +592,52 @@ func TestFindImage_SkipsCandidatesThatDoNotFit(t *testing.T) {
 		t.Errorf("stored image:\n url   %q\n thumb %q\nwant the sized Wikimedia pair", url, thumb)
 	}
 }
+
+// The width lookup runs before the per-pass row cap, so it is bounded on its
+// own: one Commons request a pass, newest rows first, and none once the
+// budget is spent. With 45 unknown originals the old lookup made 3 requests
+// before the first row was resized.
+func TestRun_WidthLookupIsBounded(t *testing.T) {
+	d := testDB(t)
+	hosts := &imageHosts{}
+	s := newResizeService(t, d, hosts)
+
+	var ids []int64
+	for i := 0; i < 45; i++ {
+		u := fmt.Sprintf("%sa/ab/Bulk_%02d.jpg", wm, i)
+		ids = append(ids, seedImage(t, d, u, u))
+	}
+	lookups := func() (n int, titles string) {
+		hosts.mu.Lock()
+		defer hosts.mu.Unlock()
+		for _, r := range hosts.requests {
+			if strings.HasPrefix(r, "commons.wikimedia.org") && strings.Contains(r, "titles=") {
+				n++
+				titles += r
+			}
+		}
+		return n, titles
+	}
+
+	stored, err := d.ListStoredArticleImages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.lookUpOriginalWidths(stored, time.Now().Add(-time.Second))
+	if n, _ := lookups(); n != 0 {
+		t.Fatalf("looked up widths after the deadline: %d requests", n)
+	}
+
+	s.lookUpOriginalWidths(stored, time.Now().Add(time.Minute))
+	n, titles := lookups()
+	if n != 1 {
+		t.Fatalf("one pass made %d Commons width requests, want 1", n)
+	}
+	newestTitle := fmt.Sprintf("Bulk+%02d.jpg", len(ids)-1)
+	if !strings.Contains(titles, newestTitle) {
+		t.Errorf("the lookup should cover the newest rows first; %s missing", newestTitle)
+	}
+	if strings.Contains(titles, "Bulk+00.jpg") {
+		t.Error("the oldest row should wait for a later pass")
+	}
+}

@@ -3,6 +3,7 @@ package enrich
 import (
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"time"
 
@@ -117,7 +118,7 @@ func (s *Service) resizeStoredImages(deadline time.Time) {
 		slog.Warn("image resize: could not list article images", "error", err)
 		return
 	}
-	s.lookUpOriginalWidths(stored)
+	s.lookUpOriginalWidths(stored, deadline)
 
 	now := time.Now()
 	var jobs []resizeJob
@@ -318,23 +319,39 @@ func (s *Service) resizeMaxRows() int {
 	return defaultResizeMaxRows
 }
 
-// lookUpOriginalWidths fills s.originalWidths for any Commons original in
-// stored it has not seen. Widths do not change, so each is asked for once per
-// process; a failed lookup records nothing and is retried next pass.
-func (s *Service) lookUpOriginalWidths(stored []db.StoredArticleImage) {
+// widthLookupsPerPass caps how many originals one pass looks up: at most one
+// Commons request (images.Searcher asks for 20 titles per request), so the
+// lookup cannot eat the resize budget however many originals are stored.
+const widthLookupsPerPass = 20
+
+// lookUpOriginalWidths fills s.originalWidths for Commons originals in stored
+// it has not seen, newest articles (the homepage) first and at most
+// widthLookupsPerPass a pass; the rest are looked up on later passes. Widths
+// do not change, so each is asked for once per process; a failed lookup
+// records nothing and is retried next pass. Nothing is asked once deadline
+// has passed.
+func (s *Service) lookUpOriginalWidths(stored []db.StoredArticleImage, deadline time.Time) {
 	if s.originalWidths == nil {
 		s.originalWidths = map[string]int{}
 	}
+	if time.Now().After(deadline) {
+		return
+	}
+	newest := append([]db.StoredArticleImage(nil), stored...)
+	sort.SliceStable(newest, func(i, j int) bool { return newest[i].ID > newest[j].ID })
 	var unknown []string
-	for _, a := range stored {
+	for _, a := range newest {
 		for _, u := range []string{a.URL, a.Thumbnail} {
-			if s.widthUnknown(u) {
+			if s.widthUnknown(u) && !slices.Contains(unknown, u) {
 				unknown = append(unknown, u)
 			}
 		}
 	}
 	if len(unknown) == 0 {
 		return
+	}
+	if len(unknown) > widthLookupsPerPass {
+		unknown = unknown[:widthLookupsPerPass]
 	}
 	widths, err := s.searcher.WikimediaWidths(unknown)
 	if err != nil {
