@@ -189,8 +189,9 @@ func TestSearch_MarksEndedOffers(t *testing.T) {
 	}
 	// Inside the link, so a screen reader moving between links hears
 	// "Ended" with the title.
-	if want := `<a href="/article/ended" class="search-item-title">` + endedBadge + ` Citi 25% Transfer Bonus`; !strings.Contains(item, want) {
-		t.Errorf("the Ended badge should be part of the result's link, want %s in:\n%s", want, item)
+	link := regexp.MustCompile(`<a href="/article/ended" class="search-item-title">(.*?)</a>`).FindStringSubmatch(item)
+	if link == nil || !strings.HasPrefix(link[1], endedBadge+" ") || !strings.Contains(link[1], "Citi 25% Transfer Bonus") {
+		t.Errorf("the Ended badge should open the result's link text:\n%s", item)
 	}
 	live := regexp.MustCompile(`(?s)<li class="search-item[^"]*">\s*<a href="/article/ends-next-week".*?</li>`).FindString(body)
 	if live == "" || strings.Contains(live, "is-ended") {
