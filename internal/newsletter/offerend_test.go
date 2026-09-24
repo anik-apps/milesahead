@@ -230,3 +230,74 @@ func TestSendWeekly_AllEndedSendsNothing(t *testing.T) {
 		t.Error("sent a weekly made only of ended offers")
 	}
 }
+
+// The weekly is re-checked at send time because an offer in it may have ended
+// overnight. If the articles cannot be reloaded, the stored HTML cannot be
+// checked either, so it must not go out in their place.
+func TestSendWeekly_UncheckableIssueIsNotSent(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	ended := publish(t, database, endedTitle, "citi-lhw", "September 19, 2020", false)
+	publish(t, database, liveTitle, "united-ihg", "September 30, 2099", false)
+	subscribe(t, database)
+
+	sender := &mockSender{}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	pick := ended
+	if _, err := database.CreateNewsletter(&db.Newsletter{
+		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved",
+		HTMLContent: "<p>" + endedTitle + "</p><p>" + liveTitle + "</p>", ArticleCount: 2, ScoutsPickArticleID: &pick,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Make the reload fail while the newsletter and subscribers still load.
+	if _, err := database.DB().Exec(`ALTER TABLE generated_articles RENAME TO generated_articles_gone`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.SendWeekly(); err == nil {
+		t.Error("SendWeekly should report that it could not recheck the issue")
+	}
+	if len(sender.calls) != 0 {
+		t.Errorf("sent the stored issue unchecked:\n%s", sender.calls[0].html)
+	}
+	nl, err := database.GetNewsletterByDate(svc.thisSaturday())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nl.Status == "sent" {
+		t.Error("the issue was marked sent")
+	}
+}
+
+// With nothing approved left in the week (every article unpublished since the
+// build), the stored HTML holds only articles that are no longer on the site;
+// it is not sent.
+func TestSendWeekly_NothingLeftToSendSendsNothing(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	id := publish(t, database, liveTitle, "united-ihg", "September 30, 2099", false)
+	subscribe(t, database)
+
+	sender := &mockSender{}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	pick := id
+	if _, err := database.CreateNewsletter(&db.Newsletter{
+		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved",
+		HTMLContent: "<p>" + liveTitle + "</p>", ArticleCount: 1, ScoutsPickArticleID: &pick,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.UpdateArticleStatus(id, db.StatusUnpublished); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.SendWeekly(); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.calls) != 0 {
+		t.Error("sent a weekly whose articles are no longer published")
+	}
+}

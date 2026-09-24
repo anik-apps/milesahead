@@ -688,63 +688,60 @@ func (s *Service) SendWeekly() error {
 		return nil
 	}
 
-	// Re-render template at send time to reflect any admin overrides.
+	// Re-render template at send time to reflect any admin overrides, and
+	// because the newsletter was built the evening before: an offer in it
+	// may have ended overnight. The stored HTML is never sent in place of
+	// the re-rendered issue -- it cannot be checked, and may hold an offer
+	// that has ended or an article that has been unpublished.
 	since, _ := time.Parse("2006-01-02", sendDate)
 	since = since.AddDate(0, 0, -7)
 	articles, err := s.db.ListApprovedArticlesSince(since)
 	if err != nil {
-		slog.Error("failed to reload articles for send", "error", err)
-		// Fall back to stored HTML.
-	} else if len(articles) > 0 {
-		// The newsletter was built the evening before; an offer in it may
-		// have ended overnight.
-		articles = s.liveOffers(articles)
-		if len(articles) == 0 {
-			// The stored HTML holds exactly those ended offers, so falling
-			// back to it would send them.
-			slog.Warn("weekly newsletter not sent: every article in it has ended", "date", sendDate)
-			return nil
-		}
-
-		// Reload card of week and scout's pick data.
-		var cow *cardOfWeekData
-		if nl.CardOfWeekID != nil {
-			cow = s.loadCardOfWeekData(*nl.CardOfWeekID)
-		}
-
-		// Re-rank articles using candidates order.
-		candidates, _ := s.db.ListCandidatesForNewsletter(nl.ID)
-		if len(candidates) > 0 {
-			candidateIDs := make([]int64, len(candidates))
-			for i, c := range candidates {
-				candidateIDs[i] = c.ArticleID
-			}
-			articles = reorderArticles(articles, candidateIDs)
-		}
-
-		var sp *scoutsPickData
-		if nl.ScoutsPickArticleID != nil {
-			pickID := *nl.ScoutsPickArticleID
-			if !containsArticle(articles, pickID) {
-				// Scout's Pick has ended (or been unpublished) since it was
-				// chosen. Hand the slot to the top article still being sent.
-				slog.Info("weekly newsletter: replacing Scout's Pick that is no longer live",
-					"was", pickID, "now", articles[0].ID)
-				pickID = articles[0].ID
-				if err := s.db.UpdateNewsletterScoutsPick(nl.ID, pickID); err != nil {
-					slog.Error("failed to update scout's pick", "error", err)
-				}
-			}
-			sp = s.loadScoutsPickData(pickID)
-		}
-
-		htmlContent, err := renderWeeklyNewsletter(articles, sendDate, s.baseURL(), cow, sp)
-		if err != nil {
-			slog.Error("failed to re-render newsletter at send time", "error", err)
-		} else {
-			nl.HTMLContent = htmlContent
-		}
+		return fmt.Errorf("reloading articles for send: %w", err)
 	}
+	articles = s.liveOffers(articles)
+	if len(articles) == 0 {
+		slog.Warn("weekly newsletter not sent: no published article in it is still live", "date", sendDate)
+		return nil
+	}
+
+	// Reload card of week and scout's pick data.
+	var cow *cardOfWeekData
+	if nl.CardOfWeekID != nil {
+		cow = s.loadCardOfWeekData(*nl.CardOfWeekID)
+	}
+
+	// Re-rank articles using candidates order.
+	candidates, _ := s.db.ListCandidatesForNewsletter(nl.ID)
+	if len(candidates) > 0 {
+		candidateIDs := make([]int64, len(candidates))
+		for i, c := range candidates {
+			candidateIDs[i] = c.ArticleID
+		}
+		articles = reorderArticles(articles, candidateIDs)
+	}
+
+	var sp *scoutsPickData
+	if nl.ScoutsPickArticleID != nil {
+		pickID := *nl.ScoutsPickArticleID
+		if !containsArticle(articles, pickID) {
+			// Scout's Pick has ended (or been unpublished) since it was
+			// chosen. Hand the slot to the top article still being sent.
+			slog.Info("weekly newsletter: replacing Scout's Pick that is no longer live",
+				"was", pickID, "now", articles[0].ID)
+			pickID = articles[0].ID
+			if err := s.db.UpdateNewsletterScoutsPick(nl.ID, pickID); err != nil {
+				slog.Error("failed to update scout's pick", "error", err)
+			}
+		}
+		sp = s.loadScoutsPickData(pickID)
+	}
+
+	htmlContent, err := renderWeeklyNewsletter(articles, sendDate, s.baseURL(), cow, sp)
+	if err != nil {
+		return fmt.Errorf("re-rendering newsletter at send time: %w", err)
+	}
+	nl.HTMLContent = htmlContent
 
 	recipients := make([]string, len(subscribers))
 	for i, sub := range subscribers {
