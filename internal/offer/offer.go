@@ -740,10 +740,11 @@ func saysEnded(value string) bool {
 // day and is read as yearless, and an ISO or numeric date is no date.
 //
 // A numeric date that reads either way ("1/7/2026") is month first, unless
-// that falls more than yearlessGraceDays before the article, or falls
-// before it while day first does not; then it takes the later of the two
-// readings. Written June 10, "06/07/2026" is July 6, not a June 7 already
-// gone.
+// that falls more than yearlessGraceDays before the article; then it takes
+// the later of the two readings. When month first falls before the article
+// but within the grace, and day first does not, the day-first reading is the
+// end when no other end in the value is still ahead: written June 10,
+// "06/07/2026" is July 6, not a June 7 already gone.
 //
 // A date written without a year is the first occurrence of that day no more
 // than yearlessGraceDays before the article was written. Offers are written
@@ -811,6 +812,10 @@ func resolve(dates []found, value string, anchor time.Time) ([]time.Time, bool) 
 	}
 
 	days := make([]time.Time, len(dates))
+	// dayFirst is the day-first reading of a numeric date that has just
+	// gone read month first, when that reading is still ahead: it is the
+	// end if nothing else in the value is (see below).
+	dayFirst := make([]time.Time, len(dates))
 	// Dates with a year first: their days lend years to the rest.
 	for i := range dates {
 		f := &dates[i]
@@ -821,10 +826,13 @@ func resolve(dates []found, value string, anchor time.Time) ([]time.Time, bool) 
 		if f.swappable && (!ok || t.Before(written)) {
 			swapped := *f
 			swapped.month, swapped.day = time.Month(f.day), int(f.month)
-			// Long gone read month first, or gone while the other reading
-			// is still ahead: the later reading.
-			if u, uok := swapped.in(f.year); uok && (!ok || u.After(t) && (t.Before(floor) || !u.Before(written))) {
+			u, uok := swapped.in(f.year)
+			switch {
+			case uok && (!ok || t.Before(floor) && u.After(t)):
+				// Long gone read month first: the later reading.
 				t, ok = u, true
+			case uok && !u.Before(written):
+				dayFirst[i] = u
 			}
 		}
 		if !ok {
@@ -873,6 +881,9 @@ func resolve(dates []found, value string, anchor time.Time) ([]time.Time, bool) 
 	for i := range dates {
 		if dates[i].dayBefore && !dates[i].dropped {
 			days[i] = days[i].AddDate(0, 0, -1)
+			if !dayFirst[i].IsZero() {
+				dayFirst[i] = dayFirst[i].AddDate(0, 0, -1)
+			}
 		}
 	}
 
@@ -951,6 +962,17 @@ func resolve(dates []found, value string, anchor time.Time) ([]time.Time, bool) 
 			current = true
 		}
 	}
+	if !current {
+		// Every end has gone. Written June 10, "06/07/2026" is not a June
+		// 7 already over but July 6, day first. (Beside an end still
+		// ahead, the date is dropped as the offer's past either way.)
+		for _, i := range ends {
+			if !dayFirst[i].IsZero() {
+				days[i] = dayFirst[i]
+				current = true
+			}
+		}
+	}
 	out := make([]time.Time, 0, len(ends))
 	extendedTo := false
 	for _, i := range ends {
@@ -975,10 +997,10 @@ func resolve(dates []found, value string, anchor time.Time) ([]time.Time, bool) 
 // When several details state an end -- a registration deadline and a travel
 // deadline, say -- the earliest wins: after it, a reader can no longer take
 // the offer. A detail labelled as a replacement ("Extended Deadline", "New
-// End Date") sets aside the others: the deadline it extends is over. It
-// never sets an end earlier than the others give, and one that says the
-// offer runs on with no new date ("Extended Deadline: Until further notice")
-// leaves no end date.
+// End Date") sets aside the others: the deadline it extends is over. Of
+// several replacements the latest counts. A replacement never sets an end
+// earlier than the others give, and one that says the offer runs on with no
+// new date ("Extended Deadline: Until further notice") leaves no end date.
 func EndDate(keyDetailsJSON string, anchor time.Time) string {
 	s := strings.TrimSpace(keyDetailsJSON)
 	if s == "" || s == "[]" || s == "null" {
@@ -1015,7 +1037,9 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 			}
 		}
 		if replaces {
-			if replacement.IsZero() || pick.Before(replacement) {
+			// Of two replacements, the later: each says the deadline
+			// moved, and one that moved it less may be the older.
+			if pick.After(replacement) {
 				replacement = pick
 			}
 			continue

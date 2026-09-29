@@ -511,6 +511,9 @@ func TestEndDate_NumericDayFirst(t *testing.T) {
 		{"just gone month first, ahead day first", "Deadline", "06/07/2026", "2026-06-10", "2026-07-06"},
 		{"September", "Deadline", "09/10/2026", "2026-09-20", "2026-10-09"},
 		{"November", "Deadline", "11/12/2026", "2026-11-20", "2026-12-11"},
+		// Beside an end still ahead, the date just gone is the offer's
+		// past: read day first, it would end the offer sooner.
+		{"beside a later end", "Deadline", "July 31, 2026 (ran through 3/4/2026)", "2026-03-18", "2026-07-31"},
 		// The "07" of a numeric date is not the end of a range from March 1.
 		{"range to a numeric date", "Promotion Period", "March 1 - 07/01/2026", "2026-05-20", "2026-07-01"},
 	})
@@ -837,6 +840,13 @@ func TestEndDate_MoreReplacementLabels(t *testing.T) {
 	kd := details(t, "Deadline", "July 31, 2026", "Extended Deadline", "June 30, 2026")
 	if got := EndDate(kd, day(written)); got != "2026-07-31" {
 		t.Errorf("EndDate(Deadline: July 31; Extended Deadline: June 30) = %q, want 2026-07-31", got)
+	}
+	// Of two replacements, the later: "Extended Offer Deadline" was an
+	// ordinary deadline before, and a newly recognised replacement beside
+	// it must not end the offer sooner.
+	kd = details(t, "Extended Promotion Period", "June 30, 2026", "Extended Offer Deadline", "July 15, 2026")
+	if got := EndDate(kd, day(written)); got != "2026-07-15" {
+		t.Errorf("EndDate with two replacements = %q, want the later, 2026-07-15", got)
 	}
 	// An extended period is a period: its last date is the end.
 	kd = details(t, "Deadline", "June 30, 2026", "Extended Promotion Period", "June 1 - August 31, 2026")
