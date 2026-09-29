@@ -846,6 +846,20 @@ func TestEndDate_MoreReplacementLabels(t *testing.T) {
 	}
 }
 
+// A lone replaced date is not when the offer ended if the value says it was
+// extended, or only that something "ended up" happening.
+func TestEndDate_ExtendedIsNotEnded(t *testing.T) {
+	const written = "2026-07-05"
+	runEndDateCases(t, []endDateCase{
+		{"original deadline has expired", "Deadline", "Extended (original June 30, 2026 deadline has expired)", written, ""},
+		{"another offer ended", "Deadline", "Extended (was June 30, 2026); Amex's similar offer ended last week", written, ""},
+		{"ended up extended", "Deadline", "Previously June 30, 2026 — the deal ended up being extended", written, ""},
+		{"ended up running longer", "Deadline", "Previously June 30, 2026 — the deal ended up running longer", written, ""},
+		// Still said to be over: the date is when it ended.
+		{"ended", "Deadline", "Ended June 30, 2026", written, "2026-06-30"},
+	})
+}
+
 // The last day is still live; the offer has ended from the next day.
 func TestEnded(t *testing.T) {
 	cases := []struct {

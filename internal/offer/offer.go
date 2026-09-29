@@ -713,11 +713,20 @@ func (f found) onOrAfter(from time.Time) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// endedUpRE is "ended up", which says nothing about an end.
+var endedUpRE = regexp.MustCompile(`(?i)\bended\s+up\b`)
+
+// extendWordRE finds a value that says the offer was extended: then its
+// "expired" or "ended" is about the old deadline ("Extended (original June
+// 30 deadline has expired)").
+var extendWordRE = regexp.MustCompile(`(?i)\bextend\w*`)
+
 // saysEnded reports whether value says the offer is over, and does not also
-// say it runs on ("Ongoing (the 60K offer ended June 1)") or deny it ended
-// ("but the offer hasn't ended yet").
+// say it runs on ("Ongoing (the 60K offer ended June 1)"), deny it ended
+// ("but the offer hasn't ended yet") or say it was extended.
 func saysEnded(value string) bool {
-	return endedWordRE.MatchString(value) && !stillOpenRE.MatchString(value)
+	return endedWordRE.MatchString(endedUpRE.ReplaceAllString(value, "")) &&
+		!stillOpenRE.MatchString(value) && !extendWordRE.MatchString(value)
 }
 
 // resolve turns the dates found in value, written at anchor, into the
