@@ -691,10 +691,12 @@ func saysEnded(value string) bool {
 // An extension supersedes every date in the value that it pushes back: in
 // "June 30, now extended to July 31" and "Extended again: July 31 (after
 // being extended once to June 30)" June 30 is gone. An extension to a date
-// earlier than one written before it is an older one: in "Extended to July
-// 31 (after it was first extended to June 30)" June 30 is gone, and in
-// "June 1 - August 31; now through July 15 for double points" July 15 does
-// not cut the period short.
+// earlier than one written before it still pushes back the dates at or
+// before it: in "Book by June 15 for travel through December 31 (extended to
+// July 15)" the booking deadline is July 15. When it pushes back no end, it
+// is an older one: in "Extended to July 31 (after it was first extended to
+// June 30)" June 30 is gone, and in "June 1 - August 31; now through July 15
+// for double points" July 15 does not cut the period short.
 //
 // A superseded date ("was September 30") is skipped when the value names
 // another end, and kept alone only when the value says the offer is over and
@@ -803,7 +805,16 @@ func resolve(dates []found, value string, anchor time.Time) []time.Time {
 				break
 			}
 		}
-		if older {
+		pushes := false
+		for j := range dates {
+			if j != i && dates[j].candidate() && !days[j].After(days[i]) {
+				pushes = true
+				break
+			}
+		}
+		// After a later date written before it, and pushing back no end, it
+		// is an older extension, or one for some readers only.
+		if older && !pushes {
 			r.superseded = true
 			continue
 		}

@@ -723,6 +723,19 @@ func TestEndDate_TakingTheOfferDespiteABenefitWord(t *testing.T) {
 	}
 }
 
+// An extension written after a later date still pushes back the deadline it
+// extends. Dropping it as an older extension left the pre-extension
+// deadline in force, and the offer ended a month early.
+func TestEndDate_ExtensionAfterALaterDate(t *testing.T) {
+	const written = "2026-06-10"
+	runEndDateCases(t, []endDateCase{
+		{"booking deadline extended, travel later", "Deadline", "Book by June 15, 2026 for travel through December 31, 2026 (extended to July 15, 2026)", written, "2026-07-15"},
+		{"stay later, booking extended", "Deadline", "Stay by December 31, 2026; book by June 30, 2026, now extended to July 15, 2026", written, "2026-07-15"},
+		// Pushing back no end, it is still an older extension.
+		{"older extension", "Deadline", "July 31, 2026; now through July 15 for double points", written, "2026-07-31"},
+	})
+}
+
 // The last day is still live; the offer has ended from the next day.
 func TestEnded(t *testing.T) {
 	cases := []struct {
