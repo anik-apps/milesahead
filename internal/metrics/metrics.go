@@ -28,6 +28,27 @@ var (
 		Help: "Total revisions processed",
 	}, []string{"status"}) // improved, unchanged, failed
 
+	// RevisionReconcileTotal counts what the revision reconciler did with each
+	// article it looked at: processed (rewrite stored), failed (rewrite
+	// attempted and failed), skipped (already being revised, or no longer
+	// waiting), error (could not read its retry state; not attempted).
+	// pass_skipped counts whole passes skipped because the previous one was
+	// still running. Revisions used to run only from the Revise button's
+	// one-shot goroutine, so a failure or a deploy mid-run left the article in
+	// "Revising" for good with nothing counting it.
+	RevisionReconcileTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_revision_reconcile_total",
+		Help: "Revision reconciler outcomes per article (processed, failed, skipped, error) and pass_skipped",
+	}, []string{"outcome"})
+
+	// RevisionsWaiting is the current number of articles in revision_requested:
+	// due (will be tried next pass), backoff (failed, waiting to retry) and
+	// exhausted (out of retries, needs the admin). exhausted > 0 is alertable.
+	RevisionsWaiting = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "milesahead_revisions_waiting",
+		Help: "Articles waiting for a revision, by state (due, backoff, exhausted)",
+	}, []string{"state"})
+
 	AIAPIDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "milesahead_ai_api_duration_seconds",
 		Help:    "AI API call duration including retries",
@@ -180,6 +201,7 @@ func Init() {
 		EnrichmentFailuresTotal, ArticlesDegraded,
 		EnrichmentPassesTotal, EnrichmentLastSuccessTimestamp, EnrichmentPassDuration,
 		ArticlesRejectedTotal, RevisionsTotal, AIAPIDuration,
+		RevisionReconcileTotal, RevisionsWaiting,
 		AIAPIErrorsTotal, CriticScore, VotesTotal,
 		HTTPRequestsTotal, HTTPDuration,
 		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,

@@ -211,6 +211,18 @@ func migrate(db *sql.DB) error {
 		// time.Time at midnight UTC, and this is a calendar day in the site's
 		// timezone. ISO strings compare correctly in SQL as they are.
 		`ALTER TABLE generated_articles ADD COLUMN expires_on TEXT DEFAULT NULL`,
+		// Revision bookkeeping for the revision reconciler. A rewrite used to
+		// run once, from the goroutine the Revise button started; if it failed
+		// or a deploy restarted the process mid-run, the article sat in
+		// revision_requested forever. The reconciler retries, and these bound
+		// it: failures counts consecutive failed rewrites, retry_after (unix
+		// seconds, 0 = now) is the backoff, and last_error is shown on the
+		// dashboard once the budget is spent. In the database rather than in
+		// memory so a deploy neither forgets the backoff nor hands a
+		// permanently failing article a fresh budget.
+		`ALTER TABLE generated_articles ADD COLUMN revision_failures INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE generated_articles ADD COLUMN revision_retry_after INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE generated_articles ADD COLUMN revision_last_error TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)

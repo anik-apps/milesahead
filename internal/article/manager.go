@@ -2,11 +2,15 @@ package article
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math/rand"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
@@ -17,6 +21,26 @@ import (
 type Manager struct {
 	db       *db.Database
 	pipeline *ai.Pipeline
+
+	// RevisionMaxFailures is how many failed rewrites an article gets before
+	// the revision reconciler stops retrying it. Zero means
+	// DefaultRevisionMaxFailures.
+	RevisionMaxFailures int
+
+	// revInFlight holds the articles being rewritten right now, so the Revise
+	// button, the other kicks and the reconciler never rewrite one article
+	// concurrently.
+	revMu       sync.Mutex
+	revInFlight map[int64]bool
+	// revPassRunning stops reconciler passes overlapping.
+	revPassRunning atomic.Bool
+	// revBG tracks rewrites started by StartRevision.
+	revBG sync.WaitGroup
+	// now is the clock for retry backoff; nil means time.Now. Tests override it.
+	now func() time.Time
+	// applyRevision replaces db.ApplyRevision when set. Tests only: it is how
+	// they make the store miss or interleave feedback with it.
+	applyRevision func(db.AppliedRevision) (bool, error)
 }
 
 // NewManager creates a new article Manager.
@@ -114,7 +138,9 @@ func (m *Manager) Approve(articleID int64) error {
 	if !allowed[article.Status] {
 		return fmt.Errorf("cannot approve article with status %q", article.Status)
 	}
-	if err := m.db.UpdateArticleStatus(articleID, db.StatusApproved); err != nil {
+	// Conditional on the status just checked: if a rewrite landed in between,
+	// this must not approve content nobody has reviewed.
+	if err := m.db.TransitionArticleStatus(articleID, article.Status, db.StatusApproved); err != nil {
 		return err
 	}
 	slog.Info("article approved", "article_id", articleID)
@@ -132,7 +158,9 @@ func (m *Manager) Reject(articleID int64) error {
 	if !allowed[article.Status] {
 		return fmt.Errorf("cannot reject article with status %q", article.Status)
 	}
-	if err := m.db.UpdateArticleStatus(articleID, db.StatusRejected); err != nil {
+	// Conditional on the status just checked: if a rewrite landed in between,
+	// this must not reject content nobody has reviewed.
+	if err := m.db.TransitionArticleStatus(articleID, article.Status, db.StatusRejected); err != nil {
 		return err
 	}
 	slog.Info("article rejected", "article_id", articleID)
@@ -140,20 +168,21 @@ func (m *Manager) Reject(articleID int64) error {
 	return nil
 }
 
-// RequestRevision transitions an article from pending to revision_requested
-// and stores admin feedback.
+// RequestRevision stores admin feedback and moves the article to
+// revision_requested.
+//
+// The feedback is stored before the status changes, so anything that sees the
+// article in revision_requested -- a reconciler pass, a kick -- also sees the
+// feedback it is meant to answer. The other order let a rewrite start against
+// the previous note (or none).
 func (m *Manager) RequestRevision(articleID int64, feedback string, source string) error {
+	allowed := map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true, db.StatusDraft: true}
 	article, err := m.db.GetGeneratedArticle(articleID)
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
 	}
-	allowed := map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true, db.StatusDraft: true}
 	if !allowed[article.Status] {
 		return fmt.Errorf("cannot request revision for article with status %q", article.Status)
-	}
-
-	if err := m.db.UpdateArticleStatus(articleID, db.StatusRevisionRequested); err != nil {
-		return fmt.Errorf("updating status: %w", err)
 	}
 
 	_, err = m.db.CreateAdminFeedback(&db.AdminFeedback{
@@ -164,9 +193,28 @@ func (m *Manager) RequestRevision(articleID int64, feedback string, source strin
 	if err != nil {
 		return fmt.Errorf("storing feedback: %w", err)
 	}
+	m.resetRevisionBudget(articleID)
+
+	// A rewrite may store between the read above and this write (e.g.
+	// revision_requested -> pending). Re-read and retry once: the request is
+	// still valid from the new status, and the feedback is already stored.
+	for attempt := 1; ; attempt++ {
+		err = m.db.TransitionArticleStatus(articleID, article.Status, db.StatusRevisionRequested)
+		if err == nil || !errors.Is(err, db.ErrStatusChanged) || attempt == 2 {
+			break
+		}
+		if article, err = m.db.GetGeneratedArticle(articleID); err != nil {
+			return fmt.Errorf("getting article: %w", err)
+		}
+		if !allowed[article.Status] {
+			return fmt.Errorf("cannot request revision for article with status %q", article.Status)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("updating status: %w", err)
+	}
 
 	slog.Info("revision requested", "article_id", articleID, "source", source)
-
 	return nil
 }
 
@@ -179,7 +227,7 @@ func (m *Manager) Unpublish(articleID int64) error {
 	if article.Status != db.StatusApproved {
 		return fmt.Errorf("cannot unpublish article with status %q, must be %q", article.Status, db.StatusApproved)
 	}
-	return m.db.UpdateArticleStatus(articleID, db.StatusUnpublished)
+	return m.db.TransitionArticleStatus(articleID, db.StatusApproved, db.StatusUnpublished)
 }
 
 // UnpublishAndRevise unpublishes an approved article, stores feedback, and
@@ -195,7 +243,7 @@ func (m *Manager) UnpublishAndRevise(articleID int64, feedback string, source st
 		return fmt.Errorf("cannot unpublish article with status %q, must be %q", article.Status, db.StatusApproved)
 	}
 
-	if err := m.db.UpdateArticleStatus(articleID, db.StatusUnpublished); err != nil {
+	if err := m.db.TransitionArticleStatus(articleID, db.StatusApproved, db.StatusUnpublished); err != nil {
 		return fmt.Errorf("unpublishing: %w", err)
 	}
 
@@ -208,11 +256,25 @@ func (m *Manager) UnpublishAndRevise(articleID int64, feedback string, source st
 		return fmt.Errorf("storing feedback: %w", err)
 	}
 
-	if err := m.db.UpdateArticleStatus(articleID, db.StatusRevisionRequested); err != nil {
+	m.resetRevisionBudget(articleID)
+
+	if err := m.db.TransitionArticleStatus(articleID, db.StatusUnpublished, db.StatusRevisionRequested); err != nil {
 		return fmt.Errorf("setting revision_requested: %w", err)
 	}
 
+	slog.Info("revision requested", "article_id", articleID, "source", source, "unpublished", true)
+
 	return nil
+}
+
+// resetRevisionBudget gives the article a fresh set of rewrite retries. New
+// feedback is the admin asking again, and is also the only way an article that
+// exhausted its retries gets another try. Best effort: failing to reset leaves
+// at worst an old failure count, which a later request resets.
+func (m *Manager) resetRevisionBudget(articleID int64) {
+	if err := m.db.ResetRevisionFailures(articleID); err != nil {
+		slog.Warn("could not reset revision retry budget", "article_id", articleID, "error", err)
+	}
 }
 
 // GenerateSlug creates a URL-friendly slug from a title.

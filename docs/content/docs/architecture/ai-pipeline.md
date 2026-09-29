@@ -120,7 +120,7 @@ When the critic finds issues, the pipeline automatically triggers one revision c
 3. The critic re-evaluates the revised version
 4. The higher-scoring version is kept
 
-Admins can also trigger manual revisions through the dashboard by providing feedback text.
+Admins can also trigger manual revisions by providing feedback text, through the dashboard or by replying to the review email. Those rewrites are retried by a revision reconciler until they succeed or exhaust their retry budget; see [Article Workflow](../../features/article-workflow/#how-revisions-run).
 
 ## Detail Extraction
 

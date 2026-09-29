@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/kumaranik/milesahead/internal/config"
 )
@@ -133,6 +134,7 @@ type mockArticleManager struct {
 	unpublishCalls       []int64
 	requestRevisionCalls []revisionCall
 	unpublishReviseCalls []revisionCall
+	startRevisionCalls   []int64
 	err                  error
 }
 
@@ -165,6 +167,10 @@ func (m *mockArticleManager) RequestRevision(articleID int64, feedback string, s
 func (m *mockArticleManager) UnpublishAndRevise(articleID int64, feedback string, source string) error {
 	m.unpublishReviseCalls = append(m.unpublishReviseCalls, revisionCall{articleID, feedback, source})
 	return m.err
+}
+
+func (m *mockArticleManager) StartRevision(articleID int64) {
+	m.startRevisionCalls = append(m.startRevisionCalls, articleID)
 }
 
 // mockTokenResolver returns predetermined results.
@@ -298,5 +304,85 @@ func defaultIMAPConfig() config.IMAPConfig {
 		User:         "test@gmail.com",
 		Password:     "secret",
 		PollInterval: 120,
+	}
+}
+
+// replyMessage builds a fetched reply to the review address for token.
+func replyMessage(token, body string) *imapclient.FetchMessageBuffer {
+	return &imapclient.FetchMessageBuffer{
+		Envelope: &imap.Envelope{
+			To: []imap.Address{{Mailbox: "review+" + token, Host: "example.com"}},
+		},
+		BodySection: []imapclient.FetchBodySectionBuffer{{Bytes: []byte(body)}},
+	}
+}
+
+// TestProcessMessage_FeedbackStartsRevision guards the email path. A feedback
+// reply used to set revision_requested and stop there: nothing started the
+// rewrite, so the article showed "Revising" indefinitely.
+func TestProcessMessage_FeedbackStartsRevision(t *testing.T) {
+	tests := []struct {
+		name          string
+		status        string
+		wantRequest   int
+		wantUnpublish int
+	}{
+		{name: "pending article", status: "pending", wantRequest: 1},
+		{name: "published article", status: "approved", wantUnpublish: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mgr := &mockArticleManager{}
+			res := &mockTokenResolver{articles: map[string]resolvedArticle{
+				"tok": {id: 42, status: tt.status},
+			}}
+			p := NewPoller(defaultIMAPConfig(), mgr, res)
+
+			if err := p.processMessage(replyMessage("tok", "Please cite the issuer's page.")); err != nil {
+				t.Fatalf("processMessage: %v", err)
+			}
+			if len(mgr.requestRevisionCalls) != tt.wantRequest ||
+				len(mgr.unpublishReviseCalls) != tt.wantUnpublish {
+				t.Fatalf("request=%d unpublish+revise=%d, want %d and %d",
+					len(mgr.requestRevisionCalls), len(mgr.unpublishReviseCalls),
+					tt.wantRequest, tt.wantUnpublish)
+			}
+			if len(mgr.startRevisionCalls) != 1 || mgr.startRevisionCalls[0] != 42 {
+				t.Errorf("StartRevision calls = %v, want [42]", mgr.startRevisionCalls)
+			}
+		})
+	}
+}
+
+// TestProcessMessage_FailedRequestDoesNotStartRevision: if the request itself
+// was refused, there is nothing to rewrite.
+func TestProcessMessage_FailedRequestDoesNotStartRevision(t *testing.T) {
+	mgr := &mockArticleManager{err: fmt.Errorf("cannot request revision")}
+	res := &mockTokenResolver{articles: map[string]resolvedArticle{
+		"tok": {id: 7, status: "pending"},
+	}}
+	p := NewPoller(defaultIMAPConfig(), mgr, res)
+
+	if err := p.processMessage(replyMessage("tok", "Fix the fee.")); err == nil {
+		t.Fatal("expected the request error to be returned")
+	}
+	if len(mgr.startRevisionCalls) != 0 {
+		t.Errorf("StartRevision called after a failed request: %v", mgr.startRevisionCalls)
+	}
+}
+
+// TestProcessMessage_ApproveDoesNotStartRevision: only feedback revises.
+func TestProcessMessage_ApproveDoesNotStartRevision(t *testing.T) {
+	mgr := &mockArticleManager{}
+	res := &mockTokenResolver{articles: map[string]resolvedArticle{
+		"tok": {id: 7, status: "pending"},
+	}}
+	p := NewPoller(defaultIMAPConfig(), mgr, res)
+
+	if err := p.processMessage(replyMessage("tok", "approve")); err != nil {
+		t.Fatalf("processMessage: %v", err)
+	}
+	if len(mgr.startRevisionCalls) != 0 {
+		t.Errorf("StartRevision called for an approval: %v", mgr.startRevisionCalls)
 	}
 }

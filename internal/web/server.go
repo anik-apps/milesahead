@@ -108,6 +108,9 @@ func (app *App) offerToday() string {
 // Used by graceful shutdown and by tests before their fixtures are torn down.
 func (app *App) WaitBackground() {
 	app.bg.Wait()
+	if app.articleManager != nil {
+		app.articleManager.WaitRevisions()
+	}
 }
 
 // NewApp creates a new App, loads templates, and sets up routes.

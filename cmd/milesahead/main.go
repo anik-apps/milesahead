@@ -330,6 +330,8 @@ func main() {
 		"interval", enrichInterval, "models", enrichModels,
 		"max_attempts", enricher.MaxAttempts)
 
+	scheduleRevisionReconciler(ctx, sched, articleMgr, revisionReconcileInterval)
+
 	sched.Start()
 
 	// Card update detector
@@ -368,16 +370,99 @@ func main() {
 	}
 	cancel()
 
-	// Stop scheduler (waits for running jobs to finish)
-	sched.Stop()
+	// Shutdown is bounded end to end -- scheduler, then HTTP, then background
+	// work -- to shutdownBudget in total, inside systemd's default 90s stop
+	// timeout, so a stop ends here rather than in SIGKILL.
 
-	// Shutdown HTTP server with 30s timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Stop the scheduler, waiting for running jobs within a bound. A revision
+	// pass can be mid-rewrite, and one AI call with its retries can take
+	// minutes; the context stops the pass starting anything new, but cannot
+	// interrupt the call. Abandoning it is safe: nothing is stored until the
+	// rewrite finishes, so the article stays revision_requested and the next
+	// process's startup pass redoes it.
+	if !waitBounded(sched.Stop, schedulerStopWait) {
+		slog.Warn("scheduled jobs still running at shutdown; abandoning them",
+			"waited", schedulerStopWait)
+	}
+
+	// Shutdown HTTP server with a timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), httpShutdownWait)
 	defer shutdownCancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown error", "error", err)
 	}
 
+	// Requests can leave AI rewrites running in the background (the Revise
+	// button, unpublish-and-revise). Give them a bounded wait so they do not run
+	// on against the database closed below. One still unfinished is harmless:
+	// its article stays revision_requested and the next process's startup
+	// revision pass resumes it.
+	if !waitBounded(app.WaitBackground, backgroundShutdownWait) {
+		slog.Warn("background work still running at shutdown; unfinished revisions resume on next start",
+			"waited", backgroundShutdownWait)
+	}
+
 	slog.Info("shutdown complete")
+}
+
+// revisionReconcileInterval is how often articles waiting for an AI rewrite are
+// swept. Short, because an admin is usually waiting on the result; each pass is
+// one cheap query when there is nothing to do.
+const revisionReconcileInterval = 5 * time.Minute
+
+// scheduleRevisionReconciler registers the pass that rewrites articles left in
+// revision_requested, plus one pass shortly after startup.
+//
+// Rewrites were previously started only by the Revise button's one-shot
+// goroutine, so an AI failure or a deploy mid-rewrite left the article
+// "Revising" for hours, and email replies and unpublish-and-revise never started
+// one at all. This sweep is the backstop for every path; the manager's in-flight
+// guard keeps it from rewriting an article a request is already rewriting, and
+// its retry budget keeps it from retrying a hopeless one forever.
+func scheduleRevisionReconciler(ctx context.Context, sched *scheduler.Scheduler, mgr *article.Manager, interval time.Duration) {
+	sched.AddRevisionJob(interval, func() {
+		if ctx.Err() != nil {
+			slog.Info("revision pass skipped, shutting down")
+			return
+		}
+		mgr.ProcessPendingRevisions(ctx)
+	})
+	slog.Info("revision reconciler scheduled", "interval", interval,
+		"max_failures", article.DefaultRevisionMaxFailures)
+}
+
+// Shutdown bounds. Their sum, shutdownBudget, must stay under systemd's
+// TimeoutStopSec (the default, 90s, since deploy/milesahead.service does not
+// set it), or the stop ends in SIGKILL. An AI rewrite can take minutes, so none
+// of these waits for one to finish; the revision reconciler makes abandoning a
+// rewrite safe.
+//
+// The scheduler gets most of the budget. Its other jobs -- a newsletter send,
+// an enrichment pass, a scan -- are not safe to cut off the way a rewrite is,
+// and before this bound they had up to the full 90s before SIGKILL; 60s keeps
+// nearly all of that. HTTP requests finish in well under 10s, and a
+// request-started rewrite left running resumes on the next start.
+const (
+	schedulerStopWait      = 60 * time.Second
+	httpShutdownWait       = 10 * time.Second
+	backgroundShutdownWait = 15 * time.Second
+	shutdownBudget         = schedulerStopWait + httpShutdownWait + backgroundShutdownWait
+)
+
+// waitBounded runs wait and reports whether it returned within d.
+func waitBounded(wait func(), d time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wait()
+		close(done)
+	}()
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	}
 }

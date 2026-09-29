@@ -44,6 +44,19 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 - [ ] **`/static/` directory listing is enabled and crawlable** — anything dropped there is publicly discoverable by walking the index. *Fix:* 404 directory requests in the static handler, or `Disallow: /static/` in robots.txt.
 - [ ] **Compare `<select>` has no accessible name** (`card.html`, WCAG 4.1.2 A) and navigates on change (3.2.2 A). *Fix:* `<h4>` → `<label for>`; replace `onchange="window.location"` with a submit button.
 - [ ] **No binary rollback on deploy** — `deploy.yml:185,202` overwrites without keeping the previous binary. *Fix:* `cp milesahead milesahead.prev` before the swap.
+- [x] **Articles stuck in "Revising" for hours** — a rewrite ran only from the Revise
+      button's one-shot goroutine, so an AI failure or a deploy restart mid-run left the
+      article in `revision_requested` for good; email replies and unpublish-and-revise
+      set the status but never started a rewrite at all, and the scheduler's
+      `AddRevisionJob` was never registered. A revision reconciler now sweeps
+      `revision_requested` every 5 minutes and ~45s after startup; every path also kicks
+      the rewrite immediately. A per-article in-flight guard and a compare-and-set on
+      store stop double rewrites (previously two concurrent runs could both write
+      revision N+1), and failures back off 5→40 min and stop after 5, with the count and
+      last error on the dashboard. `milesahead_revision_reconcile_total{outcome}` and
+      `milesahead_revisions_waiting{state}` report it; an alert on
+      `milesahead_revisions_waiting{state="exhausted"} > 0` is still to be added to
+      `deploy/grafana-alerts.json`.
 - [x] **CI Go version pin is inert** — workflows pinned `1.22` while `go.mod` needs `1.26.1`, so `GOTOOLCHAIN=auto` re-downloaded the toolchain on every invocation and the module cache, keyed on the installed version, never matched (`Failed to restore: /usr/bin/tar ... exit code 2` on every run). Replaced with `go-version-file: go.mod` rather than another hardcoded number, so it cannot drift again.
 - [x] **Card data refresh** — CLEAR+ raised to $219 on 2026-07-01 (verified against Amex's own benefits page, which lists $219 for all five eligible cards), so all four cards carrying it were stale at $209; Amex Green's derived "pays them $59/year" was recomputed to $69. The $100 Saks credit ended 2026-07-01 and was removed. The seed prose also carried a duplicated Equinox `<li>` that would have rendered twice. Seeders gained a `-slug` filter so a corrective `-force` touches only the named cards — a bare `-force` would have rewritten prose on 30 of 52.
 - [x] **Apply the card data refresh to production** — applied 2026-08-31 with the scoped `-slug` reseed after taking a verified backup. Live pages now show CLEAR+ at $219 on all four cards, no active Saks credit, and the Equinox credit present in the Platinum prose. `recent_changes_json` was untouched, so the historical "Saks credit to be removed" changelog entry correctly survives.
