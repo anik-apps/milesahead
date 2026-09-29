@@ -816,8 +816,15 @@ func TestSendDaily_PartialSendStaysSent(t *testing.T) {
 	if partial.Sent != 2 || partial.Total != 3 {
 		t.Errorf("partial send = %d of %d, want 2 of 3", partial.Sent, partial.Total)
 	}
-	if !strings.Contains(err.Error(), "sent to 2 of 3") || !strings.Contains(err.Error(), "failed at "+partial.FailedAt) || !strings.Contains(err.Error(), "too many messages") {
+	if !strings.Contains(err.Error(), "sent to 2 of 3") || !strings.Contains(err.Error(), "failed at subscriber 3") || !strings.Contains(err.Error(), "too many messages") {
 		t.Errorf("admin message = %q, want it to say sent to 2 of 3, where it failed, and why", err)
+	}
+	if strings.Contains(err.Error(), "@") {
+		t.Errorf("admin message = %q, want no subscriber address in it (it reaches the redirect URL and logs)", err)
+	}
+	withAddr := &PartialSendError{Sent: 1, Total: 2, FailedAt: "x@example.com", Err: errors.New("sending newsletter to x@example.com: 421 busy")}
+	if strings.Contains(withAddr.Error(), "x@example.com") {
+		t.Errorf("an address in the SMTP error should be redacted: %q", withAddr.Error())
 	}
 	reached := sender.calls[0].recipients
 	if len(reached) != 2 || partial.FailedAt == reached[0] || partial.FailedAt == reached[1] {

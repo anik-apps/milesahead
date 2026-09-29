@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -37,9 +38,15 @@ type PartialSendError struct {
 	Err         error
 }
 
+// Error names the failing subscriber by position, not address: the message
+// reaches the admin page's redirect URL and the logs, and the underlying SMTP
+// error can carry the address too, so addresses are redacted from it.
 func (e *PartialSendError) Error() string {
-	return fmt.Sprintf("newsletter sent to %d of %d subscribers; failed at %s: %v. It stays marked sent, so those who got it do not get it twice", e.Sent, e.Total, e.FailedAt, e.Err)
+	return fmt.Sprintf("newsletter sent to %d of %d subscribers; the send failed at subscriber %d: %s. It stays marked sent, so those who got it do not get it twice",
+		e.Sent, e.Total, e.Sent+1, emailAddressRE.ReplaceAllString(e.Err.Error(), "<address>"))
 }
+
+var emailAddressRE = regexp.MustCompile(`[^\s<>@"',;:]+@[^\s<>@"',;:]+\.[A-Za-z]{2,}`)
 
 func (e *PartialSendError) Unwrap() error { return e.Err }
 
