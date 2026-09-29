@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 // ArticleNeedingEnrichment is an article with at least one enrichment field
@@ -127,6 +129,16 @@ func (d *Database) ApplyEnrichment(id int64, u EnrichmentUpdate) error {
 	}
 	add("scouts_take", u.ScoutsTake)
 	add("key_details", u.KeyDetails)
+	if u.KeyDetails != nil {
+		// New key details can state an offer end date, so it is derived in
+		// the same write, anchored on created_at as the startup backfill is.
+		var createdAt any
+		if err := d.db.QueryRow(`SELECT created_at FROM generated_articles WHERE id = ?`, id).Scan(&createdAt); err != nil {
+			return fmt.Errorf("reading created_at for article %d: %w", id, err)
+		}
+		sets = append(sets, "expires_on = ?")
+		args = append(args, nullIfEmpty(offer.EndDate(*u.KeyDetails, writtenAt(createdAt))))
+	}
 	add("image_url", u.ImageURL)
 	add("image_thumbnail", u.ImageThumbnail)
 	add("image_attribution", u.ImageAttribution)

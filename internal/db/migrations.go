@@ -7,6 +7,9 @@ import (
 	"html"
 	"log/slog"
 	"strings"
+	"time"
+
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 func migrate(db *sql.DB) error {
@@ -184,6 +187,9 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE generated_articles ADD COLUMN linked_cards_heading TEXT DEFAULT ''`,
 		`ALTER TABLE newsletters ADD COLUMN card_of_week_id INTEGER DEFAULT NULL`,
 		`ALTER TABLE newsletters ADD COLUMN scouts_pick_article_id INTEGER DEFAULT NULL`,
+		// When an issue was generated: a daily sent later is re-rendered
+		// from the articles it was generated from.
+		`ALTER TABLE newsletters ADD COLUMN created_at DATETIME DEFAULT NULL`,
 		`ALTER TABLE reference_pages ADD COLUMN annual_fee_amount INTEGER DEFAULT 0`,
 		`ALTER TABLE reference_pages ADD COLUMN annual_fee_note TEXT DEFAULT ''`,
 		`ALTER TABLE reference_pages ADD COLUMN welcome_bonus_text TEXT DEFAULT ''`,
@@ -200,6 +206,11 @@ func migrate(db *sql.DB) error {
 		// a query rather than a guess.
 		`ALTER TABLE generated_articles ADD COLUMN enrichment_attempts INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE generated_articles ADD COLUMN enrichment_last_at DATETIME DEFAULT NULL`,
+		// Last day of the offer an article describes, "2006-01-02", or NULL.
+		// TEXT rather than DATE: the driver would turn a DATE into a
+		// time.Time at midnight UTC, and this is a calendar day in the site's
+		// timezone. ISO strings compare correctly in SQL as they are.
+		`ALTER TABLE generated_articles ADD COLUMN expires_on TEXT DEFAULT NULL`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)
@@ -227,7 +238,112 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("repairing rotted images: %w", err)
 	}
 
+	if n, err := backfillOfferEndDates(db); err != nil {
+		return fmt.Errorf("deriving offer end dates: %w", err)
+	} else if n > 0 {
+		slog.Info("derived offer end dates from key details", "rows", n)
+	}
+
 	return nil
+}
+
+// backfillOfferEndDates derives expires_on from key_details for every
+// article, anchored on the row's created_at exactly as CreateGeneratedArticle
+// anchors on "now".
+//
+// It runs on every startup and writes only the rows whose stored value
+// differs from the derived one, so it converges and then does nothing. That
+// also means existing rows pick up any later improvement to the parser on the
+// next deploy, with no manual step. It returns how many rows it changed.
+func backfillOfferEndDates(conn *sql.DB) (int, error) {
+	changes, err := offerEndChanges(conn)
+	if err != nil || len(changes) == 0 {
+		return 0, err
+	}
+	return applyOfferEndChanges(conn, changes)
+}
+
+// offerEndChange is one row whose stored expires_on differs from what its
+// key_details give, with the values it was read with.
+type offerEndChange struct {
+	id      int64
+	details string // key_details as read
+	have    string // expires_on as read
+	want    string // expires_on derived from details
+}
+
+// offerEndChanges reads every article and returns the ones whose stored end
+// date is not the one their key details give.
+func offerEndChanges(conn *sql.DB) ([]offerEndChange, error) {
+	rows, err := conn.Query(`SELECT id, COALESCE(key_details, ''), created_at, COALESCE(expires_on, '') FROM generated_articles`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var changes []offerEndChange
+	for rows.Next() {
+		var (
+			c         offerEndChange
+			createdAt any
+		)
+		if err := rows.Scan(&c.id, &c.details, &createdAt, &c.have); err != nil {
+			return nil, err
+		}
+		if c.want = offer.EndDate(c.details, writtenAt(createdAt)); c.want != c.have {
+			changes = append(changes, c)
+		}
+	}
+	return changes, rows.Err()
+}
+
+// applyOfferEndChanges writes the derived end dates. Another process can be
+// writing the same database meanwhile -- the running server when a command
+// such as seed-structured opens it, or the outgoing container during a
+// deploy -- so a row may have been rewritten since it was read: an
+// enrichment pass storing new key details and their end date, say. Each
+// UPDATE therefore applies only if the row still holds the key details and
+// end date it was read with; a row that moved on keeps its newer value. It
+// returns how many rows it changed.
+func applyOfferEndChanges(conn *sql.DB, changes []offerEndChange) (int, error) {
+	tx, err := conn.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	n := 0
+	for _, c := range changes {
+		res, err := tx.Exec(`UPDATE generated_articles SET expires_on = ?
+			WHERE id = ? AND COALESCE(expires_on, '') = ? AND COALESCE(key_details, '') = ?`,
+			nullIfEmpty(c.want), c.id, c.have, c.details)
+		if err != nil {
+			return 0, err
+		}
+		if k, err := res.RowsAffected(); err == nil {
+			n += int(k)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// writtenAt turns a scanned created_at into the anchor offer.EndDate needs.
+// The driver returns DATETIME columns as time.Time; anything else (NULL, or
+// text it could not parse) falls back to now rather than failing the
+// migration, since the anchor only matters for a date written without a year.
+func writtenAt(v any) time.Time {
+	switch t := v.(type) {
+	case time.Time:
+		return t
+	case string:
+		for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339Nano, "2006-01-02"} {
+			if p, err := time.Parse(layout, t); err == nil {
+				return p
+			}
+		}
+	}
+	return time.Now().UTC()
 }
 
 // repairRottedImages fixes article images whose stored URL can no longer be

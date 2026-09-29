@@ -14,6 +14,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/offer"
 	"github.com/kumaranik/milesahead/internal/vote"
 )
 
@@ -23,6 +24,7 @@ var templateFuncs = template.FuncMap{
 		return template.HTML(s)
 	},
 	"scrollTables": scrollTables,
+	"endedLabel":   endedLabel,
 	"deref": func(v interface{}) string {
 		if v == nil {
 			return ""
@@ -80,6 +82,20 @@ type App struct {
 	// infographicHeights is the pixel height of each card's full infographic,
 	// read from the JPEG at startup, for the viewer's height attribute.
 	infographicHeights map[string]int
+	// now is the clock offers are judged against; tests replace it.
+	now func() time.Time
+}
+
+// offerToday is the date offer end dates are compared against
+// ("2006-01-02"); see offer.Today for the zone it is taken in.
+func (app *App) offerToday() string {
+	// Guarded so an App built without a constructor (a test fixture) still
+	// works rather than panicking on a nil clock.
+	now := time.Now
+	if app.now != nil {
+		now = app.now
+	}
+	return offer.Today(now())
 }
 
 // WaitBackground blocks until handler-started background work finishes.
@@ -100,6 +116,7 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 		shutdownCtx:    shutdownCtx,
 		mux:            http.NewServeMux(),
 		startedAt:      time.Now(),
+		now:            time.Now,
 	}
 
 	if err := app.loadTemplates("templates"); err != nil {
@@ -124,6 +141,7 @@ func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *artic
 		shutdownCtx:    shutdownCtx,
 		mux:            http.NewServeMux(),
 		startedAt:      time.Now(),
+		now:            time.Now,
 	}
 
 	if err := app.loadTemplates(templateDir); err != nil {

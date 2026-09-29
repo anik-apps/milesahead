@@ -13,6 +13,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 // templateKeyDetail holds a key detail for template rendering.
@@ -86,6 +87,23 @@ type publicArticleRow struct {
 	ImageURL         string
 	ImageThumbnail   string
 	ImageAttribution string
+	// Ended marks an article whose offer has passed its end date. Listings
+	// show it with an "Ended" badge and de-emphasised.
+	Ended bool
+}
+
+// searchArticleRow is an article search result plus whether its offer ended.
+type searchArticleRow struct {
+	db.SearchResult
+	Ended bool
+}
+
+// recentChangeRow is a card's recent change plus whether the offer in the
+// article it links to has ended, and that article's type for the badge.
+type recentChangeRow struct {
+	db.RecentChange
+	Ended       bool
+	ArticleType string
 }
 
 // sourceInfo holds source data for article detail pages.
@@ -110,17 +128,30 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 
 	var articles []db.GeneratedArticle
 	var err error
+	today := app.offerToday()
 
 	if tagFilter != "" {
 		articles, err = app.db.ListPublishedArticlesByTag(tagFilter, 20, 0)
 	} else if typeFilter != "" {
 		articles, err = app.db.ListPublishedArticlesByType(typeFilter, 20, 0)
 	} else {
-		articles, err = app.db.ListPublishedArticles(20, 0)
+		// The default feed is what a reader takes as "current", so offers
+		// that have ended are left out of it. Filtered views and search
+		// still list them, marked as ended.
+		articles, err = app.db.ListLivePublishedArticles(today, 20, 0)
 	}
 	if err != nil {
 		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
 		return
+	}
+	// An empty live feed on a site that has published articles means every
+	// one of them has ended, which the empty state should say rather than
+	// "nothing published yet".
+	allEnded := false
+	if len(articles) == 0 && tagFilter == "" && typeFilter == "" {
+		if published, perr := app.db.ListPublishedArticles(1, 0); perr == nil && len(published) > 0 {
+			allEnded = true
+		}
 	}
 
 	var rows []publicArticleRow
@@ -137,6 +168,7 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 			ImageURL:         a.ImageURL,
 			ImageThumbnail:   a.ImageThumbnail,
 			ImageAttribution: a.ImageAttribution,
+			Ended:            offer.Ended(a.ExpiresOn, today),
 		}
 		if a.PublishedAt != nil {
 			row.PublishedAt = a.PublishedAt.Format("Jan 2, 2006")
@@ -153,14 +185,7 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 	var grid []publicArticleRow
 
 	if len(rows) > 0 {
-		// Try to find a featured article.
-		featuredIdx := 0
-		for i, r := range rows {
-			if r.Featured {
-				featuredIdx = i
-				break
-			}
-		}
+		featuredIdx := pickFeatured(rows)
 		f := rows[featuredIdx]
 		featured = &f
 
@@ -193,6 +218,7 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		"Grid":            grid,
 		"Articles":        rows,
 		"TypeFilter":      typeFilter,
+		"AllEnded":        allEnded,
 		"Types":           []string{"deal", "roundup", "alert", "summary"},
 		"ActiveTag":       tagFilter,
 		"Tags":            predefinedTags,
@@ -212,6 +238,55 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		}),
 	}
 	app.renderTemplate(w, "home.html", data)
+}
+
+// endedLabel is the badge on an article whose end date has passed: "Ended"
+// for an offer, and "Deadline passed" for a news story ("summary"), which
+// reports a deadline rather than offering a deal.
+func endedLabel(articleType string) string {
+	if articleType == "summary" {
+		return "Deadline passed"
+	}
+	return "Ended"
+}
+
+// endedNote is the sentence telling a reader that an article's offer has
+// ended ("This offer ended on July 29, 2026."), or "" without an end date. A
+// news story ("summary") reports a deadline rather than offering a deal, so
+// it says the deadline passed.
+func endedNote(articleType, endsOn string) string {
+	on := offer.Display(endsOn)
+	if on == "" {
+		return ""
+	}
+	if articleType == "summary" {
+		return "The deadline in this story passed on " + on + "."
+	}
+	return "This offer ended on " + on + "."
+}
+
+// pickFeatured chooses the article for the large featured slot: the first one
+// flagged as featured, else the newest. An ended offer is never put there
+// while a live article is available -- in a filtered view it stays in the
+// list, marked, but does not headline it.
+func pickFeatured(rows []publicArticleRow) int {
+	for i, r := range rows {
+		if r.Featured && !r.Ended {
+			return i
+		}
+	}
+	for i, r := range rows {
+		if !r.Ended {
+			return i
+		}
+	}
+	// Everything has ended: fall back to the usual rule.
+	for i, r := range rows {
+		if r.Featured {
+			return i
+		}
+	}
+	return 0
 }
 
 // buildLinkedCardEmbeds joins related_cards_json (slug list) to reference_pages
@@ -393,6 +468,10 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		datePublished = article.PublishedAt.Format("2006-01-02")
 	}
 
+	// An ended offer keeps its page, indexable and intact; a banner says it
+	// has ended so nobody acts on it.
+	offerEnded := offer.Ended(article.ExpiresOn, app.offerToday())
+
 	data := map[string]interface{}{
 		"Title":              article.Title,
 		"Article":            article,
@@ -410,6 +489,8 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"LinkedCards":        app.buildLinkedCardEmbeds(article.RelatedCardsJSON),
 		"LinkedCardsHeading": article.LinkedCardsHeading,
 		"ScoutsTake":         article.ScoutsTake,
+		"OfferEnded":         offerEnded,
+		"OfferEndedNote":     endedNote(article.Type, article.ExpiresOn),
 		"PersonaName":        app.cfg.Site.PersonaName,
 		"MetaDescription":    metaDesc,
 		"CanonicalURL":       canonicalURL,
@@ -536,8 +617,16 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `<link>https://%s</link>`, html.EscapeString(domain))
 	fmt.Fprint(w, `<description>Curated news and analysis</description>`)
 
+	today := app.offerToday()
 	for _, a := range articles {
 		excerpt := truncate(a.Content, 200)
+		// An ended offer is marked, not dropped: a category, and the ended
+		// note leading the description. Its title is left alone because
+		// feed readers have already stored it.
+		ended := offer.Ended(a.ExpiresOn, today)
+		if ended {
+			excerpt = endedNote(a.Type, a.ExpiresOn) + " " + excerpt
+		}
 		link := fmt.Sprintf("https://%s/article/%s", domain, a.Slug)
 		pubDate := ""
 		if a.PublishedAt != nil {
@@ -548,6 +637,9 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `<title>%s</title>`, html.EscapeString(a.Title))
 		fmt.Fprintf(w, `<link>%s</link>`, html.EscapeString(link))
 		fmt.Fprintf(w, `<description>%s</description>`, html.EscapeString(excerpt))
+		if ended {
+			fmt.Fprintf(w, `<category>%s</category>`, endedLabel(a.Type))
+		}
 		if pubDate != "" {
 			fmt.Fprintf(w, `<pubDate>%s</pubDate>`, pubDate)
 		}
@@ -690,6 +782,7 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 	if page.RecentChangesJSON != "" && page.RecentChangesJSON != "[]" {
 		json.Unmarshal([]byte(page.RecentChangesJSON), &recentChanges)
 	}
+	changeRows := app.markEndedChanges(recentChanges)
 
 	domain := app.cfg.Server.Domain
 	if domain == "" {
@@ -728,7 +821,7 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		"Card":            page,
 		"Sections":        sections,
 		"ScoutsVerdict":   page.ScoutsVerdict,
-		"RecentChanges":   recentChanges,
+		"RecentChanges":   changeRows,
 		"PersonaName":     personaName,
 		"MetaDescription": metaDesc,
 		"CanonicalURL":    canonicalURL,
@@ -778,6 +871,31 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	app.renderTemplate(w, "card.html", data)
+}
+
+// markEndedChanges flags the recent changes whose linked article describes an
+// offer that has ended. A card page lists these as its related articles.
+func (app *App) markEndedChanges(changes []db.RecentChange) []recentChangeRow {
+	if len(changes) == 0 {
+		return nil
+	}
+	var slugs []string
+	for _, c := range changes {
+		if c.ArticleSlug != "" {
+			slugs = append(slugs, c.ArticleSlug)
+		}
+	}
+	ends, err := app.db.OfferEndsBySlug(slugs)
+	if err != nil {
+		slog.Warn("loading offer end dates for recent changes", "error", err)
+	}
+	today := app.offerToday()
+	rows := make([]recentChangeRow, len(changes))
+	for i, c := range changes {
+		end := ends[c.ArticleSlug]
+		rows[i] = recentChangeRow{RecentChange: c, Ended: offer.Ended(end.EndsOn, today), ArticleType: end.ArticleType}
+	}
+	return rows
 }
 
 func (app *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
@@ -873,7 +991,13 @@ func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
 			cards = cards[:perPage]
 		}
 
-		data["Articles"] = articles
+		today := app.offerToday()
+		articleRows := make([]searchArticleRow, len(articles))
+		for i, a := range articles {
+			articleRows[i] = searchArticleRow{SearchResult: a, Ended: offer.Ended(a.ExpiresOn, today)}
+		}
+
+		data["Articles"] = articleRows
 		data["Cards"] = cards
 		data["PageArticles"] = pageArticles
 		data["PageCards"] = pageCards

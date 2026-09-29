@@ -14,6 +14,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/linker"
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 // sem limits concurrent card update detection goroutines.
@@ -566,6 +567,9 @@ func maskString(s string) string {
 type adminCandidateRow struct {
 	db.NewsletterCandidate
 	ArticleTitle string
+	// Ended marks a candidate whose offer has ended since the issue was
+	// built; the send leaves it out.
+	Ended bool
 }
 
 // adminCardInfo holds minimal card info for the admin dropdown.
@@ -600,16 +604,47 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 		currentNL = &newsletters[0]
 	}
 
-	// Load candidates for the current newsletter.
+	// Load candidates for the current newsletter. The stored preview was
+	// rendered when the issue was built; an offer that has ended since is
+	// left out when it is sent, so an unsent issue's ended candidates are
+	// marked and counted for the note above the preview.
 	var candidates []adminCandidateRow
+	var endedCount int
+	var pickEnded bool
 	if currentNL != nil {
+		unsent := currentNL.Status != "sent"
+		today := app.offerToday()
 		rawCandidates, _ := app.db.ListCandidatesForNewsletter(currentNL.ID)
 		for _, c := range rawCandidates {
 			row := adminCandidateRow{NewsletterCandidate: c}
 			if article, err := app.db.GetGeneratedArticle(c.ArticleID); err == nil {
 				row.ArticleTitle = article.Title
+				row.Ended = unsent && offer.Ended(article.ExpiresOn, today)
+			}
+			if row.Ended {
+				endedCount++
+				if currentNL.ScoutsPickArticleID != nil && *currentNL.ScoutsPickArticleID == c.ArticleID {
+					pickEnded = true
+				}
 			}
 			candidates = append(candidates, row)
+		}
+	}
+	endedNote := ""
+	switch {
+	case endedCount > 0 && !app.weekHasLiveArticle(currentNL.Date):
+		// SendWeekly re-renders from the week's live articles and skips the
+		// issue when there are none, so there is no Scout's Pick to pass on.
+		endedNote = "No article from this issue's week is still live, so it will not be sent."
+	case endedCount == 1:
+		endedNote = "1 offer in this preview has ended since it was built; it is left out when the issue is sent."
+		if pickEnded {
+			endedNote += " Scout's Pick passes to the top article still in it."
+		}
+	case endedCount > 1:
+		endedNote = fmt.Sprintf("%d offers in this preview have ended since it was built; they are left out when the issue is sent.", endedCount)
+		if pickEnded {
+			endedNote += " Scout's Pick passes to the top article still in it."
 		}
 	}
 
@@ -658,6 +693,7 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 		"NoContent":         noContent,
 		"CurrentNewsletter": currentNL,
 		"Candidates":        candidates,
+		"EndedNote":         endedNote,
 		"CurrentCard":       currentCard,
 		"AllCards":          allCards,
 		"History":           history,
@@ -1485,4 +1521,27 @@ func parseSectionsFromForm(r *http.Request) []db.ReferenceSection {
 		})
 	}
 	return sections
+}
+
+// weekHasLiveArticle reports whether the weekly issue dated sendDate would go
+// out: SendWeekly sends the approved articles of the seven days before
+// sendDate whose offers have not ended, and nothing when none are left. On
+// an unreadable date or a database error it assumes the issue goes out,
+// which keeps the preview's usual note.
+func (app *App) weekHasLiveArticle(sendDate string) bool {
+	day, err := time.Parse("2006-01-02", sendDate)
+	if err != nil {
+		return true
+	}
+	articles, err := app.db.ListApprovedArticlesSince(day.AddDate(0, 0, -7))
+	if err != nil {
+		return true
+	}
+	today := app.offerToday()
+	for _, a := range articles {
+		if !offer.Ended(a.ExpiresOn, today) {
+			return true
+		}
+	}
+	return false
 }
