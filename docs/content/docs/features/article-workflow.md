@@ -76,7 +76,7 @@ indefinitely.
 - **Shutdown.** A rewrite in progress is abandoned rather than waited for (one
   AI call with retries can take minutes); nothing is stored until it finishes,
   so the article stays `revision_requested` and the startup pass redoes it.
-  Shutdown is bounded to 75s in total, inside systemd's 90s stop timeout.
+  Shutdown is bounded to 85s in total, inside systemd's 90s stop timeout.
 - **Metrics.** `milesahead_revision_reconcile_total{outcome}` counts processed,
   failed and skipped articles, `error` when an article's retry state could not
   be read (not attempted), and `pass_skipped` for overlapping passes;

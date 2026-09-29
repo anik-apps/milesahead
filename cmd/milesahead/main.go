@@ -428,10 +428,16 @@ func scheduleRevisionReconciler(ctx context.Context, sched *scheduler.Scheduler,
 // set it), or the stop ends in SIGKILL. An AI rewrite can take minutes, so none
 // of these waits for one to finish; the revision reconciler makes abandoning a
 // rewrite safe.
+//
+// The scheduler gets most of the budget. Its other jobs -- a newsletter send,
+// an enrichment pass, a scan -- are not safe to cut off the way a rewrite is,
+// and before this bound they had up to the full 90s before SIGKILL; 60s keeps
+// nearly all of that. HTTP requests finish in well under 10s, and a
+// request-started rewrite left running resumes on the next start.
 const (
-	schedulerStopWait      = 25 * time.Second
-	httpShutdownWait       = 30 * time.Second
-	backgroundShutdownWait = 20 * time.Second
+	schedulerStopWait      = 60 * time.Second
+	httpShutdownWait       = 10 * time.Second
+	backgroundShutdownWait = 15 * time.Second
 	shutdownBudget         = schedulerStopWait + httpShutdownWait + backgroundShutdownWait
 )
 
