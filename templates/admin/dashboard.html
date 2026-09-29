@@ -41,7 +41,7 @@
                     <span class="badge badge-{{.Type}}">{{.Type}}</span>
                     <a href="#" class="preview-link" onclick="openPreview('preview-{{.ID}}'); return false;">{{.Title}}</a>
                     {{if eq .Status "pending"}}<span class="status-badge pending">Pending</span>{{end}}
-                    {{if eq .Status "revision_requested"}}<span class="status-badge revising">Revising...</span>{{end}}
+                    {{if eq .Status "revision_requested"}}{{if .RevisionGaveUp}}<span class="status-badge revision-failed" title="{{.RevisionLastError}}">Revision failed {{.RevisionFailures}} times &mdash; request it again, approve or reject</span>{{else if .RevisionFailures}}<span class="status-badge revising" title="{{.RevisionLastError}}">Revising... (failed {{.RevisionFailures}}&times;, retrying)</span>{{else}}<span class="status-badge revising">Revising...</span>{{end}}{{end}}
                     {{if eq .Status "unpublished"}}<span class="status-badge unpublished">Unpublished</span>{{end}}
                     {{if eq .Status "draft"}}<span class="status-badge draft">Draft</span>{{end}}
                     {{if .Tags}}

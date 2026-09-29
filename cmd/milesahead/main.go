@@ -321,6 +321,8 @@ func main() {
 		"interval", enrichInterval, "models", enrichModels,
 		"max_attempts", enricher.MaxAttempts)
 
+	scheduleRevisionReconciler(ctx, sched, articleMgr, revisionReconcileInterval)
+
 	sched.Start()
 
 	// Card update detector
@@ -370,5 +372,63 @@ func main() {
 		slog.Error("server shutdown error", "error", err)
 	}
 
+	// Requests can leave AI rewrites running in the background (the Revise
+	// button, unpublish-and-revise). Give them a bounded wait so they do not run
+	// on against the database closed below. One still unfinished is harmless:
+	// its article stays revision_requested and the next process's startup
+	// revision pass resumes it.
+	if !waitBounded(app.WaitBackground, backgroundShutdownWait) {
+		slog.Warn("background work still running at shutdown; unfinished revisions resume on next start",
+			"waited", backgroundShutdownWait)
+	}
+
 	slog.Info("shutdown complete")
+}
+
+// revisionReconcileInterval is how often articles waiting for an AI rewrite are
+// swept. Short, because an admin is usually waiting on the result; each pass is
+// one cheap query when there is nothing to do.
+const revisionReconcileInterval = 5 * time.Minute
+
+// scheduleRevisionReconciler registers the pass that rewrites articles left in
+// revision_requested, plus one pass shortly after startup.
+//
+// Rewrites were previously started only by the Revise button's one-shot
+// goroutine, so an AI failure or a deploy mid-rewrite left the article
+// "Revising" for hours, and email replies and unpublish-and-revise never started
+// one at all. This sweep is the backstop for every path; the manager's in-flight
+// guard keeps it from rewriting an article a request is already rewriting, and
+// its retry budget keeps it from retrying a hopeless one forever.
+func scheduleRevisionReconciler(ctx context.Context, sched *scheduler.Scheduler, mgr *article.Manager, interval time.Duration) {
+	sched.AddRevisionJob(interval, func() {
+		if ctx.Err() != nil {
+			slog.Info("revision pass skipped, shutting down")
+			return
+		}
+		mgr.ProcessPendingRevisions(ctx)
+	})
+	slog.Info("revision reconciler scheduled", "interval", interval,
+		"max_failures", article.DefaultRevisionMaxFailures)
+}
+
+// backgroundShutdownWait bounds how long shutdown waits for request-started
+// background work. An AI rewrite can take minutes; the process manager will
+// not wait that long, and the revision reconciler makes giving up safe.
+const backgroundShutdownWait = 20 * time.Second
+
+// waitBounded runs wait and reports whether it returned within d.
+func waitBounded(wait func(), d time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wait()
+		close(done)
+	}()
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	}
 }

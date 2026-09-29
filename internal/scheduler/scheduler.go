@@ -25,6 +25,8 @@ type Scheduler struct {
 	// join paths -- at the production value a test would have to wait 90s, and
 	// a test that skips instead is coverage in name only.
 	startupDelay time.Duration
+	// revisionStartupDelay is the same for the first revision pass.
+	revisionStartupDelay time.Duration
 }
 
 // New creates a new Scheduler.
@@ -41,8 +43,9 @@ func New() *Scheduler {
 			cron.WithSeconds(),
 			cron.WithChain(cron.Recover(cron.DefaultLogger)),
 		),
-		stopCh:       make(chan struct{}),
-		startupDelay: startupEnrichmentDelay,
+		stopCh:               make(chan struct{}),
+		startupDelay:         startupEnrichmentDelay,
+		revisionStartupDelay: startupRevisionDelay,
 	}
 }
 
@@ -67,9 +70,17 @@ func (s *Scheduler) AddWeeklyJob(name, cronExpr string, fn func()) {
 	}
 }
 
-// AddRevisionJob adds a periodic revision processing job at the given interval.
+// AddRevisionJob adds the periodic revision reconciler at the given interval,
+// and runs one pass shortly after startup.
+//
+// The startup pass is what resumes a rewrite a deploy interrupted: the restart
+// kills the goroutine mid-rewrite and the article is left revision_requested.
+// Without it, "@every" would not look until a full interval after boot. It is
+// delayed a little so it does not contend with the scan job cron fires on Start,
+// and runs before the enrichment startup pass so the two do not share a tick.
 func (s *Scheduler) AddRevisionJob(interval time.Duration, revisionFunc func()) {
 	s.cron.AddFunc(fmt.Sprintf("@every %s", interval), revisionFunc)
+	s.runAfterStartup("revision", s.revisionStartupDelay, revisionFunc)
 }
 
 // AddEnrichmentJob adds the periodic pass that fills in article fields
@@ -85,17 +96,22 @@ func (s *Scheduler) AddRevisionJob(interval time.Duration, revisionFunc func()) 
 // which robfig/cron fires straight away on Start.
 func (s *Scheduler) AddEnrichmentJob(interval time.Duration, enrichFunc func()) {
 	s.cron.AddFunc(fmt.Sprintf("@every %s", interval), enrichFunc)
+	s.runAfterStartup("enrichment", s.startupDelay, enrichFunc)
+}
 
+// runAfterStartup runs fn once, delay after registration, unless Stop comes
+// first. Stop joins it if it has already begun.
+func (s *Scheduler) runAfterStartup(name string, delay time.Duration, fn func()) {
 	// cron.WithChain only wraps jobs cron itself runs. This goroutine calls
-	// enrichFunc directly, so it needs the same Recover wrapper applied
-	// explicitly -- otherwise a panic in the very first pass after boot still
-	// kills the process, which is precisely what the chain was added to stop.
-	startupJob := cron.Recover(cron.DefaultLogger)(cron.FuncJob(enrichFunc))
+	// fn directly, so it needs the same Recover wrapper applied explicitly --
+	// otherwise a panic in the very first pass after boot still kills the
+	// process, which is precisely what the chain was added to stop.
+	startupJob := cron.Recover(cron.DefaultLogger)(cron.FuncJob(fn))
 
 	s.offCron.Add(1)
 	go func() {
 		defer s.offCron.Done()
-		timer := time.NewTimer(s.startupDelay)
+		timer := time.NewTimer(delay)
 		defer timer.Stop()
 		select {
 		case <-timer.C:
@@ -103,21 +119,25 @@ func (s *Scheduler) AddEnrichmentJob(interval time.Duration, enrichFunc func()) 
 		case <-s.stopCh:
 			// Shutdown began before the pass was due. Waking up here would run
 			// a full pass against a database main is about to close.
-			slog.Info("startup enrichment pass cancelled by shutdown")
+			slog.Info("startup pass cancelled by shutdown", "job", name)
 		}
 	}()
 }
 
-// SetStartupDelay overrides the delay before the first enrichment pass.
-// Intended for tests; a non-positive value is ignored.
+// SetStartupDelay overrides the delay before the first enrichment and revision
+// passes. Intended for tests; a non-positive value is ignored.
 func (s *Scheduler) SetStartupDelay(d time.Duration) {
 	if d > 0 {
 		s.startupDelay = d
+		s.revisionStartupDelay = d
 	}
 }
 
 // startupEnrichmentDelay is how long after boot the first reconciliation runs.
 const startupEnrichmentDelay = 90 * time.Second
+
+// startupRevisionDelay is how long after boot the first revision pass runs.
+const startupRevisionDelay = 45 * time.Second
 
 // Start begins running all scheduled jobs.
 func (s *Scheduler) Start() {

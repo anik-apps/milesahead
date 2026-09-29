@@ -81,6 +81,9 @@ type ArticleManager interface {
 	Unpublish(articleID int64) error
 	RequestRevision(articleID int64, feedback string, source string) error
 	UnpublishAndRevise(articleID int64, feedback string, source string) error
+	// StartRevision begins the AI rewrite in the background. Email feedback
+	// used to set revision_requested and stop there, so the rewrite never ran.
+	StartRevision(articleID int64)
 }
 
 // TokenResolver resolves a review token to an article ID and its current status.
@@ -248,10 +251,19 @@ func (p *Poller) processMessage(msg *imapclient.FetchMessageBuffer) error {
 	case ActionUnpublish:
 		return p.manager.Unpublish(articleID)
 	case ActionFeedback:
+		var err error
 		if status == "approved" {
-			return p.manager.UnpublishAndRevise(articleID, feedback, "email")
+			err = p.manager.UnpublishAndRevise(articleID, feedback, "email")
+		} else {
+			err = p.manager.RequestRevision(articleID, feedback, "email")
 		}
-		return p.manager.RequestRevision(articleID, feedback, "email")
+		if err != nil {
+			return err
+		}
+		// Start the rewrite now rather than waiting for the revision
+		// reconciler's next pass, which remains the backstop if this fails.
+		p.manager.StartRevision(articleID)
+		return nil
 	default:
 		return fmt.Errorf("unknown action %q", action)
 	}

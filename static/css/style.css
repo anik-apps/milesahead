@@ -1014,6 +1014,18 @@ tr:hover {
     color: #991b1b;
 }
 
+/* A revision the reconciler has stopped retrying. Deliberately not pulsing:
+   nothing is happening until the admin acts. */
+.status-badge.revision-failed {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+[data-theme="dark"] .status-badge.revision-failed {
+    background: #450a0a;
+    color: #fca5a5;
+}
+
 .status-badge.draft {
     background: #e5e7eb;
     color: #6b7280;

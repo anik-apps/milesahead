@@ -60,7 +60,16 @@ type adminArticleRow struct {
 	ArticleLinks      []struct{ Text, URL string }
 	ImageURL          string
 	Tags              []string
-	createdAtRaw      time.Time // for sorting only, not exposed to template
+	// RevisionFailures is how many rewrites of a revision_requested article
+	// have failed in a row, and RevisionLastError the latest reason. Without
+	// them "Revising..." looks the same whether a rewrite is running, retrying,
+	// or has been given up on.
+	RevisionFailures  int
+	RevisionLastError string
+	// RevisionGaveUp: the reconciler has stopped retrying; the admin must
+	// re-request the revision, approve or reject.
+	RevisionGaveUp bool
+	createdAtRaw   time.Time // for sorting only, not exposed to template
 }
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +81,16 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		articles = append(articles, batch...)
+	}
+
+	// Retry state for revision_requested articles, in one query.
+	revisionState := map[int64]db.PendingRevision{}
+	if pending, err := app.db.ListPendingRevisions(); err == nil {
+		for _, p := range pending {
+			revisionState[p.ID] = p
+		}
+	} else {
+		slog.Warn("dashboard: could not load revision retry state", "error", err)
 	}
 
 	var rows []adminArticleRow
@@ -89,6 +108,11 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:      a.CreatedAt.Format("Jan 2, 2006 3:04 PM"),
 			UpdatedAt:      a.UpdatedAt.Format("Jan 2, 2006 3:04 PM"),
 			createdAtRaw:   a.CreatedAt,
+		}
+		if p, ok := revisionState[a.ID]; ok && a.Status == db.StatusRevisionRequested && p.Failures > 0 {
+			row.RevisionFailures = p.Failures
+			row.RevisionLastError = p.LastError
+			row.RevisionGaveUp = app.articleManager != nil && app.articleManager.RevisionGaveUp(p.Failures)
 		}
 
 		// Parse key details and links from JSON
@@ -277,26 +301,22 @@ func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger AI regeneration immediately in the background. Tracked on the
-	// WaitGroup so it cannot outlive the process (or, in tests, the database
-	// it is about to query). Panic recovery matches the card-detection
-	// goroutine below: an unrecovered panic here would kill the whole server.
-	if app.articleManager != nil {
-		app.bg.Add(1)
-		go func() {
-			defer app.bg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					slog.Error("revision processing panicked", "article_id", id, "panic", r)
-				}
-			}()
-			if err := app.articleManager.ProcessRevision(id); err != nil {
-				slog.Error("revision processing failed", "article_id", id, "error", err)
-			}
-		}()
-	}
+	app.startRevision(id)
 
 	http.Redirect(w, r, "/admin/dashboard?msg=revision_submitted", http.StatusSeeOther)
+}
+
+// startRevision kicks off the AI rewrite in the background so the admin sees it
+// soon, rather than on the next revision reconciler pass. The kick is only for
+// responsiveness: if it fails, or a deploy kills it, the reconciler retries.
+// It runs through the manager's in-flight guard, so it never races a rewrite
+// the reconciler already has going. Tracked by the manager and joined by
+// WaitBackground, which tests call before teardown and main calls, bounded, at
+// shutdown.
+func (app *App) startRevision(id int64) {
+	if app.articleManager != nil {
+		app.articleManager.StartRevision(id)
+	}
 }
 
 func (app *App) handleUnpublishArticle(w http.ResponseWriter, r *http.Request) {
@@ -313,6 +333,7 @@ func (app *App) handleUnpublishArticle(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to unpublish: %v", err), http.StatusBadRequest)
 			return
 		}
+		app.startRevision(id)
 	} else {
 		if err := app.articleManager.Unpublish(id); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to unpublish: %v", err), http.StatusBadRequest)
@@ -340,6 +361,7 @@ func (app *App) handleUnpublishAndRevise(w http.ResponseWriter, r *http.Request)
 		http.Error(w, fmt.Sprintf("Failed to unpublish and revise: %v", err), http.StatusBadRequest)
 		return
 	}
+	app.startRevision(id)
 
 	http.Redirect(w, r, "/admin/published", http.StatusSeeOther)
 }

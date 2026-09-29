@@ -373,9 +373,12 @@ func (d *Database) CreateAdminFeedback(f *AdminFeedback) (int64, error) {
 	return res.LastInsertId()
 }
 
+// ListFeedbackForArticle returns an article's feedback, newest first. id breaks
+// ties because created_at has one-second resolution: two notes sent in the same
+// second came back in arbitrary order, so a revision could answer the older one.
 func (d *Database) ListFeedbackForArticle(articleID int64) ([]AdminFeedback, error) {
 	rows, err := d.db.Query(
-		`SELECT id, generated_article_id, feedback_text, source, created_at FROM admin_feedback WHERE generated_article_id = ? ORDER BY created_at DESC`, articleID,
+		`SELECT id, generated_article_id, feedback_text, source, created_at FROM admin_feedback WHERE generated_article_id = ? ORDER BY created_at DESC, id DESC`, articleID,
 	)
 	if err != nil {
 		return nil, err

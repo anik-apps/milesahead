@@ -7,6 +7,9 @@ import (
 	"math/rand"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
@@ -17,6 +20,23 @@ import (
 type Manager struct {
 	db       *db.Database
 	pipeline *ai.Pipeline
+
+	// RevisionMaxFailures is how many failed rewrites an article gets before
+	// the revision reconciler stops retrying it. Zero means
+	// DefaultRevisionMaxFailures.
+	RevisionMaxFailures int
+
+	// revInFlight holds the articles being rewritten right now, so the Revise
+	// button, the other kicks and the reconciler never rewrite one article
+	// concurrently.
+	revMu       sync.Mutex
+	revInFlight map[int64]bool
+	// revPassRunning stops reconciler passes overlapping.
+	revPassRunning atomic.Bool
+	// revBG tracks rewrites started by StartRevision.
+	revBG sync.WaitGroup
+	// now is the clock for retry backoff; nil means time.Now. Tests override it.
+	now func() time.Time
 }
 
 // NewManager creates a new article Manager.
@@ -165,6 +185,7 @@ func (m *Manager) RequestRevision(articleID int64, feedback string, source strin
 		return fmt.Errorf("storing feedback: %w", err)
 	}
 
+	m.resetRevisionBudget(articleID)
 	slog.Info("revision requested", "article_id", articleID, "source", source)
 
 	return nil
@@ -212,7 +233,20 @@ func (m *Manager) UnpublishAndRevise(articleID int64, feedback string, source st
 		return fmt.Errorf("setting revision_requested: %w", err)
 	}
 
+	m.resetRevisionBudget(articleID)
+	slog.Info("revision requested", "article_id", articleID, "source", source, "unpublished", true)
+
 	return nil
+}
+
+// resetRevisionBudget gives the article a fresh set of rewrite retries. New
+// feedback is the admin asking again, and is also the only way an article that
+// exhausted its retries gets another try. Best effort: failing to reset leaves
+// at worst an old failure count, which a later request resets.
+func (m *Manager) resetRevisionBudget(articleID int64) {
+	if err := m.db.ResetRevisionFailures(articleID); err != nil {
+		slog.Warn("could not reset revision retry budget", "article_id", articleID, "error", err)
+	}
 }
 
 // GenerateSlug creates a URL-friendly slug from a title.

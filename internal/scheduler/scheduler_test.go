@@ -202,3 +202,41 @@ func TestStartupPass_PanicDoesNotKillProcess(t *testing.T) {
 		t.Fatal("Stop hung after a panicking startup pass")
 	}
 }
+
+// TestAddRevisionJob_RunsSoonAfterStartup guards the revision startup pass.
+// Deploys restart the service, killing any rewrite in progress and leaving its
+// article in revision_requested; this pass is what resumes it, rather than a
+// full interval after boot.
+func TestAddRevisionJob_RunsSoonAfterStartup(t *testing.T) {
+	if startupRevisionDelay <= 0 || startupRevisionDelay > 5*time.Minute {
+		t.Fatalf("revision startup delay %v should be short but not immediate", startupRevisionDelay)
+	}
+
+	s := New()
+	s.SetStartupDelay(time.Millisecond)
+	ran := make(chan struct{}, 1)
+	s.AddRevisionJob(time.Hour, func() { ran <- struct{}{} }) // cron tick far away
+	s.Start()
+	defer s.Stop()
+
+	select {
+	case <-ran:
+	case <-time.After(2 * time.Second):
+		t.Fatal("revision job did not run after startup")
+	}
+}
+
+// TestStop_CancelsPendingRevisionStartupPass: shutdown before the pass is due
+// must abandon it, not wake it against a closed database.
+func TestStop_CancelsPendingRevisionStartupPass(t *testing.T) {
+	s := New()
+	s.SetStartupDelay(10 * time.Second)
+	var ran atomic.Bool
+	s.AddRevisionJob(time.Hour, func() { ran.Store(true) })
+	s.Start()
+	s.Stop()
+
+	if ran.Load() {
+		t.Error("revision startup pass ran despite shutdown beginning first")
+	}
+}
