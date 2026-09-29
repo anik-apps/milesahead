@@ -748,6 +748,9 @@ func TestEndDate_ExtensionAfterALaterDate(t *testing.T) {
 		{"stay later, booking extended", "Deadline", "Stay by December 31, 2026; book by June 30, 2026, now extended to July 15, 2026", written, "2026-07-15"},
 		// Pushing back no end, it is still an older extension.
 		{"older extension", "Deadline", "July 31, 2026; now through July 15 for double points", written, "2026-07-31"},
+		// Written after the old deadline passed, the extension is still
+		// the end: the stay date is not.
+		{"written after the old deadline", "Deadline", "Stay by December 31, 2026; book by June 30, 2026, now extended to July 15, 2026", "2026-07-05", "2026-07-15"},
 	})
 }
 
