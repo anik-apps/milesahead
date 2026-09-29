@@ -747,13 +747,13 @@ func (s *Service) SendWeekly() error {
 		recipients[i] = sub.Email
 	}
 
-	if err := s.sender.SendNewsletter(nl.Subject, nl.HTMLContent, recipients); err != nil {
+	if err := s.sendOnce(nl, nl.HTMLContent, recipients); err != nil {
+		if errors.Is(err, ErrAlreadySent) {
+			slog.Info("weekly newsletter already sent", "date", sendDate)
+			return nil
+		}
 		slog.Error("weekly newsletter send failed", "error", err)
-		return fmt.Errorf("sending newsletter: %w", err)
-	}
-
-	if err := s.db.MarkNewsletterSent(nl.ID); err != nil {
-		return fmt.Errorf("marking newsletter sent: %w", err)
+		return err
 	}
 
 	slog.Info("weekly newsletter sent", "date", sendDate, "recipients", len(recipients))
@@ -954,17 +954,39 @@ func (s *Service) SendDaily() error {
 		recipients[i] = sub.Email
 	}
 
-	if err := s.sender.SendNewsletter(nl.Subject, htmlContent, recipients); err != nil {
+	if err := s.sendOnce(nl, htmlContent, recipients); err != nil {
 		slog.Error("newsletter send failed", "error", err)
-		return fmt.Errorf("sending newsletter: %w", err)
-	}
-
-	if err := s.db.MarkNewsletterSent(nl.ID); err != nil {
-		return fmt.Errorf("marking newsletter sent: %w", err)
+		return err
 	}
 
 	slog.Info("newsletter sent", "recipients", len(recipients))
 
+	return nil
+}
+
+// sendOnce sends issue nl, rendered as html, to recipients, and records it
+// as sent -- before sending, so that once it has gone out a second click or
+// a retry finds it sent and cannot send it again. If the send fails the
+// issue is put back to its status, to be sent again. It returns
+// ErrAlreadySent when the issue was sent since nl was read, and an error
+// naming the new status when an admin changed it.
+func (s *Service) sendOnce(nl *db.Newsletter, html string, recipients []string) error {
+	claimed, err := s.db.ClaimNewsletterSend(nl.ID, nl.Status)
+	if err != nil {
+		return fmt.Errorf("nothing sent: could not record the newsletter as sent: %w", err)
+	}
+	if !claimed {
+		if cur, err := s.db.GetNewsletterByDate(nl.Date); err == nil && cur.Status != "sent" {
+			return fmt.Errorf("nothing sent: the newsletter was set to %s while it was being sent", cur.Status)
+		}
+		return ErrAlreadySent
+	}
+	if err := s.sender.SendNewsletter(nl.Subject, html, recipients); err != nil {
+		if rerr := s.db.ReleaseNewsletterSend(nl.ID, nl.Status); rerr != nil {
+			return fmt.Errorf("sending newsletter: %w; it could not be put back to %s either, so it shows as sent though it may not have gone out to everyone: %v", err, nl.Status, rerr)
+		}
+		return fmt.Errorf("sending newsletter: %w", err)
+	}
 	return nil
 }
 

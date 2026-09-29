@@ -619,6 +619,33 @@ func TestNewsletter(t *testing.T) {
 	}
 }
 
+// A send claims its newsletter once: a second claim finds it sent, and a
+// failed send puts it back.
+func TestClaimNewsletterSend(t *testing.T) {
+	d := openTestDB(t)
+	id, err := d.CreateNewsletter(&Newsletter{Date: "2026-03-24", Subject: "S", Status: StatusDraft})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := d.ClaimNewsletterSend(id, StatusDraft); err != nil || !ok {
+		t.Fatalf("first claim = %v, %v; want claimed", ok, err)
+	}
+	got, _ := d.GetNewsletterByDate("2026-03-24")
+	if got.Status != "sent" || got.SentAt == nil {
+		t.Errorf("claimed: status %q, sent at %v; want sent", got.Status, got.SentAt)
+	}
+	if ok, err := d.ClaimNewsletterSend(id, StatusDraft); err != nil || ok {
+		t.Errorf("second claim = %v, %v; want not claimed", ok, err)
+	}
+	if err := d.ReleaseNewsletterSend(id, StatusDraft); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = d.GetNewsletterByDate("2026-03-24")
+	if got.Status != StatusDraft || got.SentAt != nil {
+		t.Errorf("released: status %q, sent at %v; want draft, never sent", got.Status, got.SentAt)
+	}
+}
+
 // --- Subscriber ---
 
 func TestSubscriber(t *testing.T) {

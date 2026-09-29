@@ -642,3 +642,174 @@ func TestSendDaily_LeavesLaterArticlesForTheNextIssue(t *testing.T) {
 		t.Error("the daily took in an article published after it was generated")
 	}
 }
+
+// hookSender is a mockSender that runs during in each send, and fails
+// the send when fail is set.
+type hookSender struct {
+	mockSender
+	during func()
+	fail   error
+}
+
+func (h *hookSender) SendNewsletter(subject, htmlContent string, recipients []string) error {
+	if h.during != nil {
+		h.during()
+	}
+	if h.fail != nil {
+		return h.fail
+	}
+	return h.mockSender.SendNewsletter(subject, htmlContent, recipients)
+}
+
+// breakNewsletterWrites makes every later write to the newsletters table
+// fail, as a database that goes away mid-send would.
+func breakNewsletterWrites(t *testing.T, database *db.Database) {
+	t.Helper()
+	if _, err := database.DB().Exec(`CREATE TRIGGER no_newsletter_writes BEFORE UPDATE ON newsletters BEGIN SELECT RAISE(ABORT, 'database unavailable'); END`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Once the emails have gone out, nothing can leave the issue looking unsent:
+// recording the send after it, a failure to record it reported an error and
+// left the issue a draft, and the admin's second click sent it to everyone
+// again.
+func TestSendDaily_ASecondClickCannotSendTwice(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	subscribe(t, database)
+
+	sender := &hookSender{}
+	sender.during = func() {
+		if len(sender.calls) == 0 {
+			breakNewsletterWrites(t, database)
+		}
+	}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	storeDaily(t, database, svc, "draft", "<p>"+liveTitle+"</p>")
+
+	if err := svc.SendDaily(); err != nil {
+		t.Errorf("first SendDaily() = %v, want it reported as sent", err)
+	}
+	if err := svc.SendDaily(); !errors.Is(err, ErrAlreadySent) {
+		t.Errorf("second SendDaily() = %v, want ErrAlreadySent", err)
+	}
+	if len(sender.calls) != 1 {
+		t.Errorf("the daily went out %d times, want once", len(sender.calls))
+	}
+}
+
+// The weekly is sent once as well, however many times SendWeekly runs.
+func TestSendWeekly_SentOnlyOnce(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	live := publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	subscribe(t, database)
+
+	sender := &hookSender{}
+	sender.during = func() {
+		if len(sender.calls) == 0 {
+			breakNewsletterWrites(t, database)
+		}
+	}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	pick := live
+	if _, err := database.CreateNewsletter(&db.Newsletter{
+		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved",
+		HTMLContent: "<p>" + liveTitle + "</p>", ArticleCount: 1, ScoutsPickArticleID: &pick,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.SendWeekly(); err != nil {
+		t.Errorf("first SendWeekly() = %v", err)
+	}
+	if err := svc.SendWeekly(); err != nil {
+		t.Errorf("second SendWeekly() = %v", err)
+	}
+	if len(sender.calls) != 1 {
+		t.Errorf("the weekly went out %d times, want once", len(sender.calls))
+	}
+}
+
+// A send that fails leaves the issue as it was, to be sent again; if even
+// that cannot be recorded, the admin is told it shows as sent.
+func TestSendDaily_FailedSendIsPutBack(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	subscribe(t, database)
+
+	sender := &hookSender{fail: errors.New("smtp: connection refused")}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	storeDaily(t, database, svc, "approved", "<p>"+liveTitle+"</p>")
+
+	if err := svc.SendDaily(); err == nil || !strings.Contains(err.Error(), "connection refused") {
+		t.Errorf("SendDaily() = %v, want the send failure", err)
+	}
+	nl, err := database.GetNewsletterByDate(svc.todayDate())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nl.Status != "approved" || nl.SentAt != nil {
+		t.Errorf("after a failed send: status %q, sent at %v; want approved, never sent", nl.Status, nl.SentAt)
+	}
+
+	sender.fail = nil
+	if err := svc.SendDaily(); err != nil {
+		t.Errorf("retry SendDaily() = %v", err)
+	}
+	if len(sender.calls) != 1 {
+		t.Errorf("want the retry sent once, got %d sends", len(sender.calls))
+	}
+
+	// The send fails and the issue cannot be put back.
+	database2, cleanup2 := setupTestDB(t)
+	defer cleanup2()
+	publish(t, database2, liveTitle, "united-ihg", liveDeadline, false)
+	subscribe(t, database2)
+	sender2 := &hookSender{fail: errors.New("smtp: connection refused")}
+	sender2.during = func() { breakNewsletterWrites(t, database2) }
+	svc2 := NewService(database2, sender2, config.NewsletterConfig{Timezone: "UTC"})
+	storeDaily(t, database2, svc2, "approved", "<p>"+liveTitle+"</p>")
+	if err := svc2.SendDaily(); err == nil || !strings.Contains(err.Error(), "shows as sent") {
+		t.Errorf("SendDaily() = %v, want it to say the issue shows as sent", err)
+	}
+}
+
+// An issue an admin holds while it is being sent is not sent, and the
+// admin is told it was held, not that it was already sent.
+func TestSendDaily_HeldMidSendIsNotSent(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	subscribe(t, database)
+
+	sender := &hookSender{}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	id := storeDaily(t, database, svc, "draft", "<p>"+liveTitle+"</p>")
+	// Held after SendDaily read it: the subscriber list is read in between.
+	if _, err := database.DB().Exec(`CREATE TRIGGER hold_mid_send AFTER UPDATE OF html_content ON newsletters BEGIN UPDATE newsletters SET status = 'hold' WHERE id = NEW.id; END`); err != nil {
+		t.Fatal(err)
+	}
+
+	err := svc.SendDaily()
+	if err == nil || errors.Is(err, ErrAlreadySent) || !strings.Contains(err.Error(), "hold") {
+		t.Errorf("SendDaily() = %v, want it to say the issue was put on hold", err)
+	}
+	if len(sender.calls) != 0 {
+		t.Error("sent an issue held mid-send")
+	}
+	var status string
+	if err := database.DB().QueryRow(`SELECT status FROM newsletters WHERE id = ?`, id).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "hold" {
+		t.Errorf("status = %q, want hold", status)
+	}
+}

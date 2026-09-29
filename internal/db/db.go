@@ -596,6 +596,30 @@ func (d *Database) MarkNewsletterSent(id int64) error {
 	return err
 }
 
+// ClaimNewsletterSend marks newsletter id sent before it goes out, if its
+// status is still from, and reports whether it did. Recording the send first
+// means a failure to record it can never leave an issue that went out
+// looking unsent, to be sent again; and of two sends at once only one claims
+// the issue.
+func (d *Database) ClaimNewsletterSend(id int64, from string) (bool, error) {
+	res, err := d.db.Exec(`UPDATE newsletters SET status = 'sent', sent_at = ? WHERE id = ? AND status = ?`, time.Now().UTC(), id, from)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n == 1, nil
+}
+
+// ReleaseNewsletterSend puts newsletter id, claimed by ClaimNewsletterSend
+// for a send that failed, back to status.
+func (d *Database) ReleaseNewsletterSend(id int64, status string) error {
+	_, err := d.db.Exec(`UPDATE newsletters SET status = ?, sent_at = NULL WHERE id = ? AND status = 'sent'`, status, id)
+	return err
+}
+
 // ListNewsletters returns all newsletters ordered by date descending.
 func (d *Database) ListNewsletters() ([]Newsletter, error) {
 	rows, err := d.db.Query(
