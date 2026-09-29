@@ -26,6 +26,7 @@ milesahead/
 │   ├── mail/                # SMTP/IMAP email handling
 │   ├── metrics/             # Prometheus metrics definitions
 │   ├── newsletter/          # Newsletter generation and delivery
+│   ├── offer/               # Offer end dates from Key Details; "has it ended"
 │   ├── scanner/             # RSS/scrape source scanner
 │   ├── scheduler/           # Cron job scheduling
 │   ├── vote/                # Voting system with anomaly detection

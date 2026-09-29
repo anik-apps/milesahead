@@ -91,6 +91,10 @@ mail:
 
 newsletter:
   send_time: "08:00"
+  # The newsletter schedule's timezone. Defaults to UTC when empty. Offer end
+  # dates do not use it: "Deadline: July 29, 2026" counts as ended once July
+  # 29 is over in Hawaii, the westernmost US zone, on the site and in the
+  # newsletter alike.
   timezone: "America/New_York"
 
 votes:

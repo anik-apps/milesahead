@@ -26,7 +26,7 @@
 
 <div class="magazine-grid">
     {{if .Featured}}
-    <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}">
+    <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}{{if .Featured.Ended}} is-ended{{end}}">
         {{if .Featured.ImageURL}}
         {{/* A real <img> rather than a CSS background: the preload scanner finds
              it in the HTML instead of after the stylesheet, and it can ask for
@@ -36,7 +36,7 @@
         {{end}}
         <a href="/article/{{.Featured.Slug}}">
             <div class="featured-overlay">
-                <span class="type-badge badge-{{.Featured.Type}}">{{.Featured.Type}}</span>
+                <span class="type-badge badge-{{.Featured.Type}}">{{.Featured.Type}}</span>{{if .Featured.Ended}} <span class="ended-badge">{{endedLabel .Featured.Type}}</span>{{end}}
                 <h2 class="featured-title">{{.Featured.Title}}</h2>
                 <p class="featured-excerpt">{{.Featured.Excerpt}}</p>
             </div>
@@ -46,7 +46,7 @@
 
     <div class="sidebar-stack">
         {{range $i, $_ := .Sidebar}}
-        <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}">
+        <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}{{if .Ended}} is-ended{{end}}">
             <a href="/article/{{.Slug}}">
                 {{if .ImageThumbnail}}
                 <div class="card-thumb">
@@ -55,7 +55,7 @@
                 </div>
                 {{end}}
                 <div class="card-body">
-                    <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+                    <span class="type-badge badge-{{.Type}}">{{.Type}}</span>{{if .Ended}} <span class="ended-badge">{{endedLabel .Type}}</span>{{end}}
                     <h3>{{.Title}}</h3>
                     <p class="excerpt">{{.Excerpt}}</p>
                     <div class="card-meta">
@@ -71,7 +71,7 @@
 {{if .Grid}}
 <div class="bottom-grid">
     {{range .Grid}}
-    <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}">
+    <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}{{if .Ended}} is-ended{{end}}">
         <a href="/article/{{.Slug}}">
             {{if .ImageThumbnail}}
             <div class="card-thumb">
@@ -89,7 +89,7 @@
             </div>
             {{end}}
             <div class="card-body">
-                <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+                <span class="type-badge badge-{{.Type}}">{{.Type}}</span>{{if .Ended}} <span class="ended-badge">{{endedLabel .Type}}</span>{{end}}
                 <h3>{{.Title}}</h3>
                 <p class="excerpt">{{.Excerpt}}</p>
                 <div class="card-meta">
@@ -107,6 +107,8 @@
 <div class="empty-state">
     {{if .ActiveTag}}
     <p>No articles tagged <strong>{{.ActiveTag}}</strong> right now — check back soon!</p>
+    {{else if .AllEnded}}
+    <p>No current offers right now — every recent one has ended. Check back soon!</p>
     {{else if eq .TypeFilter ""}}
     <p>No articles published yet. Check back soon!</p>
     {{else}}
