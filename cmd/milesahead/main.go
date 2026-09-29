@@ -37,6 +37,19 @@ func (s *stubTokenResolver) Resolve(token string) (int64, string, error) {
 	return 0, "", fmt.Errorf("token resolution not yet implemented")
 }
 
+// newImageScoring builds the image searcher and scorer. With an endpoint for
+// vision scoring configured, the searcher warms the thumbnails the scorer is
+// about to send: Wikimedia renders a new size before the vision endpoint
+// fetches it, so a slow first render does not fail its scoring.
+func newImageScoring(cfg *config.Config, client ai.HFClientInterface, visionModel string) (*images.Searcher, *images.Scorer) {
+	searcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey)
+	scorer := images.NewScorer(client, cfg.AI.CriticModel)
+	if cfg.AI.HFBaseURL != "" {
+		scorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, visionModel, searcher)
+	}
+	return searcher, scorer
+}
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -128,11 +141,7 @@ func main() {
 	}()
 
 	// Image search and scoring
-	imageSearcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey)
-	imageScorer := images.NewScorer(hfClient, cfg.AI.CriticModel)
-	if cfg.AI.HFBaseURL != "" {
-		imageScorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, visionModel)
-	}
+	imageSearcher, imageScorer := newImageScoring(cfg, hfClient, visionModel)
 
 	// Enrichment runs as a reconciliation pass rather than inline in article
 	// creation. Inline, each step was a best-effort call that logged a warning

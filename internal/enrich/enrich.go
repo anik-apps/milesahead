@@ -58,13 +58,33 @@ type Service struct {
 	// last read, so a stalled reconciler is indistinguishable from an idle one.
 	//
 	// The bound is checked between articles, so the true ceiling is MaxDuration
-	// plus one article's worst case. Bounding mid-article needs a context
-	// threaded through Generate, which it does not take yet.
+	// plus one article's worst case. Within an article only the image step
+	// heeds it: it does not start past it, and its checks stop at it (see
+	// findImage). Bounding the model calls needs a context threaded through
+	// Generate, which it does not take yet, and warming thumbnails for image
+	// scoring can add up to 15 s.
 	MaxDuration time.Duration
 
 	// startedAt records when the in-flight pass began, so a skip can report how
 	// long the pass it is yielding to has been running.
 	startedAt atomic.Int64
+
+	// ResizeMaxDuration and ResizeMaxRows bound the stored-image resize that
+	// opens each pass (see resizeStoredImages), so it cannot eat the time
+	// enrichment needs. The duration is further capped at a quarter of
+	// MaxDuration. No row starts after it, and each row's probes stop at
+	// it. Zero means the default.
+	ResizeMaxDuration time.Duration
+	ResizeMaxRows     int
+
+	// originalWidths caches the pixel widths of Wikimedia originals that
+	// resizeStoredImages has looked up; 0 records a file Commons reports as
+	// deleted. widthNoAnswer holds, until when, the originals a lookup had no
+	// answer for. resizeRetries tracks rows whose resize keeps failing. All
+	// are only touched inside Run, which never overlaps itself.
+	originalWidths map[string]int
+	widthNoAnswer  map[string]time.Time
+	resizeRetries  map[int64]*resizeRetry
 
 	// running guards against overlapping passes. robfig/cron's "@every" does
 	// NOT skip a tick when the previous run is still going, and a pass can
@@ -79,16 +99,19 @@ type Service struct {
 func New(database *db.Database, client ai.HFClientInterface, models []string,
 	persona string, searcher *images.Searcher, scorer *images.Scorer) *Service {
 	return &Service{
-		db:          database,
-		client:      client,
-		models:      models,
-		persona:     persona,
-		searcher:    searcher,
-		scorer:      scorer,
-		MaxAttempts: 3,
-		BatchSize:   10,
-		Pace:        2 * time.Second,
-		MaxDuration: 10 * time.Minute,
+		db:             database,
+		client:         client,
+		models:         models,
+		persona:        persona,
+		searcher:       searcher,
+		scorer:         scorer,
+		MaxAttempts:    3,
+		BatchSize:      10,
+		Pace:           2 * time.Second,
+		MaxDuration:    10 * time.Minute,
+		originalWidths: map[string]int{},
+		widthNoAnswer:  map[string]time.Time{},
+		resizeRetries:  map[int64]*resizeRetry{},
 	}
 }
 
@@ -123,6 +146,14 @@ func (s *Service) Run() {
 		s.refreshDegradedGauge()
 	}()
 
+	// Before any model calls, so a degraded provider cannot hold it up, and
+	// on its own budget, so a slow image host cannot hold up enrichment.
+	resizeDeadline := start.Add(s.resizeBudget())
+	if resizeDeadline.After(deadline) {
+		resizeDeadline = deadline
+	}
+	s.resizeStoredImages(resizeDeadline)
+
 	articles, err := s.db.ListArticlesNeedingEnrichment(s.MaxAttempts, s.BatchSize)
 	if err != nil {
 		metrics.EnrichmentPassesTotal.WithLabelValues("error").Inc()
@@ -140,24 +171,37 @@ func (s *Service) Run() {
 	slog.Info("enrichment pass starting", "articles", len(articles),
 		"deadline", s.maxDuration())
 	var filled, failed, done int
+	hitDeadline := func() {
+		metrics.EnrichmentPassesTotal.WithLabelValues("deadline").Inc()
+		slog.Warn("enrichment pass hit its deadline",
+			"processed", done, "abandoned", len(articles)-done,
+			"elapsed", time.Since(start).Round(time.Second))
+		// Deliberately NOT a liveness update: the pass did not finish its
+		// work, and treating it as success would mask a provider that is
+		// slow enough to prevent the backlog ever draining.
+	}
 	for i, a := range articles {
-		if time.Now().After(deadline) {
-			metrics.EnrichmentPassesTotal.WithLabelValues("deadline").Inc()
-			slog.Warn("enrichment pass hit its deadline",
-				"processed", done, "abandoned", len(articles)-done,
-				"elapsed", time.Since(start).Round(time.Second))
-			// Deliberately NOT a liveness update: the pass did not finish its
-			// work, and treating it as success would mask a provider that is
-			// slow enough to prevent the backlog ever draining.
-			return
-		}
+		// Pace before the deadline check, so no article starts after the
+		// deadline because the sleep ran past it.
 		if i > 0 && s.Pace > 0 {
 			time.Sleep(s.Pace)
 		}
-		got, missed := s.enrichOne(a)
+		if time.Now().After(deadline) {
+			hitDeadline()
+			return
+		}
+		got, missed, putOff := s.enrichOne(a, deadline)
 		filled += got
 		failed += missed
 		done++
+		if putOff {
+			// The deadline passed during this article and its image search
+			// waits for the next pass. Any article after it would stop at the
+			// check above; the last one would otherwise end the pass as
+			// "completed" with work left undone.
+			hitDeadline()
+			return
+		}
 	}
 
 	metrics.EnrichmentPassesTotal.WithLabelValues("completed").Inc()
@@ -188,8 +232,12 @@ func (s *Service) refreshDegradedGauge() {
 
 // enrichOne fills whatever it can for a single article and records the attempt.
 // A partial success is kept: each field is written independently, so one
-// failing step does not discard the others.
-func (s *Service) enrichOne(a db.ArticleNeedingEnrichment) (filled, failed int) {
+// failing step does not discard the others. deadline is the pass's: the image
+// checks stop at it (see findImage).
+//
+// putOff reports that the image search was put off because the deadline had
+// passed; whatever else was filled is still saved.
+func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (filled, failed int, putOff bool) {
 	var u db.EnrichmentUpdate
 
 	if a.MissingScoutsTake {
@@ -234,11 +282,24 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment) (filled, failed int) 
 	}
 
 	if a.MissingImage {
-		if s.findImage(&u, a) {
+		switch s.findImage(&u, a, deadline) {
+		case imageFound:
 			filled++
-		} else {
+		case imageDeferred:
+			putOff = true
+		default:
 			failed++
 		}
+	}
+
+	// An image search put off for lack of time was not tried, so it is not
+	// charged: if nothing else failed, the attempt is not counted, and an
+	// article with nothing to write is not touched at all.
+	if putOff && failed == 0 {
+		if filled == 0 {
+			return 0, 0, true
+		}
+		u.Uncounted = true
 	}
 
 	if err := s.db.ApplyEnrichment(a.ID, u); err != nil {
@@ -250,20 +311,50 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment) (filled, failed int) 
 		metrics.EnrichmentFailuresTotal.WithLabelValues("save").Inc()
 		slog.Error("enrichment: could not save, work discarded and attempt not counted",
 			"article_id", a.ID, "fields_filled", filled, "error", err)
-		return filled, failed
+		return filled, failed, putOff
+	}
+	attempt := a.Attempts + 1
+	if u.Uncounted {
+		attempt = a.Attempts
 	}
 	slog.Info("enrichment applied", "article_id", a.ID, "was_missing", a.Missing(),
-		"filled", filled, "failed", failed, "attempt", a.Attempts+1)
-	return filled, failed
+		"filled", filled, "failed", failed, "attempt", attempt, "image_deferred", putOff)
+	return filled, failed, putOff
 }
+
+// imageResult is what findImage did.
+type imageResult int
+
+const (
+	imageFound    imageResult = iota // a candidate was picked
+	imageFailed                      // the search ran and nothing could be used
+	imageDeferred                    // the pass deadline had passed; nothing was tried
+)
 
 // findImage searches and scores candidates, reporting whether one was good
 // enough to use. A search that finds nothing relevant is a legitimate outcome
 // rather than an error, but it still counts against the attempt budget so the
 // article is not searched forever.
-func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichment) bool {
+//
+// deadline is the pass's. If the article's earlier model calls ran past it,
+// the search does not start: query generation, the search, warming (up to
+// 15 s) and the vision calls would only lead to candidates it may not check.
+// That returns imageDeferred, which does not use an attempt.
+//
+// Checking that candidates load also stops at deadline. A Wikimedia probe may
+// take up to 30 s (it waits for a render and retries), so a run of hanging
+// candidates could otherwise hold the pass minutes past its deadline and make
+// the scheduler skip the next one. An article whose checks are cut short gets
+// no image this pass; like any failed image step, that uses one of its
+// attempts.
+func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichment, deadline time.Time) imageResult {
 	if s.searcher == nil {
-		return false
+		return imageFailed
+	}
+	if !time.Now().Before(deadline) {
+		slog.Info("enrichment: pass deadline reached before the image search; it waits for the next pass",
+			"article_id", a.ID)
+		return imageDeferred
 	}
 	queries, err := ai.GenerateImageQueries(s.client, s.models, a.Title, a.TLDR)
 	if err != nil {
@@ -274,44 +365,47 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 	candidates, err := s.searcher.Search(queries)
 	if err != nil || len(candidates) == 0 {
 		s.recordFailure("image", a.ID, err)
-		return false
+		return imageFailed
 	}
 	if s.scorer == nil {
-		return false
+		return imageFailed
 	}
 	scored, err := s.scorer.Score(a.Title, a.TLDR, candidates)
 	if err != nil || len(scored) == 0 {
 		s.recordFailure("image", a.ID, err)
-		return false
+		return imageFailed
 	}
 	if scored[0].Score < MinImageScore {
 		slog.Info("enrichment: no image met the relevance bar",
 			"article_id", a.ID, "top_score", scored[0].Score)
-		return false
+		return imageFailed
 	}
-	// Walk down in score order until one is both relevant enough and actually
-	// fetchable. Scoring alone is not enough: an image host can return a URL
-	// that is already dead or that dies later, and without this check the
-	// first anyone learns of it is a broken thumbnail on the homepage.
+	// Walk down in score order until one is relevant enough, actually
+	// fetchable and light enough for the page. Scoring alone is not enough: an
+	// image host can return a URL that is already dead or that dies later, and
+	// without this check the first anyone learns of it is a broken thumbnail
+	// on the homepage -- or, as with the Wikimedia originals, a 13 MB one.
 	for i := range scored {
 		c := scored[i]
 		if c.Score < MinImageScore {
 			break
 		}
-		if !s.searcher.Reachable(c.Thumbnail) {
-			continue
+		if !time.Now().Before(deadline) {
+			slog.Warn("enrichment: pass deadline reached while checking image candidates",
+				"article_id", a.ID, "checked", i)
+			return imageFailed
 		}
-		if c.URL != c.Thumbnail && !s.searcher.Reachable(c.URL) {
+		if !s.searcher.Usable(c, deadline) {
 			continue
 		}
 		u.ImageURL = &scored[i].URL
 		u.ImageThumbnail = &scored[i].Thumbnail
 		u.ImageAttribution = &scored[i].Attribution
-		return true
+		return imageFound
 	}
 	slog.Info("enrichment: every relevant image candidate was unfetchable",
 		"article_id", a.ID, "candidates", len(scored))
-	return false
+	return imageFailed
 }
 
 func (s *Service) recordFailure(step string, articleID int64, err error) {

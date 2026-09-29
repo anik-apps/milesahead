@@ -360,3 +360,62 @@ func testutilGaugeValue(t *testing.T) float64 {
 	}
 	return m.GetGauge().GetValue()
 }
+
+func lastSuccessTimestamp(t *testing.T) float64 {
+	t.Helper()
+	var m dto.Metric
+	if err := metrics.EnrichmentLastSuccessTimestamp.Write(&m); err != nil {
+		t.Fatalf("gauge read: %v", err)
+	}
+	return m.GetGauge().GetValue()
+}
+
+// The pace between articles slept after the deadline check, so a pass whose
+// sleep ran past the deadline still started the next article. Its model
+// calls ran after the deadline and, if it was the batch's last, the pass
+// was recorded as completed.
+func TestRun_NoArticleStartsAfterThePaceSleepPassesTheDeadline(t *testing.T) {
+	d := testDB(t)
+	// Two articles missing only their tags; either may come first.
+	var ids []int64
+	for range 2 {
+		id := seedArticle(t, d)
+		if _, err := d.DB().Exec(`UPDATE generated_articles SET image_url = 'https://example.com/a.jpg',
+			image_thumbnail = 'https://example.com/a.jpg', scouts_take = 'Take',
+			key_details = '[{"label":"a","value":"b"}]' WHERE id = ?`, id); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	client := &scriptedClient{reply: map[string]string{"topic tags": `["transfer-bonuses"]`}}
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.MaxDuration = 200 * time.Millisecond
+	s.Pace = 400 * time.Millisecond // past the deadline after the first article
+
+	completed, deadlinePasses := passCount(t, "completed"), passCount(t, "deadline")
+	s.Run()
+
+	tagged := 0
+	for _, id := range ids {
+		var tags string
+		if err := d.DB().QueryRow(`SELECT COALESCE(tags_json, '') FROM generated_articles WHERE id = ?`,
+			id).Scan(&tags); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(tags, "transfer-bonuses") {
+			tagged++
+		}
+	}
+	if tagged != 1 {
+		t.Errorf("%d articles enriched, want 1: the second started after the deadline", tagged)
+	}
+	if len(client.calls) != 1 {
+		t.Errorf("%d model calls, want 1", len(client.calls))
+	}
+	if got := passCount(t, "deadline") - deadlinePasses; got != 1 {
+		t.Errorf("deadline passes +%v, want +1", got)
+	}
+	if got := passCount(t, "completed") - completed; got != 0 {
+		t.Errorf("completed passes +%v, want 0", got)
+	}
+}

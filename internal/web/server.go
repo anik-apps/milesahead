@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -20,6 +22,10 @@ import (
 
 // templateFuncs provides custom template functions.
 var templateFuncs = template.FuncMap{
+	// stylesheetURL is replaced per App by loadTemplates with the versioned
+	// URL; this unversioned default serves code that parses the layout on
+	// its own.
+	"stylesheetURL": func() string { return stylesheetPath },
 	"safeHTML": func(s string) template.HTML {
 		return template.HTML(s)
 	},
@@ -184,17 +190,43 @@ func (app *App) loadTemplates(dir string) error {
 		return nil
 	}
 
+	// static/ sits beside templates/, as it does in the repository and on the server.
+	css := versionedStylesheet(filepath.Join(filepath.Dir(dir), "static"))
+	appFuncs := template.FuncMap{"stylesheetURL": func() string { return css }}
+
 	// Parse each page template separately with the layout so that each gets
 	// its own "content" block definition without conflicts.
 	for _, pf := range pageFiles {
 		name := filepath.Base(pf)
-		t, err := template.New(name).Funcs(templateFuncs).ParseFiles(layoutFile, pf)
+		t, err := template.New(name).Funcs(templateFuncs).Funcs(appFuncs).ParseFiles(layoutFile, pf)
 		if err != nil {
 			return fmt.Errorf("parsing template %s: %w", name, err)
 		}
 		app.templates[name] = t
 	}
 	return nil
+}
+
+// stylesheetPath is the site stylesheet's URL path.
+const stylesheetPath = "/static/css/style.css"
+
+// versionedStylesheet returns the stylesheet URL with a short hash of its
+// content as ?v=, or the bare path if the file cannot be read.
+//
+// Static files are served with only Last-Modified, so a browser keeps using
+// its cached copy for a heuristic period after a deploy. When new markup
+// depends on new rules -- the featured image became an <img> positioned by
+// .featured-image -- a returning visitor would see the new HTML laid out by
+// the old CSS: on desktop, the photo above a white gap and the headline pushed
+// below the first screen. Tying the URL to the bytes means a changed file is
+// always fetched fresh.
+func versionedStylesheet(staticDir string) string {
+	b, err := os.ReadFile(filepath.Join(staticDir, "css", "style.css"))
+	if err != nil {
+		return stylesheetPath
+	}
+	sum := sha256.Sum256(b)
+	return stylesheetPath + "?v=" + hex.EncodeToString(sum[:])[:12]
 }
 
 // renderTemplate executes a named template with the given data.

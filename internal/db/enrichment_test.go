@@ -141,4 +141,18 @@ func TestApplyEnrichment_KeepsPartialSuccessAndCountsAttempt(t *testing.T) {
 	if attempts != 2 {
 		t.Errorf("a pass that filled nothing must still count: attempts = %d, want 2", attempts)
 	}
+
+	// An uncounted update writes its fields and leaves the counter alone.
+	tags := `["hotels"]`
+	if err := d.ApplyEnrichment(id, EnrichmentUpdate{TagsJSON: &tags, Uncounted: true}); err != nil {
+		t.Fatalf("apply uncounted: %v", err)
+	}
+	var gotTags string
+	if err := d.DB().QueryRow(
+		"SELECT tags_json, enrichment_attempts FROM generated_articles WHERE id = ?", id).Scan(&gotTags, &attempts); err != nil {
+		t.Fatalf("read back uncounted: %v", err)
+	}
+	if gotTags != tags || attempts != 2 {
+		t.Errorf("uncounted update: tags %q, attempts %d; want %q and 2", gotTags, attempts, tags)
+	}
 }

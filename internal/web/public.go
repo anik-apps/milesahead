@@ -13,6 +13,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/images"
 	"github.com/kumaranik/milesahead/internal/offer"
 )
 
@@ -87,6 +88,9 @@ type publicArticleRow struct {
 	ImageURL         string
 	ImageThumbnail   string
 	ImageAttribution string
+	// ThumbSrcset offers the display image as a sharper stand-in for the
+	// thumbnail where a grid card shows it wide; see thumbSrcset.
+	ThumbSrcset string
 	// Ended marks an article whose offer has passed its end date. Listings
 	// show it with an "Ended" badge and de-emphasised.
 	Ended bool
@@ -104,6 +108,47 @@ type recentChangeRow struct {
 	db.RecentChange
 	Ended       bool
 	ArticleType string
+}
+
+// gridThumbSlotMax is the widest, in CSS px, a bottom-grid card shows its
+// thumbnail where the srcset applies (769-1024 px, two columns): the source's
+// sizes, (100vw - 92px) / 2, at 1024 px.
+const gridThumbSlotMax = 466
+
+// thumbSrcset returns a srcset of the thumbnail and the display image, each
+// with the width its URL fixes, for the bottom grid's two-column layout
+// (769-1024 px wide). There a card is up to 466 CSS px wide, so a 500px
+// thumbnail is soft on a 2x screen. home.html offers it only in that range:
+// at three columns a card is at most 361 px, and a 2x screen fetching the
+// display image for all 16 cards more than doubled the page's image bytes.
+//
+// It returns "" unless:
+//
+//   - the URLs are two sizes of one picture (see images.SrcsetWidths). Only
+//     the two URLs the row stores -- each confirmed to load before it was
+//     written -- are ever referenced.
+//   - the thumbnail alone fills the widest card on a 1x screen, so no 1x
+//     screen fetches the display image.
+//   - the display image is the wider of the two.
+//   - neither URL has a comma or white space, which separate srcset entries.
+//
+// The page does not know how heavy the display image is, so the srcset does
+// not check it. The pick path confirms both fields within their byte caps.
+// The resize settles for a display image over its cap only when every step
+// down to 500px is over 1 MiB and the copy it takes is either lighter than
+// the stored file or, if the stored file no longer loads, at most 2 MiB; if
+// it also chose the thumbnail, that thumbnail is the 330px step -- the 500px
+// copy is over the 512 KiB thumbnail cap too -- and the row gets no srcset.
+// That does not hold for a thumbnail the resize left as it was: a 500px
+// thumbnail stored some other way beside an over-cap display image would
+// still be offered it. Keeping those out would take the display image's
+// size stored with the row, which nothing records.
+func thumbSrcset(thumbnail, image string) string {
+	tw, iw, ok := images.SrcsetWidths(thumbnail, image)
+	if !ok || tw < gridThumbSlotMax || iw <= tw || strings.ContainsAny(thumbnail+image, ", \t\n\r\f") {
+		return ""
+	}
+	return fmt.Sprintf("%s %dw, %s %dw", thumbnail, tw, image, iw)
 }
 
 // sourceInfo holds source data for article detail pages.
@@ -168,6 +213,7 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 			ImageURL:         a.ImageURL,
 			ImageThumbnail:   a.ImageThumbnail,
 			ImageAttribution: a.ImageAttribution,
+			ThumbSrcset:      thumbSrcset(a.ImageThumbnail, a.ImageURL),
 			Ended:            offer.Ended(a.ExpiresOn, today),
 		}
 		if a.PublishedAt != nil {
