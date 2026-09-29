@@ -830,6 +830,7 @@ func TestEndDate_MoreReplacementLabels(t *testing.T) {
 		{"New Deadline", "TBA"},
 		{"Extension", "Extended indefinitely"},
 		{"Deadline (Extended)", "New date not yet announced"},
+		{"Extension", "Extended (the original June 30, 2026 deadline has expired)"},
 	} {
 		kd := details(t, "Deadline", "June 30, 2026", c.label, c.value)
 		if got := EndDate(kd, day(written)); got != "" {
@@ -860,6 +861,7 @@ func TestEndDate_MoreReplacementLabels(t *testing.T) {
 		{"Extended Stay Booking Deadline", "June 30, 2026", "2026-06-30"},
 		{"Extended Travel Period", "Through December 31, 2026", "2026-07-31"},
 		{"Extended Deadline", "None", "2026-07-31"},
+		{"Extended Deadline", "None (not extended)", "2026-07-31"},
 	} {
 		kd := details(t, "Deadline", "July 31, 2026", c.label, c.value)
 		if got := EndDate(kd, day(written)); got != c.want {

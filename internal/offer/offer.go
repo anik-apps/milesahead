@@ -722,6 +722,9 @@ var endedUpRE = regexp.MustCompile(`(?i)\bended\s+up\b`)
 // 30 deadline has expired)").
 var extendWordRE = regexp.MustCompile(`(?i)\bextend\w*`)
 
+// notExtendedRE denies an extension: "not extended", "hasn't been extended".
+var notExtendedRE = regexp.MustCompile(`(?i)(?:\bnot|\bnever|n't)\s+(?:yet\s+)?(?:been\s+)?extended\b`)
+
 // saysEnded reports whether value says the offer is over, and does not also
 // say it runs on ("Ongoing (the 60K offer ended June 1)"), deny it ended
 // ("but the offer hasn't ended yet") or say it was extended.
@@ -1020,9 +1023,10 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 		value := normalize(d.Value)
 		dates, revised := resolve(scanDates(value, kind, anchor), value, anchor)
 		if len(dates) == 0 {
-			// "Extended Deadline: Until further notice": the deadline
+			// "Extended Deadline: Until further notice", "Extension:
+			// Extended (the June 30 deadline has passed)": the deadline
 			// beside it no longer holds, and there is no new one.
-			if replaces && stillOpenRE.MatchString(value) {
+			if replaces && (stillOpenRE.MatchString(value) || extendWordRE.MatchString(value) && !notExtendedRE.MatchString(value)) {
 				openReplacement = true
 			}
 			continue
