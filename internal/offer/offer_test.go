@@ -507,6 +507,10 @@ func TestEndDate_NumericDayFirst(t *testing.T) {
 		{"same both ways", "Deadline", "12/12/2026", "2026-06-10", "2026-12-12"},
 		// Both readings long gone: the later.
 		{"both gone", "Deadline", "03/04/2026", "2026-06-10", "2026-04-03"},
+		// Month first just gone, day first still ahead: day first.
+		{"just gone month first, ahead day first", "Deadline", "06/07/2026", "2026-06-10", "2026-07-06"},
+		{"September", "Deadline", "09/10/2026", "2026-09-20", "2026-10-09"},
+		{"November", "Deadline", "11/12/2026", "2026-11-20", "2026-12-11"},
 		// The "07" of a numeric date is not the end of a range from March 1.
 		{"range to a numeric date", "Promotion Period", "March 1 - 07/01/2026", "2026-05-20", "2026-07-01"},
 	})

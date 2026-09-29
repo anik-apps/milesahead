@@ -740,8 +740,10 @@ func saysEnded(value string) bool {
 // day and is read as yearless, and an ISO or numeric date is no date.
 //
 // A numeric date that reads either way ("1/7/2026") is month first, unless
-// that falls more than yearlessGraceDays before the article; then it takes
-// the later of the two readings.
+// that falls more than yearlessGraceDays before the article, or falls
+// before it while day first does not; then it takes the later of the two
+// readings. Written June 10, "06/07/2026" is July 6, not a June 7 already
+// gone.
 //
 // A date written without a year is the first occurrence of that day no more
 // than yearlessGraceDays before the article was written. Offers are written
@@ -816,10 +818,12 @@ func resolve(dates []found, value string, anchor time.Time) ([]time.Time, bool) 
 			continue
 		}
 		t, ok := f.in(f.year)
-		if f.swappable && (!ok || t.Before(floor)) {
+		if f.swappable && (!ok || t.Before(written)) {
 			swapped := *f
 			swapped.month, swapped.day = time.Month(f.day), int(f.month)
-			if u, uok := swapped.in(f.year); uok && (!ok || u.After(t)) {
+			// Long gone read month first, or gone while the other reading
+			// is still ahead: the later reading.
+			if u, uok := swapped.in(f.year); uok && (!ok || u.After(t) && (t.Before(floor) || !u.Before(written))) {
 				t, ok = u, true
 			}
 		}
