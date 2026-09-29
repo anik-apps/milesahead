@@ -54,6 +54,13 @@ const (
 	// 900 px wide: the only step below it is 500.
 	narrowFile = "Narrow_original.jpg"
 	narrow800  = wm + "thumb/5/5f/" + narrowFile + "/800px-" + narrowFile
+	// Over 1 MiB at every display step, stored at 800 px.
+	brokenHeavyFile = "Broken_heavy.png"
+	brokenHeavy800  = wm + "thumb/6/6a/" + brokenHeavyFile + "/800px-" + brokenHeavyFile
+	htmlOrigFile    = "Html_original.png"
+	htmlOrig        = wm + "7/7a/" + htmlOrigFile
+	goneOrigFile    = "Gone_original.png"
+	goneOrig        = wm + "7/7b/" + goneOrigFile
 
 	flickrB  = "https://live.staticflickr.com/65535/54420209608_0aa8ea537a_b.jpg"
 	unsplash = "https://images.unsplash.com/photo-1?w=1080"
@@ -78,6 +85,22 @@ var stepBytes = map[string]int{
 	"1280px-" + flakyFile: 2_000_000,
 	"960px-" + flakyFile:  1_800_000,
 	"500px-" + flakyFile:  1_600_000,
+	// Over 1 MiB at every display width, and stored at 800 px, which
+	// answers 400.
+	"1280px-" + brokenHeavyFile: 2_400_000,
+	"960px-" + brokenHeavyFile:  1_900_000,
+	"500px-" + brokenHeavyFile:  1_200_000,
+	"330px-" + brokenHeavyFile:  200_000,
+	// The same, with an original that answers with an HTML page.
+	"1280px-" + htmlOrigFile: 2_400_000,
+	"960px-" + htmlOrigFile:  1_900_000,
+	"500px-" + htmlOrigFile:  1_200_000,
+	"330px-" + htmlOrigFile:  700_000,
+	// The same, with an original that answers 404 labelled as an image.
+	"1280px-" + goneOrigFile: 2_400_000,
+	"960px-" + goneOrigFile:  1_900_000,
+	"500px-" + goneOrigFile:  1_200_000,
+	"330px-" + goneOrigFile:  200_000,
 	// Over the cap at the first step, within it at the next one down.
 	"1280px-" + detailedFile: 1_500_000,
 	"960px-" + detailedFile:  700_000,
@@ -129,6 +152,9 @@ func (h *imageHosts) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			{"title":"File:Old search.jpg","imageinfo":[{"width":6048}]},
 			{"title":"File:DZ6 0956 A glowing blue nighttime scene of an outdoor bar or lounge decorated with carnival masks and illuminated tents creating a festive surreal atmosphere.jpg","imageinfo":[{"width":6048}]},
 			{"title":"File:Narrow original.jpg","imageinfo":[{"width":900}]},
+			{"title":"File:Broken heavy.png","imageinfo":[{"width":5000}]},
+			{"title":"File:Html original.png","imageinfo":[{"width":5000}]},
+			{"title":"File:Gone original.png","imageinfo":[{"width":5000}]},
 			{"title":"File:Capital One advert, Newport.jpg","missing":true}]}}`))
 	case strings.Contains(p, "Uncached.jpg/"):
 		// A thumbnail the host keeps failing to render.
@@ -138,6 +164,12 @@ func (h *imageHosts) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte("<html>upstream error</html>"))
 	case strings.Contains(p, "Capital_One"):
+		w.WriteHeader(http.StatusNotFound)
+	case strings.HasSuffix(p, "/7/7a/"+htmlOrigFile):
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte("<html>upstream error</html>")) // the original only
+	case strings.HasSuffix(p, "/7/7b/"+goneOrigFile):
+		w.Header().Set("Content-Type", "image/png") // the original only
 		w.WriteHeader(http.StatusNotFound)
 	case strings.HasSuffix(p, "/2/2e/"+flakyFile):
 		w.WriteHeader(http.StatusServiceUnavailable) // the original only
@@ -1178,4 +1210,55 @@ func TestFindImage_DoesNotStartPastThePassDeadline(t *testing.T) {
 		t.Errorf("searched for images after the pass deadline: %v", searched)
 	}
 	mu.Unlock()
+}
+
+// Two ways a broken 800px display image was kept. (a) Every sized copy was
+// over the cap, and the lightest was taken only if lighter than the current
+// file -- which answers 400, so it was never known to be heavier or lighter.
+// (b) Commons reports the file deleted but the CDN still serves it: with no
+// width, the display image had no candidates at all. A copy that has just
+// been seen to load now replaces the broken one in both, and in a stored
+// original that answers 404 or with an HTML page.
+func TestRun_Broken800pxDisplayImageIsReplaced(t *testing.T) {
+	d := testDB(t)
+	hosts := &imageHosts{}
+	s := newResizeService(t, d, hosts)
+
+	heavyRow := seedImage(t, d, brokenHeavy800, brokenHeavy800)
+	still800 := wm + "thumb/4/4d/" + stillFile + "/800px-" + stillFile
+	stillRow := seedImage(t, d, still800, still800)
+	htmlRow := seedImage(t, d, htmlOrig, htmlOrig)
+	goneRow := seedImage(t, d, goneOrig, goneOrig)
+	resizedBefore := resizeCount(t, "resized")
+	s.Run()
+
+	thumbs := func(dir, file string) string { return wm + "thumb/" + dir + "/" + file + "/" }
+	for _, c := range []struct {
+		name       string
+		id         int64
+		url, thumb string
+	}{
+		// 1.2 MB at 500 px: over the cap, but it loads.
+		{"every copy over the cap", heavyRow, thumbs("6/6a", brokenHeavyFile) + "500px-" + brokenHeavyFile, thumbs("6/6a", brokenHeavyFile) + "330px-" + brokenHeavyFile},
+		// The thumbnail's copies are over their cap too: 700 KB at 330 px.
+		{"current file is an HTML page", htmlRow, thumbs("7/7a", htmlOrigFile) + "500px-" + htmlOrigFile, thumbs("7/7a", htmlOrigFile) + "330px-" + htmlOrigFile},
+		// A 404, even one labelled image/png, is not an image.
+		{"current file answers 404", goneRow, thumbs("7/7b", goneOrigFile) + "500px-" + goneOrigFile, thumbs("7/7b", goneOrigFile) + "330px-" + goneOrigFile},
+		{"deleted on Commons, still served", stillRow, thumbs("4/4d", stillFile) + "500px-" + stillFile, thumbs("4/4d", stillFile) + "500px-" + stillFile},
+	} {
+		url, thumb, attempts := storedImage(t, d, c.id)
+		if url != c.url || thumb != c.thumb {
+			t.Errorf("%s:\n url   %q\n want  %q\n thumb %q\n want  %q", c.name, url, c.url, thumb, c.thumb)
+		}
+		if attempts != 0 {
+			t.Errorf("%s: enrichment_attempts = %d; the image was not cleared", c.name, attempts)
+		}
+	}
+	hosts.noNonStandardWidths800(t)
+	if got := resizeCount(t, "resized") - resizedBefore; got != 4 {
+		t.Errorf("resized counter +%v, want +4", got)
+	}
+	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 0 || got2 != 0 {
+		t.Errorf("gauges: unsized %v, unconvertible %v; want 0 and 0", got, got2)
+	}
 }

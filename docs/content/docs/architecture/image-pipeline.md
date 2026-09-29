@@ -154,12 +154,15 @@ Wikimedia/Flickr thumbnails for sized URLs:
   current URL. If a step is an image over the byte cap, the next step down is
   tried (960 then 500 px for the display image, 330 px for the thumbnail). If
   every step is over the cap, the lightest one is taken as long as it is
-  lighter than the file the row holds; otherwise the row keeps its file.
+  lighter than the file the row holds, or that file does not load at all (an
+  800 px thumbnail, a 404, an HTML page): a copy just seen to load beats a
+  broken one. Otherwise the row keeps its file.
 - Original widths come from the Commons API, one request (20 files) a pass,
   newest articles first; titles Commons normalizes are followed. A file it
   has no answer for is set aside for 6 hours so it cannot hold the older rows
   back; an 800 px display image whose original has no answer takes the 500 px
-  step rather than stay broken.
+  step rather than stay broken, as does one whose file Commons reports
+  deleted while the original still loads.
 - A Wikimedia file that Commons reports deleted, and whose URL answers 404 or
   410, is cleared so enrichment picks a new image. If the URL still loads it
   is kept.

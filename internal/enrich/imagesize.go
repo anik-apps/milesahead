@@ -254,9 +254,17 @@ func (s *Service) resizeOne(job resizeJob, deadline time.Time) (resizeOutcome, d
 		case goneStillServed:
 			// Commons calls the file missing, but its URL still loads (a
 			// CDN still serving it): not a broken image, so it stays. Its
-			// width is unknown, so it cannot be sized; the thumbnail below
-			// still can be. It is rechecked on the backoff schedule.
-			permanent = true
+			// width is unknown, so an original cannot be sized, and is
+			// rechecked on the backoff schedule; the thumbnail below still
+			// can be. A display image stored at a width Wikimedia no longer
+			// serves is broken, though, so it takes the 500px step of its
+			// own width, as when Commons has no width for it.
+			if images.IsUnservedWikimediaThumb(a.URL) {
+				job.urls = sizedSteps(a.URL, 0, displaySteps)
+			}
+			if job.urls == nil {
+				permanent = true
+			}
 		default:
 			transient = true
 		}
@@ -341,7 +349,9 @@ const (
 // exactly is taken as long as it is lighter than current: a 1.2 MB copy of a
 // 13 MB original is still a tenth of the weight, and without it the row
 // would keep the original and be retried every resizeBackoff for good. It is
-// never swapped for something heavier.
+// never swapped for something heavier -- unless current does not load at
+// all, such as an 800px Commons thumbnail that now answers 400: an image
+// that has just been seen to load beats a broken one, whatever it weighs.
 //
 // No probe runs past by; one it cuts short counts as not loading.
 func (s *Service) pickSized(candidates []string, limit int64, current string, by time.Time) (string, sizedFind) {
@@ -366,7 +376,12 @@ func (s *Service) pickSized(candidates []string, limit int64, current string, by
 	switch {
 	case cur.Status == 0 || cur.Status == http.StatusTooManyRequests || cur.Status >= 500:
 		return "", sizedUnconfirmed // the request failed; compare next time
-	case !cur.OK || cur.Size < 0 || lightestSize >= cur.Size:
+	case !cur.OK || !cur.IsImage():
+		slog.Info("image resize: every sized copy is over its cap and the current file does not load; taking the lightest",
+			"url", lightest, "bytes", lightestSize, "limit", limit,
+			"current", current, "current_status", cur.Status, "current_content_type", cur.ContentType)
+		return lightest, sizedFound
+	case cur.Size < 0 || lightestSize >= cur.Size:
 		slog.Info("image resize: every sized copy is over its cap and none is lighter; keeping the current file",
 			"url", current, "bytes", cur.Size, "lightest_copy", lightest, "lightest_bytes", lightestSize)
 		return "", sizedNoLighter
@@ -422,7 +437,7 @@ func (s *Service) displayCandidates(u string) []string {
 	w, known := s.originalWidths[orig]
 	switch {
 	case known && w == 0:
-		return nil // deleted; see resizeJob.deleted
+		return nil // deleted: resizeOne decides once the file is checked
 	case !known && s.widthUnanswered(orig, time.Now()):
 		// Commons has no width for it. A 500px step of the thumbnail's own
 		// width is a working image, which beats the broken one.
