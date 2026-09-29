@@ -134,8 +134,8 @@ there are enough videos to see how the variation reads.
 
 ## Infographics
 
-A card page can carry a designed infographic: a 1024x1536 portrait image that
-summarises the card's earning, redemption and credits.
+A card page can carry a designed infographic: a portrait image, 1024 px wide and
+1536 or more high, that summarises the card's earning, redemption and credits.
 
 It is not placed inline. In the article column it would render at under half its
 designed size, leaving its body text around 7px. Instead a compact **"Infographic /
@@ -186,11 +186,17 @@ This writes two files to `static/img/`:
 
 | File | Size | Used for |
 |---|---|---|
-| `infographic-<slug>.jpg` | 1024x1536, ~400 KB | the viewer; loaded only when it opens |
+| `infographic-<slug>.jpg` | 1024 wide at the source's aspect ratio (1024x1536 for 2:3), ~400-600 KB | the viewer; loaded only when it opens |
 | `infographic-<slug>-teaser.jpg` | 256x160, ~14 KB | the bar's thumbnail, shown at 84 CSS px |
 
-The script rejects anything that is not 1024x1536 and flattens transparency onto
-white, since JPEG has no alpha channel.
+The script scales any source to 1024 px wide and keeps its aspect ratio, so nothing
+is cropped or stretched: a 1024x1536 source is unchanged and a 1080x1917 one becomes
+1024x1818. The teaser is always the top 1024x640 region. It rejects anything
+shorter than 2:3 (a landscape image, say) and flattens transparency onto white,
+since JPEG has no alpha channel. The viewer's `width`/`height` attributes come from
+the JPEG's header, read at startup, so a taller image needs no extra configuration;
+`TestCardInfographics_CommittedImageSizes` fails if a committed image is not 1024
+wide or its teaser is not 256x160.
 
 Image URLs carry `?v=<content hash>`, computed from the files at startup. Static
 files are served with only `Last-Modified`, so browsers cache them heuristically;
