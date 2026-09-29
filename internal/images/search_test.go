@@ -668,6 +668,17 @@ func TestCheckFit(t *testing.T) {
 			return
 		case "/unlabelled.jpg":
 			w.Header()["Content-Type"] = nil // no Content-Type header at all
+		case "/empty.jpg":
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Content-Range", "bytes 0-0/0")
+			w.WriteHeader(http.StatusPartialContent)
+			return
+		case "/empty-unranged.jpg":
+			// A host that ignores Range and states an empty file.
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Header().Set("Content-Length", "0")
+			w.WriteHeader(http.StatusOK)
+			return
 		default:
 			w.Header().Set("Content-Type", "image/jpeg")
 		}
@@ -689,6 +700,9 @@ func TestCheckFit(t *testing.T) {
 		{"error-page.jpg", Unusable},
 		{"unlabelled.jpg", Unusable},
 		{"gone.jpg", Unusable},
+		// A size of zero is no picture at all.
+		{"empty.jpg", Unusable},
+		{"empty-unranged.jpg", Unusable},
 	} {
 		if got := s.CheckFit(h+tt.path, MaxThumbnailBytes); got != tt.want {
 			t.Errorf("CheckFit(%s) = %v, want %v", tt.path, got, tt.want)
@@ -717,8 +731,17 @@ func TestCheckFit_UnknownRangeTotalIsMeasured(t *testing.T) {
 			return
 		}
 		unranged++
-		if r.URL.Path == "/unmeasurable.jpg" {
+		switch r.URL.Path {
+		case "/unmeasurable.jpg":
 			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		case "/html-whole.jpg":
+			// The ranged answer is an image; the whole file is a page.
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write([]byte("<html>Sign in</html>"))
+			return
+		case "/empty-whole.jpg":
+			w.Header().Set("Content-Length", "0")
 			return
 		}
 		w.Write([]byte(strings.Repeat("x", sizes[r.URL.Path])))
@@ -732,12 +755,15 @@ func TestCheckFit_UnknownRangeTotalIsMeasured(t *testing.T) {
 		{"heavy.jpg", TooHeavy},
 		// Neither the range nor a plain GET says how large it is.
 		{"unmeasurable.jpg", Unusable},
+		// A plain GET a browser would get as an HTML page, or as nothing.
+		{"html-whole.jpg", Unusable},
+		{"empty-whole.jpg", Unusable},
 	} {
 		if got := s.CheckFit(h+tt.path, MaxThumbnailBytes); got != tt.want {
 			t.Errorf("CheckFit(%s) = %v, want %v", tt.path, got, tt.want)
 		}
 	}
-	if unranged != 3 {
+	if unranged != 5 {
 		t.Errorf("made %d unranged requests, want one per URL to measure it", unranged)
 	}
 	// A status-only probe does not need the size and does not fetch the file.

@@ -770,6 +770,13 @@ func (s *Searcher) measureWhole(rawURL string, limit int64, deadline time.Time) 
 		slog.Warn("image size could not be measured", "url", rawURL, "status", resp.StatusCode)
 		return -1, false
 	}
+	// The ranged answer said image/*; this one is what a browser would get
+	// with no range, and must say so too.
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(strings.ToLower(ct), "image/") {
+		slog.Warn("image size could not be measured: the whole file is not an image",
+			"url", rawURL, "content_type", ct)
+		return -1, false
+	}
 	if n := resp.ContentLength; n >= 0 {
 		return n, false
 	}
@@ -808,7 +815,7 @@ const (
 	// that is not labelled image/* is as broken as a 404. (Every image host
 	// the search uses labels its files image/*, checked 2026-09-23.) An
 	// image whose size neither the host states nor a plain GET can measure
-	// is unusable too: its weight cannot be confirmed.
+	// is unusable too: its weight cannot be confirmed. So is an empty one.
 	Unusable Fit = iota
 	// TooHeavy means an image larger than the slot's byte cap.
 	TooHeavy
@@ -844,6 +851,10 @@ func (s *Searcher) WeighUntil(rawURL string, limit int64, by time.Time) (Fit, in
 	case p.Size < 0:
 		// Neither stated nor measurable: its weight cannot be confirmed.
 		slog.Warn("image size is unknown", "url", rawURL, "status", p.Status)
+		return Unusable, -1
+	case p.Size == 0:
+		// "bytes 0-0/0", Content-Length: 0 or an empty body: no picture.
+		slog.Warn("image is empty", "url", rawURL, "status", p.Status)
 		return Unusable, -1
 	case p.Size > limit:
 		slog.Info("image is too heavy for its slot",

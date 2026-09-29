@@ -122,7 +122,8 @@ At pick time each candidate's URLs are fetched with a ranged GET and must
 answer 200/206 with an `image/*` content type, within a byte cap: 1 MiB for
 the display image, 512 KiB for the thumbnail. A host that does not state the
 size (no length, or a `Content-Range` total of `*`) has it measured, up to the
-cap; a size that cannot be determined is refused. The same check
+cap, with a plain GET that must also answer `image/*`; a size that cannot be
+determined is refused, as is a size of 0. The same check
 (`Searcher.CheckFit`) guards every URL the resize step below writes.
 
 Each probe request waits up to 8 s. A Wikimedia thumbnail may be rendered on
