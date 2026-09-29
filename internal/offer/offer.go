@@ -238,8 +238,9 @@ const monthNames = `(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|
 var monthDateRE = regexp.MustCompile(`(?i)\b` + monthNames + `(?:\.\s*|\s+)(\d{1,2})(?:st|nd|rd|th)?\b(?:(?:,\s*|\s+)(\d{4})\b)?`)
 
 // timeAfterDayRE follows a number that is an hour, not a day: the "11" of
-// "30 June 11:59pm", which monthDateRE would otherwise read as June 11.
-var timeAfterDayRE = regexp.MustCompile(`(?i)^(?:st|nd|rd|th)?(?::\d|\.\d\d\s*[ap]|\s*(?:[ap]\.?\s?m\b|[ap]\.m\.))`)
+// "30 June 11:59pm", or the "23" of the British "30 June 23.59", which
+// monthDateRE would otherwise read as June 11 and June 23.
+var timeAfterDayRE = regexp.MustCompile(`(?i)^(?:st|nd|rd|th)?(?::\d|\.\d\d(?:\b|\s*[ap])|\s*(?:[ap]\.?\s?m\b|[ap]\.m\.))`)
 
 // dayRangeRE continues a match of monthDateRE when a range shares its month:
 // the "-10" in "July 7-10, 2026". Values are normalized first, so every dash

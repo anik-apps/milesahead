@@ -522,6 +522,10 @@ func TestEndDate_TimeAfterDayFirstDate(t *testing.T) {
 		{"abbreviated month", "Deadline", "30 Sept 11:59pm", "2026-06-10", ""},
 		{"24-hour time", "Deadline", "30 June 23:59 BST", "2026-06-10", ""},
 		{"dotted time", "Deadline", "30 June 11.59pm", "2026-06-10", ""},
+		// British times are dotted, often with no am or pm.
+		{"dotted 24-hour time", "Deadline", "30 June 23.59", "2026-06-10", ""},
+		{"dotted time, BST", "Deadline", "30 June 11.59 BST", "2026-06-10", ""},
+		{"month first, dotted time", "Deadline", "June 30, 2026 23.59 BST", "2026-06-10", "2026-06-30"},
 		{"hour only", "Deadline", "June 11 PM", "2026-06-10", ""},
 		// A time after a month-first date is still just a time.
 		{"month first", "Deadline", "June 12 11:59 PM PT", "2026-06-10", "2026-06-12"},
