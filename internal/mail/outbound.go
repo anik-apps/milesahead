@@ -81,15 +81,17 @@ func (s *Sender) SendConfirmation(toEmail, token, domain string) error {
 	return s.send(m)
 }
 
-// SendNewsletter sends the newsletter to all confirmed subscribers.
-func (s *Sender) SendNewsletter(subject, htmlContent string, recipients []string) error {
+// SendNewsletter sends the newsletter to each of recipients in turn, and
+// returns how many of them, from the first, it reached. It stops at the
+// first failure, which is then at recipients[sent].
+func (s *Sender) SendNewsletter(subject, htmlContent string, recipients []string) (sent int, err error) {
 	if len(recipients) == 0 {
-		return nil
+		return 0, nil
 	}
 
 	sc, err := s.dialFn()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer sc.Close()
 
@@ -101,12 +103,12 @@ func (s *Sender) SendNewsletter(subject, htmlContent string, recipients []string
 		m.SetBody("text/html", htmlContent)
 
 		if err := gomail.Send(sc, m); err != nil {
-			return fmt.Errorf("sending newsletter to %s: %w", to, err)
+			return sent, fmt.Errorf("sending newsletter to %s: %w", to, err)
 		}
-		m.Reset()
+		sent++
 	}
 
-	return nil
+	return sent, nil
 }
 
 // SendVoteAlert notifies the admin of high downvotes on an article.

@@ -57,9 +57,14 @@ type GeneratedArticle struct {
 	LinkedCardsHeading string     `json:"linked_cards_heading"`
 	EnrichmentAttempts int        `json:"enrichment_attempts"`
 	EnrichmentLastAt   *time.Time `json:"enrichment_last_at"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
-	PublishedAt        *time.Time `json:"published_at"`
+	// ExpiresOn is the last day of the offer the article describes, as
+	// "2006-01-02", or "" when its Key Details state none. It is derived from
+	// KeyDetails whenever they are written (see offer.EndDate), so callers
+	// never set it.
+	ExpiresOn   string     `json:"expires_on"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	PublishedAt *time.Time `json:"published_at"`
 }
 
 type ArticleSource struct {
@@ -116,6 +121,9 @@ type Newsletter struct {
 	CardOfWeekID        *int64     `json:"card_of_week_id"`
 	ScoutsPickArticleID *int64     `json:"scouts_pick_article_id"`
 	SentAt              *time.Time `json:"sent_at"`
+	// CreatedAt is when the issue was generated. Issues stored before it
+	// was recorded have none.
+	CreatedAt *time.Time `json:"created_at"`
 }
 
 type NewsletterCandidate struct {

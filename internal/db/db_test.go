@@ -577,13 +577,14 @@ func TestArticleVote(t *testing.T) {
 func TestNewsletter(t *testing.T) {
 	d := openTestDB(t)
 
-	id, err := d.CreateNewsletter(&Newsletter{
+	n := &Newsletter{
 		Date:         "2026-03-24",
 		Subject:      "Daily Miles Digest",
 		HTMLContent:  "<h1>Hello</h1>",
 		Status:       StatusDraft,
 		ArticleCount: 5,
-	})
+	}
+	id, err := d.CreateNewsletter(n)
 	if err != nil {
 		t.Fatalf("CreateNewsletter: %v", err)
 	}
@@ -598,6 +599,10 @@ func TestNewsletter(t *testing.T) {
 	if got.Subject != "Daily Miles Digest" {
 		t.Errorf("Subject = %q", got.Subject)
 	}
+	// The generation time it defaulted is written back, as stored.
+	if n.CreatedAt == nil || got.CreatedAt == nil || !n.CreatedAt.Equal(*got.CreatedAt) {
+		t.Errorf("CreatedAt = %v, stored %v; want the stored time written back", n.CreatedAt, got.CreatedAt)
+	}
 	if got.SentAt != nil {
 		t.Error("expected nil SentAt")
 	}
@@ -611,6 +616,33 @@ func TestNewsletter(t *testing.T) {
 	}
 	if got.Status != "sent" {
 		t.Errorf("Status = %q, want 'sent'", got.Status)
+	}
+}
+
+// A send claims its newsletter once: a second claim finds it sent, and a
+// failed send puts it back.
+func TestClaimNewsletterSend(t *testing.T) {
+	d := openTestDB(t)
+	id, err := d.CreateNewsletter(&Newsletter{Date: "2026-03-24", Subject: "S", Status: StatusDraft})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := d.ClaimNewsletterSend(id, StatusDraft); err != nil || !ok {
+		t.Fatalf("first claim = %v, %v; want claimed", ok, err)
+	}
+	got, _ := d.GetNewsletterByDate("2026-03-24")
+	if got.Status != "sent" || got.SentAt == nil {
+		t.Errorf("claimed: status %q, sent at %v; want sent", got.Status, got.SentAt)
+	}
+	if ok, err := d.ClaimNewsletterSend(id, StatusDraft); err != nil || ok {
+		t.Errorf("second claim = %v, %v; want not claimed", ok, err)
+	}
+	if err := d.ReleaseNewsletterSend(id, StatusDraft); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = d.GetNewsletterByDate("2026-03-24")
+	if got.Status != StatusDraft || got.SentAt != nil {
+		t.Errorf("released: status %q, sent at %v; want draft, never sent", got.Status, got.SentAt)
 	}
 }
 
