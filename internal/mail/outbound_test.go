@@ -11,9 +11,11 @@ import (
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
-// mockSendCloser captures sent messages for verification.
+// mockSendCloser captures sent messages for verification. With failTo
+// set, sending to that address fails.
 type mockSendCloser struct {
-	sent []mockMessage
+	sent   []mockMessage
+	failTo string
 }
 
 type mockMessage struct {
@@ -22,6 +24,9 @@ type mockMessage struct {
 }
 
 func (m *mockSendCloser) Send(from string, to []string, msg io.WriterTo) error {
+	if m.failTo != "" && len(to) > 0 && to[0] == m.failTo {
+		return fmt.Errorf("550 mailbox unavailable")
+	}
 	m.sent = append(m.sent, mockMessage{from: from, to: to})
 	return nil
 }
@@ -271,9 +276,12 @@ func TestSendNewsletter(t *testing.T) {
 	sender, mock := newTestSender()
 	recipients := []string{"a@test.com", "b@test.com", "c@test.com"}
 
-	err := sender.SendNewsletter("Weekly Digest", "<h1>News</h1>", recipients)
+	sent, err := sender.SendNewsletter("Weekly Digest", "<h1>News</h1>", recipients)
 	if err != nil {
 		t.Fatalf("SendNewsletter failed: %v", err)
+	}
+	if sent != 3 {
+		t.Errorf("SendNewsletter reported %d sent, want 3", sent)
 	}
 
 	if len(mock.sent) != 3 {
@@ -289,9 +297,38 @@ func TestSendNewsletter(t *testing.T) {
 func TestSendNewsletter_EmptyRecipients(t *testing.T) {
 	sender, _ := newTestSender()
 
-	err := sender.SendNewsletter("Subject", "<p>body</p>", nil)
-	if err != nil {
-		t.Fatalf("SendNewsletter with empty recipients should not error, got: %v", err)
+	sent, err := sender.SendNewsletter("Subject", "<p>body</p>", nil)
+	if err != nil || sent != 0 {
+		t.Fatalf("SendNewsletter with empty recipients = %d, %v; want 0, nil", sent, err)
+	}
+}
+
+// A send that fails partway says how many recipients it reached, so the
+// caller can tell who already has the issue.
+func TestSendNewsletter_FailsPartway(t *testing.T) {
+	sender, mock := newTestSender()
+	mock.failTo = "b@test.com"
+	recipients := []string{"a@test.com", "b@test.com", "c@test.com"}
+
+	sent, err := sender.SendNewsletter("Weekly Digest", "<h1>News</h1>", recipients)
+	if err == nil || !strings.Contains(err.Error(), "b@test.com") {
+		t.Errorf("SendNewsletter error = %v, want one naming b@test.com", err)
+	}
+	if sent != 1 {
+		t.Errorf("SendNewsletter reported %d sent, want 1", sent)
+	}
+	if len(mock.sent) != 1 || mock.sent[0].to[0] != "a@test.com" {
+		t.Errorf("sent %v, want only a@test.com", mock.sent)
+	}
+}
+
+// A dial failure reaches no one.
+func TestSendNewsletter_DialFails(t *testing.T) {
+	sender, _ := newTestSender()
+	sender.dialFn = func() (SendCloser, error) { return nil, fmt.Errorf("dialing SMTP: refused") }
+	sent, err := sender.SendNewsletter("Subject", "<p>body</p>", []string{"a@test.com"})
+	if err == nil || sent != 0 {
+		t.Errorf("SendNewsletter = %d, %v; want 0 and an error", sent, err)
 	}
 }
 

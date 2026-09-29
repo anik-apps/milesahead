@@ -2,6 +2,7 @@ package newsletter
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -644,19 +645,23 @@ func TestSendDaily_LeavesLaterArticlesForTheNextIssue(t *testing.T) {
 }
 
 // hookSender is a mockSender that runs during in each send, and fails
-// the send when fail is set.
+// the send when fail is set: after reaching the first reach recipients.
 type hookSender struct {
 	mockSender
 	during func()
 	fail   error
+	reach  int
 }
 
-func (h *hookSender) SendNewsletter(subject, htmlContent string, recipients []string) error {
+func (h *hookSender) SendNewsletter(subject, htmlContent string, recipients []string) (int, error) {
 	if h.during != nil {
 		h.during()
 	}
 	if h.fail != nil {
-		return h.fail
+		if h.reach > 0 {
+			h.mockSender.SendNewsletter(subject, htmlContent, recipients[:h.reach])
+		}
+		return h.reach, h.fail
 	}
 	return h.mockSender.SendNewsletter(subject, htmlContent, recipients)
 }
@@ -778,6 +783,61 @@ func TestSendDaily_FailedSendIsPutBack(t *testing.T) {
 	storeDaily(t, database2, svc2, "approved", "<p>"+liveTitle+"</p>")
 	if err := svc2.SendDaily(); err == nil || !strings.Contains(err.Error(), "shows as sent") {
 		t.Errorf("SendDaily() = %v, want it to say the issue shows as sent", err)
+	}
+}
+
+// A send that fails partway has reached some subscribers. The issue stays
+// sent -- putting it back let a retry send it to them again -- and the
+// admin is told how far it got and where it failed.
+func TestSendDaily_PartialSendStaysSent(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	for i, email := range []string{"a@example.com", "b@example.com", "c@example.com"} {
+		tok := fmt.Sprintf("tok%d", i)
+		if _, err := database.CreateSubscriber(&db.Subscriber{Email: email, Token: tok}); err != nil {
+			t.Fatal(err)
+		}
+		if err := database.ConfirmSubscriber(tok); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	sender := &hookSender{fail: errors.New("smtp: 421 too many messages"), reach: 2}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	storeDaily(t, database, svc, "approved", "<p>"+liveTitle+"</p>")
+
+	err := svc.SendDaily()
+	var partial *PartialSendError
+	if !errors.As(err, &partial) {
+		t.Fatalf("SendDaily() = %v, want a *PartialSendError", err)
+	}
+	if partial.Sent != 2 || partial.Total != 3 {
+		t.Errorf("partial send = %d of %d, want 2 of 3", partial.Sent, partial.Total)
+	}
+	if !strings.Contains(err.Error(), "sent to 2 of 3") || !strings.Contains(err.Error(), "failed at "+partial.FailedAt) || !strings.Contains(err.Error(), "too many messages") {
+		t.Errorf("admin message = %q, want it to say sent to 2 of 3, where it failed, and why", err)
+	}
+	reached := sender.calls[0].recipients
+	if len(reached) != 2 || partial.FailedAt == reached[0] || partial.FailedAt == reached[1] {
+		t.Errorf("reached %v, failed at %q: want it to fail at the third", reached, partial.FailedAt)
+	}
+	nl, gerr := database.GetNewsletterByDate(svc.todayDate())
+	if gerr != nil {
+		t.Fatal(gerr)
+	}
+	if nl.Status != "sent" || nl.SentAt == nil {
+		t.Errorf("after a partial send: status %q, sent at %v; want it recorded as sent", nl.Status, nl.SentAt)
+	}
+
+	// A retry must not send it to the two who have it.
+	sender.fail = nil
+	if err := svc.SendDaily(); !errors.Is(err, ErrAlreadySent) {
+		t.Errorf("retry SendDaily() = %v, want ErrAlreadySent", err)
+	}
+	if len(sender.calls) != 1 {
+		t.Errorf("the daily went out %d times, want once", len(sender.calls))
 	}
 }
 

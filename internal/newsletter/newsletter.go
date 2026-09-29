@@ -22,8 +22,26 @@ import (
 
 // MailSender is the interface for sending newsletter emails.
 type MailSender interface {
-	SendNewsletter(subject, htmlContent string, recipients []string) error
+	// SendNewsletter sends to recipients in order and returns how many of
+	// them, from the first, it reached. When it fails, it failed at
+	// recipients[sent].
+	SendNewsletter(subject, htmlContent string, recipients []string) (sent int, err error)
 }
+
+// PartialSendError reports a send that reached some subscribers and then
+// failed. The issue stays recorded as sent: sending it again would reach
+// the first Sent subscribers a second time.
+type PartialSendError struct {
+	Sent, Total int
+	FailedAt    string // the address the send failed at
+	Err         error
+}
+
+func (e *PartialSendError) Error() string {
+	return fmt.Sprintf("newsletter sent to %d of %d subscribers; failed at %s: %v. It stays marked sent, so those who got it do not get it twice", e.Sent, e.Total, e.FailedAt, e.Err)
+}
+
+func (e *PartialSendError) Unwrap() error { return e.Err }
 
 // templateDir is the base directory for email templates. Override for testing.
 var templateDir = "templates/email"
@@ -966,10 +984,11 @@ func (s *Service) SendDaily() error {
 
 // sendOnce sends issue nl, rendered as html, to recipients, and records it
 // as sent -- before sending, so that once it has gone out a second click or
-// a retry finds it sent and cannot send it again. If the send fails the
-// issue is put back to its status, to be sent again. It returns
-// ErrAlreadySent when the issue was sent since nl was read, and an error
-// naming the new status when an admin changed it.
+// a retry finds it sent and cannot send it again. If the send fails before
+// reaching anyone the issue is put back to its status, to be sent again; if
+// it fails partway it stays sent, and a *PartialSendError says how far it
+// got. It returns ErrAlreadySent when the issue was sent since nl was read,
+// and an error naming the new status when an admin changed it.
 func (s *Service) sendOnce(nl *db.Newsletter, html string, recipients []string) error {
 	claimed, err := s.db.ClaimNewsletterSend(nl.ID, nl.Status)
 	if err != nil {
@@ -981,7 +1000,15 @@ func (s *Service) sendOnce(nl *db.Newsletter, html string, recipients []string) 
 		}
 		return ErrAlreadySent
 	}
-	if err := s.sender.SendNewsletter(nl.Subject, html, recipients); err != nil {
+	sent, err := s.sender.SendNewsletter(nl.Subject, html, recipients)
+	if err != nil {
+		if sent > 0 {
+			failedAt := "the end of the list"
+			if sent < len(recipients) {
+				failedAt = recipients[sent]
+			}
+			return &PartialSendError{Sent: sent, Total: len(recipients), FailedAt: failedAt, Err: err}
+		}
 		if rerr := s.db.ReleaseNewsletterSend(nl.ID, nl.Status); rerr != nil {
 			return fmt.Errorf("sending newsletter: %w; it could not be put back to %s either, so it shows as sent though it may not have gone out to everyone: %v", err, nl.Status, rerr)
 		}

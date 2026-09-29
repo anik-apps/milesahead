@@ -25,9 +25,9 @@ type sendCall struct {
 	recipients []string
 }
 
-func (m *mockSender) SendNewsletter(subject, htmlContent string, recipients []string) error {
+func (m *mockSender) SendNewsletter(subject, htmlContent string, recipients []string) (int, error) {
 	m.calls = append(m.calls, sendCall{subject: subject, html: htmlContent, recipients: recipients})
-	return nil
+	return len(recipients), nil
 }
 
 // setupTestDB creates a temporary SQLite database and returns it along with a cleanup function.
