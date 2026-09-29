@@ -62,7 +62,10 @@ indefinitely.
   second request, or a reconciler pass, while one is running does nothing. The
   result is stored with a compare-and-set: if the article was approved or
   rejected meanwhile it is discarded, and if newer feedback arrived meanwhile
-  the rewrite runs again against it.
+  the rewrite runs again against it. "Newest" is by feedback id throughout, so
+  a clock step cannot make a rewrite answer an older note. A rewrite discarded
+  twice for the same feedback counts as a failure, so no mismatch can loop
+  uncharged.
 - **Bounded retries.** A failed rewrite is retried with backoff (5, 10, 20, 40
   minutes). After 5 consecutive failures the reconciler stops and the dashboard
   shows **"Revision failed N times"** with the last error on hover. The article
@@ -70,8 +73,13 @@ indefinitely.
   or the admin can approve or reject it as is. The counters live in the
   `revision_failures`, `revision_retry_after` and `revision_last_error` columns,
   so a restart neither forgets the backoff nor grants a fresh budget.
+- **Shutdown.** A rewrite in progress is abandoned rather than waited for (one
+  AI call with retries can take minutes); nothing is stored until it finishes,
+  so the article stays `revision_requested` and the startup pass redoes it.
+  Shutdown is bounded to 75s in total, inside systemd's 90s stop timeout.
 - **Metrics.** `milesahead_revision_reconcile_total{outcome}` counts processed,
-  failed and skipped articles (and `pass_skipped` for overlapping passes);
+  failed and skipped articles, `error` when an article's retry state could not
+  be read (not attempted), and `pass_skipped` for overlapping passes;
   `milesahead_revisions_waiting{state}` gauges due, backoff and exhausted
   articles. `exhausted > 0` means an article needs the admin.
 

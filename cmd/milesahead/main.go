@@ -361,11 +361,23 @@ func main() {
 	}
 	cancel()
 
-	// Stop scheduler (waits for running jobs to finish)
-	sched.Stop()
+	// Shutdown is bounded end to end -- scheduler, then HTTP, then background
+	// work -- to shutdownBudget in total, inside systemd's default 90s stop
+	// timeout, so a stop ends here rather than in SIGKILL.
 
-	// Shutdown HTTP server with 30s timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Stop the scheduler, waiting for running jobs within a bound. A revision
+	// pass can be mid-rewrite, and one AI call with its retries can take
+	// minutes; the context stops the pass starting anything new, but cannot
+	// interrupt the call. Abandoning it is safe: nothing is stored until the
+	// rewrite finishes, so the article stays revision_requested and the next
+	// process's startup pass redoes it.
+	if !waitBounded(sched.Stop, schedulerStopWait) {
+		slog.Warn("scheduled jobs still running at shutdown; abandoning them",
+			"waited", schedulerStopWait)
+	}
+
+	// Shutdown HTTP server with a timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), httpShutdownWait)
 	defer shutdownCancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
@@ -411,10 +423,17 @@ func scheduleRevisionReconciler(ctx context.Context, sched *scheduler.Scheduler,
 		"max_failures", article.DefaultRevisionMaxFailures)
 }
 
-// backgroundShutdownWait bounds how long shutdown waits for request-started
-// background work. An AI rewrite can take minutes; the process manager will
-// not wait that long, and the revision reconciler makes giving up safe.
-const backgroundShutdownWait = 20 * time.Second
+// Shutdown bounds. Their sum, shutdownBudget, must stay under systemd's
+// TimeoutStopSec (the default, 90s, since deploy/milesahead.service does not
+// set it), or the stop ends in SIGKILL. An AI rewrite can take minutes, so none
+// of these waits for one to finish; the revision reconciler makes abandoning a
+// rewrite safe.
+const (
+	schedulerStopWait      = 25 * time.Second
+	httpShutdownWait       = 30 * time.Second
+	backgroundShutdownWait = 20 * time.Second
+	shutdownBudget         = schedulerStopWait + httpShutdownWait + backgroundShutdownWait
+)
 
 // waitBounded runs wait and reports whether it returned within d.
 func waitBounded(wait func(), d time.Duration) bool {

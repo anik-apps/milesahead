@@ -123,3 +123,38 @@ func TestWaitBounded(t *testing.T) {
 		t.Error("waitBounded did not give up at its bound")
 	}
 }
+
+// TestShutdownBudgetFitsSystemdStopTimeout: the shutdown waits run one after
+// another, so their sum must stay inside systemd's default 90s TimeoutStopSec
+// or a stop during a long AI rewrite ends in SIGKILL.
+func TestShutdownBudgetFitsSystemdStopTimeout(t *testing.T) {
+	const systemdDefaultStopTimeout = 90 * time.Second
+	if shutdownBudget >= systemdDefaultStopTimeout {
+		t.Errorf("shutdown budget %v is not inside systemd's %v stop timeout",
+			shutdownBudget, systemdDefaultStopTimeout)
+	}
+}
+
+// TestSchedulerStopIsBoundedDuringLongJob: a job that outlasts the bound (an AI
+// rewrite with retries) must not hold shutdown.
+func TestSchedulerStopIsBoundedDuringLongJob(t *testing.T) {
+	sched := scheduler.New()
+	sched.SetStartupDelay(time.Millisecond)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	sched.AddRevisionJob(time.Hour, func() {
+		close(started)
+		<-release
+	})
+	sched.Start()
+	<-started
+
+	begin := time.Now()
+	if waitBounded(sched.Stop, 50*time.Millisecond) {
+		t.Error("Stop returned while the job was still running")
+	}
+	if time.Since(begin) > time.Second {
+		t.Error("bounded stop did not give up at its bound")
+	}
+	close(release) // let the abandoned Stop finish
+}
