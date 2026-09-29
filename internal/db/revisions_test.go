@@ -1,6 +1,7 @@
 package db
 
 import (
+	"errors"
 	"testing"
 	"time"
 )
@@ -193,5 +194,56 @@ func TestGetRevisionRetryState(t *testing.T) {
 	}
 	if _, ok, err := d.GetRevisionRetryState(id); ok || err != nil {
 		t.Errorf("rejected article reported as waiting: ok=%v err=%v", ok, err)
+	}
+}
+
+// TestApplyRevision_RefusesChangedRevisionNumber: the base revision alone is
+// enough to refuse, even with status and feedback matching -- the rewrite was
+// made from content that has since been replaced.
+func TestApplyRevision_RefusesChangedRevisionNumber(t *testing.T) {
+	d := openTestDB(t)
+	id, fid := newRevisionRequested(t, d, "stale-base")
+	ok, err := d.ApplyRevision(AppliedRevision{ArticleID: id, BaseRevision: 7, FeedbackID: fid,
+		Title: "New", PreviousContent: "old", NewContent: "new"})
+	if err != nil || ok {
+		t.Fatalf("apply on a stale base = %v, %v; want not applied", ok, err)
+	}
+	if a, _ := d.GetGeneratedArticle(id); a.RevisionNumber != 1 || a.Content != "old" {
+		t.Errorf("article changed: rev %d content %q", a.RevisionNumber, a.Content)
+	}
+}
+
+// TestTransitionArticleStatus_ConditionalOnValidatedStatus: an Approve validated
+// against revision_requested must not land once a rewrite has moved the article
+// to pending, or unreviewed content would be published.
+func TestTransitionArticleStatus_ConditionalOnValidatedStatus(t *testing.T) {
+	d := openTestDB(t)
+	id, fid := newRevisionRequested(t, d, "approve-race")
+
+	// The rewrite lands first.
+	if ok, err := d.ApplyRevision(AppliedRevision{ArticleID: id, BaseRevision: 1, FeedbackID: fid,
+		Title: "New", PreviousContent: "old", NewContent: "unreviewed", Status: StatusPending}); err != nil || !ok {
+		t.Fatalf("apply = %v, %v", ok, err)
+	}
+	// Then the Approve decided from the earlier read.
+	err := d.TransitionArticleStatus(id, StatusRevisionRequested, StatusApproved)
+	if !errors.Is(err, ErrStatusChanged) {
+		t.Fatalf("TransitionArticleStatus = %v, want ErrStatusChanged", err)
+	}
+	if a, _ := d.GetGeneratedArticle(id); a.Status != StatusPending || a.PublishedAt != nil {
+		t.Errorf("status %q published_at %v; the stale approve must not apply", a.Status, a.PublishedAt)
+	}
+
+	// From the status it really has, it works.
+	if err := d.TransitionArticleStatus(id, StatusPending, StatusApproved); err != nil {
+		t.Errorf("approve from the current status: %v", err)
+	}
+}
+
+func TestValidTransitions_RevisionRequestedToPending(t *testing.T) {
+	d := openTestDB(t)
+	id, _ := newRevisionRequested(t, d, "rr-to-pending")
+	if err := d.UpdateArticleStatus(id, StatusPending); err != nil {
+		t.Errorf("revision_requested -> pending rejected: %v", err)
 	}
 }

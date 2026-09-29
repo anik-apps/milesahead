@@ -1,6 +1,7 @@
 package article
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -31,18 +32,21 @@ import (
 // ProcessRevision ignores the retry backoff: it is what an explicit request
 // calls. The reconciler goes through processRevisionIfDue instead.
 func (m *Manager) ProcessRevision(articleID int64) error {
-	return m.processGuarded(articleID, false)
+	return m.processGuarded(context.Background(), articleID, false)
 }
 
 // processRevisionIfDue is ProcessRevision for the reconciler: after claiming the
 // article it re-reads the retry state, because the pass works from a list read
 // before earlier rewrites in the same pass ran -- minutes ago, possibly. A kick
 // that failed in the meantime would otherwise be retried with no backoff.
-func (m *Manager) processRevisionIfDue(articleID int64) error {
-	return m.processGuarded(articleID, true)
+func (m *Manager) processRevisionIfDue(ctx context.Context, articleID int64) error {
+	return m.processGuarded(ctx, articleID, true)
 }
 
-func (m *Manager) processGuarded(articleID int64, respectBackoff bool) error {
+// processGuarded runs a rewrite under the in-flight guard. ctx stops it from
+// starting a rerun during shutdown; a rewrite already running is not
+// interrupted (the AI client takes no context).
+func (m *Manager) processGuarded(ctx context.Context, articleID int64, respectBackoff bool) error {
 	if !m.claimRevision(articleID) {
 		slog.Info("revision already in progress, not starting another", "article_id", articleID)
 		return ErrRevisionInFlight
@@ -54,22 +58,42 @@ func (m *Manager) processGuarded(articleID int64, respectBackoff bool) error {
 		switch {
 		case err != nil:
 			// Not a failed rewrite, so not charged against the budget.
-			return fmt.Errorf("checking revision retry state: %w", err)
+			return fmt.Errorf("%w: %w", errRevisionStateCheck, err)
 		case !ok:
 			return fmt.Errorf("%w: left revision_requested before its turn", ErrNotAwaitingRevision)
-		case p.Failures >= m.maxRevisionFailures(),
-			!p.RetryAfter.IsZero() && m.clock().Before(p.RetryAfter):
+		case p.Failures >= m.maxRevisionFailures():
+			return errRevisionExhausted
+		case !p.RetryAfter.IsZero() && m.clock().Before(p.RetryAfter):
 			return errRevisionNotDue
 		}
 	}
 
 	var err error
+	var lastSuperseded int64 // feedback id the previous discarded attempt answered
 	for attempt := 1; ; attempt++ {
 		err = m.runRevision(articleID)
-		if attempt >= maxSupersededRetries {
+
+		var sup *supersededError
+		if errors.As(err, &sup) {
+			if sup.answered == lastSuperseded {
+				// Discarded twice answering the same feedback, so it was not
+				// newer feedback that made the store miss -- the store
+				// condition itself does not match what the rewrite reads.
+				// Charge it as a failure: left as a skip, every kick and pass
+				// would spend AI calls on this article, uncounted, forever.
+				err = fmt.Errorf("rewrite discarded twice answering feedback %d with no newer feedback; "+
+					"its result cannot be stored", sup.answered)
+				break
+			}
+			lastSuperseded = sup.answered
+		} else {
+			lastSuperseded = 0
+		}
+
+		if attempt >= maxSupersededRetries || ctx.Err() != nil {
 			break
 		}
-		if errors.Is(err, ErrRevisionSuperseded) {
+		if sup != nil {
 			// Newer feedback arrived while the rewrite ran, so its result was
 			// discarded. Go again straight away rather than leaving the newer
 			// notes for the next reconciler pass: the Revise click that sent
@@ -159,7 +183,16 @@ func (m *Manager) processRevision(articleID int64) error {
 	if len(feedbackList) == 0 {
 		return fmt.Errorf("no feedback found for article %d", articleID)
 	}
-	latestFeedback := feedbackList[0] // Newest first.
+	// Newest by id, the same definition ApplyRevision's compare-and-set uses.
+	// Not by created_at: if the clock stepped back between two notes, the
+	// newest by time is the older note, the store would never match, and the
+	// article would be rewritten again and again without being charged.
+	latestFeedback := feedbackList[0]
+	for _, f := range feedbackList[1:] {
+		if f.ID > latestFeedback.ID {
+			latestFeedback = f
+		}
+	}
 
 	// Get latest verification issues.
 	var criticIssues string
@@ -205,7 +238,11 @@ func (m *Manager) processRevision(articleID int64) error {
 	// Store the new content, final status, history row and verification in one
 	// compare-and-set, so a concurrent writer cannot double-apply and there is
 	// no gap after the store for newly arrived feedback to be overwritten in.
-	applied, err := m.db.ApplyRevision(db.AppliedRevision{
+	apply := m.db.ApplyRevision
+	if m.applyRevision != nil {
+		apply = m.applyRevision
+	}
+	applied, err := apply(db.AppliedRevision{
 		ArticleID:       articleID,
 		BaseRevision:    article.RevisionNumber,
 		FeedbackID:      latestFeedback.ID,
@@ -226,7 +263,7 @@ func (m *Manager) processRevision(articleID int64) error {
 		return err
 	}
 	if !applied {
-		return m.discardedRevisionError(articleID)
+		return m.discardedRevisionError(articleID, latestFeedback.ID)
 	}
 
 	if result.PassedThreshold {
@@ -249,7 +286,7 @@ func (m *Manager) revisionRequestedAgain(articleID int64) bool {
 }
 
 // discardedRevisionError explains why ApplyRevision's compare-and-set missed.
-func (m *Manager) discardedRevisionError(articleID int64) error {
+func (m *Manager) discardedRevisionError(articleID, answeredFeedback int64) error {
 	current, err := m.db.GetGeneratedArticle(articleID)
 	if err != nil {
 		return fmt.Errorf("revision discarded, and re-reading the article failed: %w", err)
@@ -260,8 +297,19 @@ func (m *Manager) discardedRevisionError(articleID int64) error {
 		return fmt.Errorf("%w: status changed to %q during the rewrite",
 			ErrNotAwaitingRevision, current.Status)
 	}
-	return ErrRevisionSuperseded
+	return &supersededError{answered: answeredFeedback}
 }
+
+// supersededError is ErrRevisionSuperseded carrying the feedback the discarded
+// rewrite answered, so a rerun can tell newer feedback from a store that will
+// never match.
+type supersededError struct{ answered int64 }
+
+func (e *supersededError) Error() string {
+	return fmt.Sprintf("%v (answered feedback %d)", ErrRevisionSuperseded, e.answered)
+}
+
+func (e *supersededError) Is(target error) bool { return target == ErrRevisionSuperseded }
 
 // loadSourceArticles retrieves source articles linked to a generated article
 // and converts them to ai.SourceArticle format.

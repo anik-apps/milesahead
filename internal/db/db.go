@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"log/slog"
@@ -246,30 +247,47 @@ func (d *Database) GetGeneratedArticle(id int64) (*GeneratedArticle, error) {
 
 // validTransitions defines allowed status transitions.
 var validTransitions = map[string][]string{
-	StatusDraft:             {StatusPending, StatusApproved, StatusRejected, StatusRevisionRequested},
-	StatusPending:           {StatusApproved, StatusRejected, StatusRevisionRequested},
-	StatusApproved:          {StatusUnpublished},
-	StatusRejected:          {},
-	StatusRevisionRequested: {StatusDraft, StatusApproved, StatusRejected, StatusRevisionRequested},
+	StatusDraft:    {StatusPending, StatusApproved, StatusRejected, StatusRevisionRequested},
+	StatusPending:  {StatusApproved, StatusRejected, StatusRevisionRequested},
+	StatusApproved: {StatusUnpublished},
+	StatusRejected: {},
+	// -> pending: a rewrite that passes the critic goes straight to pending.
+	// ApplyRevision makes that move in its own compare-and-set, not through
+	// here, but it is a real transition and belongs in the table.
+	StatusRevisionRequested: {StatusDraft, StatusPending, StatusApproved, StatusRejected, StatusRevisionRequested},
 	StatusUnpublished:       {StatusRevisionRequested, StatusApproved, StatusRejected},
 }
 
+// ErrStatusChanged means the article's status was no longer the one a
+// transition was validated against: another writer got there first.
+var ErrStatusChanged = errors.New("article status changed concurrently")
+
+// UpdateArticleStatus moves an article from whatever status it has now.
+// Callers that decided on the move from a status they read earlier should use
+// TransitionArticleStatus, so the decision cannot apply to a different status.
 func (d *Database) UpdateArticleStatus(id int64, newStatus string) error {
 	a, err := d.GetGeneratedArticle(id)
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
 	}
+	return d.TransitionArticleStatus(id, a.Status, newStatus)
+}
 
-	allowed := validTransitions[a.Status]
+// TransitionArticleStatus moves an article from status from to newStatus, and
+// only if it is still in from. The write is conditional on it: a read-then-write
+// let an Approve validated against revision_requested land after a rewrite had
+// already moved the article to pending, publishing a rewrite nobody reviewed.
+// Returns ErrStatusChanged if the status moved in the meantime.
+func (d *Database) TransitionArticleStatus(id int64, from, newStatus string) error {
 	valid := false
-	for _, s := range allowed {
+	for _, s := range validTransitions[from] {
 		if s == newStatus {
 			valid = true
 			break
 		}
 	}
 	if !valid {
-		return fmt.Errorf("invalid status transition from %q to %q", a.Status, newStatus)
+		return fmt.Errorf("invalid status transition from %q to %q", from, newStatus)
 	}
 
 	query := `UPDATE generated_articles SET status = ?, updated_at = CURRENT_TIMESTAMP`
@@ -277,11 +295,21 @@ func (d *Database) UpdateArticleStatus(id int64, newStatus string) error {
 	if newStatus == StatusApproved {
 		query += `, published_at = CURRENT_TIMESTAMP`
 	}
-	query += ` WHERE id = ?`
-	args = append(args, id)
+	query += ` WHERE id = ? AND status = ?`
+	args = append(args, id, from)
 
-	_, err = d.db.Exec(query, args...)
-	return err
+	res, err := d.db.Exec(query, args...)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: expected %q", ErrStatusChanged, from)
+	}
+	return nil
 }
 
 func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, error) {

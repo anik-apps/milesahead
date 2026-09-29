@@ -26,8 +26,13 @@ var (
 	// ErrRevisionSuperseded means newer feedback arrived while the rewrite ran,
 	// so its result was discarded; the article is still waiting.
 	ErrRevisionSuperseded = errors.New("revision superseded by newer feedback")
-	// errRevisionNotDue means the article is in backoff or out of retries.
+	// errRevisionNotDue means the article failed recently and is in backoff.
 	errRevisionNotDue = errors.New("revision not due")
+	// errRevisionExhausted means the article is out of retries.
+	errRevisionExhausted = errors.New("revision retries exhausted")
+	// errRevisionStateCheck means the retry state could not be read, so no
+	// rewrite was attempted. Not charged, and not counted as a failed rewrite.
+	errRevisionStateCheck = errors.New("checking revision retry state")
 )
 
 // isRevisionSkip reports whether err means "nothing to do" rather than a failed
@@ -36,7 +41,8 @@ func isRevisionSkip(err error) bool {
 	return errors.Is(err, ErrRevisionInFlight) ||
 		errors.Is(err, ErrNotAwaitingRevision) ||
 		errors.Is(err, ErrRevisionSuperseded) ||
-		errors.Is(err, errRevisionNotDue)
+		errors.Is(err, errRevisionNotDue) ||
+		errors.Is(err, errRevisionExhausted)
 }
 
 // Retry policy for failed rewrites.
@@ -139,6 +145,7 @@ type RevisionPassResult struct {
 	Skipped   int // already in flight, or no longer waiting
 	Backoff   int // failed recently, not due yet
 	Exhausted int // out of retries, left for the admin
+	Errors    int // could not check whether it was due; not attempted
 }
 
 // ProcessPendingRevisions rewrites every revision_requested article that is due.
@@ -187,11 +194,18 @@ func (m *Manager) ProcessPendingRevisions(ctx context.Context) RevisionPassResul
 			continue
 		}
 
-		err := m.processRevisionIfDue(p.ID)
+		err := m.processRevisionIfDue(ctx, p.ID)
 		switch {
+		// The first two: failed since the list was read (e.g. a kick from a
+		// request), so now in backoff or out of retries.
 		case errors.Is(err, errRevisionNotDue):
-			// Failed since the list was read (e.g. a kick from a request).
 			res.Backoff++
+		case errors.Is(err, errRevisionExhausted):
+			res.Exhausted++
+		case errors.Is(err, errRevisionStateCheck):
+			res.Errors++
+			metrics.RevisionReconcileTotal.WithLabelValues("error").Inc()
+			slog.Error("revision pass: could not check retry state", "article_id", p.ID, "error", err)
 		case err == nil:
 			res.Processed++
 			metrics.RevisionReconcileTotal.WithLabelValues("processed").Inc()
@@ -208,7 +222,7 @@ func (m *Manager) ProcessPendingRevisions(ctx context.Context) RevisionPassResul
 
 	slog.Info("revision pass complete", "waiting", len(pending),
 		"processed", res.Processed, "failed", res.Failed, "skipped", res.Skipped,
-		"backoff", res.Backoff, "exhausted", res.Exhausted)
+		"backoff", res.Backoff, "exhausted", res.Exhausted, "errors", res.Errors)
 	if res.Exhausted > 0 {
 		slog.Warn("articles stuck in revision after exhausting retries; re-request the revision, approve or reject them",
 			"count", res.Exhausted, "max_failures", maxFailures)

@@ -577,7 +577,7 @@ func TestProcessRevisionIfDue_RechecksBackoff(t *testing.T) {
 	}
 
 	calls := client.calls()
-	if err := mgr.processRevisionIfDue(id); !errors.Is(err, errRevisionNotDue) {
+	if err := mgr.processRevisionIfDue(context.Background(), id); !errors.Is(err, errRevisionNotDue) {
 		t.Errorf("processRevisionIfDue = %v, want errRevisionNotDue", err)
 	}
 	if client.calls() != calls {
@@ -585,5 +585,163 @@ func TestProcessRevisionIfDue_RechecksBackoff(t *testing.T) {
 	}
 	if p := pendingRevision(t, database, id); p.Failures != 1 {
 		t.Errorf("failures = %d; a not-due skip must not be charged", p.Failures)
+	}
+}
+
+func requestRevision(t *testing.T, mgr *Manager, database *db.Database) int64 {
+	t.Helper()
+	id := createRevisableArticle(t, database, db.StatusPending)
+	if err := mgr.RequestRevision(id, "Add the annual fee", "admin"); err != nil {
+		t.Fatalf("RequestRevision: %v", err)
+	}
+	return id
+}
+
+// TestProcessRevision_AnswersNewestFeedbackByID: if the clock stepped back
+// between two notes, the newest note has the older created_at. The rewrite must
+// still answer it -- by id, as the store's compare-and-set does -- or the store
+// never matches and the article is rewritten over and over.
+func TestProcessRevision_AnswersNewestFeedbackByID(t *testing.T) {
+	database := setupFileDB(t)
+	client := &fakeRevisionClient{}
+	mgr := newFakeManager(t, database, client)
+	id := requestRevision(t, mgr, database)
+
+	res, err := database.DB().Exec(`INSERT INTO admin_feedback (generated_article_id, feedback_text, source, created_at)
+		VALUES (?, 'Newer note, older clock', 'admin', datetime('now', '-1 hour'))`, id)
+	if err != nil {
+		t.Fatalf("insert feedback: %v", err)
+	}
+	newest, _ := res.LastInsertId()
+
+	if err := mgr.ProcessRevision(id); err != nil {
+		t.Fatalf("ProcessRevision: %v", err)
+	}
+	assertRevisedOnce(t, database, id)
+	revs, _ := database.ListRevisionsForArticle(id)
+	if len(revs) == 1 && revs[0].FeedbackID != newest {
+		t.Errorf("answered feedback %d, want the newest by id (%d)", revs[0].FeedbackID, newest)
+	}
+	if client.calls() != 1 {
+		t.Errorf("generator calls = %d, want 1", client.calls())
+	}
+}
+
+// TestProcessRevision_RepeatedSupersessionIsCharged: a store that keeps missing
+// with no newer feedback is a failure, not a skip -- otherwise every kick and
+// pass would spend AI calls on the article, uncounted, forever.
+func TestProcessRevision_RepeatedSupersessionIsCharged(t *testing.T) {
+	database := setupFileDB(t)
+	client := &fakeRevisionClient{}
+	mgr := newFakeManager(t, database, client)
+	mgr.applyRevision = func(db.AppliedRevision) (bool, error) { return false, nil }
+	id := requestRevision(t, mgr, database)
+
+	err := mgr.ProcessRevision(id)
+	if err == nil || isRevisionSkip(err) {
+		t.Fatalf("ProcessRevision = %v, want a charged failure", err)
+	}
+	if p := pendingRevision(t, database, id); p.Failures != 1 {
+		t.Errorf("failures = %d, want 1", p.Failures)
+	}
+	if client.calls() != 2 {
+		t.Errorf("generator calls = %d, want 2 (one rerun, then give up)", client.calls())
+	}
+}
+
+// TestProcessRevision_SupersededRetriesTerminate: feedback arriving during every
+// rewrite does not keep one call rewriting forever.
+func TestProcessRevision_SupersededRetriesTerminate(t *testing.T) {
+	database := setupFileDB(t)
+	client := &fakeRevisionClient{}
+	mgr := newFakeManager(t, database, client)
+	var id int64
+	mgr.applyRevision = func(db.AppliedRevision) (bool, error) {
+		_, err := database.CreateAdminFeedback(&db.AdminFeedback{GeneratedArticleID: id, FeedbackText: "and another thing", Source: "admin"})
+		return false, err
+	}
+	id = requestRevision(t, mgr, database)
+
+	if err := mgr.ProcessRevision(id); !errors.Is(err, ErrRevisionSuperseded) {
+		t.Fatalf("ProcessRevision = %v, want ErrRevisionSuperseded after the rerun limit", err)
+	}
+	if client.calls() != maxSupersededRetries {
+		t.Errorf("generator calls = %d, want %d", client.calls(), maxSupersededRetries)
+	}
+	if p := pendingRevision(t, database, id); p.Failures != 0 {
+		t.Errorf("failures = %d; genuinely newer feedback is not a failure", p.Failures)
+	}
+}
+
+// TestProcessRevision_NoRerunAfterShutdown: a cancelled context stops the rerun
+// loop, so shutdown is not held by further rewrites.
+func TestProcessRevision_NoRerunAfterShutdown(t *testing.T) {
+	database := setupFileDB(t)
+	client := &fakeRevisionClient{}
+	mgr := newFakeManager(t, database, client)
+	var id int64
+	mgr.applyRevision = func(db.AppliedRevision) (bool, error) {
+		_, err := database.CreateAdminFeedback(&db.AdminFeedback{GeneratedArticleID: id, FeedbackText: "more", Source: "admin"})
+		return false, err
+	}
+	id = requestRevision(t, mgr, database)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := mgr.processRevisionIfDue(ctx, id); !errors.Is(err, ErrRevisionSuperseded) {
+		t.Fatalf("processRevisionIfDue = %v", err)
+	}
+	if client.calls() != 1 {
+		t.Errorf("generator calls = %d, want 1 (no rerun once shutdown began)", client.calls())
+	}
+}
+
+// TestProcessRevision_RerunsWhenFeedbackArrivesAsStored covers feedback that
+// lands just after the rewrite is stored, while the in-flight guard is still
+// held -- the request's own kick is turned away, so this call must go again.
+func TestProcessRevision_RerunsWhenFeedbackArrivesAsStored(t *testing.T) {
+	database := setupFileDB(t)
+	client := &fakeRevisionClient{}
+	mgr := newFakeManager(t, database, client)
+	var id int64
+	first := true
+	mgr.applyRevision = func(r db.AppliedRevision) (bool, error) {
+		ok, err := database.ApplyRevision(r)
+		if first && ok && err == nil {
+			first = false
+			if err := mgr.RequestRevision(id, "One more thing", "email"); err != nil {
+				return ok, err
+			}
+		}
+		return ok, err
+	}
+	id = requestRevision(t, mgr, database)
+
+	if err := mgr.ProcessRevision(id); err != nil {
+		t.Fatalf("ProcessRevision: %v", err)
+	}
+	a, _ := database.GetGeneratedArticle(id)
+	if a.Status != db.StatusPending || a.RevisionNumber != 3 {
+		t.Errorf("status %q rev %d, want pending rev 3 (rerun for the late feedback)", a.Status, a.RevisionNumber)
+	}
+	if client.calls() != 2 {
+		t.Errorf("generator calls = %d, want 2", client.calls())
+	}
+}
+
+// TestProcessRevisionIfDue_ExhaustedIsNotBackoff: the pass must report an
+// article that ran out of retries since its list was read as exhausted.
+func TestProcessRevisionIfDue_ExhaustedIsNotBackoff(t *testing.T) {
+	database := setupFileDB(t)
+	client := &fakeRevisionClient{fail: true}
+	mgr := newFakeManager(t, database, client)
+	mgr.RevisionMaxFailures = 1
+	id := requestRevision(t, mgr, database)
+
+	if err := mgr.ProcessRevision(id); err == nil {
+		t.Fatal("expected failure")
+	}
+	if err := mgr.processRevisionIfDue(context.Background(), id); !errors.Is(err, errRevisionExhausted) {
+		t.Errorf("processRevisionIfDue = %v, want errRevisionExhausted", err)
 	}
 }
