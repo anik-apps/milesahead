@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"html"
+	"image"
+	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -97,6 +99,8 @@ func infographicCardData() map[string]interface{} {
 	}
 	data["InfographicImage"] = "/static/img/infographic-amex-platinum.jpg?v=abc123"
 	data["InfographicTeaser"] = "/static/img/infographic-amex-platinum-teaser.jpg?v=abc123"
+	data["InfographicWidth"] = 1024
+	data["InfographicHeight"] = 1536
 	return data
 }
 
@@ -120,6 +124,8 @@ func TestCardPage_InfographicKeepsCardArt(t *testing.T) {
 		`<details class="ig-text">`,
 		`<summary>Text version</summary>`,
 		`<li>Annual fee: $895.</li>`,
+		// The viewer reserves the image's real box before it loads.
+		`alt="Amex Platinum infographic. &#34;Quoted&#34; &amp; &lt;tagged&gt; text." width="1024" height="1536">`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("card page with an infographic should contain %q", want)
@@ -157,6 +163,21 @@ func TestCardPage_InfographicFullImageNotEagerlyLoaded(t *testing.T) {
 	}
 	if !strings.Contains(out, `data-src="/static/img/infographic-amex-platinum.jpg?v=abc123"`) {
 		t.Error("the viewer should carry the full image as data-src")
+	}
+}
+
+// A design taller than 2:3 (a 1080x1917 source becomes 1024x1818) gets its own
+// height, so the viewer reserves the right box instead of the 2:3 one.
+func TestCardPage_InfographicTallImageKeepsItsProportions(t *testing.T) {
+	data := infographicCardData()
+	data["InfographicHeight"] = 1818
+	out := renderRealCardTemplate(t, data)
+
+	if !strings.Contains(out, `width="1024" height="1818">`) {
+		t.Error("the viewer image should carry the tall image's own 1024x1818 size")
+	}
+	if strings.Contains(out, `height="1536"`) {
+		t.Error("a tall image must not be given the 2:3 layout's height")
 	}
 }
 
@@ -267,6 +288,30 @@ func TestHandleCard_ServesInfographicForConfiguredCard(t *testing.T) {
 	}
 }
 
+// The route passes the height read from the JPEG, and falls back to the 2:3
+// layout's height for a card whose image could not be read.
+func TestHandleCard_InfographicHeightFollowsImage(t *testing.T) {
+	app := setupRealTemplateCardApp(t)
+	createPublishedCard(t, app, "amex-platinum", "American Express Platinum Card")
+
+	if got := app.infographicHeights["amex-platinum"]; got != 1536 {
+		t.Fatalf("expected the committed amex-platinum image to read as 1536 high, got %d", got)
+	}
+	if body := getCardPage(t, app, "amex-platinum"); !strings.Contains(body, `width="1024" height="1536">`) {
+		t.Error("a 2:3 image should keep its 1024x1536 viewer size")
+	}
+
+	app.infographicHeights["amex-platinum"] = 1818
+	if body := getCardPage(t, app, "amex-platinum"); !strings.Contains(body, `width="1024" height="1818">`) {
+		t.Error("a taller image should be given its own height")
+	}
+
+	delete(app.infographicHeights, "amex-platinum")
+	if body := getCardPage(t, app, "amex-platinum"); !strings.Contains(body, `width="1024" height="1536">`) {
+		t.Error("an unreadable image should fall back to the 2:3 layout's height")
+	}
+}
+
 func TestHandleCard_OtherCardsUnchanged(t *testing.T) {
 	const slug = "discover-it-cash-back"
 	if _, ok := cardInfographics[slug]; ok {
@@ -346,6 +391,83 @@ func TestInfographicVersions_ChangeWithContent(t *testing.T) {
 	}
 	if _, ok := infographicVersions(staticDir)["bilt-palladium"]; ok {
 		t.Error("a card with a missing file should be served unversioned")
+	}
+}
+
+// The script writes every full image 1024 wide at its source's aspect ratio,
+// at least as tall as the 2:3 layout, and every teaser at 256x160. An image
+// added by hand at another size would be squeezed or cropped by the page.
+func TestCardInfographics_CommittedImageSizes(t *testing.T) {
+	staticDir := filepath.Join("..", "..", "static")
+	heights := infographicHeights(staticDir)
+	for slug := range cardInfographics {
+		names := infographicFiles(slug)
+		full := jpegSize(t, filepath.Join(staticDir, "img", names[0]))
+		if full.X != infographicWidth || full.Y < infographicDefaultHeight {
+			t.Errorf("%s is %dx%d; expected 1024 wide and at least 1536 high (run scripts/infographic-images.sh)", names[0], full.X, full.Y)
+		}
+		if heights[slug] != full.Y {
+			t.Errorf("infographicHeights[%q] = %d, want %d", slug, heights[slug], full.Y)
+		}
+		if teaser := jpegSize(t, filepath.Join(staticDir, "img", names[1])); teaser != image.Pt(256, 160) {
+			t.Errorf("%s is %dx%d; expected 256x160", names[1], teaser.X, teaser.Y)
+		}
+	}
+}
+
+func jpegSize(t *testing.T, path string) image.Point {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	cfg, err := jpeg.DecodeConfig(f)
+	if err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	return image.Pt(cfg.Width, cfg.Height)
+}
+
+func writeJPEG(t *testing.T, path string, w, h int) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := jpeg.Encode(f, image.NewGray(image.Rect(0, 0, w, h)), nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInfographicHeights_ReadsEachImage(t *testing.T) {
+	staticDir := t.TempDir()
+	img := filepath.Join(staticDir, "img")
+	if err := os.MkdirAll(img, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeJPEG(t, filepath.Join(img, "infographic-amex-platinum.jpg"), 1024, 1536)
+	writeJPEG(t, filepath.Join(img, "infographic-bilt-palladium.jpg"), 1024, 1818)
+	writeJPEG(t, filepath.Join(img, "infographic-amex-gold.jpg"), 1080, 1917) // not scaled by the script
+	if err := os.WriteFile(filepath.Join(img, "infographic-amex-green.jpg"), []byte("not a jpeg"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got := infographicHeights(staticDir)
+	if got["amex-platinum"] != 1536 {
+		t.Errorf("amex-platinum: got %d, want 1536", got["amex-platinum"])
+	}
+	if got["bilt-palladium"] != 1818 {
+		t.Errorf("bilt-palladium: got %d, want 1818", got["bilt-palladium"])
+	}
+	for _, slug := range []string{"amex-gold", "amex-green", "chase-sapphire-reserve"} {
+		if h, ok := got[slug]; ok {
+			t.Errorf("%s should fall back to the default height, got %d", slug, h)
+		}
+	}
+	if got := infographicHeights(filepath.Join(t.TempDir(), "absent")); len(got) != 0 {
+		t.Errorf("expected no heights without a static directory, got %v", got)
 	}
 }
 

@@ -155,7 +155,7 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       source and its rows cleared for the enrichment reconciler to re-pick. Newly chosen
       images are now liveness-probed before they are stored, so a dead URL is caught at
       pick time instead of on the homepage.
-- [x] **Card infographics** — designed 1024x1536 infographics on twenty-one card pages: Amex
+- [x] **Card infographics** — designed infographics (1024 px wide, 2:3 or taller) on twenty-one card pages: Amex
       Platinum, Amex Gold, Amex Green, Bilt Palladium, Sapphire Reserve, Sapphire Preferred,
       Citi Strata Elite, Citi Strata Premier, Citi / AAdvantage Executive, Capital One
       Venture X, Capital One Venture, Hilton Aspire, Marriott Bonvoy Brilliant, Marriott
