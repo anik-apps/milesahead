@@ -83,6 +83,9 @@ type App struct {
 	// infographicVersions is a content hash per card slug, appended to that
 	// card's infographic URLs so a replaced image is not served from cache.
 	infographicVersions map[string]string
+	// infographicHeights is the pixel height of each card's full infographic,
+	// read from the JPEG at startup, for the viewer's height attribute.
+	infographicHeights map[string]int
 }
 
 // WaitBackground blocks until handler-started background work finishes.
@@ -109,6 +112,7 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 		return nil, err
 	}
 	app.infographicVersions = infographicVersions("static")
+	app.infographicHeights = infographicHeights("static")
 
 	app.setupRoutes()
 	return app, nil
@@ -132,7 +136,9 @@ func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *artic
 		return nil, err
 	}
 	// static/ sits beside templates/, as it does in the repository and on the server.
-	app.infographicVersions = infographicVersions(filepath.Join(filepath.Dir(templateDir), "static"))
+	staticDir := filepath.Join(filepath.Dir(templateDir), "static")
+	app.infographicVersions = infographicVersions(staticDir)
+	app.infographicHeights = infographicHeights(staticDir)
 
 	app.setupRoutes()
 	return app, nil

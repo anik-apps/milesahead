@@ -1335,15 +1335,15 @@
     "earning_rates": {
       "dining": {
         "rate": "2x",
-        "note": "Flat 2x on all purchases"
+        "note": "Base 2x; no dining bonus"
       },
       "groceries": {
         "rate": "2x",
-        "note": "Flat 2x on all purchases"
+        "note": "Base 2x; no grocery bonus"
       },
       "gas": {
         "rate": "2x",
-        "note": "Flat 2x on all purchases"
+        "note": "Base 2x; no gas bonus"
       },
       "airlines_direct": {
         "rate": "2x",
@@ -1351,7 +1351,7 @@
       },
       "airlines_portal": {
         "rate": "2x",
-        "note": "No flight bonus via Capital One Travel; 5x covers hotels, vacation rentals and rental cars only"
+        "note": "No flight bonus via Capital One Travel; 5x covers hotels, vacation rentals, rental cars and activities only"
       },
       "hotels_direct": {
         "rate": "2x",
@@ -1374,16 +1374,16 @@
         "note": ""
       },
       "other_travel_portal": {
-        "rate": "N/A",
-        "note": ""
+        "rate": "5x",
+        "note": "Activities via Capital One Travel"
       },
       "streaming": {
         "rate": "2x",
-        "note": "Flat 2x on all purchases"
+        "note": "Base 2x; no streaming bonus"
       },
       "base": {
         "rate": "2x",
-        "note": "Unlimited on all purchases"
+        "note": "Unlimited, no cap; Capital One Entertainment tickets earn 5x"
       },
       "niche": []
     },
@@ -1413,7 +1413,7 @@
     "benefits": {
       "lounge_access": {
         "value": "N/A",
-        "note": ""
+        "note": "No included access; discounted Capital One Lounge/Landing passes: $45 per visit (18+), $25 (ages 2-17), under 2 free"
       },
       "hotel_status": {
         "value": "N/A",
@@ -1438,7 +1438,7 @@
       "niche": [
         {
           "label": "Transferable miles",
-          "note": "1:1 to 15+ airline/hotel partners, same as Venture X"
+          "note": "15+ airline/hotel partners, most at 1:1, same as Venture X"
         },
         {
           "label": "Purchase Eraser",
@@ -4490,11 +4490,15 @@
       "niche": [
         {
           "label": "Free Night Award",
-          "note": "Annual certificate up to 35,000 points; received each account anniversary"
+          "note": "Annual certificate up to 35,000 points; received each account anniversary; expires after 12 months; can be topped up with up to 25,000 points"
         },
         {
           "label": "15 Elite Night Credits",
-          "note": "Applied annually toward Gold (25 nights) or Platinum (50 nights) status"
+          "note": "Applied annually toward Gold (25 nights) or Platinum (50 nights) status; plus 1 night credit per $5,000 spent, and Gold Elite outright after $35,000 in calendar-year spend"
+        },
+        {
+          "label": "Instacart credit",
+          "note": "$10/month with an active Instacart+ membership through 12/31/2027 (3 months of Instacart+ free after enrolling the card)"
         }
       ]
     },
@@ -4505,7 +4509,7 @@
       },
       "hotel_status": {
         "value": "Marriott Silver Elite",
-        "note": "10% bonus points on stays, priority late checkout, free Wi-Fi"
+        "note": "10% bonus points on stays, priority late checkout, free Wi-Fi; Gold Elite after $35K calendar-year spend"
       },
       "global_entry_tsa": {
         "value": "N/A",
@@ -4531,6 +4535,10 @@
         {
           "label": "Free Night Award",
           "note": "Annual certificate up to 35K points"
+        },
+        {
+          "label": "DashPass",
+          "note": "12 months free when activated by 12/31/2027, then auto-renews; $10 off one non-restaurant DoorDash order a quarter through 12/31/2027"
         }
       ]
     },
@@ -4561,7 +4569,7 @@
       "program": "Marriott Bonvoy",
       "count": "38 airlines, mostly 3:1",
       "key_partners": [],
-      "note": "Earns Marriott Bonvoy directly; points transfer to 38 airline programs, mostly at 3:1"
+      "note": "Earns Marriott Bonvoy directly; points transfer to 38 airlines, mostly at 3:1"
     }
   },
   {
@@ -5097,16 +5105,16 @@
       "airline": "N/A",
       "hotel": "$200/year Delta Stays credit (prepaid hotels or vacation rentals booked through Delta Stays on delta.com)",
       "travel_other": "N/A",
-      "dining": "$240/year Resy dining credit ($20/month at U.S. Resy restaurants)",
+      "dining": "$240/year Resy dining credit ($20/month at U.S. Resy restaurants; enrollment required)",
       "streaming": "N/A",
-      "niche": "$120/year rideshare credit ($10/month); 20% back on Delta in-flight purchases"
+      "niche": "$120/year rideshare credit ($10/month on U.S. rideshare with select providers; enrollment required); 20% back on Delta in-flight purchases"
     },
     "benefits": {
-      "lounge_access": "15 Delta Sky Club visits/year (unlimited at $75,000 annual spend) plus 4 one-time Sky Club guest passes/year; Centurion Lounge access when flying Delta on Reserve-purchased ticket",
+      "lounge_access": "15 Delta Sky Club visits/year (unlimited at $75,000 annual spend) plus 4 one-time Sky Club guest passes/year; Centurion Lounge access when flying Delta on Reserve-purchased ticket; Escape Lounge access when flying Delta same day (flight booked on a U.S.-issued Amex card; guests pay the lounge's fee)",
       "hotel_status": "N/A",
-      "global_entry_tsa": "$120 every 4 years (Global Entry) or up to $85 (TSA PreCheck)",
-      "companion_cert": "Annual companion certificate (after card renewal) valid on a Delta First, Delta Comfort, or Delta Main round-trip within the U.S. or to Mexico, the Caribbean, or Central America; you pay taxes and fees of $22-$250",
-      "free_checked_bags": "First checked bag free on Delta flights (second bag free on domestic Delta flights); Zone 5 priority boarding",
+      "global_entry_tsa": "$120 (Global Entry) or up to $85 (TSA PreCheck); one credit every 4 years, for whichever program you apply for first",
+      "companion_cert": "Annual companion certificate (after card renewal) valid on a Delta First, Delta Premium Select, Delta Comfort, or Delta Main round-trip within the U.S. or to Mexico, the Caribbean, or Central America; you pay taxes and fees of $22-$250",
+      "free_checked_bags": "First checked bag free on Delta flights; second checked bag free for the primary (Basic) cardholder on domestic Delta-operated flights; Zone 5 priority boarding",
       "no_ftf": true,
       "niche": "$2,500 MQD Head Start + MQD Boost ($1 per $10 spent); Global Dining Access by Resy; 15% off Delta award travel; Hertz President's Circle status; Complimentary Upgrade List (after Medallion Members)"
     },
@@ -5246,21 +5254,21 @@
       "niche": "1 PQP per $20 spent on all purchases (up to 18,000 PQP/year)"
     },
     "credits": {
-      "airline": "$200 United travel credit (at opening and each anniversary); up to $150/year JSX credits",
+      "airline": "$200 United travel credit as United TravelBank cash (at opening and each anniversary; expires 12 months after issue); up to $150/year JSX credits",
       "hotel": "Up to $150/year Renowned Hotels credits",
       "travel_other": "Up to $100/year rideshare credits; up to $80/year Avis/Budget credits",
       "dining": "N/A",
       "streaming": "N/A",
-      "niche": "Up to $180/year Instacart credits (one $10 + one $5 credit/month with an active Instacart+ membership, through 12/31/2027); 10,000-mile award flight discount on anniversary (plus another after $20K calendar-year spend); 1,000 PQP annual bonus"
+      "niche": "Up to $180/year Instacart credits (one $10 + one $5 credit/month with an active Instacart+ membership, through 12/31/2027); 10,000-mile award flight discount on anniversary (plus another after $20K calendar-year spend; a discount on awards over 10,000 miles, not deposited miles; each expires 12 months after issue); 1,000 PQP annual bonus"
     },
     "benefits": {
       "lounge_access": "N/A",
       "hotel_status": "N/A",
-      "global_entry_tsa": "Up to $120 every 4 years",
+      "global_entry_tsa": "Up to $120 every 4 years (Global Entry, TSA PreCheck or NEXUS)",
       "companion_cert": "N/A",
-      "free_checked_bags": "2 free checked bags on United flights (cardmember + 1 companion on same reservation)",
+      "free_checked_bags": "2 free checked bags on United flights (cardmember + 1 companion on same reservation; ticket bought with the card)",
       "no_ftf": true,
-      "niche": "Priority boarding; 2 global Economy Plus seat upgrades after $40K calendar-year spend; up to 18,000 PQP/year from card spend + 1,000 PQP annual bonus"
+      "niche": "Priority boarding; 25% back on United inflight food, beverages and Wi-Fi and United Club premium drinks; 2 global Economy Plus seat upgrades after $40K calendar-year spend; up to 18,000 PQP/year from card spend + 1,000 PQP annual bonus"
     },
     "protections": {
       "trip_delay": {
@@ -6120,7 +6128,7 @@
     "credits": {
       "airline": "N/A",
       "hotel": "N/A",
-      "travel_other": "Up to $120 TSA PreCheck/Global Entry credit every 4 years; $50 Instant Travel Delay Credit when an Alaska/Hawaiian flight booked on alaskaair.com with the card is canceled or delayed 2+ hours",
+      "travel_other": "Up to $120 TSA PreCheck/Global Entry credit every 4 years; $50 Instant Travel Delay Credit when an Alaska/Hawaiian flight booked on alaskaair.com with the card is canceled within 24 hours of departure or delayed 2+ hours (primary cardholder must be traveling)",
       "dining": "N/A",
       "streaming": "N/A",
       "niche": "N/A"
@@ -6132,7 +6140,7 @@
       "companion_cert": "25,000-point Global Companion Award annually (any cabin, any partner including Oneworld); additional 100,000-point Global Companion Award after $60,000 spend in a card anniversary year",
       "free_checked_bags": "First checked bag free for cardholder + up to 6 companions on same reservation",
       "no_ftf": true,
-      "niche": "Preferred boarding on Alaska/Horizon/SkyWest-operated flights; 8 Alaska Wi-Fi passes per year; same-day change and partner award booking fees waived; 20% back on inflight purchases (food, beverages, Wi-Fi); 10,000 status points annually"
+      "niche": "Preferred boarding for cardholder + up to 6 guests on the same reservation (Alaska/Horizon/SkyWest-operated flights); 8 Alaska Wi-Fi passes per year; same-day change and partner award booking fees waived; 20% back on inflight purchases (food, beverages, Wi-Fi); 10,000 status points annually"
     },
     "protections": {
       "trip_delay": "$500 coverage when delayed 6+ hours or overnight (Visa Infinite)",
