@@ -162,10 +162,10 @@ Wikimedia/Flickr thumbnails for sized URLs:
   410, is cleared so enrichment picks a new image. If the URL still loads it
   is kept.
 - The step has its own budget so it cannot starve enrichment: 90 s, and no
-  more than a quarter of the pass. The budget is checked between rows, so
-  the row in progress when it runs out can overrun it by that row's own
-  requests (each probe is capped at 30 s, and a field stops at the first
-  copy that does not load). At most 25 rows go to the network per pass,
+  more than a quarter of the pass. No row starts once it has run out, and
+  the requests of the row in progress stop at it too; a field whose check is
+  cut short keeps its URL and is tried again next pass, like any field that
+  could not be confirmed. At most 25 rows go to the network per pass,
   Wikimedia originals, 800 px thumbnails and the newest articles first. The
   rest wait for the next pass. A row that fails two passes running is set
   aside for 6 hours.

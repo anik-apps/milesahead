@@ -596,13 +596,13 @@ func (p Probe) IsImage() bool {
 // "*"; with measureUpTo > 0 the body is then read up to one byte past that
 // limit, so an oversized file is caught either way.
 func (s *Searcher) Probe(rawURL string, measureUpTo int64) Probe {
-	return s.probeUntil(rawURL, measureUpTo, time.Time{})
+	return s.ProbeUntil(rawURL, measureUpTo, time.Time{})
 }
 
-// probeUntil is Probe ending by the earlier of maxProbeDuration from now and
+// ProbeUntil is Probe ending by the earlier of maxProbeDuration from now and
 // by (a zero by adds no bound). A probe that runs out of time reports the URL
 // as not fetchable.
-func (s *Searcher) probeUntil(rawURL string, measureUpTo int64, by time.Time) Probe {
+func (s *Searcher) ProbeUntil(rawURL string, measureUpTo int64, by time.Time) Probe {
 	if rawURL == "" {
 		return Probe{Size: -1}
 	}
@@ -729,7 +729,7 @@ func (s *Searcher) Warm(urls []string) {
 			slots <- struct{}{}
 			defer func() { <-slots }()
 			if time.Now().Before(by) {
-				s.probeUntil(u, 0, by)
+				s.ProbeUntil(u, 0, by)
 			}
 		}()
 	}
@@ -788,13 +788,13 @@ func (s *Searcher) measureWhole(rawURL string, limit int64, deadline time.Time) 
 // deadline of its own is not held past it by a slow host; a candidate that
 // cannot be confirmed by then is not usable.
 func (s *Searcher) Usable(c ImageCandidate, by time.Time) bool {
-	if fit, _ := s.weighUntil(c.Thumbnail, MaxThumbnailBytes, by); fit != Fits {
+	if fit, _ := s.WeighUntil(c.Thumbnail, MaxThumbnailBytes, by); fit != Fits {
 		return false
 	}
 	if c.URL == c.Thumbnail {
 		return true
 	}
-	fit, _ := s.weighUntil(c.URL, MaxImageBytes, by)
+	fit, _ := s.WeighUntil(c.URL, MaxImageBytes, by)
 	return fit == Fits
 }
 
@@ -828,12 +828,12 @@ func (s *Searcher) CheckFit(rawURL string, limit int64) Fit {
 // known exactly, or -1: for an unusable URL, and for a file whose size was
 // counted from the body and so is only known to exceed limit.
 func (s *Searcher) Weigh(rawURL string, limit int64) (Fit, int64) {
-	return s.weighUntil(rawURL, limit, time.Time{})
+	return s.WeighUntil(rawURL, limit, time.Time{})
 }
 
-// weighUntil is Weigh with its probe ending by by, as in probeUntil.
-func (s *Searcher) weighUntil(rawURL string, limit int64, by time.Time) (Fit, int64) {
-	p := s.probeUntil(rawURL, limit, by)
+// WeighUntil is Weigh with its probe ending by by, as in ProbeUntil.
+func (s *Searcher) WeighUntil(rawURL string, limit int64, by time.Time) (Fit, int64) {
+	p := s.ProbeUntil(rawURL, limit, by)
 	switch {
 	case !p.OK:
 		return Unusable, -1

@@ -71,8 +71,8 @@ type Service struct {
 	// ResizeMaxDuration and ResizeMaxRows bound the stored-image resize that
 	// opens each pass (see resizeStoredImages), so it cannot eat the time
 	// enrichment needs. The duration is further capped at a quarter of
-	// MaxDuration; being checked between rows, it can be overrun by one
-	// row's probes. Zero means the default.
+	// MaxDuration. No row starts after it, and each row's probes stop at
+	// it. Zero means the default.
 	ResizeMaxDuration time.Duration
 	ResizeMaxRows     int
 

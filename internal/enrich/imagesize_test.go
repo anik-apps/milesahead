@@ -967,3 +967,89 @@ func TestRun_Old800pxWithoutAnsweredWidthTakes500(t *testing.T) {
 		t.Errorf("gauges: unsized %v, unconvertible %v; want 0 and 0", got, got2)
 	}
 }
+
+// The resize budget used to be checked only between rows: a row's own probes
+// ran on the searcher's bounds, 8 s for an original and up to 30 s for a
+// thumbnail, so a hanging host could hold the step a minute or more past its
+// budget. Every probe a row makes -- the sized copies, the file it holds,
+// the check on a file Commons calls deleted -- now stops at the budget, and
+// a field cut short there is unconfirmed: it keeps its URL and is retried.
+func TestRun_ResizeProbesStopAtTheBudget(t *testing.T) {
+	const hangFile = "Hanging_host.png"
+	hang := wm + "6/6f/" + hangFile
+	for _, tt := range []struct {
+		name string
+		// Commons' answer for the file, and whether a thumbnail (else the
+		// original) is the request that hangs; the other answers at once.
+		page        string
+		hangsThumbs bool
+	}{
+		{"a sized copy hangs", `"imageinfo":[{"width":5000}]`, true},
+		// Every copy is over the cap, so the file the row holds is weighed.
+		{"the current file hangs", `"imageinfo":[{"width":5000}]`, false},
+		// Commons calls it deleted, so the file is checked for a 404.
+		{"the deleted-file check hangs", `"missing":true`, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			d := testDB(t)
+			id := seedImage(t, d, hang, hang)
+
+			var mu sync.Mutex
+			var deadline time.Time
+			var probes, late int
+			release := make(chan struct{})
+			s := newResizeService(t, d, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("titles") != "" {
+					w.Write([]byte(`{"query":{"pages":[{"title":"File:Hanging host.png",` + tt.page + `}]}}`))
+					return
+				}
+				mu.Lock()
+				probes++
+				if time.Now().After(deadline.Add(100 * time.Millisecond)) {
+					late++
+				}
+				mu.Unlock()
+				if strings.Contains(r.URL.Path, "/thumb/") == tt.hangsThumbs {
+					select { // never answers; gives up with the client
+					case <-r.Context().Done():
+					case <-release:
+					}
+					return
+				}
+				w.Header().Set("Content-Type", "image/png")
+				w.Header().Set("Content-Range", "bytes 0-0/2000000") // over every cap
+				w.WriteHeader(http.StatusPartialContent)
+			}))
+			// Cleanups run last first: this frees any request still held open.
+			t.Cleanup(func() { close(release) })
+			s.ResizeMaxDuration = 300 * time.Millisecond
+
+			unconfirmed := resizeCount(t, "unconfirmed")
+			start := time.Now()
+			mu.Lock()
+			deadline = start.Add(s.ResizeMaxDuration)
+			mu.Unlock()
+			s.Run()
+			if elapsed := time.Since(start); elapsed > 2*time.Second {
+				t.Errorf("pass ran %v; the resize budget was %v", elapsed, s.ResizeMaxDuration)
+			}
+			mu.Lock()
+			if probes == 0 {
+				t.Error("nothing was probed; the test is not exercising the row")
+			}
+			if late > 0 {
+				t.Errorf("%d image requests were sent after the resize budget", late)
+			}
+			mu.Unlock()
+			if url, thumb, attempts := storedImage(t, d, id); url != hang || thumb != hang || attempts != 0 {
+				t.Errorf("row = %q / %q, %d attempts; want it unchanged", url, thumb, attempts)
+			}
+			if got := resizeCount(t, "unconfirmed") - unconfirmed; got != 1 {
+				t.Errorf("unconfirmed counter +%v, want +1: a check cut short is retried", got)
+			}
+			if r := s.resizeRetries[id]; r == nil || r.permanent {
+				t.Errorf("retry record = %+v; want one transient failure", r)
+			}
+		})
+	}
+}

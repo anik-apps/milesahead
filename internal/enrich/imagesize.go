@@ -19,10 +19,9 @@ import (
 // host stayed slow.
 const (
 	// defaultResizeMaxDuration bounds the step, and the budget is never more
-	// than a quarter of the pass (see resizeBudget). It is checked between
-	// rows, so the true ceiling is the budget plus one row's worst case:
-	// each probe is capped at 30 s, and a field stops at the first copy
-	// that does not load.
+	// than a quarter of the pass (see resizeBudget). No row starts once it
+	// has passed, and every probe a row makes stops at it too, so the step
+	// ends at the budget give or take one database write.
 	defaultResizeMaxDuration = 90 * time.Second
 	// defaultResizeMaxRows bounds how many rows one pass sends to the
 	// network. The rest wait for the next pass, 15 minutes later.
@@ -117,8 +116,9 @@ const (
 // whole pass's), sends at most ResizeMaxRows rows to the network per pass,
 // heaviest and newest first, and sets aside for resizeBackoff any row that
 // has failed resizeFailuresBeforeBackoff passes running, or that cannot be
-// converted at all (resizeUnconvertible). The deadline is checked between
-// rows, so the row in progress can overrun it by its own probes.
+// converted at all (resizeUnconvertible). No row starts after deadline, and
+// the probes of the row in progress stop at it: a field whose check is cut
+// short keeps its URL and is retried next pass, as any unconfirmed field is.
 //
 // milesahead_article_images_unsized counts the rows that could still be
 // converted, so it can reach 0; the ones that cannot -- no copy lighter than
@@ -201,7 +201,7 @@ func (s *Service) resizeStoredImages(deadline time.Time) {
 				"rows_left", len(jobs)-i)
 			break
 		}
-		outcome, row := s.resizeOne(job)
+		outcome, row := s.resizeOne(job, deadline)
 		switch outcome {
 		case resizeDone:
 			resized++
@@ -240,14 +240,14 @@ func (s *Service) resizeStoredImages(deadline time.Time) {
 }
 
 // resizeOne converts one row, writing only what it could confirm. It returns
-// the row as it now stands.
-func (s *Service) resizeOne(job resizeJob) (resizeOutcome, db.StoredArticleImage) {
+// the row as it now stands. Its probes stop at deadline.
+func (s *Service) resizeOne(job resizeJob, deadline time.Time) (resizeOutcome, db.StoredArticleImage) {
 	a := job.row
 	// transient: something failed that may work next time. permanent: a
 	// field cannot be converted as things stand.
 	transient, permanent := false, false
 	if job.deleted {
-		switch s.clearIfGone(a) {
+		switch s.clearIfGone(a, deadline) {
 		case goneCleared:
 			delete(s.resizeRetries, a.ID)
 			return resizeCleared, db.StoredArticleImage{ID: a.ID}
@@ -276,7 +276,7 @@ func (s *Service) resizeOne(job resizeJob) (resizeOutcome, db.StoredArticleImage
 		if f.candidates == nil {
 			continue
 		}
-		switch u, found := s.pickSized(f.candidates, f.limit, f.current); found {
+		switch u, found := s.pickSized(f.candidates, f.limit, f.current, deadline); found {
 		case sizedFound:
 			*f.out = u
 		case sizedNoLighter:
@@ -321,7 +321,8 @@ const (
 	// sizedFound: a sized copy was confirmed.
 	sizedFound sizedFind = iota
 	// sizedUnconfirmed: a copy did not load, or the comparison with the
-	// current file could not be made; worth another try later.
+	// current file could not be made -- including a check cut short by the
+	// resize deadline; worth another try later.
 	sizedUnconfirmed
 	// sizedNoLighter: every copy is an image over the cap, and none is
 	// known to be lighter than the file the field holds.
@@ -341,10 +342,12 @@ const (
 // 13 MB original is still a tenth of the weight, and without it the row
 // would keep the original and be retried every resizeBackoff for good. It is
 // never swapped for something heavier.
-func (s *Service) pickSized(candidates []string, limit int64, current string) (string, sizedFind) {
+//
+// No probe runs past by; one it cuts short counts as not loading.
+func (s *Service) pickSized(candidates []string, limit int64, current string, by time.Time) (string, sizedFind) {
 	lightest, lightestSize := "", int64(-1)
 	for _, u := range candidates {
-		fit, size := s.searcher.Weigh(u, limit)
+		fit, size := s.searcher.WeighUntil(u, limit, by)
 		switch fit {
 		case images.Fits:
 			return u, sizedFound
@@ -359,7 +362,7 @@ func (s *Service) pickSized(candidates []string, limit int64, current string) (s
 	if lightest == "" {
 		return "", sizedNoLighter
 	}
-	cur := s.searcher.Probe(current, 0)
+	cur := s.searcher.ProbeUntil(current, 0, by)
 	switch {
 	case cur.Status == 0 || cur.Status == http.StatusTooManyRequests || cur.Status >= 500:
 		return "", sizedUnconfirmed // the request failed; compare next time
@@ -614,9 +617,10 @@ const (
 // once the file itself is seen to answer 404 or 410 -- the API saying so is
 // not enough on its own to take an image off a live article. For a thumbnail
 // at a width Wikimedia no longer serves, which answers 400 whether or not the
-// file exists, the original is asked instead.
-func (s *Service) clearIfGone(a db.StoredArticleImage) goneCheck {
-	p := s.searcher.Probe(displayWidthKey(a.URL), 0)
+// file exists, the original is asked instead. The probe stops at by; one it
+// cuts short is goneUnknown.
+func (s *Service) clearIfGone(a db.StoredArticleImage, by time.Time) goneCheck {
+	p := s.searcher.ProbeUntil(displayWidthKey(a.URL), 0, by)
 	if p.Status != http.StatusNotFound && p.Status != http.StatusGone {
 		slog.Info("image resize: Commons reports the file deleted but its URL did not answer 404/410; keeping it",
 			"article_id", a.ID, "image_url", a.URL, "status", p.Status)
