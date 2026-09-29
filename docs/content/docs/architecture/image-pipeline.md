@@ -211,9 +211,12 @@ other, each with the width its URL fixes, and only when:
   differ only in `w=` (a URL that sets `h=`, `ar=` or anything else that
   changes the framing is left out);
 - the thumbnail is at least 466 px wide, so a 1x screen never needs the
-  display image. That also leaves out a display image the resize kept over
-  its byte cap, since that row's thumbnail is the 330 px step, and
-  Unsplash's 400 px `small` size;
+  display image. That leaves out Unsplash's 400 px `small` size, and a
+  display image the resize settled for over its byte cap when the resize
+  also chose the thumbnail: that thumbnail is then the 330 px step. The page
+  does not know the display image's size, so a 500 px thumbnail the resize
+  did not choose is not kept from an over-cap display image; the pick path
+  confirms both fields within their caps;
 - the display image is the wider, and neither URL has a comma or a space.
 
 Phones and 1x screens, and every screen outside 769-1024 px, load the

@@ -110,12 +110,20 @@ const gridThumbSlotMax = 466
 //     the two URLs the row stores -- each confirmed to load before it was
 //     written -- are ever referenced.
 //   - the thumbnail alone fills the widest card on a 1x screen, so no 1x
-//     screen fetches the display image. That also keeps out the display
-//     image the resize settles for over its byte cap, when every copy down
-//     to 500px is over 1 MiB: the 500px copy is then over the 512 KiB
-//     thumbnail cap too, so the thumbnail is the 330px step.
+//     screen fetches the display image.
 //   - the display image is the wider of the two.
 //   - neither URL has a comma or white space, which separate srcset entries.
+//
+// The page does not know how heavy the display image is, so the srcset does
+// not check it. The pick path confirms both fields within their byte caps.
+// The resize settles for a display image over its cap only when every step
+// down to 500px is over 1 MiB (or the stored file no longer loads); if it
+// also chose the thumbnail, that thumbnail is the 330px step -- the 500px
+// copy is over the 512 KiB thumbnail cap too -- and the row gets no srcset.
+// That does not hold for a thumbnail the resize left as it was: a 500px
+// thumbnail stored some other way beside an over-cap display image would
+// still be offered it. Keeping those out would take the display image's
+// size stored with the row, which nothing records.
 func thumbSrcset(thumbnail, image string) string {
 	tw, iw, ok := images.SrcsetWidths(thumbnail, image)
 	if !ok || tw < gridThumbSlotMax || iw <= tw || strings.ContainsAny(thumbnail+image, ", \t\n\r\f") {
