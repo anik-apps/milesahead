@@ -915,9 +915,11 @@ func resolve(dates []found, value string, anchor time.Time) ([]time.Time, bool) 
 			ends = append(ends, i)
 		}
 	}
-	if len(ends) == 0 {
+	if len(ends) == 0 && !stillOpenRE.MatchString(value) {
 		// An earlier run lies in the past: "Same as last year: September
-		// 30, 2026", written before that day, is this run's end.
+		// 30, 2026", written before that day, is this run's end -- unless
+		// the value says this run has no end yet ("Not announced; the
+		// previous offer ran through January 31, 2026").
 		for i, f := range dates {
 			if f.history && f.year != 0 && !f.start && !f.superseded && !f.incidental && !f.dropped && !days[i].Before(written) {
 				ends = append(ends, i)

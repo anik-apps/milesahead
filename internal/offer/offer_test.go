@@ -711,6 +711,10 @@ func TestEndDate_ComparedWithLastYear(t *testing.T) {
 		{"same as last year", "Deadline", "Same as last year: September 30, 2026", written, "2026-09-30"},
 		// A past date in the history is still history.
 		{"last year's date", "Deadline", "Not announced; last year's ran through September 30, 2025", written, ""},
+		// Nor is an earlier run's date still ahead this run's end when the
+		// value says this run has none yet.
+		{"not announced, previous offer ahead", "Deadline", "Not announced; the previous offer ran through January 31, 2026", "2026-01-10", ""},
+		{"ongoing, last year's version ahead", "Deadline", "Ongoing; last year's version runs until January 31, 2026", "2026-01-10", ""},
 		// And a future-dated "history" never cuts a real deadline short.
 		{"future-dated history beside the end", "Deadline", "January 15, 2027; prior offer ran June 30, 2026", "2026-01-10", "2027-01-15"},
 	})
