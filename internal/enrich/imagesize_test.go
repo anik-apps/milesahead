@@ -1053,3 +1053,129 @@ func TestRun_ResizeProbesStopAtTheBudget(t *testing.T) {
 		})
 	}
 }
+
+// slowTakeClient writes Scout's Take slowly and records every prompt.
+type slowTakeClient struct {
+	delay   time.Duration
+	mu      sync.Mutex
+	prompts []string
+}
+
+func (c *slowTakeClient) Generate(model, prompt string, maxTokens int) (string, error) {
+	c.mu.Lock()
+	c.prompts = append(c.prompts, prompt)
+	c.mu.Unlock()
+	if strings.Contains(prompt, "Scout") {
+		time.Sleep(c.delay)
+		return "Worth it only if you fly JAL.", nil
+	}
+	return "", fmt.Errorf("no reply scripted")
+}
+
+func imageFailures(t *testing.T) float64 {
+	t.Helper()
+	var m dto.Metric
+	if err := metrics.EnrichmentFailuresTotal.WithLabelValues("image").Write(&m); err != nil {
+		t.Fatalf("counter read: %v", err)
+	}
+	return m.GetCounter().GetValue()
+}
+
+// When the article's earlier model calls ran past the pass deadline, the
+// image step still generated queries, searched, warmed thumbnails (up to
+// 15 s) and ran up to five vision calls, only to refuse every candidate at
+// the deadline and charge the article an attempt. It now does not start, and
+// an article put off that way keeps its attempt.
+func TestFindImage_DoesNotStartPastThePassDeadline(t *testing.T) {
+	d := testDB(t)
+	id := seedArticle(t, d)
+	// Missing only Scout's Take and the image.
+	if _, err := d.DB().Exec(`UPDATE generated_articles SET key_details = '[{"label":"a","value":"b"}]',
+		tags_json = '["hotels"]' WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	var searched []string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		searched = append(searched, r.Host+r.URL.Path)
+		mu.Unlock()
+		w.Write([]byte(`{}`))
+	})
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	searcher := images.NewSearcher("", "")
+	searcher.SetTransport(hostRouter{srv.Listener.Addr().String()})
+	client := &slowTakeClient{delay: 300 * time.Millisecond}
+	s := New(d, client, []string{"m1"}, "Scout", searcher, images.NewScorer(client, "m1"))
+	s.Pace = 0
+	s.MaxDuration = 200 * time.Millisecond
+
+	failures := imageFailures(t)
+	s.Run()
+
+	mu.Lock()
+	if len(searched) != 0 {
+		t.Errorf("searched for images after the pass deadline: %v", searched)
+	}
+	mu.Unlock()
+	for _, p := range client.prompts {
+		if strings.Contains(p, "image search queries") {
+			t.Error("generated image queries after the pass deadline")
+		}
+	}
+	var take string
+	var attempts int
+	if err := d.DB().QueryRow(`SELECT COALESCE(scouts_take,''), enrichment_attempts FROM generated_articles
+		WHERE id = ?`, id).Scan(&take, &attempts); err != nil {
+		t.Fatal(err)
+	}
+	if take == "" {
+		t.Error("Scout's Take was not kept")
+	}
+	if attempts != 0 {
+		t.Errorf("enrichment_attempts = %d; an image search put off for time is not an attempt", attempts)
+	}
+	if got := imageFailures(t) - failures; got != 0 {
+		t.Errorf("image failures +%v, want 0", got)
+	}
+
+	// An article missing only the image, reached after the deadline, is
+	// not touched at all.
+	imageOnly := seedArticle(t, d)
+	if _, err := d.DB().Exec(`UPDATE generated_articles SET scouts_take = 'Take',
+		key_details = '[{"label":"a","value":"b"}]', tags_json = '["hotels"]' WHERE id = ?`, imageOnly); err != nil {
+		t.Fatal(err)
+	}
+	articles, err := d.ListArticlesNeedingEnrichment(3, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reached := false
+	for _, a := range articles {
+		if a.ID != imageOnly {
+			continue
+		}
+		reached = true
+		if filled, failed := s.enrichOne(a, time.Now().Add(-time.Second)); filled != 0 || failed != 0 {
+			t.Errorf("enrichOne = %d filled, %d failed; want 0 and 0", filled, failed)
+		}
+	}
+	if !reached {
+		t.Fatal("the image-only article was not listed for enrichment")
+	}
+	var touched bool
+	if err := d.DB().QueryRow(`SELECT enrichment_attempts, enrichment_last_at IS NOT NULL FROM generated_articles
+		WHERE id = ?`, imageOnly).Scan(&attempts, &touched); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 0 || touched {
+		t.Errorf("image-only article: %d attempts, enrichment_last_at set %v; want it untouched", attempts, touched)
+	}
+	mu.Lock()
+	if len(searched) != 0 {
+		t.Errorf("searched for images after the pass deadline: %v", searched)
+	}
+	mu.Unlock()
+}

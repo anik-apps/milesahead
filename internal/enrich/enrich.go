@@ -58,10 +58,11 @@ type Service struct {
 	// last read, so a stalled reconciler is indistinguishable from an idle one.
 	//
 	// The bound is checked between articles, so the true ceiling is MaxDuration
-	// plus one article's worst case. Within an article only the image checks
-	// stop at it (see findImage); bounding the model calls needs a context
-	// threaded through Generate, which it does not take yet, and warming
-	// thumbnails for image scoring can add up to 15 s.
+	// plus one article's worst case. Within an article only the image step
+	// heeds it: it does not start past it, and its checks stop at it (see
+	// findImage). Bounding the model calls needs a context threaded through
+	// Generate, which it does not take yet, and warming thumbnails for image
+	// scoring can add up to 15 s.
 	MaxDuration time.Duration
 
 	// startedAt records when the in-flight pass began, so a skip can report how
@@ -264,12 +265,26 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 		}
 	}
 
+	imagePutOff := false
 	if a.MissingImage {
-		if s.findImage(&u, a, deadline) {
+		switch s.findImage(&u, a, deadline) {
+		case imageFound:
 			filled++
-		} else {
+		case imageDeferred:
+			imagePutOff = true
+		default:
 			failed++
 		}
+	}
+
+	// An image search put off for lack of time was not tried, so it is not
+	// charged: if nothing else failed, the attempt is not counted, and an
+	// article with nothing to write is not touched at all.
+	if imagePutOff && failed == 0 {
+		if filled == 0 {
+			return 0, 0
+		}
+		u.Uncounted = true
 	}
 
 	if err := s.db.ApplyEnrichment(a.ID, u); err != nil {
@@ -283,25 +298,48 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 			"article_id", a.ID, "fields_filled", filled, "error", err)
 		return filled, failed
 	}
+	attempt := a.Attempts + 1
+	if u.Uncounted {
+		attempt = a.Attempts
+	}
 	slog.Info("enrichment applied", "article_id", a.ID, "was_missing", a.Missing(),
-		"filled", filled, "failed", failed, "attempt", a.Attempts+1)
+		"filled", filled, "failed", failed, "attempt", attempt, "image_deferred", imagePutOff)
 	return filled, failed
 }
+
+// imageResult is what findImage did.
+type imageResult int
+
+const (
+	imageFound    imageResult = iota // a candidate was picked
+	imageFailed                      // the search ran and nothing could be used
+	imageDeferred                    // the pass deadline had passed; nothing was tried
+)
 
 // findImage searches and scores candidates, reporting whether one was good
 // enough to use. A search that finds nothing relevant is a legitimate outcome
 // rather than an error, but it still counts against the attempt budget so the
 // article is not searched forever.
 //
-// Checking that candidates load stops at deadline, the pass's. A Wikimedia
-// probe may take up to 30 s (it waits for a render and retries once), so a
-// run of hanging candidates could otherwise hold the pass minutes past its
-// deadline and make the scheduler skip the next one. An article whose checks
-// are cut short gets no image this pass; like any failed image step, that
-// uses one of its attempts.
-func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichment, deadline time.Time) bool {
+// deadline is the pass's. If the article's earlier model calls ran past it,
+// the search does not start: query generation, the search, warming (up to
+// 15 s) and the vision calls would only lead to candidates it may not check.
+// That returns imageDeferred, which does not use an attempt.
+//
+// Checking that candidates load also stops at deadline. A Wikimedia probe may
+// take up to 30 s (it waits for a render and retries), so a run of hanging
+// candidates could otherwise hold the pass minutes past its deadline and make
+// the scheduler skip the next one. An article whose checks are cut short gets
+// no image this pass; like any failed image step, that uses one of its
+// attempts.
+func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichment, deadline time.Time) imageResult {
 	if s.searcher == nil {
-		return false
+		return imageFailed
+	}
+	if !time.Now().Before(deadline) {
+		slog.Info("enrichment: pass deadline reached before the image search; it waits for the next pass",
+			"article_id", a.ID)
+		return imageDeferred
 	}
 	queries, err := ai.GenerateImageQueries(s.client, s.models, a.Title, a.TLDR)
 	if err != nil {
@@ -312,20 +350,20 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 	candidates, err := s.searcher.Search(queries)
 	if err != nil || len(candidates) == 0 {
 		s.recordFailure("image", a.ID, err)
-		return false
+		return imageFailed
 	}
 	if s.scorer == nil {
-		return false
+		return imageFailed
 	}
 	scored, err := s.scorer.Score(a.Title, a.TLDR, candidates)
 	if err != nil || len(scored) == 0 {
 		s.recordFailure("image", a.ID, err)
-		return false
+		return imageFailed
 	}
 	if scored[0].Score < MinImageScore {
 		slog.Info("enrichment: no image met the relevance bar",
 			"article_id", a.ID, "top_score", scored[0].Score)
-		return false
+		return imageFailed
 	}
 	// Walk down in score order until one is relevant enough, actually
 	// fetchable and light enough for the page. Scoring alone is not enough: an
@@ -340,7 +378,7 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 		if !time.Now().Before(deadline) {
 			slog.Warn("enrichment: pass deadline reached while checking image candidates",
 				"article_id", a.ID, "checked", i)
-			return false
+			return imageFailed
 		}
 		if !s.searcher.Usable(c, deadline) {
 			continue
@@ -348,11 +386,11 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 		u.ImageURL = &scored[i].URL
 		u.ImageThumbnail = &scored[i].Thumbnail
 		u.ImageAttribution = &scored[i].Attribution
-		return true
+		return imageFound
 	}
 	slog.Info("enrichment: every relevant image candidate was unfetchable",
 		"article_id", a.ID, "candidates", len(scored))
-	return false
+	return imageFailed
 }
 
 func (s *Service) recordFailure(step string, articleID int64, err error) {

@@ -133,7 +133,9 @@ waits and the GET that measures a file of unknown size included, never takes
 more than 30 s. At pick time the probes also stop at the enrichment pass's
 deadline, so a hanging image host cannot hold a pass past its end (and make
 the scheduler skip the next one); an article cut short there gets no image
-that pass.
+that pass. If the article's other model calls have already run past the
+deadline, the image search does not start at all -- no queries, search,
+warming or scoring -- and the article is not charged an attempt for it.
 
 Rows stored before this existed are converted by the enrichment reconciler
 (`internal/enrich/imagesize.go`). At the start of every pass, including the
