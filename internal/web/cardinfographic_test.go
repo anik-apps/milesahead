@@ -313,12 +313,12 @@ func TestHandleCard_InfographicHeightFollowsImage(t *testing.T) {
 }
 
 func TestHandleCard_OtherCardsUnchanged(t *testing.T) {
-	const slug = "discover-it-cash-back"
+	const slug = "citi-custom-cash"
 	if _, ok := cardInfographics[slug]; ok {
 		t.Fatalf("%s now has an infographic; pick a card without one for this test", slug)
 	}
 	app := setupRealTemplateCardApp(t)
-	createPublishedCard(t, app, slug, "Discover it Cash Back")
+	createPublishedCard(t, app, slug, "Citi Custom Cash")
 
 	body := getCardPage(t, app, slug)
 

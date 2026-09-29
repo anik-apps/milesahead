@@ -155,12 +155,16 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       source and its rows cleared for the enrichment reconciler to re-pick. Newly chosen
       images are now liveness-probed before they are stored, so a dead URL is caught at
       pick time instead of on the homepage.
-- [x] **Card infographics** — designed infographics (1024 px wide, 2:3 or taller) on twenty-one card pages: Amex
-      Platinum, Amex Gold, Amex Green, Bilt Palladium, Sapphire Reserve, Sapphire Preferred,
-      Citi Strata Elite, Citi Strata Premier, Citi / AAdvantage Executive, Capital One
-      Venture X, Capital One Venture, Hilton Aspire, Marriott Bonvoy Brilliant, Marriott
-      Bonvoy Boundless, IHG One Rewards Premier, World of Hyatt, BoA Premium Rewards Elite,
-      Wells Fargo Autograph, Atmos Rewards Summit, United Quest and Delta SkyMiles Reserve.
+- [x] **Card infographics** — designed infographics (1024 px wide, 2:3 or taller) on thirty card pages: Amex
+      Platinum, Amex Gold, Amex Green, Bilt Palladium, Bilt Blue, Bilt Obsidian, Sapphire
+      Reserve, Sapphire Preferred, Freedom Flex, Freedom Unlimited, Citi Strata Elite, Citi
+      Strata Premier, Citi / AAdvantage Executive, Capital One Venture X, Capital One
+      Venture, Capital One Savor, Capital One Quicksilver, Discover it Cash Back, Hilton
+      Aspire, Marriott Bonvoy Brilliant, Marriott Bonvoy Boundless, IHG One Rewards Premier,
+      World of Hyatt, BoA Premium Rewards Elite, BoA Premium Rewards, Wells Fargo Autograph,
+      Wells Fargo Active Cash, Atmos Rewards Summit, United Quest and Delta SkyMiles Reserve.
+      Citi Double Cash (the first design taller than 2:3, at 1024x1818) and an updated
+      IHG One Rewards Premier entry will follow.
       A compact "Infographic / Expand" bar under the
       card art opens the full image in a native `<dialog>` viewer; inline in the article
       column the image rendered at 46% of its size, too small to read. The 400-600 KB full image loads only when the viewer opens, and without
