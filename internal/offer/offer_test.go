@@ -796,6 +796,56 @@ func TestEndDate_RevisedDeadlineTakesTheLatestDate(t *testing.T) {
 	runEndDateCases(t, cases)
 }
 
+// A replacement is any label that revises the end, not only a handful of
+// exact ones. With no new date and word that the offer runs on, it leaves no
+// end; and it never moves the end earlier than the deadline beside it.
+func TestEndDate_MoreReplacementLabels(t *testing.T) {
+	const written = "2026-06-10"
+	for _, label := range []string{
+		"Extended Offer Deadline", "New Application Deadline", "Deadline (Extended)", "Deadline Extended To",
+		"Extended Promotion Period", "Extension", "Updated End Date", "Extended",
+	} {
+		kd := details(t, "Deadline", "June 30, 2026", label, "July 31, 2026")
+		if got := EndDate(kd, day(written)); got != "2026-07-31" {
+			t.Errorf("EndDate(Deadline: June 30, 2026; %s: July 31, 2026) = %q, want 2026-07-31", label, got)
+		}
+	}
+	for _, c := range []struct{ label, value string }{
+		{"Extended Deadline", "Until further notice"},
+		{"New Deadline", "TBA"},
+		{"Extension", "Extended indefinitely"},
+		{"Deadline (Extended)", "New date not yet announced"},
+	} {
+		kd := details(t, "Deadline", "June 30, 2026", c.label, c.value)
+		if got := EndDate(kd, day(written)); got != "" {
+			t.Errorf("EndDate(Deadline: June 30, 2026; %s: %s) = %q, want no end date", c.label, c.value, got)
+		}
+	}
+	// A replacement earlier than the deadline beside it does not cut it short.
+	kd := details(t, "Deadline", "July 31, 2026", "Extended Deadline", "June 30, 2026")
+	if got := EndDate(kd, day(written)); got != "2026-07-31" {
+		t.Errorf("EndDate(Deadline: July 31; Extended Deadline: June 30) = %q, want 2026-07-31", got)
+	}
+	// An extended period is a period: its last date is the end.
+	kd = details(t, "Deadline", "June 30, 2026", "Extended Promotion Period", "June 1 - August 31, 2026")
+	if got := EndDate(kd, day(written)); got != "2026-08-31" {
+		t.Errorf("EndDate with Extended Promotion Period = %q, want 2026-08-31", got)
+	}
+	// Not replacements: a deadline for new cardmembers, a hotel's extended
+	// stay, a travel window, or a dateless value with no word of running on.
+	for _, c := range []struct{ label, value, want string }{
+		{"New Cardmember Deadline", "June 30, 2026", "2026-06-30"},
+		{"Extended Stay Booking Deadline", "June 30, 2026", "2026-06-30"},
+		{"Extended Travel Period", "Through December 31, 2026", "2026-07-31"},
+		{"Extended Deadline", "None", "2026-07-31"},
+	} {
+		kd := details(t, "Deadline", "July 31, 2026", c.label, c.value)
+		if got := EndDate(kd, day(written)); got != c.want {
+			t.Errorf("EndDate(Deadline: July 31, 2026; %s: %s) = %q, want %s", c.label, c.value, got, c.want)
+		}
+	}
+}
+
 // The last day is still live; the offer has ended from the next day.
 func TestEnded(t *testing.T) {
 	cases := []struct {

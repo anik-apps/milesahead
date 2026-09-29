@@ -166,9 +166,35 @@ func benefitDeadline(l string) bool {
 // Application Deadline" is not about a credit.
 var creditCardRE = regexp.MustCompile(`\bcredit\s+cards?\b`)
 
-// replacementLabelRE names a deadline that replaces the others in the same
-// article: "Extended Deadline", "New End Date", "Extended To".
-var replacementLabelRE = regexp.MustCompile(`^(?:extended|new|revised|updated|current)\s+(?:deadline|end\s+date|end|expiration(?:\s+date)?|to|through|thru|until|till)$`)
+// A replacement label names an end that replaces the others in the same
+// article: "Extended Deadline", "Deadline (Extended)", "Extended Offer
+// Deadline", "Extended Promotion Period", "Extension", "New End Date", "New
+// Application Deadline". revisedLabelRE is its revision word and
+// replacedEndRE the end it revises. "New" and "current" qualify only the end
+// itself, or the taking of the offer: a "New Cardmember Deadline" is for new
+// cardmembers. A travel or stay window is not the offer's end, extended or
+// not ("Extended Stay Booking Deadline", "Extended Travel Period").
+var (
+	revisedLabelRE     = regexp.MustCompile(`\b(?:extended|extension|revised|updated)\b`)
+	replacedEndRE      = regexp.MustCompile(`\b(?:deadline|ends?|end\s+date|expiration|expires|period|window|dates|to|through|thru|until|till)\b`)
+	newLabelRE         = regexp.MustCompile(`\b(?:new|current)\s+(?:(?:application|booking|registration|enrollment|offer|promo|promotion|sale|sign[\s-]?up|purchase)\s+)?(?:deadline|end|end\s+date|expiration(?:\s+date)?|period|window|dates|to|through|thru|until|till)\b`)
+	travelLabelRE      = regexp.MustCompile(`\b(?:travel|stays?|trips?|flights?|check[\s-]?(?:in|out))\b`)
+	periodLabelWordsRE = regexp.MustCompile(`\b(?:period|window|dates)\b`)
+)
+
+// replacementLabel reports whether l, a lower-case label, names an end that
+// replaces the others, and if so whether it is a period.
+func replacementLabel(l string) (ok, period bool) {
+	if travelLabelRE.MatchString(l) {
+		return false, false
+	}
+	if l == "extension" || l == "extended" ||
+		revisedLabelRE.MatchString(l) && replacedEndRE.MatchString(l) ||
+		newLabelRE.MatchString(l) {
+		return true, periodLabelWordsRE.MatchString(l)
+	}
+	return false, false
+}
 
 // classify says how a label relates to the offer's end, and whether it
 // names a replacement for the other end dates in the article.
@@ -176,11 +202,17 @@ func classify(label string) (labelKind, bool) {
 	l := strings.ToLower(strings.TrimSpace(label))
 	l = strings.TrimRight(l, ":")
 	l = spaceRE.ReplaceAllString(l, " ")
-	if replacementLabelRE.MatchString(l) {
-		return deadlineLabel, true
-	}
 	if staleLabelRE.MatchString(l) {
 		return notAnEnd, false
+	}
+	if ok, period := replacementLabel(l); ok {
+		switch {
+		case benefitDeadline(l):
+			return notAnEnd, false
+		case period:
+			return periodLabel, true
+		}
+		return deadlineLabel, true
 	}
 	switch {
 	case strings.Contains(l, "deadline"):
@@ -927,7 +959,10 @@ func resolve(dates []found, value string, anchor time.Time) ([]time.Time, bool) 
 // When several details state an end -- a registration deadline and a travel
 // deadline, say -- the earliest wins: after it, a reader can no longer take
 // the offer. A detail labelled as a replacement ("Extended Deadline", "New
-// End Date") sets aside the others: the deadline it extends is over.
+// End Date") sets aside the others: the deadline it extends is over. It
+// never sets an end earlier than the others give, and one that says the
+// offer runs on with no new date ("Extended Deadline: Until further notice")
+// leaves no end date.
 func EndDate(keyDetailsJSON string, anchor time.Time) string {
 	s := strings.TrimSpace(keyDetailsJSON)
 	if s == "" || s == "[]" || s == "null" {
@@ -938,6 +973,7 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 		return ""
 	}
 	var end, replacement time.Time
+	openReplacement := false
 	for _, d := range details {
 		kind, replaces := classify(normalize(d.Label))
 		if kind == notAnEnd {
@@ -946,6 +982,11 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 		value := normalize(d.Value)
 		dates, revised := resolve(scanDates(value, kind, anchor), value, anchor)
 		if len(dates) == 0 {
+			// "Extended Deadline: Until further notice": the deadline
+			// beside it no longer holds, and there is no new one.
+			if replaces && stillOpenRE.MatchString(value) {
+				openReplacement = true
+			}
 			continue
 		}
 		// A deadline's earliest date is its end, unless the value revises
@@ -967,10 +1008,12 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 			end = pick
 		}
 	}
-	if !replacement.IsZero() {
+	// A replacement never moves the end earlier: next to "Deadline: July
+	// 31", an "Extended Deadline: June 30" is the older of the two.
+	if !replacement.IsZero() && (end.IsZero() || replacement.After(end)) {
 		end = replacement
 	}
-	if end.IsZero() {
+	if end.IsZero() || openReplacement {
 		return ""
 	}
 	return end.Format(DateLayout)
