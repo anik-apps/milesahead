@@ -312,6 +312,51 @@ func TestProbe_RetriesThrottledRequests(t *testing.T) {
 	}
 }
 
+// The retry counts the docs state: a 429 is retried at most twice, a
+// timeout once, and a probe makes at most three requests however they fail.
+func TestProbe_MakesAtMostThreeRequests(t *testing.T) {
+	var mu sync.Mutex
+	calls := map[string]int{}
+	s := stubSearcher(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		n := calls[r.URL.Path]
+		calls[r.URL.Path]++
+		mu.Unlock()
+		if strings.Contains(r.URL.Path, "timeout-first") && n == 0 {
+			select { // longer than the render timeout
+			case <-r.Context().Done():
+			case <-time.After(time.Second):
+			}
+			return
+		}
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+	})
+	s.sleep = func(time.Duration) {}
+	s.renderTimeout = 100 * time.Millisecond
+	s.probeBudget = 5 * time.Second
+
+	const thumb = "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/L.jpg/"
+	for _, tt := range []struct {
+		name, url string
+	}{
+		{"429 every time", "https://img.example/throttled.jpg"},
+		{"429 every time, Wikimedia", thumb + "500px-L.jpg"},
+		// The timeout retry and the 429 retry share the three requests.
+		{"a timeout, then 429s", "https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/timeout-first.jpg/500px-timeout-first.jpg"},
+	} {
+		u, _ := url.Parse(tt.url)
+		if p := s.Probe(tt.url, 0); p.OK {
+			t.Errorf("%s: OK for a host that only ever answers 429", tt.name)
+		}
+		mu.Lock()
+		if got := calls[u.Path]; got != 3 {
+			t.Errorf("%s: %d requests, want 3", tt.name, got)
+		}
+		mu.Unlock()
+	}
+}
+
 // slowHost answers every request with a tiny image, after the delay planned
 // for that path's nth request (none once the plan runs out), and counts the
 // requests per path.

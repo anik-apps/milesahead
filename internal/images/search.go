@@ -533,9 +533,10 @@ const reachableTimeout = 8 * time.Second
 // ~30 fresh sizes that took 0.2-3 s mostly, 4-7 s several times and ~10 s
 // once -- past reachableTimeout, so the best candidate was sometimes refused
 // for being slow once. A Wikimedia thumbnail therefore gets renderTimeout per
-// request and, like a 429, one retry after a timeout. maxProbeDuration bounds
-// a whole probe, retries and waits included: no retry starts, and no request
-// runs, past it.
+// request and one retry after a timeout. A 429 from any host is retried up to
+// twice. A probe makes at most maxProbeAttempts requests however they fail,
+// and maxProbeDuration bounds a whole probe, retries and waits included: no
+// retry starts, and no request runs, past it.
 const (
 	renderTimeout    = 15 * time.Second
 	maxProbeDuration = 30 * time.Second
@@ -555,6 +556,8 @@ const (
 
 // A throttled probe is retried, because Wikimedia answers 429 (Retry-After: 1)
 // while it renders a thumbnail size nobody has asked for yet, then serves it.
+// maxProbeAttempts counts every request of a probe, so a 429 is retried at
+// most twice, and a timeout retry leaves room for one more.
 const (
 	maxProbeAttempts = 3
 	maxRetryWait     = 5 * time.Second

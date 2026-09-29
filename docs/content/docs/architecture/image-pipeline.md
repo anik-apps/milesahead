@@ -127,11 +127,12 @@ determined is refused, as is a size of 0. The same check
 (`Searcher.CheckFit`) guards every URL the resize step below writes.
 
 Each probe request waits up to 8 s. A Wikimedia thumbnail may be rendered on
-that very request, so it waits up to 15 s and gets one retry after a timeout,
-as it does after a 429: a render cut off by the timeout carries on at
-Wikimedia, and the retry usually finds it done. A whole probe, retries,
-waits and the GET that measures a file of unknown size included, never takes
-more than 30 s. At pick time the probes also stop at the enrichment pass's
+that very request, so it waits up to 15 s and gets one retry after a timeout:
+a render cut off by the timeout carries on at Wikimedia, and the retry
+usually finds it done. A 429 is retried up to twice, after its `Retry-After`
+(at most 5 s). A probe makes at most three requests however they fail, and
+a whole probe, retries, waits and the GET that measures a file of unknown
+size included, never takes more than 30 s. At pick time the probes also stop at the enrichment pass's
 deadline, so a hanging image host cannot hold a pass past its end (and make
 the scheduler skip the next one); an article cut short there gets no image
 that pass. If the article's other model calls have already run past the
