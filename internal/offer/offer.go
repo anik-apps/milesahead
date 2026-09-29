@@ -52,6 +52,8 @@ const (
 	// deadlineLabel is a last day to act ("Deadline", "Booking Deadline").
 	// When its value names several dates, the earliest is the one that
 	// matters: once it passes, a new reader can no longer take the offer.
+	// A value that tells how the deadline changed is the exception: its
+	// earlier date is the old deadline, and the latest is the end.
 	deadlineLabel
 	// periodLabel is the window the offer runs in ("Promotion Period:
 	// April 6 - June 7, 2026"). Its last date is the end.
@@ -296,6 +298,14 @@ var endedWordRE = regexp.MustCompile(`(?i)\b(?:ended|expired|is\s+over|now\s+ove
 // ended ("Ongoing (the 60K offer ended June 1)", "hasn't ended yet"). The
 // "ended" in it is then about something else, and keeps no date.
 var stillOpenRE = regexp.MustCompile(`(?i)(?:\b(?:ongoing|unknown|unannounced|indefinite(?:ly)?|open[\s-]ended|tb[adc]|until\s+further\s+notice|to\s+be\s+(?:announced|determined|confirmed)|not\s+(?:yet\s+)?(?:announced|set|known|specified|disclosed)|no\s+(?:set\s+|fixed\s+|firm\s+|announced\s+|known\s+|official\s+)?(?:end(?:\s+date)?|expiration(?:\s+date)?|deadline)|still\s+(?:live|available|open|running|active)|never\s+expires?)\b|(?:n't|\bnot|\bnever)\s+(?:yet\s+)?(?:been\s+)?(?:ended|expired|over)\b)`)
+
+// revisionRE finds a value that tells how its deadline changed: "July 31
+// (originally June 30)", "June 30 was the old deadline", "June 30 (now runs
+// through July 31)", "update: July 31", "extended by a month to July 31". Of
+// two dates left in such a value, the earlier is almost always the one it
+// replaced, so the later is the end. A "now" has to open its clause: in
+// "book now through June 30" it means from today.
+var revisionRE = regexp.MustCompile(`(?i)\b(?:extend(?:s|ed|ing)?|extensions?|original(?:ly)?|initially|previously|formerly|first|was|were|had\s+been|used\s+to|updat(?:e|es|ed|ing)|moved|pushed|postponed|delayed|changed|revised|new)\b|(?:^|[,;(!.:-])\s*now\b`)
 
 // historyRE finds a clause about an earlier run of the offer ("last year's
 // version ended June 30, 2025", "prior offer expired May 31", "a similar
@@ -731,7 +741,13 @@ func saysEnded(value string) bool {
 // Last, a date before the article was written gives way to one on or after
 // it. The article describes an offer that is running, so in "July 31, 2026
 // (launched June 1)" written in July the earlier date is history.
-func resolve(dates []found, value string, anchor time.Time) []time.Time {
+//
+// The bool reports that the value revises its deadline (see revisionRE)
+// and still holds more than one date, none of them an extension's: the
+// caller then takes the latest. Where an extension's date survives, it has
+// already set aside the dates it pushed back, and the others are ends of
+// their own.
+func resolve(dates []found, value string, anchor time.Time) ([]time.Time, bool) {
 	written := time.Date(anchor.Year(), anchor.Month(), anchor.Day(), 0, 0, 0, 0, time.UTC)
 	floor := written.AddDate(0, 0, -yearlessGraceDays)
 
@@ -881,24 +897,24 @@ func resolve(dates []found, value string, anchor time.Time) []time.Time {
 		}
 	}
 
-	out := make([]time.Time, 0, len(ends))
 	current := false
 	for _, i := range ends {
-		out = append(out, days[i])
 		if !days[i].Before(written) {
 			current = true
 		}
 	}
-	if current {
-		kept := out[:0]
-		for _, t := range out {
-			if !t.Before(written) {
-				kept = append(kept, t)
-			}
+	out := make([]time.Time, 0, len(ends))
+	extendedTo := false
+	for _, i := range ends {
+		if current && days[i].Before(written) {
+			continue
 		}
-		out = kept
+		out = append(out, days[i])
+		if dates[i].replaces {
+			extendedTo = true
+		}
 	}
-	return out
+	return out, len(out) > 1 && !extendedTo && revisionRE.MatchString(value)
 }
 
 // EndDate returns the last day of the offer described by keyDetailsJSON, as
@@ -928,13 +944,16 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 			continue
 		}
 		value := normalize(d.Value)
-		dates := resolve(scanDates(value, kind, anchor), value, anchor)
+		dates, revised := resolve(scanDates(value, kind, anchor), value, anchor)
 		if len(dates) == 0 {
 			continue
 		}
+		// A deadline's earliest date is its end, unless the value revises
+		// it: then the earlier dates are what it used to be.
+		latest := kind == periodLabel || revised
 		pick := dates[0]
 		for _, t := range dates[1:] {
-			if kind == deadlineLabel && t.Before(pick) || kind == periodLabel && t.After(pick) {
+			if latest && t.After(pick) || !latest && t.Before(pick) {
 				pick = t
 			}
 		}

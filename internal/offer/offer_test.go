@@ -758,6 +758,44 @@ func TestEndDate_BookingWithABenefitIsUsingIt(t *testing.T) {
 	}
 }
 
+// A deadline value that tells how the deadline changed takes its latest
+// date. There are too many ways to say "it used to be June 30" to catch
+// each; taking the earliest read every one of these as ending June 30.
+func TestEndDate_RevisedDeadlineTakesTheLatestDate(t *testing.T) {
+	const written = "2026-06-10"
+	var cases []endDateCase
+	for _, v := range []string{
+		"July 31, 2026 (originally through June 30)",
+		"July 31, 2026 (originally scheduled to end June 30)",
+		"July 31, 2026 (originally set to expire June 30)",
+		"July 31, 2026 (initially set for June 30)",
+		"July 31, 2026 (initially slated to end on June 30)",
+		"July 31, 2026 (previously through June 30)",
+		"July 31, 2026 (had been June 30)",
+		"July 31, 2026 (used to be June 30)",
+		"July 31, 2026 (June 30 previously)",
+		"July 31, 2026 (the June 30 deadline was extended)",
+		"July 31, 2026; June 30 was the old deadline",
+		"June 30, 2026 (now ends July 31, 2026)",
+		"June 30, 2026 (now runs through July 31, 2026)",
+		"June 30, 2026 (now valid until July 31, 2026)",
+		"June 30, 2026 - update: July 31, 2026",
+		"June 30, 2026 (extended — July 31, 2026)",
+		"June 30, 2026, extended by a month to July 31, 2026",
+		"June 30, 2026, extended 30 days to July 31, 2026",
+	} {
+		cases = append(cases, endDateCase{v, "Deadline", v, written, "2026-07-31"})
+	}
+	cases = append(cases,
+		// No revision: the earlier deadline is the one to meet.
+		endDateCase{"two deadlines", "Deadline", "June 30, 2026 (registration) and July 31, 2026 (travel)", written, "2026-06-30"},
+		endDateCase{"book now through", "Deadline", "Register by June 15, 2026; book now through June 30, 2026", written, "2026-06-15"},
+		// An extension's own date already set the old one aside.
+		endDateCase{"extension beside a later end", "Deadline", "Book by June 15, 2026 for travel through December 31, 2026 (extended to July 15, 2026)", written, "2026-07-15"},
+	)
+	runEndDateCases(t, cases)
+}
+
 // The last day is still live; the offer has ended from the next day.
 func TestEnded(t *testing.T) {
 	cases := []struct {
