@@ -171,24 +171,37 @@ func (s *Service) Run() {
 	slog.Info("enrichment pass starting", "articles", len(articles),
 		"deadline", s.maxDuration())
 	var filled, failed, done int
+	hitDeadline := func() {
+		metrics.EnrichmentPassesTotal.WithLabelValues("deadline").Inc()
+		slog.Warn("enrichment pass hit its deadline",
+			"processed", done, "abandoned", len(articles)-done,
+			"elapsed", time.Since(start).Round(time.Second))
+		// Deliberately NOT a liveness update: the pass did not finish its
+		// work, and treating it as success would mask a provider that is
+		// slow enough to prevent the backlog ever draining.
+	}
 	for i, a := range articles {
-		if time.Now().After(deadline) {
-			metrics.EnrichmentPassesTotal.WithLabelValues("deadline").Inc()
-			slog.Warn("enrichment pass hit its deadline",
-				"processed", done, "abandoned", len(articles)-done,
-				"elapsed", time.Since(start).Round(time.Second))
-			// Deliberately NOT a liveness update: the pass did not finish its
-			// work, and treating it as success would mask a provider that is
-			// slow enough to prevent the backlog ever draining.
-			return
-		}
+		// Pace before the deadline check, so no article starts after the
+		// deadline because the sleep ran past it.
 		if i > 0 && s.Pace > 0 {
 			time.Sleep(s.Pace)
 		}
-		got, missed := s.enrichOne(a, deadline)
+		if time.Now().After(deadline) {
+			hitDeadline()
+			return
+		}
+		got, missed, putOff := s.enrichOne(a, deadline)
 		filled += got
 		failed += missed
 		done++
+		if putOff {
+			// The deadline passed during this article and its image search
+			// waits for the next pass. Any article after it would stop at the
+			// check above; the last one would otherwise end the pass as
+			// "completed" with work left undone.
+			hitDeadline()
+			return
+		}
 	}
 
 	metrics.EnrichmentPassesTotal.WithLabelValues("completed").Inc()
@@ -221,7 +234,10 @@ func (s *Service) refreshDegradedGauge() {
 // A partial success is kept: each field is written independently, so one
 // failing step does not discard the others. deadline is the pass's: the image
 // checks stop at it (see findImage).
-func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (filled, failed int) {
+//
+// putOff reports that the image search was put off because the deadline had
+// passed; whatever else was filled is still saved.
+func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (filled, failed int, putOff bool) {
 	var u db.EnrichmentUpdate
 
 	if a.MissingScoutsTake {
@@ -265,13 +281,12 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 		}
 	}
 
-	imagePutOff := false
 	if a.MissingImage {
 		switch s.findImage(&u, a, deadline) {
 		case imageFound:
 			filled++
 		case imageDeferred:
-			imagePutOff = true
+			putOff = true
 		default:
 			failed++
 		}
@@ -280,9 +295,9 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 	// An image search put off for lack of time was not tried, so it is not
 	// charged: if nothing else failed, the attempt is not counted, and an
 	// article with nothing to write is not touched at all.
-	if imagePutOff && failed == 0 {
+	if putOff && failed == 0 {
 		if filled == 0 {
-			return 0, 0
+			return 0, 0, true
 		}
 		u.Uncounted = true
 	}
@@ -296,15 +311,15 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 		metrics.EnrichmentFailuresTotal.WithLabelValues("save").Inc()
 		slog.Error("enrichment: could not save, work discarded and attempt not counted",
 			"article_id", a.ID, "fields_filled", filled, "error", err)
-		return filled, failed
+		return filled, failed, putOff
 	}
 	attempt := a.Attempts + 1
 	if u.Uncounted {
 		attempt = a.Attempts
 	}
 	slog.Info("enrichment applied", "article_id", a.ID, "was_missing", a.Missing(),
-		"filled", filled, "failed", failed, "attempt", attempt, "image_deferred", imagePutOff)
-	return filled, failed
+		"filled", filled, "failed", failed, "attempt", attempt, "image_deferred", putOff)
+	return filled, failed, putOff
 }
 
 // imageResult is what findImage did.

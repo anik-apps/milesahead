@@ -1,7 +1,9 @@
 package enrich
 
 import (
+	"bytes"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -61,6 +63,12 @@ const (
 	htmlOrig        = wm + "7/7a/" + htmlOrigFile
 	goneOrigFile    = "Gone_original.png"
 	goneOrig        = wm + "7/7b/" + goneOrigFile
+	// Stored at 800 px, and multi-megabyte at every step: a very tall PNG,
+	// and one whose thumbnail steps are the ones too heavy.
+	hugeFile = "Huge_render.png"
+	huge800  = wm + "thumb/8/8a/" + hugeFile + "/800px-" + hugeFile
+	tallFile = "Tall_render.png"
+	tall800  = wm + "thumb/8/8b/" + tallFile + "/800px-" + tallFile
 
 	flickrB  = "https://live.staticflickr.com/65535/54420209608_0aa8ea537a_b.jpg"
 	unsplash = "https://images.unsplash.com/photo-1?w=1080"
@@ -101,6 +109,17 @@ var stepBytes = map[string]int{
 	"960px-" + goneOrigFile:  1_900_000,
 	"500px-" + goneOrigFile:  1_200_000,
 	"330px-" + goneOrigFile:  200_000,
+	// Over twice the display cap at every step, stored at 800 px.
+	"1280px-" + hugeFile: 9_000_000,
+	"960px-" + hugeFile:  7_000_000,
+	"500px-" + hugeFile:  5_000_000,
+	"330px-" + hugeFile:  3_000_000,
+	// Within twice the display cap at 500 px, over twice the thumbnail cap
+	// at 330 px; stored at 800 px.
+	"1280px-" + tallFile: 2_400_000,
+	"960px-" + tallFile:  1_900_000,
+	"500px-" + tallFile:  1_500_000,
+	"330px-" + tallFile:  1_200_000,
 	// Over the cap at the first step, within it at the next one down.
 	"1280px-" + detailedFile: 1_500_000,
 	"960px-" + detailedFile:  700_000,
@@ -155,6 +174,8 @@ func (h *imageHosts) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			{"title":"File:Broken heavy.png","imageinfo":[{"width":5000}]},
 			{"title":"File:Html original.png","imageinfo":[{"width":5000}]},
 			{"title":"File:Gone original.png","imageinfo":[{"width":5000}]},
+			{"title":"File:Huge render.png","imageinfo":[{"width":5000}]},
+			{"title":"File:Tall render.png","imageinfo":[{"width":5000}]},
 			{"title":"File:Capital One advert, Newport.jpg","missing":true}]}}`))
 	case strings.Contains(p, "Uncached.jpg/"):
 		// A thumbnail the host keeps failing to render.
@@ -1145,6 +1166,8 @@ func TestFindImage_DoesNotStartPastThePassDeadline(t *testing.T) {
 	s.MaxDuration = 200 * time.Millisecond
 
 	failures := imageFailures(t)
+	completed, deadlinePasses := passCount(t, "completed"), passCount(t, "deadline")
+	lastSuccess := lastSuccessTimestamp(t)
 	s.Run()
 
 	mu.Lock()
@@ -1152,6 +1175,17 @@ func TestFindImage_DoesNotStartPastThePassDeadline(t *testing.T) {
 		t.Errorf("searched for images after the pass deadline: %v", searched)
 	}
 	mu.Unlock()
+	// The batch's only article put its image off: the pass did not finish
+	// its work, so it is not "completed" and is not a liveness update.
+	if got := passCount(t, "deadline") - deadlinePasses; got != 1 {
+		t.Errorf("deadline passes +%v, want +1", got)
+	}
+	if got := passCount(t, "completed") - completed; got != 0 {
+		t.Errorf("completed passes +%v, want 0", got)
+	}
+	if got := lastSuccessTimestamp(t); got != lastSuccess {
+		t.Errorf("last success timestamp moved (%v -> %v) on a pass that put work off", lastSuccess, got)
+	}
 	for _, p := range client.prompts {
 		if strings.Contains(p, "image search queries") {
 			t.Error("generated image queries after the pass deadline")
@@ -1190,8 +1224,8 @@ func TestFindImage_DoesNotStartPastThePassDeadline(t *testing.T) {
 			continue
 		}
 		reached = true
-		if filled, failed := s.enrichOne(a, time.Now().Add(-time.Second)); filled != 0 || failed != 0 {
-			t.Errorf("enrichOne = %d filled, %d failed; want 0 and 0", filled, failed)
+		if filled, failed, putOff := s.enrichOne(a, time.Now().Add(-time.Second)); filled != 0 || failed != 0 || !putOff {
+			t.Errorf("enrichOne = %d filled, %d failed, put off %v; want 0, 0 and put off", filled, failed, putOff)
 		}
 	}
 	if !reached {
@@ -1260,5 +1294,97 @@ func TestRun_Broken800pxDisplayImageIsReplaced(t *testing.T) {
 	}
 	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 0 || got2 != 0 {
 		t.Errorf("gauges: unsized %v, unconvertible %v; want 0 and 0", got, got2)
+	}
+}
+
+// A broken display image was replaced by the lightest sized copy whatever it
+// weighed, so a 5 MB 500px rendering of a very tall PNG would have been
+// stored. A copy replaces a broken file only within twice its field's cap;
+// past that the image is cleared for enrichment to pick a new one within the
+// caps -- also when it is the thumbnail's copies that are too heavy.
+func TestRun_BrokenImageIsNotReplacedByAMultiMegabyteCopy(t *testing.T) {
+	d := testDB(t)
+	hosts := &imageHosts{}
+	s := newResizeService(t, d, hosts)
+
+	hugeRow := seedImage(t, d, huge800, huge800)
+	tallRow := seedImage(t, d, tall800, tall800)
+	resizedBefore, clearedBefore := resizeCount(t, "resized"), resizeCount(t, "cleared")
+	s.Run()
+
+	for _, c := range []struct {
+		name string
+		id   int64
+	}{
+		{"5 MB at 500 px", hugeRow},
+		{"1.2 MB thumbnail at 330 px", tallRow},
+	} {
+		if url, thumb, _ := storedImage(t, d, c.id); url != "" || thumb != "" {
+			t.Errorf("%s: image %q / %q, want cleared", c.name, url, thumb)
+		}
+	}
+	if got := resizeCount(t, "cleared") - clearedBefore; got != 2 {
+		t.Errorf("cleared counter +%v, want +2", got)
+	}
+	if got := resizeCount(t, "resized") - resizedBefore; got != 0 {
+		t.Errorf("resized counter +%v, want 0", got)
+	}
+	if got, got2 := unsizedGauge(t), unconvertibleGauge(t); got != 0 || got2 != 0 {
+		t.Errorf("gauges: unsized %v, unconvertible %v; want 0 and 0", got, got2)
+	}
+	hosts.noNonStandardWidths800(t)
+}
+
+// syncBuffer is a bytes.Buffer safe to write from several goroutines.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// captureLogs sends the default logger to a buffer for the rest of the test.
+func captureLogs(t *testing.T) *syncBuffer {
+	t.Helper()
+	buf := &syncBuffer{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return buf
+}
+
+// A check of a deleted file's URL cut short by the resize budget got no
+// answer at all, but was logged as one that "did not answer 404/410", with
+// status 0, as if the URL had been seen to answer something else.
+func TestClearIfGone_CutShortCheckIsLoggedAsSuch(t *testing.T) {
+	d := testDB(t)
+	hosts := &imageHosts{}
+	s := newResizeService(t, d, hosts)
+	id := seedImage(t, d, gone, gone)
+	logs := captureLogs(t)
+
+	row := db.StoredArticleImage{ID: id, URL: gone, Thumbnail: gone}
+	if got := s.clearIfGone(row, time.Now().Add(-time.Second)); got != goneUnknown {
+		t.Errorf("clearIfGone = %v, want goneUnknown", got)
+	}
+	if url, thumb, _ := storedImage(t, d, id); url != gone || thumb != gone {
+		t.Errorf("image %q / %q; a check cut short must keep it", url, thumb)
+	}
+	out := logs.String()
+	if strings.Contains(out, "did not answer 404/410") {
+		t.Errorf("a check cut short was logged as an answer:\n%s", out)
+	}
+	if !strings.Contains(out, "cut short or failed") {
+		t.Errorf("no log says the check was cut short or failed:\n%s", out)
 	}
 }

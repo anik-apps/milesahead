@@ -32,6 +32,14 @@ const (
 	resizeBackoff               = 6 * time.Hour
 )
 
+// brokenCeilingFactor bounds what replaces a stored file that does not load:
+// a sized copy over its field's byte cap is taken for a broken file only when
+// it is within this many times the cap -- 2 MiB for the display image, 1 MiB
+// for the thumbnail. Past that, a working image is not worth storing a
+// multi-megabyte one (a very tall PNG, a dense scan), and the row is handed
+// back to enrichment instead, which picks within the caps.
+const brokenCeilingFactor = 2
+
 // The widths tried for each field, best first. A narrower one is used only
 // when the wider ones come back as images over the field's byte cap -- a
 // detailed PNG can pass 1 MiB at 1280 and 960 px -- because any sized copy
@@ -69,7 +77,9 @@ type resizeOutcome int
 const (
 	// resizeDone: every field that needed it now holds a confirmed sized URL.
 	resizeDone resizeOutcome = iota
-	// resizeCleared: a deleted Commons file was removed for re-enrichment.
+	// resizeCleared: a broken image -- a deleted Commons file, or one that
+	// does not load and has no sized copy within brokenCeilingFactor times
+	// its cap -- was removed for re-enrichment.
 	resizeCleared
 	// resizeIncomplete: at least one field could not be confirmed and keeps
 	// its current URL. The row counts towards the backoff.
@@ -111,6 +121,9 @@ const (
 //     or 410, is already a broken image. It is cleared and handed back to
 //     enrichment to pick a new one, as repairRottedImages does for expired
 //     Pixabay links. If the URL still loads, it is left alone.
+//   - So is a stored file that does not load when every sized copy of it is
+//     over brokenCeilingFactor times its field's cap (see pickSized): a
+//     working image is not worth storing a multi-megabyte one.
 //
 // It is bounded: it stops at deadline (Run passes the resize budget, not the
 // whole pass's), sends at most ResizeMaxRows rows to the network per pass,
@@ -232,7 +245,7 @@ func (s *Service) resizeStoredImages(deadline time.Time) {
 	metrics.ArticleImagesUnconvertible.Set(float64(unconvertible))
 	if len(jobs) > 0 || setAside > 0 || deferred > 0 {
 		slog.Info("image resize pass complete", "resized", resized,
-			"left_unchanged_unconfirmed", unconfirmed, "cleared_deleted", cleared,
+			"left_unchanged_unconfirmed", unconfirmed, "cleared_broken", cleared,
 			"found_unconvertible", foundUnconvertible,
 			"deferred_to_next_pass", deferred, "set_aside", setAside,
 			"still_unsized", unsized, "unconvertible", unconvertible)
@@ -245,7 +258,7 @@ func (s *Service) resizeOne(job resizeJob, deadline time.Time) (resizeOutcome, d
 	a := job.row
 	// transient: something failed that may work next time. permanent: a
 	// field cannot be converted as things stand.
-	transient, permanent := false, false
+	transient, permanent, broken := false, false, false
 	if job.deleted {
 		switch s.clearIfGone(a, deadline) {
 		case goneCleared:
@@ -281,7 +294,7 @@ func (s *Service) resizeOne(job resizeJob, deadline time.Time) (resizeOutcome, d
 		{job.thumbs, images.MaxThumbnailBytes, a.Thumbnail, &newThumb},
 	}
 	for _, f := range fields {
-		if f.candidates == nil {
+		if f.candidates == nil || broken {
 			continue
 		}
 		switch u, found := s.pickSized(f.candidates, f.limit, f.current, deadline); found {
@@ -289,9 +302,31 @@ func (s *Service) resizeOne(job resizeJob, deadline time.Time) (resizeOutcome, d
 			*f.out = u
 		case sizedNoLighter:
 			permanent = true
+		case sizedBrokenTooHeavy:
+			broken = true
 		default:
 			transient = true
 		}
+	}
+
+	if broken {
+		// A field is a broken image with no copy light enough to replace it.
+		// Clearing the row, as for a deleted file, lets enrichment pick a new
+		// picture within the caps. Both fields go: they are one picture, and
+		// ClearArticleImage only writes if the row still holds what was read.
+		ok, err := s.db.ClearArticleImage(a)
+		if err != nil {
+			slog.Warn("image resize: could not clear broken image", "article_id", a.ID, "error", err)
+			return resizeSkipped, a
+		}
+		if !ok {
+			return resizeSkipped, a // the row changed under us
+		}
+		slog.Warn("image resize: article image does not load and every sized copy is too heavy; "+
+			"cleared so enrichment picks a new one", "article_id", a.ID,
+			"image_url", a.URL, "thumbnail", a.Thumbnail)
+		delete(s.resizeRetries, a.ID)
+		return resizeCleared, db.StoredArticleImage{ID: a.ID}
 	}
 
 	if newURL != a.URL || newThumb != a.Thumbnail {
@@ -335,6 +370,10 @@ const (
 	// sizedNoLighter: every copy is an image over the cap, and none is
 	// known to be lighter than the file the field holds.
 	sizedNoLighter
+	// sizedBrokenTooHeavy: the file the field holds does not load, and every
+	// copy is over brokenCeilingFactor times the cap. Nothing is stored; the
+	// image is cleared for enrichment to replace.
+	sizedBrokenTooHeavy
 )
 
 // pickSized returns the URL to store in a field that holds current, trying
@@ -351,7 +390,9 @@ const (
 // would keep the original and be retried every resizeBackoff for good. It is
 // never swapped for something heavier -- unless current does not load at
 // all, such as an 800px Commons thumbnail that now answers 400: an image
-// that has just been seen to load beats a broken one, whatever it weighs.
+// that has just been seen to load beats a broken one, as long as it is
+// within brokenCeilingFactor times the cap. If it is heavier than that,
+// nothing is stored (sizedBrokenTooHeavy) and the image is cleared instead.
 //
 // No probe runs past by; one it cuts short counts as not loading.
 func (s *Service) pickSized(candidates []string, limit int64, current string, by time.Time) (string, sizedFind) {
@@ -376,6 +417,11 @@ func (s *Service) pickSized(candidates []string, limit int64, current string, by
 	switch {
 	case cur.Status == 0 || cur.Status == http.StatusTooManyRequests || cur.Status >= 500:
 		return "", sizedUnconfirmed // the request failed; compare next time
+	case (!cur.OK || !cur.IsImage()) && lightestSize > brokenCeilingFactor*limit:
+		slog.Info("image resize: the current file does not load and every sized copy is too heavy to replace it",
+			"url", current, "current_status", cur.Status, "current_content_type", cur.ContentType,
+			"lightest_copy", lightest, "lightest_bytes", lightestSize, "ceiling", brokenCeilingFactor*limit)
+		return "", sizedBrokenTooHeavy
 	case !cur.OK || !cur.IsImage():
 		slog.Info("image resize: every sized copy is over its cap and the current file does not load; taking the lightest",
 			"url", lightest, "bytes", lightestSize, "limit", limit,
@@ -636,6 +682,11 @@ const (
 // cuts short is goneUnknown.
 func (s *Service) clearIfGone(a db.StoredArticleImage, by time.Time) goneCheck {
 	p := s.searcher.ProbeUntil(displayWidthKey(a.URL), 0, by)
+	if p.Status == 0 {
+		slog.Info("image resize: Commons reports the file deleted but the check of its URL was cut short or failed; keeping it for now",
+			"article_id", a.ID, "image_url", a.URL)
+		return goneUnknown
+	}
 	if p.Status != http.StatusNotFound && p.Status != http.StatusGone {
 		slog.Info("image resize: Commons reports the file deleted but its URL did not answer 404/410; keeping it",
 			"article_id", a.ID, "image_url", a.URL, "status", p.Status)

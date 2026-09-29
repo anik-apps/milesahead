@@ -133,7 +133,8 @@ var (
 
 	// ImageResizeTotal counts what the stored-image resize did with each row
 	// it tried: swapped for sized copies, left unchanged because a sized URL
-	// could not be confirmed, cleared because the file was deleted, or found
+	// could not be confirmed, cleared because the file was deleted (or does not
+	// load and every sized copy is too heavy to replace it), or found
 	// unconvertible (see ArticleImagesUnconvertible).
 	ImageResizeTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "milesahead_image_resize_total",

@@ -117,8 +117,9 @@ const gridThumbSlotMax = 466
 // The page does not know how heavy the display image is, so the srcset does
 // not check it. The pick path confirms both fields within their byte caps.
 // The resize settles for a display image over its cap only when every step
-// down to 500px is over 1 MiB (or the stored file no longer loads); if it
-// also chose the thumbnail, that thumbnail is the 330px step -- the 500px
+// down to 500px is over 1 MiB and the copy it takes is either lighter than
+// the stored file or, if the stored file no longer loads, at most 2 MiB; if
+// it also chose the thumbnail, that thumbnail is the 330px step -- the 500px
 // copy is over the 512 KiB thumbnail cap too -- and the row gets no srcset.
 // That does not hold for a thumbnail the resize left as it was: a 500px
 // thumbnail stored some other way beside an over-cap display image would
