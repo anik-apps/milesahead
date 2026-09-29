@@ -148,7 +148,9 @@
             <button type="button" class="ig-lightbox-close" data-ig-close autofocus>Close <span aria-hidden="true">&#10005;</span></button>
         </div>
         {{/* data-src, not src: the ~400 KB image loads only when the viewer opens */}}
-        <img data-src="{{.InfographicImage}}" alt="{{.Infographic.Alt}}" width="1024" height="1536">
+        {{/* The real size, read from the JPEG: 1024x1536 for the 2:3 layout, taller for
+             longer designs. It reserves the image's box before it loads. */}}
+        <img data-src="{{.InfographicImage}}" alt="{{.Infographic.Alt}}" width="{{.InfographicWidth}}" height="{{.InfographicHeight}}">
         {{if .Infographic.Text}}
         {{/* Collapsed: the figures stay available to screen readers and on request,
              without a page of notes under the image. */}}

@@ -860,6 +860,14 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		data["Infographic"] = ig
 		data["InfographicImage"] = base + ".jpg" + version
 		data["InfographicTeaser"] = base + "-teaser.jpg" + version
+		// 1024 wide always; the height follows the image, so a design taller than
+		// 2:3 is shown whole rather than squeezed into the original layout's box.
+		height := app.infographicHeights[page.Slug]
+		if height == 0 {
+			height = infographicDefaultHeight
+		}
+		data["InfographicWidth"] = infographicWidth
+		data["InfographicHeight"] = height
 	}
 
 	app.renderTemplate(w, "card.html", data)
