@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"html"
 	"image"
 	"image/jpeg"
@@ -294,11 +295,14 @@ func TestHandleCard_InfographicHeightFollowsImage(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
 	createPublishedCard(t, app, "amex-platinum", "American Express Platinum Card")
 
-	if got := app.infographicHeights["amex-platinum"]; got != 1536 {
-		t.Fatalf("expected the committed amex-platinum image to read as 1536 high, got %d", got)
+	// Compare with the committed file rather than a fixed number, so a
+	// re-exported (e.g. taller) design does not fail this test.
+	want := jpegSize(t, filepath.Join("..", "..", "static", "img", "infographic-amex-platinum.jpg")).Y
+	if got := app.infographicHeights["amex-platinum"]; got != want {
+		t.Fatalf("expected the committed amex-platinum image to read as %d high, got %d", want, got)
 	}
-	if body := getCardPage(t, app, "amex-platinum"); !strings.Contains(body, `width="1024" height="1536">`) {
-		t.Error("a 2:3 image should keep its 1024x1536 viewer size")
+	if body := getCardPage(t, app, "amex-platinum"); !strings.Contains(body, fmt.Sprintf(`width="1024" height="%d">`, want)) {
+		t.Errorf("the viewer should carry the image's own size, 1024x%d", want)
 	}
 
 	app.infographicHeights["amex-platinum"] = 1818
