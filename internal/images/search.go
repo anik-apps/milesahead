@@ -695,6 +695,11 @@ func rendersOnDemand(rawURL string) bool {
 	return ok && f.width > 0
 }
 
+// wikimediaConcurrency is the most requests Warm has in flight at once:
+// Wikimedia's robot policy asks clients of upload.wikimedia.org to keep "a
+// total concurrency of at most 2" (wikitech.wikimedia.org/wiki/Robot_policy).
+const wikimediaConcurrency = 2
+
 // Warm requests each Wikimedia thumbnail in urls once, so that the size has
 // been rendered before another client asks for it. The vision scorer fetches
 // candidates' thumbnails itself, and as the first client to ask for a new
@@ -702,13 +707,15 @@ func rendersOnDemand(rawURL string) bool {
 // failure penalty however good the image was. Other URLs are served from
 // stored files and are skipped.
 //
-// The requests run side by side, and each is given renderTimeout with no
-// retry after a timeout: warming is a courtesy that runs outside any pass
-// deadline, and a render cut off by the timeout carries on at Wikimedia
-// anyway. So warming takes at most renderTimeout, plus any 429 waits within
-// it.
+// The requests run side by side, at most wikimediaConcurrency at a time, and
+// each is given renderTimeout with no retry after a timeout: warming is a
+// courtesy that runs outside any pass deadline, and a render cut off by the
+// timeout carries on at Wikimedia anyway. All of it, 429 waits included,
+// ends renderTimeout after it starts; a thumbnail whose turn has not come by
+// then is not requested.
 func (s *Searcher) Warm(urls []string) {
 	var wg sync.WaitGroup
+	slots := make(chan struct{}, wikimediaConcurrency)
 	seen := map[string]bool{}
 	by := time.Now().Add(s.renderTimeout)
 	for _, u := range urls {
@@ -719,7 +726,11 @@ func (s *Searcher) Warm(urls []string) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s.probeUntil(u, 0, by)
+			slots <- struct{}{}
+			defer func() { <-slots }()
+			if time.Now().Before(by) {
+				s.probeUntil(u, 0, by)
+			}
 		}()
 	}
 	wg.Wait()

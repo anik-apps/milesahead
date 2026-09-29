@@ -80,9 +80,11 @@ The vision model fetches each thumbnail itself. A sized Wikimedia thumbnail is
 often a size nobody has asked for, which Wikimedia renders on the first
 request -- usually in 0.2-3 s, sometimes 4-10 s, or with a 429 -- and a failed
 fetch costs the candidate a x0.6 penalty. So before any thumbnail is sent,
-the Wikimedia ones among the top 5 are requested once, side by side
-(`Searcher.Warm`), and the vision model finds them rendered. Warming waits at
-most 15 s, with no retry: a render cut off then carries on at Wikimedia. The
+the Wikimedia ones among the top 5 are requested once, two at a time
+(`Searcher.Warm`; Wikimedia's robot policy asks for a concurrency of at most
+2 against upload.wikimedia.org), and the vision model finds them rendered.
+Warming waits at most 15 s in all, with no retry: a render cut off then
+carries on at Wikimedia. The
 searcher is an argument of `Scorer.SetVisionModel`, so vision scoring cannot
 be switched on without it.
 

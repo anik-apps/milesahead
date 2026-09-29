@@ -582,6 +582,43 @@ func TestWarm_RequestsOnlyWikimediaThumbnails(t *testing.T) {
 	}
 }
 
+// Wikimedia's robot policy asks for a total concurrency of at most 2 against
+// upload.wikimedia.org. Warm is the one place the process asks it for several
+// files at once (the scorer passes up to five thumbnails), so it must not
+// have more than two in flight, and it still warms every one.
+func TestWarm_KeepsAtMostTwoRequestsInFlight(t *testing.T) {
+	var mu sync.Mutex
+	inFlight, peak, served := 0, 0, 0
+	s := stubSearcher(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		inFlight++
+		peak = max(peak, inFlight)
+		mu.Unlock()
+		time.Sleep(60 * time.Millisecond)
+		mu.Lock()
+		inFlight--
+		served++
+		mu.Unlock()
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Write([]byte("j"))
+	})
+	s.renderTimeout = 2 * time.Second
+	var urls []string
+	for _, name := range []string{"A", "B", "C", "D", "E"} {
+		urls = append(urls, fmt.Sprintf(
+			"https://upload.wikimedia.org/wikipedia/commons/thumb/6/6c/%s.jpg/500px-%s.jpg", name, name))
+	}
+	s.Warm(urls)
+	mu.Lock()
+	defer mu.Unlock()
+	if peak > wikimediaConcurrency {
+		t.Errorf("%d requests in flight at once; want at most %d", peak, wikimediaConcurrency)
+	}
+	if served != len(urls) {
+		t.Errorf("%d thumbnails warmed; want all %d", served, len(urls))
+	}
+}
+
 // Usable is the pick-time guard: whatever the URL looks like, a file heavier
 // than its slot is not stored.
 func TestUsable_EnforcesByteCaps(t *testing.T) {
