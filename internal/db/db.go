@@ -562,7 +562,8 @@ func (d *Database) HasVoted(articleID int64, ipHash string) (bool, error) {
 
 // --- Newsletter CRUD ---
 
-// CreateNewsletter stores n. Its CreatedAt is now unless n sets it.
+// CreateNewsletter stores n. Its CreatedAt is now unless n sets it, and n
+// is left holding the CreatedAt stored.
 func (d *Database) CreateNewsletter(n *Newsletter) (int64, error) {
 	created := time.Now().UTC()
 	if n.CreatedAt != nil {
@@ -575,6 +576,7 @@ func (d *Database) CreateNewsletter(n *Newsletter) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	n.CreatedAt = &created
 	return res.LastInsertId()
 }
 

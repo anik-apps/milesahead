@@ -577,13 +577,14 @@ func TestArticleVote(t *testing.T) {
 func TestNewsletter(t *testing.T) {
 	d := openTestDB(t)
 
-	id, err := d.CreateNewsletter(&Newsletter{
+	n := &Newsletter{
 		Date:         "2026-03-24",
 		Subject:      "Daily Miles Digest",
 		HTMLContent:  "<h1>Hello</h1>",
 		Status:       StatusDraft,
 		ArticleCount: 5,
-	})
+	}
+	id, err := d.CreateNewsletter(n)
 	if err != nil {
 		t.Fatalf("CreateNewsletter: %v", err)
 	}
@@ -597,6 +598,10 @@ func TestNewsletter(t *testing.T) {
 	}
 	if got.Subject != "Daily Miles Digest" {
 		t.Errorf("Subject = %q", got.Subject)
+	}
+	// The generation time it defaulted is written back, as stored.
+	if n.CreatedAt == nil || got.CreatedAt == nil || !n.CreatedAt.Equal(*got.CreatedAt) {
+		t.Errorf("CreatedAt = %v, stored %v; want the stored time written back", n.CreatedAt, got.CreatedAt)
 	}
 	if got.SentAt != nil {
 		t.Error("expected nil SentAt")
