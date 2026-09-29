@@ -152,6 +152,37 @@ var (
 		Help: "Total image selection outcomes",
 	}, []string{"outcome"}) // selected, no_match, search_failed
 
+	// ImageResizeTotal counts what the stored-image resize did with each row
+	// it tried: swapped for sized copies, left unchanged because a sized URL
+	// could not be confirmed, cleared because the file was deleted (or does not
+	// load and every sized copy is too heavy to replace it), or found
+	// unconvertible (see ArticleImagesUnconvertible).
+	ImageResizeTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_image_resize_total",
+		Help: "Stored article images the resize step tried, by outcome (resized, unconfirmed, cleared, unconvertible)",
+	}, []string{"outcome"})
+
+	// ArticleImagesUnsized is how many article images the resize step could
+	// still swap for a sized copy after its last pass. It should reach 0
+	// within a few passes of a deploy and stay there; a value that stays up
+	// means the conversion is stuck (hosts refusing, width lookups failing).
+	// Rows that can never convert are counted in ArticleImagesUnconvertible
+	// instead, so they do not hold this above 0.
+	ArticleImagesUnsized = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "milesahead_article_images_unsized",
+		Help: "Article images still waiting to be swapped for a sized copy (excluding unconvertible ones)",
+	})
+
+	// ArticleImagesUnconvertible is how many article images the resize step
+	// has found it cannot size, as of its last pass: every sized copy is
+	// heavier than the file the row holds, Commons reports the file deleted
+	// but its URL still loads, or Commons has no width for it. They keep
+	// their current, working file and are rechecked every six hours.
+	ArticleImagesUnconvertible = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "milesahead_article_images_unconvertible",
+		Help: "Article images the resize step cannot swap for a sized copy (no lighter copy, deleted but still served, or no width from Commons)",
+	})
+
 	ResponseBytes = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "milesahead_http_response_bytes",
 		Help:    "HTTP response body size in bytes",
@@ -175,6 +206,7 @@ func Init() {
 		HTTPRequestsTotal, HTTPDuration,
 		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,
 		ImageSelectedScore, ImageSelectedTotal,
+		ImageResizeTotal, ArticleImagesUnsized, ArticleImagesUnconvertible,
 		ResponseBytes, DailyUniqueVisitors,
 	)
 }

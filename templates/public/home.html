@@ -26,7 +26,14 @@
 
 <div class="magazine-grid">
     {{if .Featured}}
-    <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}{{if .Featured.Ended}} is-ended{{end}}"{{if .Featured.ImageURL}} style="background-image: url('{{.Featured.ImageURL}}'); background-size: cover; background-position: center;"{{end}}>
+    <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}{{if .Featured.Ended}} is-ended{{end}}">
+        {{if .Featured.ImageURL}}
+        {{/* A real <img> rather than a CSS background: the preload scanner finds
+             it in the HTML instead of after the stylesheet, and it can ask for
+             priority as the likely largest paint. alt is empty because the
+             link beside it already carries the headline. */}}
+        <img class="featured-image" src="{{.Featured.ImageURL}}" alt="" width="1280" height="720" fetchpriority="high">
+        {{end}}
         <a href="/article/{{.Featured.Slug}}">
             <div class="featured-overlay">
                 <span class="type-badge badge-{{.Featured.Type}}">{{.Featured.Type}}</span>{{if .Featured.Ended}} <span class="ended-badge">{{endedLabel .Featured.Type}}</span>{{end}}
@@ -38,12 +45,13 @@
     {{end}}
 
     <div class="sidebar-stack">
-        {{range .Sidebar}}
+        {{range $i, $_ := .Sidebar}}
         <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}{{if .Ended}} is-ended{{end}}">
             <a href="/article/{{.Slug}}">
                 {{if .ImageThumbnail}}
                 <div class="card-thumb">
-                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}">
+                    {{/* Only the first sidebar card is in the first screen on desktop. */}}
+                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}" width="300" height="200"{{if $i}} loading="lazy"{{end}} decoding="async">
                 </div>
                 {{end}}
                 <div class="card-body">
@@ -67,7 +75,17 @@
         <a href="/article/{{.Slug}}">
             {{if .ImageThumbnail}}
             <div class="card-thumb">
-                <img src="{{.ImageThumbnail}}" alt="{{.Title}}">
+                {{/* At 769-1024px the grid has two columns and a card is up to
+                     466 CSS px wide, too wide for a 500px thumbnail on a 2x
+                     screen, so there the display image is offered as well
+                     (see thumbSrcset). sizes is the width of .bottom-grid
+                     .card-thumb in that range: the column less the card's
+                     2px border, in main's 64px of padding and a 24px gap.
+                     Elsewhere every screen gets the thumbnail. */}}
+                <picture>
+                    {{with .ThumbSrcset}}<source media="(min-width: 769px) and (max-width: 1024px)" srcset="{{.}}" sizes="calc((100vw - 92px) / 2)">{{end}}
+                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}" width="300" height="200" loading="lazy" decoding="async">
+                </picture>
             </div>
             {{end}}
             <div class="card-body">

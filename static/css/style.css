@@ -234,6 +234,18 @@ main {
     justify-content: flex-end;
     min-height: 400px;
     color: #ffffff;
+    position: relative; /* paints over .featured-image */
+}
+
+/* Covers the whole card (cover, centred) without taking part in layout, so
+   the card is still sized by its text, as it was with a background image. */
+.featured-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
 }
 
 .featured-card a:hover {
@@ -390,14 +402,20 @@ main {
     display: block;
 }
 
+/* The grid wraps its thumbnails in <picture> for a srcset; lay the <img> out
+   as if it were not there. */
+.card-thumb picture {
+    display: contents;
+}
+
 .card-body {
     flex: 1;
     min-width: 0;
 }
 
-/* Featured card with image */
+/* Featured card with image: the photo covers the card, so drop the gradient. */
 .featured-card.has-image {
-    background-image: none; /* override the gradient when image is set via inline style */
+    background-image: none;
 }
 
 /* Bottom grid thumbnail layout */
@@ -2042,10 +2060,10 @@ tr.flagged { background: #fef2f2; }
     filter: grayscale(100%);
 }
 /* The featured slot only holds an ended offer when every article in the view
-   has ended. Grey the photo without touching the overlay text. */
-.featured-card.is-ended {
-    background-color: #4b5563;
-    background-blend-mode: luminosity;
+   has ended. Grey the photo without touching the overlay text; the photo is
+   its own <img>, so the filter reaches nothing else. */
+.featured-card.is-ended .featured-image {
+    filter: grayscale(100%);
 }
 /* The featured overlay is dark in both themes, so its badge is always the
    light chip (#111827 on #e5e7eb, 14.3:1). */

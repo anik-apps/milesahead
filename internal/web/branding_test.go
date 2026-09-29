@@ -66,7 +66,7 @@ func TestLayout_AppliesThemeBeforeStylesheet(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
 	body := getPage(t, app, "/")
 	script := strings.Index(body, "prefers-color-scheme: dark")
-	css := strings.Index(body, `href="/static/css/style.css"`)
+	css := strings.Index(body, `href="/static/css/style.css`)
 	if script < 0 || css < 0 || script > css {
 		t.Errorf("the theme script should come before the stylesheet (script at %d, css at %d)", script, css)
 	}

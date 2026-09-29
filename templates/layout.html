@@ -7,7 +7,7 @@
     {{/* Apply the saved or OS theme before first paint, so dark-mode readers never see a white flash. */}}
     <script>try{var t=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
     <meta name="color-scheme" content="light dark">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="{{stylesheetURL}}">
     <link rel="icon" href="/static/img/brand/favicon-32.png" type="image/png" sizes="32x32">
     <link rel="icon" href="/static/img/brand/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/static/img/brand/apple-touch-icon.png">

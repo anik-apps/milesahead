@@ -175,11 +175,16 @@ func TestHome_FilteredViewsMarkEndedOffers(t *testing.T) {
 		if strings.Contains(body, `class="featured-card is-ended`) || strings.Contains(body, `featured-card has-image is-ended`) {
 			t.Errorf("%s: an ended offer took the featured slot", path)
 		}
-		if !strings.Contains(body, `<div class="featured-card">`+"\n"+`        <a href="/article/ends-today">`) {
+		// Whitespace between the two tags varies with the template's image
+		// block, so match the pair, not the exact layout.
+		if !featuredLinkRE.MatchString(body) {
 			t.Errorf("%s: the newest live offer should be featured", path)
 		}
 	}
 }
+
+// featuredLinkRE matches a featured card, not ended, linking to ends-today.
+var featuredLinkRE = regexp.MustCompile(`<div class="featured-card">\s*<a href="/article/ends-today">`)
 
 // Search lists ended articles too, marked.
 func TestSearch_MarksEndedOffers(t *testing.T) {

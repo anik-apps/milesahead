@@ -107,17 +107,22 @@ type EnrichmentUpdate struct {
 	ImageThumbnail   *string
 	ImageAttribution *string
 	TagsJSON         *string
+
+	// Uncounted leaves enrichment_attempts alone. It is for a pass in which
+	// nothing failed and the only work left undone was put off, not tried:
+	// the pass ran out of time before the image search.
+	Uncounted bool
 }
 
-// ApplyEnrichment writes whatever was produced and always records the attempt.
+// ApplyEnrichment writes whatever was produced and records the attempt.
 //
 // The attempt counter increments even when nothing was filled -- that is the
 // whole point of it. Otherwise an article the model can never enrich would be
-// retried on every pass forever.
+// retried on every pass forever. The one exception is u.Uncounted.
 func (d *Database) ApplyEnrichment(id int64, u EnrichmentUpdate) error {
-	sets := []string{
-		"enrichment_attempts = enrichment_attempts + 1",
-		"enrichment_last_at = CURRENT_TIMESTAMP",
+	sets := []string{"enrichment_last_at = CURRENT_TIMESTAMP"}
+	if !u.Uncounted {
+		sets = append(sets, "enrichment_attempts = enrichment_attempts + 1")
 	}
 	var args []any
 
