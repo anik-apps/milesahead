@@ -478,3 +478,49 @@ func TestDisplay(t *testing.T) {
 		}
 	}
 }
+
+// A detail that changes the deadline ("Extended Deadline", "New Deadline")
+// is not read, so the article gets no end at all rather than the old one.
+func TestEndDate_ChangedDeadlineLeavesNoEnd(t *testing.T) {
+	for _, label := range []string{"Extended Deadline", "New Deadline", "Deadline (Extended)", "Updated Deadline", "Extension"} {
+		for _, value := range []string{"July 31, 2026", "Until further notice"} {
+			got := EndDate(details(t, "Deadline", "June 30, 2026", label, value), day("2026-06-10"))
+			if got != "" {
+				t.Errorf("Deadline: June 30 + %s: %q = %q, want no end", label, value, got)
+			}
+		}
+	}
+}
+
+// More ways of saying the end is not known: a past date beside them is
+// history, not this offer's end.
+func TestEndDate_MoreOpenEndedWording(t *testing.T) {
+	runEndDateCases(t, []endDateCase{
+		{"unannounced", "Deadline", "Unannounced. The last similar offer ended June 30, 2025.", "2026-06-10", ""},
+		{"unknown", "Deadline", "Unknown; the 2025 version ended September 30, 2025", "2026-06-10", ""},
+		{"not specified", "Deadline", "Not specified (last year's ended May 31)", "2026-06-10", ""},
+		{"not announced", "Deadline", "Not announced; the previous offer ran through January 31, 2026", "2026-06-10", ""},
+		{"none", "Deadline", "None; previously June 30, 2026", "2026-06-10", ""},
+		{"never expires", "Deadline", "Never expires (was December 31, 2026)", "2026-06-10", ""},
+		{"n/a", "Deadline", "N/A - ran through May 31 last year", "2026-06-10", ""},
+	})
+}
+
+// A readable date followed by words is not the start of a window when it
+// can be read as an end, and a window that opens after every readable end
+// runs on to an end that cannot be read.
+func TestEndDate_TrailingWordsDoNotMakeAnEarlierDateWin(t *testing.T) {
+	// June 30 or no end are both right; the earlier registration date is not.
+	for _, value := range []string{
+		"Register by May 15; complete stays by June 30 to earn the bonus",
+		"Register by May 15, 2026; stays through June 30, 2026 – targeted offer",
+		"Apply by May 31, 2026, spend by June 30, 2026 through the app",
+	} {
+		if got := EndDate(details(t, "Deadline", value), day("2026-05-10")); got != "" && got < "2026-06-30" {
+			t.Errorf("EndDate(Deadline: %q) = %q, want 2026-06-30 or later, or no end", value, got)
+		}
+	}
+	if got := EndDate(details(t, "Registration Deadline", "May 20", "Promotion Period", "June 1 - Labor Day"), day("2026-05-10")); got != "" {
+		t.Errorf("a promotion window opening after the registration deadline = %q, want no end", got)
+	}
+}

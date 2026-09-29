@@ -102,9 +102,21 @@ func isEndLabel(label string) bool {
 	return endLabels[spaceRE.ReplaceAllString(l, " ")]
 }
 
+// isReplacementLabel reports whether label names a changed end ("Extended
+// Deadline", "New Deadline", "Deadline (Extended)", "Extension").
+func isReplacementLabel(label string) bool {
+	l := spaceRE.ReplaceAllString(strings.ToLower(strings.TrimSpace(strings.TrimRight(strings.TrimSpace(label), ":"))), " ")
+	return extendLabelRE.MatchString(l) || l != strings.TrimSpace(replacementWordRE.ReplaceAllString(l, " ")) && endLabels[strings.TrimSpace(replacementWordRE.ReplaceAllString(l, " "))]
+}
+
+var (
+	extendLabelRE     = regexp.MustCompile(`\bextend|\bextension\b`)
+	replacementWordRE = regexp.MustCompile(`\s*\(?\b(?:new|revised|updated|extended|current|latest|final)\b\)?\s*`)
+)
+
 // openEndedRE finds a value that says the offer has no end yet: then the
 // article has no end date, whatever dates the value or others name.
-var openEndedRE = regexp.MustCompile(`(?i)\b(?:ongoing|until\s+further\s+notice|no\s+(?:set\s+|fixed\s+|specific\s+|hard\s+|firm\s+|announced\s+)?(?:end(?:\s+date)?|expiration(?:\s+date)?|deadline)|tb[adc]|to\s+be\s+(?:announced|determined|confirmed)|indefinite(?:ly)?|open[\s-]ended|onwards?)\b`)
+var openEndedRE = regexp.MustCompile(`(?i)\b(?:ongoing|until\s+further\s+notice|no\s+(?:set\s+|fixed\s+|specific\s+|hard\s+|firm\s+|announced\s+)?(?:end(?:\s+date)?|expiration(?:\s+date)?|deadline)|tb[adc]|to\s+be\s+(?:announced|determined|confirmed)|indefinite(?:ly)?|open[\s-]ended|onwards?|un(?:announced|known|specified|confirmed|clear)|not\s+(?:yet\s+)?(?:announced|specified|stated|disclosed|known|published|set|confirmed|given)|none|n/a|never\s+expires?|no\s+(?:expir\w*|end\b))\b`)
 
 // extendRE finds a value that says the offer was extended. Unless its last
 // mention goes on, in the same clause, to the date it was extended to
@@ -192,12 +204,13 @@ var months = map[string]time.Month{
 
 // found is one date read from a value. year is 0 when the text gave none.
 type found struct {
-	pos, end int // byte offsets of the date in the value
-	year     int
-	month    time.Month
-	day      int
-	numeric  bool // ISO or 6/30/2026: without a plausible year it is no date at all
-	start    bool // opens a window, so it is not an end
+	pos, end  int // byte offsets of the date in the value
+	year      int
+	month     time.Month
+	day       int
+	numeric   bool // ISO or 6/30/2026: without a plausible year it is no date at all
+	start     bool // opens a window, so it is not an end
+	openStart bool // opens a window whose end cannot be read
 }
 
 // sameMonthEnd reads the end of a range sharing its start's month, the "10,
@@ -264,9 +277,11 @@ func scanDates(s string) []found {
 	sort.SliceStable(out, func(i, j int) bool { return out[i].pos < out[j].pos })
 	for i := range out {
 		f := &out[i]
-		if startRE.MatchString(s[:f.pos]) || openRangeRE.MatchString(s[f.end:]) ||
-			i+1 < len(out) && f.end <= out[i+1].pos && rangeJoinRE.MatchString(s[f.end:out[i+1].pos]) {
-			f.start = true
+		if startRE.MatchString(s[:f.pos]) || openRangeRE.MatchString(s[f.end:]) {
+			f.start, f.openStart = true, true
+		}
+		if i+1 < len(out) && f.end <= out[i+1].pos && rangeJoinRE.MatchString(s[f.end:out[i+1].pos]) {
+			f.start, f.openStart = true, false
 		}
 	}
 	return out
@@ -339,23 +354,27 @@ func (f found) calendarDay(anchor time.Time) (time.Time, bool) {
 // valueEnd reads value, the normalized value of an end label written at
 // anchor. It returns the latest date the value names that is not a start,
 // or open when the value says the offer has no end.
-func valueEnd(value string, anchor time.Time) (end time.Time, open bool) {
+func valueEnd(value string, anchor time.Time) (end, openFrom time.Time, open bool) {
 	if openEndedRE.MatchString(value) {
-		return time.Time{}, true
+		return time.Time{}, time.Time{}, true
 	}
 	dates := scanDates(value)
 	if extendedWithoutDate(value, dates) {
-		return time.Time{}, true
+		return time.Time{}, time.Time{}, true
 	}
 	for _, f := range dates {
-		if f.start {
-			continue
-		}
-		if t, ok := f.calendarDay(anchor); ok && t.After(end) {
+		t, ok := f.calendarDay(anchor)
+		switch {
+		case !ok:
+		case f.openStart:
+			if t.After(openFrom) {
+				openFrom = t
+			}
+		case !f.start && t.After(end):
 			end = t
 		}
 	}
-	return end, false
+	return end, openFrom, false
 }
 
 // EndDate returns the last day of the offer described by keyDetailsJSON, as
@@ -375,20 +394,29 @@ func EndDate(keyDetailsJSON string, anchor time.Time) string {
 	if err := json.Unmarshal([]byte(s), &details); err != nil {
 		return ""
 	}
-	var end time.Time
+	var end, openFrom time.Time
 	for _, d := range details {
 		if !isEndLabel(normalize(d.Label)) {
+			if isReplacementLabel(normalize(d.Label)) {
+				// The end was changed in a detail this rule does not read.
+				return ""
+			}
 			continue
 		}
-		t, open := valueEnd(normalize(d.Value), anchor)
+		t, o, open := valueEnd(normalize(d.Value), anchor)
 		if open {
 			return ""
 		}
 		if t.After(end) {
 			end = t
 		}
+		if o.After(openFrom) {
+			openFrom = o
+		}
 	}
-	if end.IsZero() {
+	// A window that opens on or after every readable end runs on to an end
+	// that cannot be read.
+	if end.IsZero() || !openFrom.IsZero() && !end.After(openFrom) {
 		return ""
 	}
 	return end.Format(DateLayout)
