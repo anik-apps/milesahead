@@ -130,13 +130,35 @@ var staleLabelRE = regexp.MustCompile(`\b(?:original|originally|previous|previou
 // taking the offer. The offer can run on past it -- a card's sign-up bonus
 // stays open after its first-year discount window closes -- so it never sets
 // the end.
-var benefitDeadlineRE = regexp.MustCompile(`\b(?:use|using|usage|credits?|discounts?|redeem|redeeming|redemptions?|spend|spending|statement)\b`)
+var benefitDeadlineRE = regexp.MustCompile(`\b(?:use|using|usage|credits?|discounts?|redeem|redeeming|redemptions?|spend|spending|statement|certificates?|vouchers?)\b`)
+
+// heldBenefitRE is the part of benefitDeadlineRE that names a benefit
+// already in hand -- a credit, a certificate, a voucher, a redemption, a
+// spend. Booking with it or entering its code is using it: "Hotel Credit
+// Booking Deadline" and "Deadline to Redeem Code" are about the benefit.
+var heldBenefitRE = regexp.MustCompile(`\b(?:credits?|redeem|redeeming|redemptions?|spend|spending|statement|certificates?|vouchers?)\b`)
 
 // takeDeadlineRE marks a deadline for taking the offer even when a benefit
-// word is in the label too: "Credit Card Application Deadline", "Promo Code
-// Use Deadline", "Statement Credit Offer Deadline". "Offer" counts only
-// right before "deadline": an "Offer Spend Deadline" is still a spend.
-var takeDeadlineRE = regexp.MustCompile(`\b(?:appl(?:y|ication)|enroll(?:ing|ment)?|regist(?:er|ering|ration)|sign[\s-]?ups?|book(?:ing)?|codes?|offer\s+deadline)\b`)
+// word is in the label too: "Credit Card Application Deadline", "Statement
+// Credit Offer Deadline". "Offer" counts only right before "deadline": an
+// "Offer Spend Deadline" is still a spend.
+var takeDeadlineRE = regexp.MustCompile(`\b(?:appl(?:y|ication)|enroll(?:ing|ment)?|regist(?:er|ering|ration)|sign[\s-]?ups?|offer\s+deadline)\b`)
+
+// bookDeadlineRE marks a deadline for booking or entering a code, which
+// takes the offer only when the benefit word beside it is a use or a
+// discount: "Promo Code Use Deadline", "Discount Code Deadline".
+var bookDeadlineRE = regexp.MustCompile(`\b(?:book(?:ing)?|codes?)\b`)
+
+// benefitDeadline reports whether l, a lower-case label with "deadline" in
+// it, is a deadline for using or earning a benefit rather than for taking
+// the offer.
+func benefitDeadline(l string) bool {
+	l = creditCardRE.ReplaceAllString(l, "")
+	if !benefitDeadlineRE.MatchString(l) || takeDeadlineRE.MatchString(l) {
+		return false
+	}
+	return heldBenefitRE.MatchString(l) || !bookDeadlineRE.MatchString(l)
+}
 
 // creditCardRE is the product, not a statement credit: "Credit Card
 // Application Deadline" is not about a credit.
@@ -160,7 +182,7 @@ func classify(label string) (labelKind, bool) {
 	}
 	switch {
 	case strings.Contains(l, "deadline"):
-		if benefitDeadlineRE.MatchString(creditCardRE.ReplaceAllString(l, "")) && !takeDeadlineRE.MatchString(l) {
+		if benefitDeadline(l) {
 			return notAnEnd, false
 		}
 		return deadlineLabel, false

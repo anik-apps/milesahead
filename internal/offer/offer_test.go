@@ -736,6 +736,28 @@ func TestEndDate_ExtensionAfterALaterDate(t *testing.T) {
 	})
 }
 
+// Booking with a credit or entering a code to redeem is using a benefit, not
+// taking the offer. Letting "booking" or "code" override every benefit word
+// ended a November offer on its hotel credit's June booking deadline.
+func TestEndDate_BookingWithABenefitIsUsingIt(t *testing.T) {
+	for _, label := range []string{
+		"Hotel Credit Booking Deadline", "Travel Credit Booking Deadline", "Deadline to Use Booking Credit",
+		"Deadline to Redeem Code", "Discount Code Redemption Deadline", "Certificate Booking Deadline",
+		"Voucher Code Deadline",
+	} {
+		kd := details(t, "Offer Ends", "November 5, 2026", label, "June 30, 2026")
+		if got := EndDate(kd, day("2026-06-10")); got != "2026-11-05" {
+			t.Errorf("EndDate(Offer Ends: November 5, 2026; %s: June 30, 2026) = %q, want 2026-11-05", label, got)
+		}
+	}
+	// A code or a booking beside a use or a discount is still taking it.
+	for _, label := range []string{"Promo Code Use Deadline", "Discount Code Deadline", "Discount Booking Deadline", "Booking Deadline"} {
+		if got := EndDate(details(t, label, "June 30, 2026"), day("2026-06-10")); got != "2026-06-30" {
+			t.Errorf("EndDate(%s: June 30, 2026) = %q, want 2026-06-30", label, got)
+		}
+	}
+}
+
 // The last day is still live; the offer has ended from the next day.
 func TestEnded(t *testing.T) {
 	cases := []struct {
