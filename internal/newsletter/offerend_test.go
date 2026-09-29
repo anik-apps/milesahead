@@ -602,3 +602,43 @@ func TestGenerateDaily_RecordsWhenItWasGenerated(t *testing.T) {
 		t.Errorf("CreatedAt = %v, want about now", nl.CreatedAt)
 	}
 }
+
+// A daily sent late -- retried hours after it was generated -- holds only
+// what it was generated from. An article published in between belongs to
+// the next day's issue; sending it now as well sent it twice.
+func TestSendDaily_LeavesLaterArticlesForTheNextIssue(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	now := time.Now()
+	before := publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
+	publishedAt(t, database, before, now.Add(-12*time.Hour))
+	after := publish(t, database, plainTitle, "freedom-flex", "", false)
+	publishedAt(t, database, after, now.Add(-2*time.Hour))
+	subscribe(t, database)
+
+	sender := &mockSender{}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	generated := now.Add(-10 * time.Hour)
+	if _, err := database.CreateNewsletter(&db.Newsletter{
+		Date: svc.todayDate(), Subject: "MilesAhead Daily Digest — " + svc.todayDate(),
+		HTMLContent: "<p>" + liveTitle + "</p>", Status: "draft", ArticleCount: 1,
+		CreatedAt: &generated,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := svc.SendDaily(); err != nil {
+		t.Fatalf("SendDaily() = %v", err)
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("want one send, got %d", len(sender.calls))
+	}
+	html := sender.calls[0].html
+	if !strings.Contains(html, "/article/united-ihg") {
+		t.Error("the daily dropped the article it was generated from")
+	}
+	if strings.Contains(html, "/article/freedom-flex") {
+		t.Error("the daily took in an article published after it was generated")
+	}
+}

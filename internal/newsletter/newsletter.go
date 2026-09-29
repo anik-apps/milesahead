@@ -818,24 +818,44 @@ var (
 	ErrNoSubscribers = errors.New("nothing sent: there are no confirmed subscribers")
 )
 
-// dailySince is when the articles in today's daily nl may have been
-// published from: 24 hours before it was generated, or before now if that
-// is earlier. An issue generated in the morning and sent in the afternoon
-// keeps its morning articles. An issue stored before generation times were
-// recorded counts from 24 hours before the start of its date, which covers
-// whenever that day it was generated.
-func (s *Service) dailySince(nl *db.Newsletter, now time.Time) time.Time {
-	since := now.Add(-24 * time.Hour)
+// dailyWindow is when the articles in today's daily nl may have been
+// published: from 24 hours before it was generated, or before now if that
+// is earlier, up to when it was generated. An issue generated in the morning
+// and sent in the afternoon keeps its morning articles, and one sent late,
+// after a failed try, does not take in articles published since: those
+// belong to the next day's issue, and would go out twice. An issue stored
+// before generation times were recorded counts from 24 hours before the
+// start of its date to the end of it, which covers whenever that day it was
+// generated.
+func (s *Service) dailyWindow(nl *db.Newsletter, now time.Time) (since, until time.Time) {
+	since = now.Add(-24 * time.Hour)
 	var from time.Time
 	if nl.CreatedAt != nil {
 		from = nl.CreatedAt.Add(-24 * time.Hour)
+		until = *nl.CreatedAt
 	} else if day, err := time.ParseInLocation("2006-01-02", nl.Date, s.loc); err == nil {
 		from = day.Add(-24 * time.Hour)
+		until = day.AddDate(0, 0, 1)
 	}
 	if !from.IsZero() && from.Before(since) {
 		since = from
 	}
-	return since.UTC()
+	return since.UTC(), until
+}
+
+// publishedBy keeps the articles published no later than until; a zero
+// until keeps them all.
+func publishedBy(articles []db.GeneratedArticle, until time.Time) []db.GeneratedArticle {
+	if until.IsZero() {
+		return articles
+	}
+	kept := articles[:0]
+	for _, a := range articles {
+		if a.PublishedAt == nil || !a.PublishedAt.After(until) {
+			kept = append(kept, a)
+		}
+	}
+	return kept
 }
 
 // isWeekly reports whether nl is a weekly issue. A weekly is dated the
@@ -858,7 +878,7 @@ func (s *Service) isWeekly(nl *db.Newsletter) (bool, error) {
 // generating it first if there is none. The admin's "send" button calls it.
 //
 // The issue is rendered again as it is sent, from the live articles of the
-// 24 hours before it was generated and any published since (dailySince).
+// 24 hours before it was generated (dailyWindow).
 // Its stored HTML was rendered when it was generated, hours earlier perhaps,
 // and may hold an offer that has ended since; it is never sent. Today's
 // issue is not sent at all when it is the weekly one (SendWeekly sends that,
@@ -910,10 +930,12 @@ func (s *Service) SendDaily() error {
 		return ErrNoSubscribers
 	}
 
-	articles, err := s.listLiveSince(s.dailySince(nl, s.now()))
+	since, until := s.dailyWindow(nl, s.now())
+	articles, err := s.listLiveSince(since)
 	if err != nil {
 		return fmt.Errorf("reloading articles for send: %w", err)
 	}
+	articles = publishedBy(articles, until)
 	if len(articles) == 0 {
 		slog.Warn("daily newsletter not sent: no article in it is still live", "date", date)
 		return ErrNothingLive
