@@ -82,6 +82,16 @@ picked up next pass. `enrichment_max_attempts` bounds how long an article keeps
 being retried, and `milesahead_articles_degraded` reports how many are still
 missing something.
 
+### Revisions
+
+Feedback from the dashboard or an email reply puts an article in
+`revision_requested` and starts the AI rewrite straight away. A revision
+reconciler (`article.Manager.ProcessPendingRevisions`) also sweeps every 5
+minutes and shortly after startup, so a rewrite that failed or was cut off by a
+deploy is retried rather than left "Revising" forever. Retries back off and stop
+after 5 failures, at which point the dashboard shows "Revision failed N times"
+and `milesahead_revisions_waiting{state="exhausted"}` counts it.
+
 ## Documentation
 
 Full documentation is built with [Hugo](https://gohugo.io/) using the [Hextra](https://imfing.github.io/hextra/) theme.
