@@ -550,19 +550,21 @@ func TestSendDaily_KeepsTheStoredIssuesArticles(t *testing.T) {
 
 // An issue stored before generation times were recorded has none; its
 // articles are taken from 24 hours before the start of its date.
+//
+// The send is at 00:30, and the article published 23 hours 45 minutes
+// before the start of the day: more than 24 hours before the send, so only
+// the issue's date brings it in. (Unpinned, the test passed without that
+// rule whenever it ran in the first hour of a UTC day.)
 func TestSendDaily_IssueWithoutAGenerationTime(t *testing.T) {
 	setTemplateDir(t)
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
 	sender := &mockSender{}
 	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
-	startOfToday, err := time.ParseInLocation("2006-01-02", svc.todayDate(), time.UTC)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Late on the day before yesterday's end: in any issue generated today.
+	startOfToday := time.Now().UTC().Truncate(24 * time.Hour)
+	svc.now = func() time.Time { return startOfToday.Add(30 * time.Minute) }
 	early := publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
-	publishedAt(t, database, early, startOfToday.Add(-23*time.Hour))
+	publishedAt(t, database, early, startOfToday.Add(-24*time.Hour+15*time.Minute))
 	subscribe(t, database)
 	id := storeDaily(t, database, svc, "approved", "<p>"+liveTitle+"</p>")
 	if _, err := database.DB().Exec(`UPDATE newsletters SET created_at = NULL WHERE id = ?`, id); err != nil {

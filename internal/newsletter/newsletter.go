@@ -42,6 +42,9 @@ type Service struct {
 	// loc is the schedule's timezone, resolved once: an unknown name falls
 	// back to UTC with one warning, not one per lookup.
 	loc *time.Location
+	// now is the clock: time.Now, except in tests that need a given time
+	// of day.
+	now func() time.Time
 }
 
 // NewService creates a new newsletter Service.
@@ -55,6 +58,7 @@ func NewService(database *db.Database, sender MailSender, cfg config.NewsletterC
 		sender:   sender,
 		loc:      offer.Location(cfg.Timezone),
 		sendTime: st,
+		now:      time.Now,
 	}
 }
 
@@ -131,7 +135,7 @@ func summary(content string) string {
 // listRecentApproved fetches approved articles published in the last 24
 // hours whose offer has not ended.
 func (s *Service) listRecentApproved() ([]db.GeneratedArticle, error) {
-	return s.listLiveSince(time.Now().UTC().Add(-24 * time.Hour))
+	return s.listLiveSince(s.now().UTC().Add(-24 * time.Hour))
 }
 
 // listLiveSince fetches approved articles published since since whose offer
@@ -149,7 +153,7 @@ func (s *Service) listLiveSince(since time.Time) ([]db.GeneratedArticle, error) 
 // acting on an ended transfer bonus makes a transfer that cannot be undone,
 // so an ended offer is never sent, featured or made Scout's Pick.
 func (s *Service) liveOffers(articles []db.GeneratedArticle) []db.GeneratedArticle {
-	today := offer.Today(time.Now())
+	today := offer.Today(s.now())
 	live := make([]db.GeneratedArticle, 0, len(articles))
 	for _, a := range articles {
 		if offer.Ended(a.ExpiresOn, today) {
@@ -173,12 +177,12 @@ func containsArticle(articles []db.GeneratedArticle, id int64) bool {
 
 // todayDate returns today's date string in YYYY-MM-DD format for the configured timezone.
 func (s *Service) todayDate() string {
-	return time.Now().In(s.loc).Format("2006-01-02")
+	return s.now().In(s.loc).Format("2006-01-02")
 }
 
 // nextSaturday returns the date string for the next Saturday (or today if Saturday).
 func (s *Service) nextSaturday() string {
-	now := time.Now().In(s.loc)
+	now := s.now().In(s.loc)
 	daysUntilSat := (6 - int(now.Weekday()) + 7) % 7
 	if daysUntilSat == 0 {
 		// Today is Saturday.
@@ -189,7 +193,7 @@ func (s *Service) nextSaturday() string {
 
 // thisSaturday returns the most recent Saturday date (today if Saturday, else last Saturday).
 func (s *Service) thisSaturday() string {
-	now := time.Now().In(s.loc)
+	now := s.now().In(s.loc)
 	daysSinceSat := (int(now.Weekday()) - 6 + 7) % 7
 	return now.AddDate(0, 0, -daysSinceSat).Format("2006-01-02")
 }
@@ -782,7 +786,7 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 
 	subject := fmt.Sprintf("MilesAhead Daily Digest — %s", date)
 
-	created := time.Now().UTC()
+	created := s.now().UTC()
 	nl := &db.Newsletter{
 		Date:         date,
 		Subject:      subject,
@@ -906,7 +910,7 @@ func (s *Service) SendDaily() error {
 		return ErrNoSubscribers
 	}
 
-	articles, err := s.listLiveSince(s.dailySince(nl, time.Now()))
+	articles, err := s.listLiveSince(s.dailySince(nl, s.now()))
 	if err != nil {
 		return fmt.Errorf("reloading articles for send: %w", err)
 	}
