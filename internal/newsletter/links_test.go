@@ -18,7 +18,7 @@ func TestPreviewNext_LinksAreAbsolute(t *testing.T) {
 	defer cleanup()
 	createApprovedArticle(t, database, "Preview Article", "preview-article", "Preview content for the admin.", false)
 
-	svc := NewServiceWithAI(database, &mockSender{}, config.NewsletterConfig{Timezone: "UTC"}, nil, "", "milesahead.example")
+	svc := NewServiceWithAI(database, &mockSender{}, config.NewsletterConfig{Timezone: "UTC"}, nil, nil, "milesahead.example")
 	html, err := svc.PreviewNext()
 	if err != nil {
 		t.Fatalf("PreviewNext() error: %v", err)
@@ -38,7 +38,7 @@ func TestNewsletterTemplate_UsesArticleRoute(t *testing.T) {
 	defer cleanup()
 	createApprovedArticle(t, database, "Lead Story", "lead-story", "The only story, so it renders as the lead.", false)
 
-	svc := NewServiceWithAI(database, &mockSender{}, config.NewsletterConfig{Timezone: "UTC"}, nil, "", "milesahead.example")
+	svc := NewServiceWithAI(database, &mockSender{}, config.NewsletterConfig{Timezone: "UTC"}, nil, nil, "milesahead.example")
 	html, err := svc.PreviewNext()
 	if err != nil {
 		t.Fatalf("PreviewNext() error: %v", err)

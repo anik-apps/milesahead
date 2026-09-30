@@ -209,8 +209,8 @@ func TestImageScoring_WarmsThumbnailsBeforeVision(t *testing.T) {
 	}))
 	defer vision.Close()
 
-	cfg := &config.Config{AI: config.AIConfig{HFBaseURL: vision.URL, HFAPIToken: "token", CriticModel: "text"}}
-	searcher, scorer := newImageScoring(cfg, scoreAll{}, "vision")
+	cfg := &config.Config{AI: config.AIConfig{HFBaseURL: vision.URL, HFAPIToken: "token", EnrichmentModel: "text"}}
+	searcher, scorer := newImageScoring(cfg, scoreAll{}, "vision", enrichmentModels(cfg))
 	searcher.SetTransport(toHost{wikimedia.Listener.Addr().String()})
 
 	const wm = "https://upload.wikimedia.org"

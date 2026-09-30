@@ -27,12 +27,15 @@ var keySections = []string{
 type Detector struct {
 	db       *db.Database
 	hfClient ai.HFClientInterface
-	model    string
+	models   []string
 }
 
-// NewDetector creates a Detector.
-func NewDetector(database *db.Database, hfClient ai.HFClientInterface, model string) *Detector {
-	return &Detector{db: database, hfClient: hfClient, model: model}
+// NewDetector creates a Detector. models is a chain tried in order through
+// ai.TryModels. It was a single model (the critic) until that model's
+// retirement failed every section check; each check is a short call, so
+// production passes the fast enrichment chain.
+func NewDetector(database *db.Database, hfClient ai.HFClientInterface, models []string) *Detector {
+	return &Detector{db: database, hfClient: hfClient, models: models}
 }
 
 // DetectAndDraft loads the article, matches it against published reference
@@ -115,7 +118,7 @@ func (d *Detector) DetectAndDraft(ctx context.Context, articleID int64) error {
 			}
 
 			prompt := ai.CardUpdateDetectionPrompt(article.Title, article.Content, page.Title, sec.Title, sec.Content)
-			resp, err := d.hfClient.Generate(d.model, prompt, 1024)
+			resp, err := ai.TryModels(d.hfClient, d.models, prompt, 1024)
 			if err != nil {
 				slog.Error("card update: AI call failed", "card_id", page.ID, "section", sec.Key, "error", err)
 				continue

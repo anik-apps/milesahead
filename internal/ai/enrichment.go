@@ -28,6 +28,10 @@ const (
 // model's backend degraded every article in the window lost the field
 // permanently. Measured during one such window, the configured critic answered
 // 6 of 24 raw attempts while two other models stayed healthy throughout.
+//
+// It is the one fallback helper for every short call, not only enrichment:
+// image text-scoring, the newsletter pick and card-update detection run
+// through it too, against the same enrichment_model chain.
 func TryModels(client HFClientInterface, models []string, prompt string, maxTokens int) (string, error) {
 	if len(models) == 0 {
 		return "", fmt.Errorf("no models configured")
@@ -37,7 +41,7 @@ func TryModels(client HFClientInterface, models []string, prompt string, maxToke
 		result, err := client.Generate(m, prompt, maxTokens)
 		if err == nil {
 			if i > 0 {
-				slog.Info("enrichment fallback succeeded", "model", m, "primary", models[0])
+				slog.Info("model fallback succeeded", "model", m, "primary", models[0])
 			}
 			return result, nil
 		}
@@ -48,7 +52,7 @@ func TryModels(client HFClientInterface, models []string, prompt string, maxToke
 			return "", err
 		}
 		if i < len(models)-1 {
-			slog.Warn("enrichment model failed, trying next",
+			slog.Warn("model failed, trying next in chain",
 				"failed", m, "next", models[i+1], "err", err)
 		}
 	}

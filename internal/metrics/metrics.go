@@ -97,6 +97,15 @@ var (
 		Buckets: []float64{10, 30, 60, 120, 300, 600, 1200},
 	})
 
+	// AIPreflightModelsReachable is how many configured models answered the
+	// startup preflight, by role (generator, fallback, critic, vision,
+	// enrichment). role="critic" == 0 means nothing can publish: every article
+	// fails verification. Set once per process, when the preflight finishes.
+	AIPreflightModelsReachable = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "milesahead_ai_preflight_models_reachable",
+		Help: "Configured AI models that answered the startup preflight, by role",
+	}, []string{"role"})
+
 	AIAPIErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "milesahead_ai_api_errors_total",
 		Help: "Total AI API final failures",
@@ -202,7 +211,7 @@ func Init() {
 		EnrichmentPassesTotal, EnrichmentLastSuccessTimestamp, EnrichmentPassDuration,
 		ArticlesRejectedTotal, RevisionsTotal, AIAPIDuration,
 		RevisionReconcileTotal, RevisionsWaiting,
-		AIAPIErrorsTotal, CriticScore, VotesTotal,
+		AIAPIErrorsTotal, AIPreflightModelsReachable, CriticScore, VotesTotal,
 		HTTPRequestsTotal, HTTPDuration,
 		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,
 		ImageSelectedScore, ImageSelectedTotal,

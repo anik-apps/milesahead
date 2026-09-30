@@ -40,14 +40,56 @@ func (s *stubTokenResolver) Resolve(token string) (int64, string, error) {
 // newImageScoring builds the image searcher and scorer. With an endpoint for
 // vision scoring configured, the searcher warms the thumbnails the scorer is
 // about to send: Wikimedia renders a new size before the vision endpoint
-// fetches it, so a slow first render does not fail its scoring.
-func newImageScoring(cfg *config.Config, client ai.HFClientInterface, visionModel string) (*images.Searcher, *images.Scorer) {
+// fetches it, so a slow first render does not fail its scoring. textModels is
+// the chain for the text pre-filter; see enrichmentModels.
+func newImageScoring(cfg *config.Config, client ai.HFClientInterface, visionModel string, textModels []string) (*images.Searcher, *images.Scorer) {
 	searcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey)
-	scorer := images.NewScorer(client, cfg.AI.CriticModel)
+	scorer := images.NewScorer(client, textModels)
 	if cfg.AI.HFBaseURL != "" {
 		scorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, visionModel, searcher)
 	}
 	return searcher, scorer
+}
+
+// enrichmentModels is the chain for every short AI call: enrichment, image
+// text-scoring, the newsletter pick, card-update detection and the pipeline's
+// inline key-details call.
+//
+// Those calls asked for 512-2048 tokens, so HFClient bounds them at
+// ai.ShortCallTimeout (30s). Most of them used to go to the critic model, which
+// failed them all when mistralai/mistral-nemotron was retired on 2026-09-28,
+// and its replacement takes minutes per reply -- it would time out every one.
+// The critic is for verification only.
+func enrichmentModels(cfg *config.Config) []string {
+	if models := ai.SplitModels(cfg.AI.EnrichmentModel); len(models) > 0 {
+		return models
+	}
+	// Unset: fall back to the generator fallback chain rather than silently
+	// doing nothing. Those models are the fast ones; the critic goes last,
+	// since it is the slowest model configured.
+	return append(ai.SplitModels(cfg.AI.FallbackGeneratorModel), ai.SplitModels(cfg.AI.CriticModel)...)
+}
+
+// aiSideJobs are the components whose AI calls are short side jobs rather than
+// article generation or verification.
+type aiSideJobs struct {
+	imageSearcher *images.Searcher
+	imageScorer   *images.Scorer
+	newsletter    *newsletter.Service
+	cardDetector  *cardupdate.Detector
+}
+
+// newAISideJobs wires every side job to the same short-call model chain, so
+// none of them depends on the critic.
+func newAISideJobs(cfg *config.Config, database *db.Database, client ai.HFClientInterface,
+	sender newsletter.MailSender, visionModel string, models []string) aiSideJobs {
+	searcher, scorer := newImageScoring(cfg, client, visionModel, models)
+	return aiSideJobs{
+		imageSearcher: searcher,
+		imageScorer:   scorer,
+		newsletter:    newsletter.NewServiceWithAI(database, sender, cfg.Newsletter, client, models, cfg.Server.Domain),
+		cardDetector:  cardupdate.NewDetector(database, client, models),
+	}
 }
 
 func main() {
@@ -112,7 +154,11 @@ func main() {
 		clusterThreshold = cluster.DefaultThreshold
 	}
 
+	// The short-call chain; see enrichmentModels.
+	enrichModels := enrichmentModels(cfg)
+
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
+	pipeline.SetDetailModels(enrichModels)
 	if cfg.AI.Critic2Model != "" {
 		critic2 := ai.NewCritic(hfClient, cfg.AI.Critic2Model)
 		pipeline.SetCritic2(critic2)
@@ -125,7 +171,7 @@ func main() {
 		results := ai.PreflightAll(hfClient, cfg.AI.GeneratorModel,
 			ai.SplitModels(cfg.AI.FallbackGeneratorModel),
 			[]string{cfg.AI.CriticModel, cfg.AI.Critic2Model},
-			[]string{visionModel})
+			[]string{visionModel}, enrichModels)
 		switch {
 		case ai.PublishingViable(results):
 			slog.Info("ai preflight complete", "summary", ai.PreflightSummary(results))
@@ -140,21 +186,17 @@ func main() {
 		}
 	}()
 
-	// Image search and scoring
-	imageSearcher, imageScorer := newImageScoring(cfg, hfClient, visionModel)
+	// Image scoring, the newsletter pick and card-update detection, all on the
+	// short-call chain.
+	mailSender := mail.NewSender(cfg.Mail.SMTP)
+	side := newAISideJobs(cfg, database, hfClient, mailSender, visionModel, enrichModels)
 
 	// Enrichment runs as a reconciliation pass rather than inline in article
 	// creation. Inline, each step was a best-effort call that logged a warning
 	// and moved on, so one slow response permanently cost the article a field.
 	// Reconciled, a miss is picked up on the next pass.
-	enrichModels := ai.SplitModels(cfg.AI.EnrichmentModel)
-	if len(enrichModels) == 0 {
-		// Fall back to the critic chain rather than silently doing nothing.
-		enrichModels = append([]string{cfg.AI.CriticModel},
-			ai.SplitModels(cfg.AI.FallbackGeneratorModel)...)
-	}
 	enricher := enrich.New(database, hfClient, enrichModels,
-		cfg.Site.PersonaName, imageSearcher, imageScorer)
+		cfg.Site.PersonaName, side.imageSearcher, side.imageScorer)
 	if cfg.AI.EnrichmentMaxAttempts > 0 {
 		enricher.MaxAttempts = cfg.AI.EnrichmentMaxAttempts
 	}
@@ -165,7 +207,6 @@ func main() {
 	// Services
 	scnr := scanner.NewScanner(database, cfg.Scanner.UserAgent)
 	articleMgr := article.NewManager(database, pipeline)
-	mailSender := mail.NewSender(cfg.Mail.SMTP)
 	mailPoller := mail.NewPoller(cfg.Mail.IMAP, articleMgr, &stubTokenResolver{})
 	voteSvc := vote.NewService(database, cfg.Votes, func(articleID int64) {
 		a, _ := database.GetGeneratedArticle(articleID)
@@ -173,7 +214,7 @@ func main() {
 			mailSender.SendVoteAlert(cfg.Mail.SMTP.From, articleID, a.Title)
 		}
 	})
-	newsletterSvc := newsletter.NewServiceWithAI(database, mailSender, cfg.Newsletter, hfClient, cfg.AI.CriticModel, cfg.Server.Domain)
+	newsletterSvc := side.newsletter
 
 	// Scheduler
 	sched := scheduler.New()
@@ -335,7 +376,7 @@ func main() {
 	sched.Start()
 
 	// Card update detector
-	detector := cardupdate.NewDetector(database, hfClient, cfg.AI.CriticModel)
+	detector := side.cardDetector
 
 	// Web server
 	app, err := web.NewApp(cfg, database, articleMgr, voteSvc, newsletterSvc, detector, ctx)
