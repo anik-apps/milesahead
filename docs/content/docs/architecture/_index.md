@@ -51,6 +51,7 @@ weight: 2
 |---------|-----------|---------|
 | Scanner | `internal/scanner` | Fetches RSS feeds and scrapes blog pages on configurable intervals |
 | Clustering | `internal/cluster` | Groups raw articles about the same topic using content similarity |
+| Story dedup | `internal/storydedup` | Decides whether a cluster repeats a story written in the last 7 days (TF-IDF prefilter, then one short AI call) |
 | AI Pipeline | `internal/ai` | Generates articles, runs dual-critic verification, handles revisions |
 | Article Manager | `internal/article` | Manages article lifecycle (draft, pending, approved, rejected) and revisions |
 | Web Server | `internal/web` | HTTP server with public pages, admin dashboard, and JSON API |
@@ -73,6 +74,7 @@ The application uses SQLite with the following tables:
 | `raw_articles` | Scraped articles with content-hash deduplication |
 | `generated_articles` | AI-generated articles with status, metadata, and structured fields |
 | `article_sources` | Many-to-many link between generated and raw articles |
+| `covered_raws` | Raw articles an existing article covers without citing them (late coverage skipped as a duplicate); read by the duplicate check only |
 | `verification_results` | Critic scores and check results per revision |
 | `admin_feedback` | Admin or email feedback on articles |
 | `article_revisions` | Revision history with before/after content |

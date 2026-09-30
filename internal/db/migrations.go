@@ -61,6 +61,20 @@ func migrate(db *sql.DB) error {
 		PRIMARY KEY (generated_article_id, raw_article_id)
 	);
 
+	-- Raw articles an existing generated article already covers without
+	-- citing them: late coverage of a story that was skipped as a duplicate.
+	-- Kept apart from article_sources so an article's public source list is
+	-- only ever what it was written from. The duplicate check reads both, so a
+	-- covered raw cannot seed a second article about the same story after the
+	-- raws it was written from leave the 48h clustering window.
+	CREATE TABLE IF NOT EXISTS covered_raws (
+		raw_article_id INTEGER PRIMARY KEY REFERENCES raw_articles(id),
+		generated_article_id INTEGER NOT NULL REFERENCES generated_articles(id),
+		reason TEXT NOT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE INDEX IF NOT EXISTS idx_covered_raws_article ON covered_raws(generated_article_id);
+
 	CREATE TABLE IF NOT EXISTS verification_results (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		generated_article_id INTEGER NOT NULL REFERENCES generated_articles(id),

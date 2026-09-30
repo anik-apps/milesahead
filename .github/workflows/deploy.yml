@@ -166,6 +166,9 @@ jobs:
             default_interval: 180
             cluster_threshold: 0.30
             user_agent: "MilesAhead/1.0"
+            # See config.example.yaml. Observing only until the shadow
+            # decisions have been reviewed.
+            story_dedup: "shadow"
 
           ai:
             # See config.example.yaml for why these models, and for the

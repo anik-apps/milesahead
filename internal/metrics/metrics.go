@@ -106,6 +106,17 @@ var (
 		Help: "Configured AI models that answered the startup preflight, by role",
 	}, []string{"role"})
 
+	// StoryDedupDecisionsTotal counts the story-level duplicate check's
+	// verdict on each cluster that passed the raw-ID check: new, duplicate,
+	// follow_up (same story, materially new development) or error_fallback
+	// (the AI call failed and the lexical score decided). mode is the
+	// configured scanner.story_dedup; in "shadow" a duplicate is counted but
+	// still generated.
+	StoryDedupDecisionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_story_dedup_decisions_total",
+		Help: "Story-level duplicate check decisions by outcome (new, duplicate, follow_up, error_fallback) and mode",
+	}, []string{"decision", "mode"})
+
 	AIAPIErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "milesahead_ai_api_errors_total",
 		Help: "Total AI API final failures",
@@ -211,7 +222,7 @@ func Init() {
 		EnrichmentPassesTotal, EnrichmentLastSuccessTimestamp, EnrichmentPassDuration,
 		ArticlesRejectedTotal, RevisionsTotal, AIAPIDuration,
 		RevisionReconcileTotal, RevisionsWaiting,
-		AIAPIErrorsTotal, AIPreflightModelsReachable, CriticScore, VotesTotal,
+		AIAPIErrorsTotal, AIPreflightModelsReachable, StoryDedupDecisionsTotal, CriticScore, VotesTotal,
 		HTTPRequestsTotal, HTTPDuration,
 		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,
 		ImageSelectedScore, ImageSelectedTotal,

@@ -40,7 +40,7 @@ func TestOpenAndMigrate(t *testing.T) {
 		"sources", "raw_articles", "generated_articles", "article_sources",
 		"verification_results", "admin_feedback", "article_revisions",
 		"article_votes", "newsletters", "subscribers", "admin_sessions",
-		"reference_pages",
+		"reference_pages", "covered_raws",
 	}
 	for _, table := range tables {
 		var name string

@@ -102,10 +102,12 @@ Published articles display in a two-column layout on the article page:
 
 ## Deduplication
 
-Content deduplication happens at two levels:
+Content deduplication happens at four levels:
 
-1. **Raw article level** -- each scraped article has a SHA-256 content hash stored in the `hash` column. Duplicate hashes are rejected at insert time.
-2. **Cluster level** -- the clustering engine groups raw articles about the same topic. The pipeline requires at least 2 unique source sites per cluster to reduce hallucination risk and ensure multi-source verification.
+1. **Raw article level** -- each scraped article has a SHA-256 hash of its title and link stored in the `hash` column. Duplicate hashes are rejected at insert time (an edited headline therefore makes a new row).
+2. **Cluster level** -- the clustering engine groups raw articles from the last 48 hours about the same topic. The pipeline requires at least 2 unique source sites per cluster to reduce hallucination risk and ensure multi-source verification.
+3. **Source overlap** -- a cluster that includes a raw article some generated article was written from (`article_sources`) or already covers (`covered_raws`) is skipped. Its remaining raw articles are recorded in `covered_raws` against that article, so late coverage cannot form a fresh cluster and a second article once the original sources leave the 48-hour window. `covered_raws` is separate from `article_sources`, so an article's public source list does not change.
+4. **Story level** -- a cluster that passes the overlap check is compared with every article generated in the last 7 days, in any status. A TF-IDF prefilter keeps up to 5 articles scoring at least 0.25; if there are any, one short AI call on the `enrichment_model` chain decides whether the cluster is the same story and, if so, whether it is a materially new development (a follow-up, which is generated). If the call fails, a lexical score of at least 0.55 decides. `scanner.story_dedup` sets the mode: `shadow` (default) logs a `story dedup decision` line and counts `milesahead_story_dedup_decisions_total{decision,mode}` but still generates; `block` skips the duplicate and records its raw articles in `covered_raws` (reason `story_match`); `off` skips the check.
 
 ## Voting System
 
