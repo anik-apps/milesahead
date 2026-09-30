@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -298,5 +300,49 @@ func TestPipeline_DetailsUseTheirOwnChain(t *testing.T) {
 	}
 	if len(result.KeyDetails) != 1 || result.KeyDetails[0].Value != "40%" {
 		t.Errorf("key details = %+v; want the fallback model's answer", result.KeyDetails)
+	}
+}
+
+// TestPipeline_LogsWhichCriticScored: with a critic chain, "critic scored" has
+// to say which critic, or a fall-over to the stricter fallback is invisible
+// in the approval rate.
+func TestPipeline_LogsWhichCriticScored(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA [TPG]"}
+	criticClient := &perModelMockHFClient{
+		responses: map[string]string{
+			"fallback-critic": `{"score": 90, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`,
+		},
+		errs: map[string]error{"busy-critic": &APIError{StatusCode: 504, Model: "busy-critic", Body: "gateway timeout", Retries: 3}},
+	}
+	pipeline := NewPipeline(NewGenerator(genMock, "gen", "", nil),
+		NewCritic(criticClient, "busy-critic,fallback-critic"), 80)
+	pipeline.SetDetailModels([]string{"fallback-critic"})
+
+	result, err := pipeline.Process("deal", []SourceArticle{
+		{Name: "TPG", URL: "https://tpg.com/1", Title: "Bonus", Content: "40% bonus to ANA"},
+		{Name: "OMAAT", URL: "https://omaat.com/1", Title: "ANA Bonus", Content: "40% transfer bonus"},
+	})
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if result.Verification.Model != "fallback-critic" {
+		t.Errorf("Verification.Model = %q; want fallback-critic", result.Verification.Model)
+	}
+	var found bool
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, `"msg":"critic scored"`) {
+			found = true
+			if !strings.Contains(line, `"model":"fallback-critic"`) {
+				t.Errorf("critic scored log lacks the scoring model: %s", line)
+			}
+		}
+	}
+	if !found {
+		t.Error(`no "critic scored" log line`)
 	}
 }

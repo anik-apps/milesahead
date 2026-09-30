@@ -37,37 +37,45 @@ ai:
   # returns 503 intermittently and leaks reasoning preamble, so it is placed
   # after a model that does neither.
   fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
-  # Critic must return parseable JSON: Critic.Verify runs replies through
-  # extractJSON, so reasoning-style models that answer in prose disqualify
-  # themselves regardless of judgement quality (glm-5.3-flash failed 3 of 4).
+  # Critic: a comma-separated chain, tried left to right on the same errors as
+  # the generator fallbacks (429 / 5xx / timeout / 404 / 410). One reachable
+  # critic is enough to publish. It must return parseable JSON: Critic.Verify
+  # runs replies through extractJSON, so models that answer in prose
+  # disqualify themselves regardless of judgement quality.
   #
-  # Re-selected 2026-09-29. The previous critic, mistralai/mistral-nemotron,
-  # was retired upstream on 2026-09-28 08:00 UTC (410 "end of life" on every
-  # call), so nothing passed verification and nothing published. Measured with
-  # cmd/ab-models -critic-candidates on a real article from the production
-  # generator:
-  #   deepseek-ai/deepseek-v4.1-flash     86 and 88 on two runs, valid JSON,
-  #                                       all 4 checks true, 116s / 260s
-  #   openai/gpt-oss-20b                  60, 16s
-  #   nvidia/nemotron-3-super-120b-a12b   45, 100s, truncation retries
-  #   moonshotai/kimi-k3                  42
-  #   google/gemma-4-31b-it               40, 1167s
-  #   z-ai/glm-5.3                        truncated / timed out
-  # Listed by the provider but 404 when called: mistral-large,
-  # mistral-large-2-instruct, kimi-k2.6, llama-3.1-nemotron-70b-instruct,
-  # llama-3.1-nemotron-ultra-253b-v1, palmyra-fin-70b-32k.
+  # Re-selected 2026-09-30. deepseek-ai/deepseek-v4.1-flash, chosen on
+  # 2026-09-29 after mistralai/mistral-nemotron was retired (410 "end of
+  # life"), scored well on two lucky runs that day but its hosted endpoint is
+  # overloaded: every critic call since has ended in a gateway 504 after ~5
+  # minutes, and even a 36-token reply queues for 70-100s. A critic ERROR drops
+  # the article from the scan outright, so nothing was verified at all. (A
+  # score below critic_threshold is different: the article is saved as a
+  # draft, not lost -- see article.Manager.CreateFromPipeline.)
   #
-  # deepseek is slow -- minutes per reply, including 4m56s to answer a
-  # one-word preflight probe -- which is fine inside request_timeout (900s)
-  # for verification, but it must not be used for anything else: short calls
-  # are capped at 30s (ai.ShortCallTimeout) and would time out every time.
-  # Those run on enrichment_model instead.
+  # Measured on the real critic prompt, two articles from the production
+  # generator, score after the pipeline's adjustScore, threshold 75:
+  #   nemotron-3-super-120b-a12b, thinking OFF   75 and 95        28s, 1.7s
+  #   moonshotai/kimi-k3, thinking OFF           62 and 62        44-50s
+  #   deepseek-v4.1-flash, thinking OFF          50 and 50        67-101s
+  #   nemotron-3-super-120b-a12b, thinking ON    45, then 503 overloaded
+  #   openai/gpt-oss-20b, reasoning_effort=low   ~30 and ~35      4-18s
+  #   google/gemma-4-31b-it                      504 and 504      302s
   #
-  # Deliberately a different model from the generator: self-grading is not a
-  # quality gate. On a reference article the retired critic scored 92, the
-  # 550b 82 and gpt-oss-20b 45; deepseek scores in the high 80s, so the
-  # publish bar moves again -- watch the approval rate after changing it.
-  critic_model: "deepseek-ai/deepseek-v4.1-flash"
+  # Thinking off (critic_disable_thinking below) is what makes nemotron-super
+  # usable as a critic: with thinking on it truncates or leaks its reasoning
+  # into the JSON and scored 45. kimi-k3 is the fallback; it is stricter, so
+  # articles it grades mostly land as drafts (62 < 75).
+  #
+  # Independence caveat: nemotron-3-super is the same family as the generator
+  # (not the same model), and it is also in fallback_generator_model -- when
+  # the generator falls back to it, the article is graded by the model that
+  # wrote it. Self-grading is not a quality gate; watch the approval rate.
+  critic_model: "nvidia/nemotron-3-super-120b-a12b,moonshotai/kimi-k3"
+  # Sends chat_template_kwargs {"enable_thinking": false} on critic requests
+  # (critic_model and critic2_model) only; generation, enrichment, side jobs
+  # and vision keep the model's default. Every critic measurement above that
+  # says "thinking OFF" was made with this. Default false.
+  critic_disable_thinking: true
   # Vision model for image scoring. The 90b variant this replaced times out on
   # every call, so each candidate image burned the full 300s client timeout.
   vision_model: "meta/llama-3.2-11b-vision-instruct"
@@ -82,11 +90,12 @@ ai:
   # tried in order on a retryable error or a retired model. These calls are
   # capped at 30s, so only fast models belong here.
   #
-  # Deliberately not critic_model: the side jobs used to reuse it, so the
-  # critic's retirement on 2026-09-28 took them all down with it, and the new
-  # critic is far too slow for a 30s call. Enrichment itself survived only
-  # because this was already a chain -- kept two deep for the same reason as
-  # fallback_generator_model.
+  # Deliberately not led by the critic: the side jobs used to reuse it, so the
+  # critic's retirement on 2026-09-28 took them all down with it. Enrichment
+  # itself survived only because this was already a chain -- kept two deep for
+  # the same reason as fallback_generator_model. nemotron-3-super is in both
+  # chains since 2026-09-30, but first in only one of them, so an overloaded
+  # critic backend costs enrichment a fallback, not its primary.
   #
   # Checked 2026-09-29 on short real prompts (tags, image scoring, card-update
   # detection, Scout's Take): gpt-oss-20b 3-11s, all valid; nemotron-3-super

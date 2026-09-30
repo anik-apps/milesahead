@@ -57,17 +57,34 @@ func newImageScoring(cfg *config.Config, client ai.HFClientInterface, visionMode
 //
 // Those calls asked for 512-2048 tokens, so HFClient bounds them at
 // ai.ShortCallTimeout (30s). Most of them used to go to the critic model, which
-// failed them all when mistralai/mistral-nemotron was retired on 2026-09-28,
-// and its replacement takes minutes per reply -- it would time out every one.
-// The critic is for verification only.
+// failed them all when mistralai/mistral-nemotron was retired on 2026-09-28;
+// its first replacement took minutes per reply and would have timed out every
+// one. The critic is for verification only.
 func enrichmentModels(cfg *config.Config) []string {
 	if models := ai.SplitModels(cfg.AI.EnrichmentModel); len(models) > 0 {
 		return models
 	}
 	// Unset: fall back to the generator fallback chain rather than silently
-	// doing nothing. Those models are the fast ones; the critic goes last,
-	// since it is the slowest model configured.
+	// doing nothing. Those models are the fast ones; the critic chain goes
+	// last.
 	return append(ai.SplitModels(cfg.AI.FallbackGeneratorModel), ai.SplitModels(cfg.AI.CriticModel)...)
+}
+
+// newCriticClient returns the client the critics call through. With
+// critic_disable_thinking set it is a copy of hfClient that asks for no
+// reasoning phase; the generator, enrichment, side jobs and vision scoring keep
+// using hfClient itself, so the setting cannot leak into them.
+func newCriticClient(cfg *config.Config, hfClient *ai.HFClient) *ai.HFClient {
+	if cfg.AI.CriticDisableThinking {
+		return hfClient.WithThinkingDisabled()
+	}
+	return hfClient
+}
+
+// criticModels is every critic the preflight should probe: the critic_model
+// chain, then critic2_model.
+func criticModels(cfg *config.Config) []string {
+	return append(ai.SplitModels(cfg.AI.CriticModel), ai.SplitModels(cfg.AI.Critic2Model)...)
 }
 
 // aiSideJobs are the components whose AI calls are short side jobs rather than
@@ -136,7 +153,9 @@ func main() {
 	hfClient.SetRequestTimeout(time.Duration(cfg.AI.RequestTimeout) * time.Second)
 	cache := ai.NewCache(time.Duration(cfg.AI.CacheTTL) * time.Second)
 	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cfg.AI.FallbackGeneratorModel, cache)
-	critic := ai.NewCritic(hfClient, cfg.AI.CriticModel)
+	// critic_model is a chain; see ai.Critic.
+	criticClient := newCriticClient(cfg, hfClient)
+	critic := ai.NewCritic(criticClient, cfg.AI.CriticModel)
 	// Was hardcoded to meta/llama-3.2-90b-vision-instruct, which now times out
 	// on every call (120s+, reproducible) -- so each image scored burned the
 	// client's full request timeout before failing. Configurable now, so the
@@ -160,7 +179,7 @@ func main() {
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
 	pipeline.SetDetailModels(enrichModels)
 	if cfg.AI.Critic2Model != "" {
-		critic2 := ai.NewCritic(hfClient, cfg.AI.Critic2Model)
+		critic2 := ai.NewCritic(criticClient, cfg.AI.Critic2Model)
 		pipeline.SetCritic2(critic2)
 	}
 
@@ -168,9 +187,8 @@ func main() {
 	// calling them every three hours. A retired model answers 410 forever, and
 	// without this the only symptom is articles quietly never appearing.
 	go func() {
-		results := ai.PreflightAll(hfClient, cfg.AI.GeneratorModel,
-			ai.SplitModels(cfg.AI.FallbackGeneratorModel),
-			[]string{cfg.AI.CriticModel, cfg.AI.Critic2Model},
+		results := ai.PreflightAllWithCriticClient(hfClient, criticClient, cfg.AI.GeneratorModel,
+			ai.SplitModels(cfg.AI.FallbackGeneratorModel), criticModels(cfg),
 			[]string{visionModel}, enrichModels)
 		switch {
 		case ai.PublishingViable(results):

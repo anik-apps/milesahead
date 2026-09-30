@@ -92,3 +92,46 @@ func preflightGauge(t *testing.T, role string) float64 {
 	}
 	return m.GetGauge().GetValue()
 }
+
+// TestPreflight_CriticChain: the critic is a chain, so one reachable critic is
+// enough to publish, and the gauge counts how many answered. Critics are
+// probed through the critic's own client (which may disable thinking), under
+// the article-path timeout; nothing else is.
+func TestPreflight_CriticChain(t *testing.T) {
+	base := &budgetRecordingClient{}
+	critics := &budgetRecordingClient{dead: map[string]bool{"busy-critic": true}}
+	results := PreflightAllWithCriticClient(base, critics, "gen", []string{"fb"},
+		[]string{"busy-critic", "live-critic"}, []string{"vision"}, []string{"enrich"})
+
+	if !PublishingViable(results) {
+		t.Errorf("one critic of two is alive; publishing must be viable: %s", PreflightSummary(results))
+	}
+	if got := preflightGauge(t, "critic"); got != 1 {
+		t.Errorf("reachable{role=\"critic\"} = %v, want 1", got)
+	}
+	for _, m := range []string{"busy-critic", "live-critic"} {
+		if critics.budget[m] != articleProbeTokens {
+			t.Errorf("critic %s probed with %d tokens on the critic client; want %d",
+				m, critics.budget[m], articleProbeTokens)
+		}
+		if _, onBase := base.budget[m]; onBase {
+			t.Errorf("critic %s was probed through the base client", m)
+		}
+	}
+	for _, m := range []string{"gen", "fb", "vision", "enrich"} {
+		if _, onCritic := critics.budget[m]; onCritic {
+			t.Errorf("%s was probed through the critic client", m)
+		}
+	}
+
+	// Both dead: not viable, gauge 0.
+	critics = &budgetRecordingClient{dead: map[string]bool{"busy-critic": true, "live-critic": true}}
+	results = PreflightAllWithCriticClient(base, critics, "gen", nil,
+		[]string{"busy-critic", "live-critic"}, nil, nil)
+	if PublishingViable(results) {
+		t.Error("every critic is dead; publishing must not be viable")
+	}
+	if got := preflightGauge(t, "critic"); got != 0 {
+		t.Errorf("reachable{role=\"critic\"} = %v, want 0", got)
+	}
+}

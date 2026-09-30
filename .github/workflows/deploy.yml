@@ -172,7 +172,8 @@ jobs:
             # warning that the provider catalogue lists models that do not work.
             generator_model: "nvidia/nemotron-3-ultra-550b-a55b"
             fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
-            critic_model: "deepseek-ai/deepseek-v4.1-flash"
+            critic_model: "nvidia/nemotron-3-super-120b-a12b,moonshotai/kimi-k3"
+            critic_disable_thinking: true
             vision_model: "meta/llama-3.2-11b-vision-instruct"
             request_timeout: 900
             enrichment_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"

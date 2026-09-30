@@ -38,7 +38,8 @@ All settings live in a single `config.yaml` file. Environment variables can be i
 | `admin` | `password_hash` | bcrypt hash of admin password |
 | `db` | `path` | Path to SQLite database file |
 | `ai` | `generator_model` | Model for article generation (e.g. `nvidia/nemotron-3-ultra-550b-a55b`) |
-| `ai` | `critic_model` | Model for article verification only (e.g. `deepseek-ai/deepseek-v4.1-flash`) |
+| `ai` | `critic_model` | Model, or comma-separated chain tried in order, for article verification only (e.g. `nvidia/nemotron-3-super-120b-a12b,moonshotai/kimi-k3`) |
+| `ai` | `critic_disable_thinking` | Send `enable_thinking: false` on critic requests only (default `false`; production sets `true`) |
 | `ai` | `enrichment_model` | Comma-separated chain of fast models for every short AI call: enrichment, image text-scoring, newsletter pick, card-update detection (e.g. `openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b`) |
 | `ai` | `hf_api_token` | NVIDIA API key |
 | `ai` | `hf_base_url` | API base URL (e.g. `https://integrate.api.nvidia.com/v1`) |

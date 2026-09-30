@@ -57,6 +57,7 @@ it against real source material rather than trusting the listing:
 go run ./cmd/ab-models -critic-candidates "model-a,model-b" -generators model-a
 
 # Score candidate generators on real clusters, using one fixed critic
+# (-critic-no-thinking sends the critic requests the way production does)
 go run ./cmd/ab-models -topics 5 -generators "model-a,model-b" -critic model-c
 
 # Dump whole articles for human review, then render them side by side
@@ -71,6 +72,13 @@ at boot rather than as articles quietly never appearing. Results are exported as
 nothing can publish. Article-path models are probed under the full
 `request_timeout`, so with a slow critic the result arrives minutes after boot.
 
+`critic_model` is a chain (`nvidia/nemotron-3-super-120b-a12b`, then
+`moonshotai/kimi-k3`), tried in order when a critic is overloaded or gone; one
+reachable critic is enough to publish. `critic_disable_thinking: true` sends
+`chat_template_kwargs: {enable_thinking: false}` on critic requests only — with
+thinking on, nemotron-super truncates or leaks its reasoning into the JSON. The
+`critic scored` log line names the model that scored.
+
 ### Enrichment
 
 Scout's Take, key details, tags and the article image are **not** produced during
@@ -79,8 +87,8 @@ article generation. They run as a background reconciliation pass
 separate chain from the critic, so a degraded critic backend cannot take them
 down with it. The same chain serves every other short AI call: image
 text-scoring, the newsletter pick, card-update detection and the pipeline's
-inline key-details call. Those are capped at 30 seconds and the critic takes
-minutes, so the critic is used for verification only.
+inline key-details call. Those are capped at 30 seconds, so the critic is used
+for verification only.
 
 This matters because inline they were best-effort: a single slow response
 permanently cost the article a field, and for two and a half months roughly a

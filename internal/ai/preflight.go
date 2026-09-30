@@ -62,9 +62,21 @@ func Preflight(client HFClientInterface, generator string, fallbacks []string, c
 //
 // The results are also exported as milesahead_ai_preflight_models_reachable.
 func PreflightAll(client HFClientInterface, generator string, fallbacks, critics, others, enrichment []string) []PreflightResult {
+	return PreflightAllWithCriticClient(client, client, generator, fallbacks, critics, others, enrichment)
+}
+
+// PreflightAllWithCriticClient is PreflightAll with the critics probed through
+// their own client -- the one the Critic really calls them with, which may
+// disable thinking (see HFClient.WithThinkingDisabled). A probe has to send the
+// request shape the role will send, or it can pass a model the real call fails.
+//
+// critics is the whole critic chain; one reachable critic is enough for
+// PublishingViable, and the role="critic" gauge counts how many answered.
+func PreflightAllWithCriticClient(client, criticClient HFClientInterface, generator string,
+	fallbacks, critics, others, enrichment []string) []PreflightResult {
 	var out []PreflightResult
 
-	check := func(model, role string, maxTokens int) {
+	check := func(client HFClientInterface, model, role string, maxTokens int) {
 		if strings.TrimSpace(model) == "" {
 			return
 		}
@@ -95,18 +107,21 @@ func PreflightAll(client HFClientInterface, generator string, fallbacks, critics
 		out = append(out, r)
 	}
 
-	check(generator, "generator", articleProbeTokens)
+	if criticClient == nil {
+		criticClient = client
+	}
+	check(client, generator, "generator", articleProbeTokens)
 	for _, f := range fallbacks {
-		check(f, "fallback", articleProbeTokens)
+		check(client, f, "fallback", articleProbeTokens)
 	}
 	for _, c := range critics {
-		check(c, "critic", articleProbeTokens)
+		check(criticClient, c, "critic", articleProbeTokens)
 	}
 	for _, o := range others {
-		check(o, "vision", preflightMaxTokens)
+		check(client, o, "vision", preflightMaxTokens)
 	}
 	for _, e := range enrichment {
-		check(e, "enrichment", preflightMaxTokens)
+		check(client, e, "enrichment", preflightMaxTokens)
 	}
 	recordPreflight(out)
 	return out
@@ -149,9 +164,9 @@ func GenerationViable(results []PreflightResult) bool {
 //
 // Generation alone is not enough: Pipeline.Process verifies every article and
 // returns an error if the critic call fails, so a live generator with a dead
-// critic publishes exactly nothing. The critic is also the one role with no
-// fallback chain, which makes it the most fragile link, and it was one of the
-// three models retired in the incident this check exists to catch.
+// critic publishes exactly nothing. The critic is a chain now, so any one
+// reachable critic is enough; it was a single model until that model was
+// retired (2026-09-28) and its replacement overloaded (2026-09-30).
 func PublishingViable(results []PreflightResult) bool {
 	critic := false
 	for _, r := range results {

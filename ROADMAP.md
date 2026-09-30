@@ -145,6 +145,16 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       short-call cap. The preflight probes article-path models under the full request
       timeout (a 30s probe would have reported the new critic dead) and now covers the
       enrichment chain.
+- [x] **Critic overloaded, every article dropped** — from 2026-09-29 the new critic,
+      `deepseek-ai/deepseek-v4.1-flash`, answered every call with a gateway 504 after
+      ~5 minutes, so every generated article was skipped and every revision failed.
+      `critic_model` is now a chain, tried via `ai.TryModels`:
+      `nvidia/nemotron-3-super-120b-a12b` then `moonshotai/kimi-k3`, both with thinking
+      off (`critic_disable_thinking`, critic requests only). Measured on the real critic
+      prompt: nemotron-super 75 and 95 in 28s / 1.7s, kimi-k3 62 and 62, deepseek 50
+      and 50 in 67-101s. The preflight probes every critic in the chain and publishing
+      is viable if any answers; `critic scored` logs the model. Caveat: nemotron-super is
+      also a generator fallback, so a fallback-written article is self-graded.
 - [ ] **Alert when the startup preflight finds no reachable critic** — the 2026-09-28
       retirement logged `ai preflight: no CRITIC is reachable` at ERROR on every startup
       for about two days and nobody saw it. The preflight now exports

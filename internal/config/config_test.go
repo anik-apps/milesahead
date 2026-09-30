@@ -205,3 +205,35 @@ mail:
 		t.Errorf("Mail.IMAP.Password = %q, want %q", cfg.Mail.IMAP.Password, "imap-pass-from-env")
 	}
 }
+
+// critic_disable_thinking is opt-in: a config that predates it must keep
+// sending critic requests exactly as before.
+func TestLoadConfig_CriticDisableThinking(t *testing.T) {
+	for _, tc := range []struct {
+		name, line string
+		want       bool
+	}{
+		{"absent", "", false},
+		{"false", "  critic_disable_thinking: false\n", false},
+		{"true", "  critic_disable_thinking: true\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			yaml := "ai:\n  critic_model: \"a, b\"\n" + tc.line
+			if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.AI.CriticDisableThinking != tc.want {
+				t.Errorf("CriticDisableThinking = %v, want %v", cfg.AI.CriticDisableThinking, tc.want)
+			}
+			// The chain is kept verbatim; ai.SplitModels parses it.
+			if cfg.AI.CriticModel != "a, b" {
+				t.Errorf("CriticModel = %q", cfg.AI.CriticModel)
+			}
+		})
+	}
+}
