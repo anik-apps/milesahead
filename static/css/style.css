@@ -1239,6 +1239,7 @@ tr:hover {
 }
 
 .revision-msg--failed {
+    font-style: normal;
     color: #b91c1c;
     border-color: #fecaca;
 }
