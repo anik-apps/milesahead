@@ -74,12 +74,24 @@ func enrichmentModels(cfg *config.Config) []string {
 // critic_disable_thinking set it is a copy of hfClient that asks for no
 // reasoning phase; the generator, enrichment, side jobs and vision scoring keep
 // using hfClient itself, so the setting cannot leak into them.
+//
+// With more than one critic, each retries at most once before the chain moves
+// on. A critic whose gateway times out takes ~5 minutes per attempt, so the
+// usual retries held an article ~20 minutes before the next critic was tried;
+// one retry still absorbs a single transient error.
 func newCriticClient(cfg *config.Config, hfClient *ai.HFClient) *ai.HFClient {
+	c := hfClient
 	if cfg.AI.CriticDisableThinking {
-		return hfClient.WithThinkingDisabled()
+		c = c.WithThinkingDisabled()
 	}
-	return hfClient
+	if len(ai.SplitModels(cfg.AI.CriticModel)) > 1 && cfg.AI.MaxRetries > criticChainRetries {
+		c = c.WithMaxRetries(criticChainRetries)
+	}
+	return c
 }
+
+// criticChainRetries is how often each critic in a multi-critic chain retries.
+const criticChainRetries = 1
 
 // criticModels is every critic the preflight should probe: the critic_model
 // chain, then critic2_model.

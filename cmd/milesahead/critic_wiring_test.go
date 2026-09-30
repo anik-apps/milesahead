@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/kumaranik/milesahead/internal/ai"
@@ -58,5 +59,43 @@ func TestCriticWiring(t *testing.T) {
 	cfg.AI.Critic2Model = "c"
 	if got, want := criticModels(cfg), []string{"a", "b", "c"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("criticModels = %v, want %v", got, want)
+	}
+}
+
+// TestCriticWiring_ChainRetriesEachCriticOnce: with a fallback critic, a critic
+// that keeps failing is retried once, not max_retries times, before the next
+// one is tried. Each gateway timeout costs ~5 minutes in production.
+func TestCriticWiring_ChainRetriesEachCriticOnce(t *testing.T) {
+	var mu sync.Mutex
+	calls := map[string]int{}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Model string }
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		mu.Lock()
+		calls[body.Model]++
+		mu.Unlock()
+		if body.Model == "critic-a" {
+			w.WriteHeader(http.StatusGatewayTimeout)
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\":90,\"issues\":[],\"factual_check\":true,\"attribution_check\":true,\"completeness_check\":true,\"hallucination_check\":true}"},"finish_reason":"stop"}]}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{AI: config.AIConfig{CriticModel: "critic-a,critic-b", MaxRetries: 3}}
+	hf := ai.NewHFClient("token", cfg.AI.MaxRetries)
+	hf.BaseURL = ts.URL
+	v, err := ai.NewCritic(newCriticClient(cfg, hf), cfg.AI.CriticModel).Verify("article",
+		[]ai.SourceArticle{{Name: "TPG", Content: "x"}})
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if v.Model != "critic-b" {
+		t.Errorf("scored by %q, want the fallback critic-b", v.Model)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if got := calls["critic-a"]; got != 1+criticChainRetries {
+		t.Errorf("critic-a called %d times; want %d (one try plus %d retry)", got, 1+criticChainRetries, criticChainRetries)
 	}
 }

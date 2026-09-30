@@ -145,6 +145,14 @@ func (c *HFClient) WithThinkingDisabled() *HFClient {
 	return &cp
 }
 
+// WithMaxRetries returns a copy of the client that retries a failed call at
+// most n times. The original client is unchanged.
+func (c *HFClient) WithMaxRetries(n int) *HFClient {
+	cp := *c
+	cp.maxRetries = n
+	return &cp
+}
+
 // chatRequest is the OpenAI-compatible request format.
 type chatRequest struct {
 	Model       string        `json:"model"`
