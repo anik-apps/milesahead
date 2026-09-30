@@ -62,6 +62,9 @@ type adminArticleRow struct {
 	ArticleLinks      []struct{ Text, URL string }
 	ImageURL          string
 	Tags              []string
+	// ScoutsTake is shown in the admin preview so it can be reviewed before
+	// approval; empty until enrichment writes it.
+	ScoutsTake string
 	// RevisionFailures is how many rewrites of a revision_requested article
 	// have failed in a row, and RevisionLastError the latest reason. Without
 	// them "Revising..." looks the same whether a rewrite is running, retrying,
@@ -71,8 +74,14 @@ type adminArticleRow struct {
 	// RevisionGaveUp: the reconciler has stopped retrying; the admin must
 	// re-request the revision, approve or reject.
 	RevisionGaveUp bool
+	// RevisionThread is the article's feedback and the rewrites that answered
+	// it, oldest first, for the preview; nil when no feedback was ever sent.
+	RevisionThread []revisionRequest
 	createdAtRaw   time.Time // for sorting only, not exposed to template
 }
+
+// adminTimeFormat is how admin views show timestamps.
+const adminTimeFormat = "Jan 2, 2006 3:04 PM"
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	// Show all articles needing admin attention: pending, unpublished, and revision_requested
@@ -107,8 +116,9 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 			RevisionNumber: a.RevisionNumber,
 			TLDR:           a.TLDR,
 			ImageURL:       a.ImageURL,
-			CreatedAt:      a.CreatedAt.Format("Jan 2, 2006 3:04 PM"),
-			UpdatedAt:      a.UpdatedAt.Format("Jan 2, 2006 3:04 PM"),
+			ScoutsTake:     a.ScoutsTake,
+			CreatedAt:      a.CreatedAt.Format(adminTimeFormat),
+			UpdatedAt:      a.UpdatedAt.Format(adminTimeFormat),
 			createdAtRaw:   a.CreatedAt,
 		}
 		if p, ok := revisionState[a.ID]; ok && a.Status == db.StatusRevisionRequested && p.Failures > 0 {
@@ -182,12 +192,14 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	if len(rows) > 20 {
 		rows = rows[:20]
 	}
+	app.attachRevisionHistory(rows)
 
 	data := map[string]interface{}{
-		"Title":     "Dashboard",
-		"Articles":  rows,
-		"CSRFToken": getCSRFToken(w, r),
-		"Message":   r.URL.Query().Get("msg"),
+		"Title":       "Dashboard",
+		"Articles":    rows,
+		"CSRFToken":   getCSRFToken(w, r),
+		"Message":     r.URL.Query().Get("msg"),
+		"PersonaName": app.cfg.Site.PersonaName,
 	}
 	app.renderTemplate(w, "dashboard.html", data)
 }

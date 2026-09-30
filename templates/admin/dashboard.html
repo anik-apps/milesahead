@@ -79,7 +79,7 @@
     <div id="preview-{{.ID}}" class="preview-overlay" onclick="if(event.target===this)closePreview(this)">
         <div class="preview-modal">
             <div class="preview-header">
-                <span class="preview-label">Article Preview</span>
+                <span class="preview-label">Article Preview <span class="preview-id">#{{.ID}}</span></span>
                 <button class="preview-close" onclick="closePreview(document.getElementById('preview-{{.ID}}'))">&times;</button>
             </div>
             <div class="preview-body">
@@ -87,6 +87,8 @@
                 <div class="article-hero">
                     <img src="{{.ImageURL}}" alt="{{.Title}}">
                 </div>
+                {{else}}
+                <p class="preview-missing">No image yet. Enrichment adds one within about 15 minutes of the article being created.</p>
                 {{end}}
                 <article class="article-detail">
                     <header class="article-header">
@@ -127,6 +129,14 @@
                             <div class="article-content">
                                 {{.Content | safeHTML}}
                             </div>
+                            {{if .ScoutsTake}}
+                            <div class="scouts-take">
+                                <div class="scout-label">{{$.PersonaName}}'s Take</div>
+                                <p>{{.ScoutsTake}}</p>
+                            </div>
+                            {{else}}
+                            <p class="preview-missing">No {{$.PersonaName}}'s Take yet. Enrichment adds it within about 15 minutes of the article being created.</p>
+                            {{end}}
                         </div>
                     </div>
                 </article>
@@ -170,6 +180,48 @@
                     </ul>
                     {{end}}
                 </div>
+                {{end}}
+                {{if .RevisionThread}}
+                {{/* Collapsed by default: the critic report and sources matter more
+                     at a glance, and a long thread would push them off screen. */}}
+                <details class="admin-revision-section">
+                    <summary><h4>Revision history</h4><span class="revision-count">{{len .RevisionThread}} {{if eq (len .RevisionThread) 1}}request{{else}}requests{{end}}</span></summary>
+                    <p class="revision-thread-note">Shows the request text as sent. The full prompt given to the model is not stored.</p>
+                    <ol class="revision-thread">
+                        {{range .RevisionThread}}
+                        <li class="revision-msg revision-msg--request">
+                            <div class="revision-msg-meta"><span class="revision-msg-who">{{.Source}}</span> &middot; {{.CreatedAt}}</div>
+                            <div class="revision-msg-text">{{.Text}}</div>
+                        </li>
+                        {{range .Responses}}
+                        <li class="revision-msg revision-msg--response">
+                            <div class="revision-msg-meta"><span class="revision-msg-who">Revision {{.Number}}</span> &middot; {{.CreatedAt}}{{if .HasScore}} &middot; <span class="revision-score">Critic {{.Score}}/100</span>{{end}}</div>
+                            <div class="revision-msg-text">{{.WordsBefore}} &rarr; {{.WordsAfter}} words{{if .FailedCheck}} &middot; failed checks: {{range $i, $c := .FailedCheck}}{{if $i}}, {{end}}{{$c}}{{end}}{{end}}</div>
+                            <details class="revision-content">
+                                <summary>Revised article</summary>
+                                <div class="article-content">{{.NewContent | safeHTML}}</div>
+                            </details>
+                            <details class="revision-content">
+                                <summary>Previous version</summary>
+                                <div class="article-content">{{.OldContent | safeHTML}}</div>
+                            </details>
+                        </li>
+                        {{else}}
+                        {{if eq .Pending "rewriting"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status">Rewriting&hellip;</li>
+                        {{else if eq .Pending "retrying"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status revision-msg--failed">Failed {{.Failures}}&times;: {{.LastError}} &mdash; retrying</li>
+                        {{else if eq .Pending "gave_up"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status revision-msg--failed">Gave up after {{.Failures}} tries &mdash; request it again{{if .LastError}}<span class="revision-msg-error">Last error: {{.LastError}}</span>{{end}}</li>
+                        {{else if eq .Pending "superseded"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status">Superseded by a later request</li>
+                        {{else if eq .Pending "none"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status">No revision was made for this request</li>
+                        {{end}}
+                        {{end}}
+                        {{end}}
+                    </ol>
+                </details>
                 {{end}}
                 {{if .Sources}}
                 <div class="admin-sources-section">
