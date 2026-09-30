@@ -62,6 +62,9 @@ type adminArticleRow struct {
 	ArticleLinks      []struct{ Text, URL string }
 	ImageURL          string
 	Tags              []string
+	// ScoutsTake is shown in the admin preview so it can be reviewed before
+	// approval; empty until enrichment writes it.
+	ScoutsTake string
 	// RevisionFailures is how many rewrites of a revision_requested article
 	// have failed in a row, and RevisionLastError the latest reason. Without
 	// them "Revising..." looks the same whether a rewrite is running, retrying,
@@ -107,6 +110,7 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 			RevisionNumber: a.RevisionNumber,
 			TLDR:           a.TLDR,
 			ImageURL:       a.ImageURL,
+			ScoutsTake:     a.ScoutsTake,
 			CreatedAt:      a.CreatedAt.Format("Jan 2, 2006 3:04 PM"),
 			UpdatedAt:      a.UpdatedAt.Format("Jan 2, 2006 3:04 PM"),
 			createdAtRaw:   a.CreatedAt,
@@ -184,10 +188,11 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
-		"Title":     "Dashboard",
-		"Articles":  rows,
-		"CSRFToken": getCSRFToken(w, r),
-		"Message":   r.URL.Query().Get("msg"),
+		"Title":       "Dashboard",
+		"Articles":    rows,
+		"CSRFToken":   getCSRFToken(w, r),
+		"Message":     r.URL.Query().Get("msg"),
+		"PersonaName": app.cfg.Site.PersonaName,
 	}
 	app.renderTemplate(w, "dashboard.html", data)
 }

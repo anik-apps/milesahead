@@ -914,6 +914,24 @@ tr:hover {
     letter-spacing: 0.5px;
 }
 
+/* Admin-only: the article's database id, for matching logs and revisions. */
+.preview-id {
+    margin-left: 0.4rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* Admin-only note for a field enrichment has not filled yet. */
+.preview-missing {
+    margin: 0.75rem 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
 .preview-close {
     background: none;
     border: none;

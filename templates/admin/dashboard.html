@@ -79,7 +79,7 @@
     <div id="preview-{{.ID}}" class="preview-overlay" onclick="if(event.target===this)closePreview(this)">
         <div class="preview-modal">
             <div class="preview-header">
-                <span class="preview-label">Article Preview</span>
+                <span class="preview-label">Article Preview <span class="preview-id">#{{.ID}}</span></span>
                 <button class="preview-close" onclick="closePreview(document.getElementById('preview-{{.ID}}'))">&times;</button>
             </div>
             <div class="preview-body">
@@ -87,6 +87,8 @@
                 <div class="article-hero">
                     <img src="{{.ImageURL}}" alt="{{.Title}}">
                 </div>
+                {{else}}
+                <p class="preview-missing">No image yet. Enrichment adds one within about 15 minutes of the article being created.</p>
                 {{end}}
                 <article class="article-detail">
                     <header class="article-header">
@@ -127,6 +129,14 @@
                             <div class="article-content">
                                 {{.Content | safeHTML}}
                             </div>
+                            {{if .ScoutsTake}}
+                            <div class="scouts-take">
+                                <div class="scout-label">{{$.PersonaName}}'s Take</div>
+                                <p>{{.ScoutsTake}}</p>
+                            </div>
+                            {{else}}
+                            <p class="preview-missing">No {{$.PersonaName}}'s Take yet. Enrichment adds it within about 15 minutes of the article being created.</p>
+                            {{end}}
                         </div>
                     </div>
                 </article>
