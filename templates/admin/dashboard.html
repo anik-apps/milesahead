@@ -181,6 +181,46 @@
                     {{end}}
                 </div>
                 {{end}}
+                {{if .RevisionThread}}
+                <div class="admin-revision-section">
+                    <h4>Revision history</h4>
+                    <p class="revision-thread-note">Shows the request text as sent. The full prompt given to the model is not stored.</p>
+                    <ol class="revision-thread">
+                        {{range .RevisionThread}}
+                        <li class="revision-msg revision-msg--request">
+                            <div class="revision-msg-meta"><span class="revision-msg-who">{{.Source}}</span> &middot; {{.CreatedAt}}</div>
+                            <div class="revision-msg-text">{{.Text}}</div>
+                        </li>
+                        {{range .Responses}}
+                        <li class="revision-msg revision-msg--response">
+                            <div class="revision-msg-meta"><span class="revision-msg-who">Revision {{.Number}}</span> &middot; {{.CreatedAt}}{{if .HasScore}} &middot; <span class="revision-score">Critic {{.Score}}/100</span>{{end}}</div>
+                            <div class="revision-msg-text">{{.WordsBefore}} &rarr; {{.WordsAfter}} words{{if .FailedCheck}} &middot; failed checks: {{range $i, $c := .FailedCheck}}{{if $i}}, {{end}}{{$c}}{{end}}{{end}}</div>
+                            <details class="revision-content">
+                                <summary>Revised article</summary>
+                                <div class="article-content">{{.NewContent | safeHTML}}</div>
+                            </details>
+                            <details class="revision-content">
+                                <summary>Previous version</summary>
+                                <div class="article-content">{{.OldContent | safeHTML}}</div>
+                            </details>
+                        </li>
+                        {{else}}
+                        {{if eq .Pending "rewriting"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status">Rewriting&hellip;</li>
+                        {{else if eq .Pending "retrying"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status revision-msg--failed">Failed {{.Failures}}&times;: {{.LastError}} &mdash; retrying</li>
+                        {{else if eq .Pending "gave_up"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status revision-msg--failed">Gave up after {{.Failures}} tries &mdash; request it again{{if .LastError}}<span class="revision-msg-error">Last error: {{.LastError}}</span>{{end}}</li>
+                        {{else if eq .Pending "superseded"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status">Superseded by a later request</li>
+                        {{else if eq .Pending "none"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status">No revision was made for this request</li>
+                        {{end}}
+                        {{end}}
+                        {{end}}
+                    </ol>
+                </div>
+                {{end}}
                 {{if .Sources}}
                 <div class="admin-sources-section">
                     <h4>Sources</h4>

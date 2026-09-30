@@ -74,8 +74,14 @@ type adminArticleRow struct {
 	// RevisionGaveUp: the reconciler has stopped retrying; the admin must
 	// re-request the revision, approve or reject.
 	RevisionGaveUp bool
+	// RevisionThread is the article's feedback and the rewrites that answered
+	// it, oldest first, for the preview; nil when no feedback was ever sent.
+	RevisionThread []revisionRequest
 	createdAtRaw   time.Time // for sorting only, not exposed to template
 }
+
+// adminTimeFormat is how admin views show timestamps.
+const adminTimeFormat = "Jan 2, 2006 3:04 PM"
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	// Show all articles needing admin attention: pending, unpublished, and revision_requested
@@ -111,8 +117,8 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 			TLDR:           a.TLDR,
 			ImageURL:       a.ImageURL,
 			ScoutsTake:     a.ScoutsTake,
-			CreatedAt:      a.CreatedAt.Format("Jan 2, 2006 3:04 PM"),
-			UpdatedAt:      a.UpdatedAt.Format("Jan 2, 2006 3:04 PM"),
+			CreatedAt:      a.CreatedAt.Format(adminTimeFormat),
+			UpdatedAt:      a.UpdatedAt.Format(adminTimeFormat),
 			createdAtRaw:   a.CreatedAt,
 		}
 		if p, ok := revisionState[a.ID]; ok && a.Status == db.StatusRevisionRequested && p.Failures > 0 {
@@ -186,6 +192,7 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	if len(rows) > 20 {
 		rows = rows[:20]
 	}
+	app.attachRevisionHistory(rows)
 
 	data := map[string]interface{}{
 		"Title":       "Dashboard",
