@@ -129,7 +129,9 @@ func TestAdminPreview_RevisionThread(t *testing.T) {
 
 	modal := previewModal(t, body, answered)
 	assertInOrder(t, "answered article", modal,
-		`<h4>Revision history</h4>`,
+		// Collapsed by default: a <details> without the open attribute.
+		`<details class="admin-revision-section">`,
+		`<summary><h4>Revision history</h4><span class="revision-count">2 requests</span></summary>`,
 		"The full prompt given to the model is not stored.",
 		`revision-msg--request`, `>Admin</span>`,
 		"Add the annual fee &lt;script&gt;alert(1)&lt;/script&gt;",

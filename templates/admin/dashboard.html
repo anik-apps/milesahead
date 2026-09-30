@@ -182,8 +182,10 @@
                 </div>
                 {{end}}
                 {{if .RevisionThread}}
-                <div class="admin-revision-section">
-                    <h4>Revision history</h4>
+                {{/* Collapsed by default: the critic report and sources matter more
+                     at a glance, and a long thread would push them off screen. */}}
+                <details class="admin-revision-section">
+                    <summary><h4>Revision history</h4><span class="revision-count">{{len .RevisionThread}} {{if eq (len .RevisionThread) 1}}request{{else}}requests{{end}}</span></summary>
                     <p class="revision-thread-note">Shows the request text as sent. The full prompt given to the model is not stored.</p>
                     <ol class="revision-thread">
                         {{range .RevisionThread}}
@@ -219,7 +221,7 @@
                         {{end}}
                         {{end}}
                     </ol>
-                </div>
+                </details>
                 {{end}}
                 {{if .Sources}}
                 <div class="admin-sources-section">
