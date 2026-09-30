@@ -15,6 +15,31 @@ scanner:
   # several clusters and published it twice. 0 uses cluster.DefaultThreshold.
   cluster_threshold: 0.30
   user_agent: "MilesAhead/1.0"
+  # Story-level duplicate check, run on each cluster that passes the raw-ID
+  # check, before generation: "shadow" | "block" | "off". Unset means shadow.
+  #
+  # 16 of 98 articles generated 2026-09-21..30 repeated a story already
+  # written, and no pair shared a source article, so the raw-ID check could
+  # not see them. The check compares the cluster with every article generated
+  # in the last 7 days (any status, including rejected and drafts). A TF-IDF
+  # prefilter on titles keeps the top 5 scoring >= 0.25; if any pass, one
+  # short call on the enrichment_model chain decides whether it is the same
+  # story and, if so, whether it is a materially new development (a
+  # follow-up, which is generated). If that call fails, the lexical score
+  # decides alone at >= 0.55.
+  #
+  # Lexical score alone, measured on those 98 articles (16 duplicates):
+  #   >= 0.25   16/16 duplicates caught, 24 of 79 legitimate flagged
+  #   >= 0.35   15/16,  9 flagged
+  #   >= 0.45    9/16,  4 flagged
+  #   >= 0.55    7/16,  2 flagged
+  # which is why the AI makes the call. shadow logs every decision ("story
+  # dedup decision", with would_block, the cluster's raw IDs and the matched
+  # article) and counts milesahead_story_dedup_decisions_total, but still
+  # generates. block skips a duplicate and records its sources as covered by
+  # the matched article. Review the shadow decisions against what was
+  # approved and rejected before switching to block.
+  story_dedup: "shadow"
 
 ai:
   # Primary generator. Re-selected 2026-09-21 after the previous primary

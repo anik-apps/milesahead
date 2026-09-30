@@ -895,23 +895,6 @@ func (d *Database) GetFeaturedArticle() (*GeneratedArticle, error) {
 	return a, nil
 }
 
-// HasArticleForRawIDs checks if any generated article already exists that links to any of the given raw article IDs.
-func (d *Database) HasArticleForRawIDs(rawIDs []int64) (bool, error) {
-	if len(rawIDs) == 0 {
-		return false, nil
-	}
-	placeholders := make([]string, len(rawIDs))
-	args := make([]interface{}, len(rawIDs))
-	for i, id := range rawIDs {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	query := fmt.Sprintf("SELECT COUNT(*) FROM article_sources WHERE raw_article_id IN (%s)", strings.Join(placeholders, ","))
-	var count int
-	err := d.db.QueryRow(query, args...).Scan(&count)
-	return count > 0, err
-}
-
 // GetLinkedRawArticles returns the raw articles linked to a generated article.
 func (d *Database) GetLinkedRawArticles(generatedArticleID int64) ([]RawArticle, error) {
 	rows, err := d.db.Query(

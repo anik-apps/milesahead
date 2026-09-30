@@ -92,3 +92,19 @@ func TestDefaultThreshold_GroupsOneStoryFromManySites(t *testing.T) {
 			len(clusters), 1+len(unrelated), len(unrelated))
 	}
 }
+
+// Vectorize is shared with the story-level duplicate check: a word every
+// document uses must weigh less than a distinctive one, and identical
+// documents must score 1.
+func TestVectorize(t *testing.T) {
+	v := Vectorize([]string{"Hyatt points promo", "Hyatt points promo", "Marriott points sale"})
+	if got := CosineSimilarity(v[0], v[1]); got < 0.999 {
+		t.Errorf("identical docs = %.3f, want 1", got)
+	}
+	if v[0]["points"] >= v[0]["hyatt"] {
+		t.Errorf("shared term weight %.3f >= distinctive %.3f", v[0]["points"], v[0]["hyatt"])
+	}
+	if got := CosineSimilarity(v[0], map[string]float64{}); got != 0 {
+		t.Errorf("empty vector = %v, want 0", got)
+	}
+}

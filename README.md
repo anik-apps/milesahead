@@ -8,6 +8,7 @@ A self-hosted content aggregation platform that scans miles and points websites,
 
 - **Automated Scanning** — RSS scraping of 6+ miles/points sources every 2-4 hours
 - **AI Pipeline** — Dual-model: Nemotron generates articles, Llama 70B verifies accuracy
+- **Duplicate Stories** — Each scan clusters the last 48h of scanned posts by title and generates one article per multi-source cluster, after two checks. The raw-ID check skips a cluster that reuses a source some article was written from, and records the cluster's other posts in `covered_raws` so that late coverage cannot come back as a second article once the original sources age out. The story check (`internal/storydedup`, `scanner.story_dedup`) compares the cluster with every article from the last 7 days: a TF-IDF prefilter, then one short AI call on the enrichment chain ("same story? materially new?"). It runs in `shadow` mode, logging `story dedup decision` and counting `milesahead_story_dedup_decisions_total` without blocking, until its decisions have been reviewed
 - **Image Pipeline** — 4-source search (Unsplash, Pexels, Openverse, Wikimedia) with vision model scoring
 - **Reference Pages** — 52 credit card guides across 6 categories with Scout persona verdicts
 - **Card Comparison** — Side-by-side comparison of 2-3 cards (earning rates, credits, benefits, protections, transfer partners)

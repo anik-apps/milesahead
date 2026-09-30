@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -27,7 +28,19 @@ type ScannerConfig struct {
 	// to be treated as the same story (0-1). 0 uses the built-in default.
 	ClusterThreshold float64 `yaml:"cluster_threshold"`
 	UserAgent        string  `yaml:"user_agent"`
+	// StoryDedup is what the story-level duplicate check does with a cluster
+	// it judges to be a story already written in the last 7 days: "shadow"
+	// (the default) logs and counts the decision but still generates, "block"
+	// skips generation, "off" does not run the check. See config.example.yaml.
+	StoryDedup string `yaml:"story_dedup"`
 }
+
+// Story-level duplicate check modes; see ScannerConfig.StoryDedup.
+const (
+	StoryDedupOff    = "off"
+	StoryDedupShadow = "shadow"
+	StoryDedupBlock  = "block"
+)
 
 type AIConfig struct {
 	GeneratorModel         string `yaml:"generator_model"`
@@ -132,6 +145,19 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(expanded, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config file: %w", err)
+	}
+
+	// Unset means shadow: the check starts out observing, and blocking is an
+	// explicit decision. An unknown value is an error rather than a silent
+	// default, so a typo cannot quietly turn the check off or on.
+	switch mode := strings.ToLower(strings.TrimSpace(cfg.Scanner.StoryDedup)); mode {
+	case "":
+		cfg.Scanner.StoryDedup = StoryDedupShadow
+	case StoryDedupOff, StoryDedupShadow, StoryDedupBlock:
+		cfg.Scanner.StoryDedup = mode
+	default:
+		return nil, fmt.Errorf("scanner.story_dedup: %q is not one of %q, %q, %q",
+			cfg.Scanner.StoryDedup, StoryDedupShadow, StoryDedupBlock, StoryDedupOff)
 	}
 
 	if cfg.Site.PersonaName == "" {

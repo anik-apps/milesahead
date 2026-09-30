@@ -88,6 +88,11 @@ func TestExampleConfigLoads(t *testing.T) {
 		t.Errorf("enrichment_model is led by the primary critic %q; short calls "+
 			"must lead with a model of their own", enrich[0])
 	}
+	// The story check ships observing; blocking is switched on only after
+	// its shadow decisions have been reviewed.
+	if cfg.Scanner.StoryDedup != StoryDedupShadow {
+		t.Errorf("scanner.story_dedup = %q, want %q", cfg.Scanner.StoryDedup, StoryDedupShadow)
+	}
 	if cfg.AI.RequestTimeout <= 0 {
 		t.Error("request_timeout must be set explicitly; the default can be " +
 			"shorter than the primary model's real latency")
@@ -110,6 +115,7 @@ func TestDeployConfigMirrorsCritic(t *testing.T) {
 	want := []string{
 		fmt.Sprintf("critic_model: %q", cfg.AI.CriticModel),
 		fmt.Sprintf("critic_disable_thinking: %v", cfg.AI.CriticDisableThinking),
+		fmt.Sprintf("story_dedup: %q", cfg.Scanner.StoryDedup),
 	}
 	for _, w := range want {
 		if !strings.Contains(deploy, w) {
