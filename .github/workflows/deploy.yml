@@ -168,14 +168,14 @@ jobs:
             user_agent: "MilesAhead/1.0"
 
           ai:
-            # See config.example.yaml for why these three models, and for the
+            # See config.example.yaml for why these models, and for the
             # warning that the provider catalogue lists models that do not work.
             generator_model: "nvidia/nemotron-3-ultra-550b-a55b"
             fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
-            critic_model: "mistralai/mistral-nemotron"
+            critic_model: "deepseek-ai/deepseek-v4.1-flash"
             vision_model: "meta/llama-3.2-11b-vision-instruct"
             request_timeout: 900
-            enrichment_model: "mistralai/mistral-nemotron,openai/gpt-oss-20b"
+            enrichment_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
             enrichment_interval: 15
             enrichment_max_attempts: 3
             enrichment_max_duration: 10

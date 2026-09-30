@@ -40,15 +40,34 @@ ai:
   # Critic must return parseable JSON: Critic.Verify runs replies through
   # extractJSON, so reasoning-style models that answer in prose disqualify
   # themselves regardless of judgement quality (glm-5.3-flash failed 3 of 4).
-  # mistral-nemotron answers directly, so no reasoning competes for the token
-  # budget. It CANNOT be used as a generator -- it returns 500 on the article
-  # prompt, reproducibly, while handling 16k chars of ordinary prose fine.
+  #
+  # Re-selected 2026-09-29. The previous critic, mistralai/mistral-nemotron,
+  # was retired upstream on 2026-09-28 08:00 UTC (410 "end of life" on every
+  # call), so nothing passed verification and nothing published. Measured with
+  # cmd/ab-models -critic-candidates on a real article from the production
+  # generator:
+  #   deepseek-ai/deepseek-v4.1-flash     86 and 88 on two runs, valid JSON,
+  #                                       all 4 checks true, 116s / 260s
+  #   openai/gpt-oss-20b                  60, 16s
+  #   nvidia/nemotron-3-super-120b-a12b   45, 100s, truncation retries
+  #   moonshotai/kimi-k3                  42
+  #   google/gemma-4-31b-it               40, 1167s
+  #   z-ai/glm-5.3                        truncated / timed out
+  # Listed by the provider but 404 when called: mistral-large,
+  # mistral-large-2-instruct, kimi-k2.6, llama-3.1-nemotron-70b-instruct,
+  # llama-3.1-nemotron-ultra-253b-v1, palmyra-fin-70b-32k.
+  #
+  # deepseek is slow -- minutes per reply, including 4m56s to answer a
+  # one-word preflight probe -- which is fine inside request_timeout (900s)
+  # for verification, but it must not be used for anything else: short calls
+  # are capped at 30s (ai.ShortCallTimeout) and would time out every time.
+  # Those run on enrichment_model instead.
   #
   # Deliberately a different model from the generator: self-grading is not a
-  # quality gate. Scores on one shared article were mistral 92 / 550b 82 /
-  # gpt-oss-20b 45, so this choice moves the publish bar materially -- watch
-  # the approval rate after changing it.
-  critic_model: "mistralai/mistral-nemotron"
+  # quality gate. On a reference article the retired critic scored 92, the
+  # 550b 82 and gpt-oss-20b 45; deepseek scores in the high 80s, so the
+  # publish bar moves again -- watch the approval rate after changing it.
+  critic_model: "deepseek-ai/deepseek-v4.1-flash"
   # Vision model for image scoring. The 90b variant this replaced times out on
   # every call, so each candidate image burned the full 300s client timeout.
   vision_model: "meta/llama-3.2-11b-vision-instruct"
@@ -56,12 +75,25 @@ ai:
   # previous hardcoded 300s could have timed out a healthy-but-slow generation
   # and silently demoted it to the fallback.
   request_timeout: 900
-  # Enrichment (Scout's Take, key details, tags, image queries) runs as a
-  # background reconciliation pass, not inline in article creation. Deliberately
-  # a different model from critic_model: those calls used to reuse it, so a
-  # degraded critic backend silently cost every article in that window its
-  # fields. Comma-separated, tried in order.
-  enrichment_model: "mistralai/mistral-nemotron,openai/gpt-oss-20b"
+  # The chain for every short AI call: enrichment (Scout's Take, key details,
+  # tags, image queries -- a background reconciliation pass, not inline in
+  # article creation), image text-scoring, the newsletter pick, card-update
+  # detection and the pipeline's inline key-details call. Comma-separated,
+  # tried in order on a retryable error or a retired model. These calls are
+  # capped at 30s, so only fast models belong here.
+  #
+  # Deliberately not critic_model: the side jobs used to reuse it, so the
+  # critic's retirement on 2026-09-28 took them all down with it, and the new
+  # critic is far too slow for a 30s call. Enrichment itself survived only
+  # because this was already a chain -- kept two deep for the same reason as
+  # fallback_generator_model.
+  #
+  # Checked 2026-09-29 on short real prompts (tags, image scoring, card-update
+  # detection, Scout's Take): gpt-oss-20b 3-11s, all valid; nemotron-3-super
+  # 2-11s, all valid, and its Scout's Take was clean prose with no reasoning
+  # preamble. It is second because it returns 503 intermittently. Rejected:
+  # gemma-4-31b-it (30s timeout on tags), deepseek-v4.1-flash (minutes).
+  enrichment_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
   enrichment_interval: 15        # minutes
   enrichment_max_attempts: 3     # passes before an article is left alone
   # Bounds one pass. A pass has no limit of its own otherwise, and on a

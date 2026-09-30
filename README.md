@@ -65,8 +65,11 @@ python3 scripts/render_article_review.py a.json b.json > compare.html
 ```
 
 The app also runs a startup preflight against every configured model and logs
-`ERROR` if nothing can generate, so a retired model surfaces at boot rather than
-as articles quietly never appearing.
+`ERROR` if nothing can generate or no critic answers, so a retired model surfaces
+at boot rather than as articles quietly never appearing. Results are exported as
+`milesahead_ai_preflight_models_reachable{role}`; `role="critic"` at 0 means
+nothing can publish. Article-path models are probed under the full
+`request_timeout`, so with a slow critic the result arrives minutes after boot.
 
 ### Enrichment
 
@@ -74,7 +77,10 @@ Scout's Take, key details, tags and the article image are **not** produced durin
 article generation. They run as a background reconciliation pass
 (`internal/enrich`) on `enrichment_interval`, against `enrichment_model` — a
 separate chain from the critic, so a degraded critic backend cannot take them
-down with it.
+down with it. The same chain serves every other short AI call: image
+text-scoring, the newsletter pick, card-update detection and the pipeline's
+inline key-details call. Those are capped at 30 seconds and the critic takes
+minutes, so the critic is used for verification only.
 
 This matters because inline they were best-effort: a single slow response
 permanently cost the article a field, and for two and a half months roughly a

@@ -50,6 +50,15 @@ func TestExampleConfigLoads(t *testing.T) {
 			"passes would routinely overlap and be skipped",
 			cfg.AI.EnrichmentMaxDuration, cfg.AI.EnrichmentInterval)
 	}
+	// The short-call chain must not lean on the critic: the critic's
+	// retirement on 2026-09-28 took down every side job that shared it, and
+	// the current critic takes minutes -- far past the 30s short-call cap.
+	for _, m := range strings.Split(cfg.AI.EnrichmentModel, ",") {
+		if strings.TrimSpace(m) == cfg.AI.CriticModel {
+			t.Errorf("enrichment_model includes the critic %q; short calls "+
+				"must run on fast models of their own", m)
+		}
+	}
 	if cfg.AI.RequestTimeout <= 0 {
 		t.Error("request_timeout must be set explicitly; the default can be " +
 			"shorter than the primary model's real latency")
