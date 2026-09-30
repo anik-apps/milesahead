@@ -358,7 +358,7 @@ func TestScan_StoryCheck_BlockModeVerdicts(t *testing.T) {
 	}{
 		{"follow-up", `{"same_story_as": %d, "materially_new_development": true, "reason": "now bookable"}`, nil, true, storydedup.DecisionFollowUp},
 		{"different story", `{"same_story_as": null, "materially_new_development": false, "reason": "x"}`, nil, true, storydedup.DecisionNew},
-		{"invalid id", `{"same_story_as": 999999, "materially_new_development": false, "reason": "x"}`, nil, true, storydedup.DecisionNew},
+		{"invalid id", `{"same_story_as": 999999, "materially_new_development": false, "reason": "x"}`, nil, true, storydedup.DecisionErrorFallback},
 		// The fallback needs 0.55; this pair scores well below it.
 		{"ai error", "", fmt.Errorf("gateway timeout"), true, storydedup.DecisionErrorFallback},
 	} {

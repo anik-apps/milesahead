@@ -109,10 +109,11 @@ func TestCheck_Verdicts(t *testing.T) {
 			DecisionNew, StageAI, false, 0, 0},
 		{"string id", `{"same_story_as": "1120", "materially_new_development": false}`, nil,
 			DecisionDuplicate, StageAI, true, 1120, 0},
-		// An ID that was not offered is no match, not a block on some
-		// arbitrary article.
+		// An ID that was not offered makes the reply untrustworthy: it falls
+		// back to the lexical score, like an unusable reply, rather than
+		// blocking some arbitrary article. The Alaska pair is below 0.55.
 		{"invalid id", `{"same_story_as": 1099, "materially_new_development": false}`, nil,
-			DecisionNew, StageAI, false, 0, 1099},
+			DecisionErrorFallback, StageFallback, false, 0, 1099},
 		// The AI failing falls back to the lexical score at 0.55. The
 		// Alaska pair scores below it, so it generates.
 		{"ai error", "", errors.New("503"), DecisionErrorFallback, StageFallback, false, 0, 0},

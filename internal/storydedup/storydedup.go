@@ -152,14 +152,7 @@ func (c *Checker) Check(sources []Source, candidates []Candidate) Decision {
 
 	v, err := c.ask(sources, shortlist)
 	if err != nil {
-		d.Decision = DecisionErrorFallback
-		d.Stage = StageFallback
-		d.Err = err
-		if d.BestScore >= FallbackThreshold {
-			d.Duplicate = true
-			d.MatchedID = scored[0].ID
-		}
-		return d
+		return fallback(d, scored, err)
 	}
 
 	d.Stage = StageAI
@@ -168,8 +161,11 @@ func (c *Checker) Check(sources []Source, candidates []Candidate) Decision {
 		return d
 	}
 	if !inScored(scored, *v.SameStoryAs) {
+		// A match to an article it was not shown means the reply cannot be
+		// trusted either way, so it is treated like any other unusable reply.
 		d.InvalidMatchID = *v.SameStoryAs
-		return d
+		return fallback(d, scored,
+			fmt.Errorf("model matched article %d, which was not a candidate", *v.SameStoryAs))
 	}
 	d.MatchedID = *v.SameStoryAs
 	if v.MateriallyNew {
@@ -178,6 +174,19 @@ func (c *Checker) Check(sources []Source, candidates []Candidate) Decision {
 	}
 	d.Decision = DecisionDuplicate
 	d.Duplicate = true
+	return d
+}
+
+// fallback decides without the AI: a duplicate only when the lexical score
+// alone is at least FallbackThreshold.
+func fallback(d Decision, scored []Scored, err error) Decision {
+	d.Decision = DecisionErrorFallback
+	d.Stage = StageFallback
+	d.Err = err
+	if d.BestScore >= FallbackThreshold {
+		d.Duplicate = true
+		d.MatchedID = scored[0].ID
+	}
 	return d
 }
 
