@@ -34,7 +34,7 @@ title: Miles Ahead
   >}}
   {{< hextra/feature-card
     title="AI Pipeline"
-    subtitle="Generate-critique-revise loop using Nemotron for generation and a separate DeepSeek critic for verification. Critic scoring with hallucination caps ensures factual accuracy."
+    subtitle="Generate-critique-revise loop using Nemotron for generation and a separate critic chain for verification. Critic scoring with hallucination caps ensures factual accuracy."
     icon="sparkles"
   >}}
   {{< hextra/feature-card

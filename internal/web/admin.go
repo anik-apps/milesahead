@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/offer"
@@ -535,12 +536,15 @@ func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 			"UserAgent":       app.cfg.Scanner.UserAgent,
 		},
 		"AI": map[string]interface{}{
-			"GeneratorModel":  app.cfg.AI.GeneratorModel,
-			"CriticModel":     app.cfg.AI.CriticModel,
-			"HFAPIToken":      maskString(app.cfg.AI.HFAPIToken),
-			"CriticThreshold": app.cfg.AI.CriticThreshold,
-			"MaxRetries":      app.cfg.AI.MaxRetries,
-			"CacheTTL":        app.cfg.AI.CacheTTL,
+			"GeneratorModel": app.cfg.AI.GeneratorModel,
+			// A chain, tried left to right; shown that way rather than as the
+			// raw comma-separated string.
+			"CriticModel":           strings.Join(ai.SplitModels(app.cfg.AI.CriticModel), " -> "),
+			"CriticDisableThinking": app.cfg.AI.CriticDisableThinking,
+			"HFAPIToken":            maskString(app.cfg.AI.HFAPIToken),
+			"CriticThreshold":       app.cfg.AI.CriticThreshold,
+			"MaxRetries":            app.cfg.AI.MaxRetries,
+			"CacheTTL":              app.cfg.AI.CacheTTL,
 		},
 		"Mail": map[string]interface{}{
 			"SMTP": map[string]interface{}{

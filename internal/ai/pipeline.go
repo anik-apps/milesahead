@@ -55,7 +55,7 @@ type Pipeline struct {
 	critic2   *Critic
 	threshold int
 	// detailModels is the chain for the inline key-details call; empty means
-	// the critic model. See SetDetailModels.
+	// the critic chain. See SetDetailModels.
 	detailModels []string
 }
 
@@ -120,7 +120,8 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	verification.Score = adjustScore(verification)
 	metrics.CriticScore.Observe(float64(verification.Score))
 
-	slog.Info("critic scored", "score", verification.Score, "passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
+	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
+		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
 	// If issues found, generator revises, then critic reviews again
 	if len(verification.Issues) > 0 {
@@ -134,6 +135,8 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 			v2, err := p.critic.Verify(revised, sources)
 			if err == nil {
 				v2.Score = adjustScore(v2)
+				slog.Info("critic scored revision", "model", v2.Model, "score", v2.Score,
+					"previous", verification.Score)
 				if v2.Score >= verification.Score {
 					content = revised
 					verification = v2
@@ -172,7 +175,7 @@ func (p *Pipeline) extractDetails(title, content string) ([]KeyDetail, []Article
 	prompt := ExtractDetailsPrompt(title, content)
 	models := p.detailModels
 	if len(models) == 0 {
-		models = []string{p.critic.model}
+		models = p.critic.models
 	}
 	resp, err := TryModels(p.critic.client, models, prompt, 1024)
 	if err != nil {
@@ -222,6 +225,8 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 	}
 	verification.Score = adjustScore(verification)
 	metrics.CriticScore.Observe(float64(verification.Score))
+	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
+		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
 	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
 

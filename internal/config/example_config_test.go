@@ -1,8 +1,12 @@
 package config
 
 import (
+	"fmt"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/kumaranik/milesahead/internal/ai"
 )
 
 // TestExampleConfigLoads keeps config.example.yaml honest: it is the documented
@@ -25,9 +29,27 @@ func TestExampleConfigLoads(t *testing.T) {
 		}
 	}
 	// The generator and critic must differ: a model grading its own output is
-	// not a quality gate.
-	if cfg.AI.GeneratorModel == cfg.AI.CriticModel {
-		t.Error("generator and critic must be different models (no self-grading)")
+	// not a quality gate. critic_model is a chain, so no critic in it may be
+	// the primary generator. (The generator FALLBACK chain does share
+	// nemotron-3-super with the critic chain; that caveat is documented in
+	// config.example.yaml rather than forbidden, because no other measured
+	// critic scores usable articles above the threshold.)
+	critics := ai.SplitModels(cfg.AI.CriticModel)
+	for _, c := range critics {
+		if c == cfg.AI.GeneratorModel {
+			t.Errorf("critic %q is the generator (no self-grading)", c)
+		}
+	}
+	// The critic was a single model twice in two days (retired 2026-09-28,
+	// overloaded 2026-09-30), and a critic error drops the article outright.
+	if len(critics) < 2 {
+		t.Errorf("critic chain is %d deep; configure at least two", len(critics))
+	}
+	// Every critic score in the example's rationale was measured with thinking
+	// off; with it on, nemotron-3-super scored 45 and leaked reasoning.
+	if !cfg.AI.CriticDisableThinking {
+		t.Error("critic_disable_thinking must be true: the documented critic " +
+			"measurements were all taken with thinking off")
 	}
 	if cfg.AI.CriticThreshold <= 0 || cfg.AI.CriticThreshold > 100 {
 		t.Errorf("critic_threshold %d out of range", cfg.AI.CriticThreshold)
@@ -51,16 +73,47 @@ func TestExampleConfigLoads(t *testing.T) {
 			cfg.AI.EnrichmentMaxDuration, cfg.AI.EnrichmentInterval)
 	}
 	// The short-call chain must not lean on the critic: the critic's
-	// retirement on 2026-09-28 took down every side job that shared it, and
-	// the current critic takes minutes -- far past the 30s short-call cap.
-	for _, m := range strings.Split(cfg.AI.EnrichmentModel, ",") {
-		if strings.TrimSpace(m) == cfg.AI.CriticModel {
-			t.Errorf("enrichment_model includes the critic %q; short calls "+
-				"must run on fast models of their own", m)
-		}
+	// retirement on 2026-09-28 took down every side job that shared it.
+	//
+	// This used to forbid the critic anywhere in enrichment_model. Both are
+	// chains now, and nvidia/nemotron-3-super-120b-a12b is legitimately in
+	// both: first critic (fast with thinking off) and enrichment's second
+	// model. What the rule protects is still enforced -- enrichment must not
+	// be LED by the primary critic, so when the critic's backend degrades,
+	// enrichment's first choice is unaffected and the side jobs only lose a
+	// fallback. (Enrichment requests also never carry the critic's
+	// thinking-off setting.)
+	if enrich := ai.SplitModels(cfg.AI.EnrichmentModel); len(enrich) > 0 && len(critics) > 0 &&
+		enrich[0] == critics[0] {
+		t.Errorf("enrichment_model is led by the primary critic %q; short calls "+
+			"must lead with a model of their own", enrich[0])
 	}
 	if cfg.AI.RequestTimeout <= 0 {
 		t.Error("request_timeout must be set explicitly; the default can be " +
 			"shorter than the primary model's real latency")
+	}
+}
+
+// TestDeployConfigMirrorsCritic pins the production critic settings to the
+// documented ones. deploy.yml writes its own config heredoc, so a change to
+// config.example.yaml alone would ship nothing.
+func TestDeployConfigMirrorsCritic(t *testing.T) {
+	cfg, err := Load("../../config.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile("../../.github/workflows/deploy.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deploy := string(raw)
+	want := []string{
+		fmt.Sprintf("critic_model: %q", cfg.AI.CriticModel),
+		fmt.Sprintf("critic_disable_thinking: %v", cfg.AI.CriticDisableThinking),
+	}
+	for _, w := range want {
+		if !strings.Contains(deploy, w) {
+			t.Errorf("deploy.yml does not contain %s (from config.example.yaml)", w)
+		}
 	}
 }

@@ -32,9 +32,15 @@ type ScannerConfig struct {
 type AIConfig struct {
 	GeneratorModel         string `yaml:"generator_model"`
 	FallbackGeneratorModel string `yaml:"fallback_generator_model"`
-	CriticModel            string `yaml:"critic_model"`
-	VisionModel            string `yaml:"vision_model"`
-	RequestTimeout         int    `yaml:"request_timeout"` // seconds; 0 = client default
+	// CriticModel is one model or a comma-separated chain, tried in order when
+	// a critic is overloaded or gone.
+	CriticModel string `yaml:"critic_model"`
+	// CriticDisableThinking sends chat_template_kwargs {"enable_thinking":
+	// false} on critic requests (critic_model and critic2_model) and nothing
+	// else. Off by default; see config.example.yaml for why production sets it.
+	CriticDisableThinking bool   `yaml:"critic_disable_thinking"`
+	VisionModel           string `yaml:"vision_model"`
+	RequestTimeout        int    `yaml:"request_timeout"` // seconds; 0 = client default
 	// EnrichmentModel is used for Scout's Take, key details, tags and image
 	// queries. Deliberately separate from critic_model: those calls used to
 	// reuse it, so a degraded critic backend took the enrichment down with it.

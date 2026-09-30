@@ -32,9 +32,18 @@ const (
 // It is the one fallback helper for every short call, not only enrichment:
 // image text-scoring, the newsletter pick and card-update detection run
 // through it too, against the same enrichment_model chain.
+//
+// The critic chain runs through it as well, via tryModels, which also reports
+// which model answered.
 func TryModels(client HFClientInterface, models []string, prompt string, maxTokens int) (string, error) {
+	result, _, err := tryModels(client, models, prompt, maxTokens)
+	return result, err
+}
+
+// tryModels is TryModels, also returning the model that answered.
+func tryModels(client HFClientInterface, models []string, prompt string, maxTokens int) (string, string, error) {
 	if len(models) == 0 {
-		return "", fmt.Errorf("no models configured")
+		return "", "", fmt.Errorf("no models configured")
 	}
 	var firstErr error
 	for i, m := range models {
@@ -43,20 +52,20 @@ func TryModels(client HFClientInterface, models []string, prompt string, maxToke
 			if i > 0 {
 				slog.Info("model fallback succeeded", "model", m, "primary", models[0])
 			}
-			return result, nil
+			return result, m, nil
 		}
 		if firstErr == nil {
 			firstErr = err
 		}
 		if !shouldTryAnotherModel(err) {
-			return "", err
+			return "", "", err
 		}
 		if i < len(models)-1 {
 			slog.Warn("model failed, trying next in chain",
 				"failed", m, "next", models[i+1], "err", err)
 		}
 	}
-	return "", fmt.Errorf("all %d model(s) failed, first error: %w", len(models), firstErr)
+	return "", "", fmt.Errorf("all %d model(s) failed, first error: %w", len(models), firstErr)
 }
 
 // GenerateScoutsTake produces the persona commentary for an article.

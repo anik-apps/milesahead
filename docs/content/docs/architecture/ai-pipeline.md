@@ -18,7 +18,7 @@ The AI pipeline is the core of article generation. It takes clustered source art
            |
            v
   +------------------+
-  |    Critic #1     |  DeepSeek V4.1 Flash
+  |    Critic #1     |  Nemotron 3 Super 120B, then Kimi K3
   | Factual, source, |
   | attribution,     |
   | hallucination    |
@@ -64,13 +64,15 @@ The AI pipeline is the core of article generation. It takes clustered source art
 |------|------------|-------|---------|
 | Generator | `generator_model` | `nvidia/nemotron-3-ultra-550b-a55b` | Article generation and revision |
 | Generator fallbacks | `fallback_generator_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3-super-120b-a12b` | Tried in order when the generator fails or is retired |
-| Critic | `critic_model` | `deepseek-ai/deepseek-v4.1-flash` | Factual verification and scoring only |
+| Critic | `critic_model` | `nvidia/nemotron-3-super-120b-a12b`, `moonshotai/kimi-k3` | Factual verification and scoring only; tried in order, thinking off |
 | Short-call chain | `enrichment_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3-super-120b-a12b` | Detail extraction, Scout's Take, tags, image queries, image text-scoring, newsletter pick, card-update detection |
 | Vision | `vision_model` | `meta/llama-3.2-11b-vision-instruct` | Image relevance scoring (Phase 2) |
 
 All models are accessed through the NVIDIA API at `https://integrate.api.nvidia.com/v1`. `config.example.yaml` records why each was chosen.
 
-The critic is used for verification and nothing else. It takes minutes per reply, while the short calls are capped at 30 seconds, so everything else runs on the `enrichment_model` chain. Keeping them apart also means a retired critic stops publication without taking image scoring, the newsletter and card updates down with it, as happened when `mistralai/mistral-nemotron` was retired on 2026-09-28.
+The critic is used for verification and nothing else; the short calls are capped at 30 seconds and run on the `enrichment_model` chain. Keeping them apart means a failed critic stops publication without taking image scoring, the newsletter and card updates down with it, as happened when `mistralai/mistral-nemotron` was retired on 2026-09-28.
+
+The critic is a chain because it failed as a single model twice in two days: retired on 2026-09-28, then its replacement, `deepseek-ai/deepseek-v4.1-flash`, answered every call with a gateway 504 from 2026-09-29. A critic error drops the article from the scan; a score below `critic_threshold` only saves it as a draft. With `critic_disable_thinking: true`, critic requests (and only those) carry `chat_template_kwargs: {"enable_thinking": false}`; with thinking on, nemotron-3-super truncates or leaks its reasoning and scored a real article 45 instead of 75. It is the same family as the generator and also a generator fallback, so an article the generator wrote on that fallback is graded by the model that wrote it -- watch the approval rate. kimi-k3, the fallback critic, grades more strictly.
 
 ## Generation Process
 

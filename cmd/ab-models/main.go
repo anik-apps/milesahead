@@ -49,7 +49,8 @@ type run struct {
 func main() {
 	cfgPath := flag.String("config", "/opt/milesahead/config.yaml", "path to config.yaml")
 	generators := flag.String("generators", "", "comma-separated candidate generator models")
-	criticModel := flag.String("critic", "", "critic model to score with (must be working)")
+	criticModel := flag.String("critic", "", "critic model or comma-separated chain to score with (default: the configured critic_model)")
+	criticNoThinking := flag.Bool("critic-no-thinking", false, "send enable_thinking=false on critic calls (implied by critic_disable_thinking in the config)")
 	topicCount := flag.Int("topics", 5, "number of source clusters to generate for")
 	days := flag.Int("days", 3, "look back this many days for source articles")
 	outPath := flag.String("out", "", "optional path to write JSON results")
@@ -67,8 +68,11 @@ func main() {
 		fatal("no -generators given")
 	}
 	critic := *criticModel
+	if critic == "" {
+		critic = cfg.AI.CriticModel
+	}
 	if critic == "" && *criticCands == "" {
-		fatal("no -critic given (the configured one is retired)")
+		fatal("no -critic given and no critic_model configured")
 	}
 
 	topics := loadTopics(cfg.DB.Path, *days, *topicCount)
@@ -83,12 +87,19 @@ func main() {
 		client.BaseURL = cfg.AI.HFBaseURL
 	}
 
+	// Critics are measured with the request shape production sends them;
+	// generation keeps the plain client.
+	criticClient := client
+	if *criticNoThinking || cfg.AI.CriticDisableThinking {
+		criticClient = client.WithThinkingDisabled()
+	}
+
 	if *criticCands != "" {
-		probeCritics(client, cands[0], split(*criticCands), topics[0])
+		probeCritics(client, criticClient, cands[0], split(*criticCands), topics[0])
 		return
 	}
 
-	criticSvc := ai.NewCritic(client, critic)
+	criticSvc := ai.NewCritic(criticClient, critic)
 
 	if *dumpPrompt != "" {
 		// The prompt the generator actually sends, verbatim, so a failing model
@@ -197,7 +208,7 @@ func summarize(results []run, threshold int) {
 // A critic that scores well but returns prose is useless: Critic.Verify runs the
 // reply through extractJSON and fails the whole verification if no object is
 // found, which is how a reasoning-style model silently disqualifies itself.
-func probeCritics(client *ai.HFClient, genModel string, critics []string, t topic) {
+func probeCritics(client, criticClient *ai.HFClient, genModel string, critics []string, t topic) {
 	fmt.Printf("generating one article with %s to score...\n", genModel)
 	article, err := ai.NewGenerator(client, genModel, "", nil).Generate("deal", t.sources)
 	if err != nil || strings.TrimSpace(article) == "" {
@@ -207,7 +218,7 @@ func probeCritics(client *ai.HFClient, genModel string, critics []string, t topi
 	fmt.Printf("%-44s %8s %7s  %s\n", "CRITIC", "SECONDS", "SCORE", "RESULT")
 	for _, m := range critics {
 		start := time.Now()
-		v, vErr := ai.NewCritic(client, m).Verify(article, t.sources)
+		v, vErr := ai.NewCritic(criticClient, m).Verify(article, t.sources)
 		secs := time.Since(start).Seconds()
 		if vErr != nil {
 			fmt.Printf("%-44s %8.1f %7s  FAIL %s\n", m, secs, "-", trunc(vErr.Error(), 70))
