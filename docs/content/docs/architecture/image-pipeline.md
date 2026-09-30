@@ -54,7 +54,7 @@ All sources provide freely-licensed images. The searcher queries each API in par
 
 ### Phase 1: Text Pre-Filter
 
-The text model (same as the critic model) scores image candidates based on their metadata:
+The text model chain (`enrichment_model`, tried in order; not the critic, which is too slow for this 30-second call) scores image candidates based on their metadata:
 
 - Image description or alt text
 - Tags from the source API
@@ -65,7 +65,7 @@ Each candidate receives a relevance score from 1-10. Candidates are sorted by sc
 
 ### Phase 2: Vision Model
 
-The vision model (`meta/llama-3.2-90b-vision-instruct`) receives the actual image thumbnail along with the article title and summary. It scores each image on specificity:
+The vision model (`vision_model`, `meta/llama-3.2-11b-vision-instruct` by default) receives the actual image thumbnail along with the article title and summary. It scores each image on specificity:
 
 | Score | Meaning |
 |-------|---------|

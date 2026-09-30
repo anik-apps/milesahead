@@ -12,13 +12,13 @@ The AI pipeline is the core of article generation. It takes clustered source art
           |
           v
   +------------------+
-  |    Generator     |  Nemotron Super 49B
+  |    Generator     |  Nemotron 3 Ultra 550B
   | (type detection) |  Detects: deal, summary, roundup
   +--------+---------+
            |
            v
   +------------------+
-  |    Critic #1     |  Llama 3.3 70B Instruct
+  |    Critic #1     |  DeepSeek V4.1 Flash
   | Factual, source, |
   | attribution,     |
   | hallucination    |
@@ -60,13 +60,17 @@ The AI pipeline is the core of article generation. It takes clustered source art
 
 ## Models
 
-| Role | Model | Purpose |
-|------|-------|---------|
-| Generator | `nvidia/llama-3.3-nemotron-super-49b-v1.5` | Article generation and revision |
-| Critic | `meta/llama-3.3-70b-instruct` | Factual verification and scoring |
-| Vision | `meta/llama-3.2-90b-vision-instruct` | Image relevance scoring (Phase 2) |
+| Role | Config key | Model | Purpose |
+|------|------------|-------|---------|
+| Generator | `generator_model` | `nvidia/nemotron-3-ultra-550b-a55b` | Article generation and revision |
+| Generator fallbacks | `fallback_generator_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3-super-120b-a12b` | Tried in order when the generator fails or is retired |
+| Critic | `critic_model` | `deepseek-ai/deepseek-v4.1-flash` | Factual verification and scoring only |
+| Short-call chain | `enrichment_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3-super-120b-a12b` | Detail extraction, Scout's Take, tags, image queries, image text-scoring, newsletter pick, card-update detection |
+| Vision | `vision_model` | `meta/llama-3.2-11b-vision-instruct` | Image relevance scoring (Phase 2) |
 
-All models are accessed through the NVIDIA API at `https://integrate.api.nvidia.com/v1`.
+All models are accessed through the NVIDIA API at `https://integrate.api.nvidia.com/v1`. `config.example.yaml` records why each was chosen.
+
+The critic is used for verification and nothing else. It takes minutes per reply, while the short calls are capped at 30 seconds, so everything else runs on the `enrichment_model` chain. Keeping them apart also means a retired critic stops publication without taking image scoring, the newsletter and card updates down with it, as happened when `mistralai/mistral-nemotron` was retired on 2026-09-28.
 
 ## Generation Process
 
@@ -124,7 +128,7 @@ Admins can also trigger manual revisions by providing feedback text, through the
 
 ## Detail Extraction
 
-If the structured output parsing does not yield key details, a separate AI call extracts them. The extraction prompt asks for:
+If the structured output parsing does not yield key details, a separate AI call on the `enrichment_model` chain extracts them. The extraction prompt asks for:
 
 - **Key details** -- label/value pairs summarizing the most important facts
 - **Links** -- relevant URLs mentioned in the article

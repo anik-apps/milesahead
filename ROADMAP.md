@@ -134,6 +134,26 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       (`== 0`) would NOT have caught it: the counter is a CounterVec, so during the
       outage its series was absent rather than zero, which is why the drought rule
       treats NoData as firing. Runbook at `docs/runbooks/generation-drought.md`.
+- [x] **Critic retired, publication stopped again** — `mistralai/mistral-nemotron` was
+      retired upstream on 2026-09-28 08:00 UTC; every critic call returned 410, so no
+      article passed verification, every revision failed, and image text-scoring, the
+      newsletter pick and card-update detection (all hardwired to the critic model)
+      failed too. The critic is now `deepseek-ai/deepseek-v4.1-flash` (86 and 88 on a
+      real article; minutes per reply). The side jobs, and the pipeline's inline
+      key-details call, now run on the `enrichment_model` chain via `ai.TryModels`, so
+      they fall over a retired model and never wait on the slow critic under the 30s
+      short-call cap. The preflight probes article-path models under the full request
+      timeout (a 30s probe would have reported the new critic dead) and now covers the
+      enrichment chain.
+- [ ] **Alert when the startup preflight finds no reachable critic** — the 2026-09-28
+      retirement logged `ai preflight: no CRITIC is reachable` at ERROR on every startup
+      for about two days and nobody saw it. The preflight now exports
+      `milesahead_ai_preflight_models_reachable{role}` (set once per process when the
+      preflight finishes); add a rule to `deploy/grafana-alerts.json` on
+      `milesahead_ai_preflight_models_reachable{role="critic"} == 0`. NoData should NOT
+      fire here: the series is absent for the first minutes after every boot while a
+      slow critic is probed. Also find out why the generation-drought rule, which should
+      have fired about 25 hours into this outage, did not get anyone's attention.
 - [ ] **Deduplicate across clusters, not just within them** — the raw-ID dedupe
       (`HasArticleForRawIDs`) can only catch a cluster reusing a source article. When one
       story lands in two disjoint clusters, the clusters share no sources by construction
@@ -155,9 +175,10 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 
 - [ ] **Audit remaining hardcoded models** — `meta/llama-3.2-90b-vision-instruct` was
       hardcoded in `main.go` and times out on every call, so each scored image burned the
-      full 300s client timeout. Now configurable via `vision_model`. Direct
-      `hfClient.Generate(cfg.AI.CriticModel, ...)` calls in `main.go` still bypass the
-      fallback chain entirely.
+      full 300s client timeout. Now configurable via `vision_model`. The side jobs that
+      called the critic model directly (image text-scoring, newsletter pick, card-update
+      detection, inline key details) now use the `enrichment_model` chain; the critic
+      itself is still a single model with no chain.
 
 - [x] **Homepage thumbnails rotted away** — 46 of the 80 approved articles with an image
       pointed at a URL a browser could no longer fetch. Openverse's `/thumb/` proxy 424s

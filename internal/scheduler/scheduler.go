@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/robfig/cron/v3"
@@ -51,10 +52,33 @@ func New() *Scheduler {
 
 // AddScanJob adds a periodic scan job at the given interval.
 // Runs immediately on first call, then every interval.
+//
+// A scan that is still running when the next one is due makes that one skip.
+// Two concurrent scans can both pass the duplicate-article check before
+// either saves, and publish the same story twice. A scan can outlast its
+// interval: with a slow critic each article takes minutes to verify, and the
+// first scan after an outage works through two days of backlog.
 func (s *Scheduler) AddScanJob(interval time.Duration, scanFunc func()) {
-	s.cron.AddFunc(fmt.Sprintf("@every %s", interval), scanFunc)
+	scan := skipIfRunning("scan", scanFunc)
+	s.cron.AddFunc(fmt.Sprintf("@every %s", interval), scan)
 	// Run first scan immediately in background
-	go scanFunc()
+	go scan()
+}
+
+// skipIfRunning wraps fn so a call made while an earlier one is still running
+// returns at once instead of running alongside it. Unlike cron's
+// SkipIfStillRunning it also covers calls made outside cron, such as the
+// startup scan.
+func skipIfRunning(name string, fn func()) func() {
+	var running atomic.Bool
+	return func() {
+		if !running.CompareAndSwap(false, true) {
+			slog.Warn("previous run still going; skipping this one", "job", name)
+			return
+		}
+		defer running.Store(false)
+		fn()
+	}
 }
 
 // AddMailPollJob adds a periodic mail polling job at the given interval.

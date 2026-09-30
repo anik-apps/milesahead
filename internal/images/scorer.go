@@ -22,7 +22,7 @@ import (
 // Phase 2: Vision model looks at actual images to pick the best one.
 type Scorer struct {
 	textClient  ai.HFClientInterface
-	textModel   string
+	textModels  []string
 	visionURL   string // e.g., "https://integrate.api.nvidia.com/v1"
 	visionToken string
 	visionModel string // e.g., "meta/llama-3.2-90b-vision-instruct"
@@ -38,11 +38,18 @@ type Warmer interface {
 	Warm(urls []string)
 }
 
-// NewScorer creates a Scorer with a text model for pre-filtering.
-func NewScorer(textClient ai.HFClientInterface, textModel string) *Scorer {
+// NewScorer creates a Scorer with a chain of text models for pre-filtering,
+// tried in order through ai.TryModels.
+//
+// A chain rather than one model: this used to be the critic model alone, so
+// when that model was retired (410 on every call) every image lost its text
+// score. It is a short call bounded by ai.ShortCallTimeout, so it belongs on a
+// fast model -- production passes the enrichment chain, not the critic, whose
+// replies can take minutes.
+func NewScorer(textClient ai.HFClientInterface, textModels []string) *Scorer {
 	return &Scorer{
 		textClient: textClient,
-		textModel:  textModel,
+		textModels: textModels,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
@@ -116,7 +123,7 @@ func (s *Scorer) textScore(title, tldr string, candidates []ImageCandidate) []Im
 	}
 
 	prompt := ai.ImageScoringPrompt(title, tldr, descriptions)
-	response, err := s.textClient.Generate(s.textModel, prompt, 2048)
+	response, err := ai.TryModels(s.textClient, s.textModels, prompt, 2048)
 	if err != nil {
 		slog.Warn("text image scoring failed", "error", err)
 		metrics.ImageScoringTotal.WithLabelValues("text", "error").Inc()

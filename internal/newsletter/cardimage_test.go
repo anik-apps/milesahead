@@ -13,7 +13,7 @@ import (
 func TestLoadCardOfWeekData_ImageURLIsAbsolute(t *testing.T) {
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
-	svc := NewServiceWithAI(database, &mockSender{}, config.NewsletterConfig{Timezone: "UTC"}, nil, "", "milesahead.example")
+	svc := NewServiceWithAI(database, &mockSender{}, config.NewsletterConfig{Timezone: "UTC"}, nil, nil, "milesahead.example")
 
 	for _, tc := range []struct {
 		slug, stored, want string

@@ -61,7 +61,7 @@ type Service struct {
 	db       *db.Database
 	sender   MailSender
 	ai       ai.HFClientInterface
-	aiModel  string
+	aiModels []string
 	sendTime string
 	domain   string
 	// loc is the schedule's timezone, resolved once: an unknown name falls
@@ -88,10 +88,14 @@ func NewService(database *db.Database, sender MailSender, cfg config.NewsletterC
 }
 
 // NewServiceWithAI creates a newsletter Service with AI ranking support.
-func NewServiceWithAI(database *db.Database, sender MailSender, cfg config.NewsletterConfig, aiClient ai.HFClientInterface, aiModel, domain string) *Service {
+// aiModels is a chain tried in order through ai.TryModels; it was a single
+// model (the critic) until that model's retirement cost every issue its
+// ranking. The pick is a short call, so production passes the fast
+// enrichment chain.
+func NewServiceWithAI(database *db.Database, sender MailSender, cfg config.NewsletterConfig, aiClient ai.HFClientInterface, aiModels []string, domain string) *Service {
 	svc := NewService(database, sender, cfg)
 	svc.ai = aiClient
-	svc.aiModel = aiModel
+	svc.aiModels = aiModels
 	svc.domain = domain
 	return svc
 }
@@ -537,7 +541,7 @@ func (s *Service) rankArticles(articles []db.GeneratedArticle) []int64 {
 		ids[i] = a.ID
 	}
 
-	if s.ai == nil || s.aiModel == "" {
+	if s.ai == nil || len(s.aiModels) == 0 {
 		return ids
 	}
 
@@ -551,7 +555,7 @@ func (s *Service) rankArticles(articles []db.GeneratedArticle) []int64 {
 	}
 
 	prompt := ai.NewsletterPickPrompt(summaries)
-	resp, err := s.ai.Generate(s.aiModel, prompt, 512)
+	resp, err := ai.TryModels(s.ai, s.aiModels, prompt, 512)
 	if err != nil {
 		slog.Error("AI ranking failed, using default order", "error", err)
 		return ids

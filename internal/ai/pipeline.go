@@ -54,6 +54,9 @@ type Pipeline struct {
 	critic    *Critic
 	critic2   *Critic
 	threshold int
+	// detailModels is the chain for the inline key-details call; empty means
+	// the critic model. See SetDetailModels.
+	detailModels []string
 }
 
 // NewPipeline creates a new Pipeline with the given quality threshold (0-100).
@@ -65,6 +68,18 @@ func NewPipeline(generator *Generator, critic *Critic, threshold int) *Pipeline 
 // SetCritic2 adds a second critic for reasoning/consistency checks.
 func (p *Pipeline) SetCritic2(critic2 *Critic) {
 	p.critic2 = critic2
+}
+
+// SetDetailModels sets the model chain for the key-details call Process makes
+// when the article carries no structured key details.
+//
+// That call used to go to the critic model. It asks for 1024 tokens, so it is
+// bounded by ShortCallTimeout (30s), and a critic whose replies take minutes
+// times out on every attempt -- each article then waited out four 30s
+// attempts before continuing without details. Production passes the fast
+// enrichment chain.
+func (p *Pipeline) SetDetailModels(models []string) {
+	p.detailModels = models
 }
 
 // ErrNotEnoughSources is returned when a cluster has fewer than 2 unique sources.
@@ -155,7 +170,11 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 // extractDetails makes a separate AI call to extract key details and links from the article.
 func (p *Pipeline) extractDetails(title, content string) ([]KeyDetail, []ArticleLink) {
 	prompt := ExtractDetailsPrompt(title, content)
-	resp, err := p.critic.client.Generate(p.critic.model, prompt, 1024)
+	models := p.detailModels
+	if len(models) == 0 {
+		models = []string{p.critic.model}
+	}
+	resp, err := TryModels(p.critic.client, models, prompt, 1024)
 	if err != nil {
 		slog.Warn("extract details failed", "error", err)
 		return nil, nil

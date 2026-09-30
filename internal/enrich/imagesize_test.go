@@ -810,7 +810,7 @@ func TestFindImage_SkipsCandidatesThatDoNotFit(t *testing.T) {
 	client := &scriptedClient{reply: map[string]string{
 		"image editor": `{"scores":[{"index":0,"score":9},{"index":1,"score":8},{"index":2,"score":7}]}`,
 	}}
-	s := New(d, client, []string{"m1"}, "Scout", searcher, images.NewScorer(client, "m1"))
+	s := New(d, client, []string{"m1"}, "Scout", searcher, images.NewScorer(client, []string{"m1"}))
 	s.Pace = 0
 	s.Run()
 
@@ -866,7 +866,7 @@ func TestFindImage_StopsAtThePassDeadline(t *testing.T) {
 	client := &scriptedClient{reply: map[string]string{
 		"image editor": `{"scores":[{"index":0,"score":9},{"index":1,"score":8},{"index":2,"score":7}]}`,
 	}}
-	s := New(d, client, []string{"m1"}, "Scout", searcher, images.NewScorer(client, "m1"))
+	s := New(d, client, []string{"m1"}, "Scout", searcher, images.NewScorer(client, []string{"m1"}))
 	s.Pace = 0
 	s.MaxDuration = 400 * time.Millisecond
 
@@ -1161,7 +1161,7 @@ func TestFindImage_DoesNotStartPastThePassDeadline(t *testing.T) {
 	searcher := images.NewSearcher("", "")
 	searcher.SetTransport(hostRouter{srv.Listener.Addr().String()})
 	client := &slowTakeClient{delay: 300 * time.Millisecond}
-	s := New(d, client, []string{"m1"}, "Scout", searcher, images.NewScorer(client, "m1"))
+	s := New(d, client, []string{"m1"}, "Scout", searcher, images.NewScorer(client, []string{"m1"}))
 	s.Pace = 0
 	s.MaxDuration = 200 * time.Millisecond
 

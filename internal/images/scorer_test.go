@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/kumaranik/milesahead/internal/ai"
 )
 
 // textScores is a text model that scores every candidate description in
@@ -81,7 +83,7 @@ func TestScore_WarmsThumbnailsBeforeVision(t *testing.T) {
 	}))
 	defer vision.Close()
 
-	scorer := NewScorer(textScores{8, 7}, "text")
+	scorer := NewScorer(textScores{8, 7}, []string{"text"})
 	scorer.SetVisionModel(vision.URL, "token", "vision", searcher)
 
 	const wm = "https://upload.wikimedia.org/wikipedia/commons/thumb/"
@@ -105,5 +107,48 @@ func TestScore_WarmsThumbnailsBeforeVision(t *testing.T) {
 	// Only the thumbnails were requested, not the display images.
 	if host.isRendered(candidates[0].URL) {
 		t.Error("warming requested the display image too")
+	}
+}
+
+// chainClient answers from live, fails every model in gone with a 410, and
+// records the order models were called in.
+type chainClient struct {
+	mu    sync.Mutex
+	calls []string
+	gone  map[string]bool
+	live  string
+}
+
+func (c *chainClient) Generate(model, _ string, _ int) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.calls = append(c.calls, model)
+	if c.gone[model] {
+		return "", &ai.APIError{StatusCode: 410, Model: model, Body: "end of life"}
+	}
+	return c.live, nil
+}
+
+// TestScorer_TextScoringFallsOverARetiredModel: text scoring used to name one
+// model (the critic), so its retirement cost every image its text score.
+func TestScorer_TextScoringFallsOverARetiredModel(t *testing.T) {
+	client := &chainClient{
+		gone: map[string]bool{"retired": true},
+		live: `{"scores":[{"index":0,"score":3,"reason":"r"},{"index":1,"score":9,"reason":"r"}]}`,
+	}
+	scorer := NewScorer(client, []string{"retired", "live"})
+
+	scored, err := scorer.Score("Lounge opens", "A new lounge", []ImageCandidate{
+		{URL: "a", Description: "a car park"},
+		{URL: "b", Description: "an airport lounge"},
+	})
+	if err != nil {
+		t.Fatalf("Score: %v", err)
+	}
+	if got := strings.Join(client.calls, ","); got != "retired,live" {
+		t.Errorf("calls = %s; want retired then live", got)
+	}
+	if scored[0].URL != "b" || scored[0].Score != 9 {
+		t.Errorf("top = %+v; want the fallback model's scores applied", scored[0])
 	}
 }

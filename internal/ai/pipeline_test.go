@@ -269,3 +269,34 @@ func TestParseDashItems_Inline(t *testing.T) {
 		}
 	}
 }
+
+// TestPipeline_DetailsUseTheirOwnChain: the inline key-details call asks for
+// 1024 tokens, so it runs under the 30s short-call timeout. On the critic model
+// (minutes per reply since 2026-09-29) it would time out on every article, so
+// it runs on the chain given to SetDetailModels and falls over a retired model.
+func TestPipeline_DetailsUseTheirOwnChain(t *testing.T) {
+	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA [TPG]"}
+	criticClient := &perModelMockHFClient{
+		responses: map[string]string{
+			"critic": `{"score": 90, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`,
+			"live":   `{"key_details": [{"Label": "Bonus", "Value": "40%"}], "links": []}`,
+		},
+		errs: map[string]error{"gone": &APIError{StatusCode: 410, Model: "gone", Body: "end of life"}},
+	}
+	pipeline := NewPipeline(NewGenerator(genMock, "gen", "", nil), NewCritic(criticClient, "critic"), 80)
+	pipeline.SetDetailModels([]string{"gone", "live"})
+
+	result, err := pipeline.Process("deal", []SourceArticle{
+		{Name: "TPG", URL: "https://tpg.com/1", Title: "Bonus", Content: "40% bonus to ANA"},
+		{Name: "OMAAT", URL: "https://omaat.com/1", Title: "ANA Bonus", Content: "40% transfer bonus"},
+	})
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if got := strings.Join(criticClient.callsOrder, ","); got != "critic,gone,live" {
+		t.Errorf("calls = %s; want the critic to verify, then details on gone then live", got)
+	}
+	if len(result.KeyDetails) != 1 || result.KeyDetails[0].Value != "40%" {
+		t.Errorf("key details = %+v; want the fallback model's answer", result.KeyDetails)
+	}
+}

@@ -53,9 +53,14 @@ go run ./cmd/ab-models -critic-candidates "model-a,model-b" -generators model-a
 go run ./cmd/ab-models -topics 5 -generators "model-a,model-b" -critic model-c
 ```
 
-Liveness is not capability. `mistralai/mistral-nemotron` passes a trivial probe
-and still returns 500 on the real article prompt, so score candidates on real
-clusters before promoting one.
+Liveness is not capability. `mistralai/mistral-nemotron` (the critic until its
+retirement on 2026-09-28) passed a trivial probe and still returned 500 on the
+real article prompt, so score candidates on real clusters before promoting one.
+
+Latency matters as much as liveness. A critic only verifies, with the full
+`request_timeout`; everything else — enrichment, image text-scoring, the
+newsletter pick, card-update detection — runs on `enrichment_model` under a 30s
+cap. Keep slow models out of that chain.
 
 ## Fix
 
@@ -69,6 +74,11 @@ Confirm afterwards:
 ```bash
 ssh ubuntu@<host> "journalctl -u milesahead -n30 | grep preflight"   # expect preflight ok
 ```
+
+Article-path models are probed under the full `request_timeout`, so a slow
+critic's `preflight ok` can take several minutes to appear
+(`deepseek-ai/deepseek-v4.1-flash` took about five). The same results are in
+`milesahead_ai_preflight_models_reachable{role}`.
 
 Then wait one scan interval (`default_interval`, 180 minutes) for `article created`.
 
