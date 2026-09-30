@@ -37,6 +37,48 @@ func TestAddScanJob(t *testing.T) {
 	}
 }
 
+// A scan still running when the next is due must not run alongside it: two
+// concurrent scans can publish the same story twice. The startup scan blocks
+// here past two cron ticks, so any second call is an overlap.
+func TestAddScanJob_SkipsWhileAScanIsStillRunning(t *testing.T) {
+	s := New()
+	var calls, concurrent, maxConcurrent int32
+	release := make(chan struct{})
+	s.AddScanJob(1*time.Second, func() {
+		atomic.AddInt32(&calls, 1)
+		n := atomic.AddInt32(&concurrent, 1)
+		defer atomic.AddInt32(&concurrent, -1)
+		for {
+			m := atomic.LoadInt32(&maxConcurrent)
+			if n <= m || atomic.CompareAndSwapInt32(&maxConcurrent, m, n) {
+				break
+			}
+		}
+		<-release
+	})
+	s.Start()
+	time.Sleep(2500 * time.Millisecond)
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Errorf("scan ran %d times while the first was still running; want 1", got)
+	}
+	close(release)
+	s.Stop()
+	if got := atomic.LoadInt32(&maxConcurrent); got != 1 {
+		t.Errorf("max concurrent scans = %d; want 1", got)
+	}
+}
+
+// Once a scan finishes, the next tick runs normally.
+func TestSkipIfRunning_RunsAgainAfterTheFirstFinishes(t *testing.T) {
+	var calls int32
+	f := skipIfRunning("test", func() { atomic.AddInt32(&calls, 1) })
+	f()
+	f()
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Errorf("calls = %d; want 2 (sequential calls must both run)", got)
+	}
+}
+
 func TestAddMailPollJob(t *testing.T) {
 	s := New()
 	var called int32
