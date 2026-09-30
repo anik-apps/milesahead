@@ -47,36 +47,11 @@ func Cluster(articles []Article, threshold float64) []ArticleCluster {
 		return nil
 	}
 
-	// Tokenize all titles.
-	tokens := make([][]string, len(articles))
+	titles := make([]string, len(articles))
 	for i, a := range articles {
-		tokens[i] = tokenize(a.Title)
+		titles[i] = a.Title
 	}
-
-	// Build document frequency map.
-	df := make(map[string]int)
-	for _, toks := range tokens {
-		seen := make(map[string]bool)
-		for _, t := range toks {
-			if !seen[t] {
-				df[t]++
-				seen[t] = true
-			}
-		}
-	}
-
-	// Compute TF-IDF vectors.
-	n := float64(len(articles))
-	vectors := make([]map[string]float64, len(articles))
-	for i, toks := range tokens {
-		tf := termFrequency(toks)
-		vec := make(map[string]float64)
-		for term, freq := range tf {
-			idf := math.Log(1 + n/float64(df[term]))
-			vec[term] = freq * idf
-		}
-		vectors[i] = vec
-	}
+	vectors := Vectorize(titles)
 
 	// Greedy agglomerative clustering.
 	var clusters []ArticleCluster
@@ -98,7 +73,7 @@ func Cluster(articles []Article, threshold float64) []ArticleCluster {
 					}
 				}
 				if idx >= 0 {
-					sumSim += cosineSimilarity(vectors[i], vectors[idx])
+					sumSim += CosineSimilarity(vectors[i], vectors[idx])
 				}
 			}
 			avgSim := sumSim / float64(len(cl.Articles))
@@ -118,6 +93,41 @@ func Cluster(articles []Article, threshold float64) []ArticleCluster {
 	}
 
 	return clusters
+}
+
+// Vectorize returns a TF-IDF vector for each document, with inverse document
+// frequency taken across docs. It is the weighting Cluster uses on titles;
+// the story-level duplicate check reuses it so both judge "same words" the
+// same way.
+func Vectorize(docs []string) []map[string]float64 {
+	tokens := make([][]string, len(docs))
+	for i, d := range docs {
+		tokens[i] = tokenize(d)
+	}
+
+	df := make(map[string]int)
+	for _, toks := range tokens {
+		seen := make(map[string]bool)
+		for _, t := range toks {
+			if !seen[t] {
+				df[t]++
+				seen[t] = true
+			}
+		}
+	}
+
+	n := float64(len(docs))
+	vectors := make([]map[string]float64, len(docs))
+	for i, toks := range tokens {
+		tf := termFrequency(toks)
+		vec := make(map[string]float64)
+		for term, freq := range tf {
+			idf := math.Log(1 + n/float64(df[term]))
+			vec[term] = freq * idf
+		}
+		vectors[i] = vec
+	}
+	return vectors
 }
 
 // Common English stop words to filter from titles.
@@ -164,8 +174,8 @@ func termFrequency(tokens []string) map[string]float64 {
 	return tf
 }
 
-// cosineSimilarity computes the cosine similarity between two sparse vectors.
-func cosineSimilarity(a, b map[string]float64) float64 {
+// CosineSimilarity computes the cosine similarity between two sparse vectors.
+func CosineSimilarity(a, b map[string]float64) float64 {
 	var dot, normA, normB float64
 	for k, v := range a {
 		normA += v * v

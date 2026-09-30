@@ -79,6 +79,10 @@ func (c *Critic) verify(label, prompt string) (*VerificationResult, error) {
 	return &result, nil
 }
 
+// ExtractJSON finds the first JSON object ({...}) in s, for callers outside
+// this package that parse a model's JSON reply.
+func ExtractJSON(s string) string { return extractJSON(s) }
+
 // extractJSON finds the first JSON object ({...}) in the given string.
 func extractJSON(s string) string {
 	start := strings.Index(s, "{")

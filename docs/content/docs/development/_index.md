@@ -29,6 +29,7 @@ milesahead/
 │   ├── offer/               # Offer end dates from Key Details; "has it ended"
 │   ├── scanner/             # RSS/scrape source scanner
 │   ├── scheduler/           # Cron job scheduling
+│   ├── storydedup/          # Story-level duplicate check before generation
 │   ├── vote/                # Voting system with anomaly detection
 │   └── web/                 # HTTP server, routes, admin, public, auth
 ├── templates/               # Go HTML templates

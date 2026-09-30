@@ -164,13 +164,36 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       fire here: the series is absent for the first minutes after every boot while a
       slow critic is probed. Also find out why the generation-drought rule, which should
       have fired about 25 hours into this outage, did not get anyone's attention.
-- [ ] **Deduplicate across clusters, not just within them** — the raw-ID dedupe
+- [x] **Deduplicate across clusters, not just within them** — the raw-ID dedupe
       (`HasArticleForRawIDs`) can only catch a cluster reusing a source article. When one
       story lands in two disjoint clusters, the clusters share no sources by construction
       and the check correctly passes, so the site publishes the same story twice
-      (articles 1030 and 1031, 2026-09-21). Lowering the clustering threshold fixed that
-      case, but the class remains: a title-similarity check against recently generated
-      articles would close it properly.
+      (articles 1030 and 1031, 2026-09-21). Measured 2026-09-21..30: 16 of 98 generated
+      articles were same-story duplicates across 12 stories, and no pair shared a raw
+      article. Three causes: one event split into two clusters in the same scan (~10),
+      late coverage resurfacing once the original sources left the 48h window (4-6),
+      and new coverage days later. Addressed by two checks:
+      **covered raws** (blocking) — a cluster skipped for overlapping an article now
+      records its other raws in `covered_raws` against that article, and the raw-ID check
+      (`ArticleForRawIDs`) reads it, so late coverage cannot resurface after rolloff; the
+      article's public source list is unchanged. **Story check** (`internal/storydedup`,
+      `scanner.story_dedup`, shadow by default) — a TF-IDF prefilter against every article
+      from the last 7 days (any status), then one short call on the enrichment chain
+      deciding same story / materially new development; falls back to lexical >= 0.55 if
+      the call fails. Replayed on 99 production articles, the prefilter keeps all 10
+      known duplicate pairs at >= 0.25 and needs an AI call for 42 clusters.
+- [ ] **Review the story check's shadow decisions, then switch it to block** — after a
+      few days of scans, tally the `story dedup decision` log lines with
+      `would_block=true` against the admin's approve/reject of the article generated
+      from the same `cluster_raw_ids` (and `milesahead_story_dedup_decisions_total`). If
+      the would-blocks are real duplicates, set `story_dedup: "block"` in `deploy.yml`.
+      Smoke-tested on five known pairs: two duplicates caught, two legitimate stories
+      kept; 1124 vs 1110 was judged a follow-up (the launch moved from October 2026 to
+      January 2027), which is arguably right.
+- [ ] **Clustering merge pass (lower priority)** — clustering is single-pass greedy and
+      never merges, which is how one event splits into two clusters in the same scan. An
+      average-linkage merge of clusters above the threshold would stop most same-scan
+      splits before either duplicate check has to.
 - [x] **Enrichment failures are invisible** — `extract details`, `scouts take`, image
       query generation and image scoring were five best-effort inline calls in the
       article-creation loop, each logging WARN and continuing, so a transient provider
