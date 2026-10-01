@@ -3,6 +3,8 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"sort"
 	"strings"
 )
 
@@ -70,13 +72,76 @@ func (c *Critic) verify(label, prompt string) (*VerificationResult, error) {
 		return nil, fmt.Errorf("%s (model %s): no JSON object found in response: %s", label, model, resp)
 	}
 
-	var result VerificationResult
-	if err := json.Unmarshal([]byte(jsonStr), &result); err != nil {
+	var reply criticReply
+	if err := json.Unmarshal([]byte(jsonStr), &reply); err != nil {
 		return nil, fmt.Errorf("%s (model %s): parse response: %w", label, model, err)
 	}
+	result := reply.VerificationResult
+	result.Issues = make([]string, 0, len(reply.Issues))
+	for _, issue := range reply.Issues {
+		result.Issues = append(result.Issues, string(issue))
+	}
 	result.Model = model
+	if dropped := dropPassedChecks(&result); len(dropped) > 0 {
+		slog.Info("dropped critic issues that confirm a passed check", "label", label,
+			"model", model, "dropped", len(dropped), "kept", len(result.Issues))
+	}
 
 	return &result, nil
+}
+
+// criticReply is a verdict as the critic sends it. Its issues field shadows
+// VerificationResult.Issues so each item can be read leniently.
+type criticReply struct {
+	VerificationResult
+	Issues []criticIssue `json:"issues"`
+}
+
+// criticIssue is one item of a critic's "issues" array. The contract is a
+// string, but asked for what is wrong and how to fix it, a critic has replied
+// with {"problem": ..., "fix": ...} objects instead. A parse error drops the
+// article from the scan, so an object is flattened into one string rather
+// than rejected.
+type criticIssue string
+
+func (ci *criticIssue) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err == nil {
+		*ci = criticIssue(s)
+		return nil
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(b, &obj); err != nil {
+		// Neither a string nor an object: keep the raw JSON as the text.
+		*ci = criticIssue(strings.TrimSpace(string(b)))
+		return nil
+	}
+	var parts []string
+	used := map[string]bool{}
+	take := func(prefix string, keys ...string) {
+		for _, k := range keys {
+			if v, ok := obj[k].(string); ok && strings.TrimSpace(v) != "" && !used[k] {
+				used[k] = true
+				parts = append(parts, prefix+strings.TrimSpace(v))
+			}
+		}
+	}
+	take("", "issue", "problem", "description", "text", "location")
+	take("Fix: ", "fix", "suggestion", "recommendation")
+	if len(parts) == 0 {
+		keys := make([]string, 0, len(obj))
+		for k := range obj {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		take("", keys...)
+	}
+	if len(parts) == 0 {
+		*ci = criticIssue(strings.TrimSpace(string(b)))
+		return nil
+	}
+	*ci = criticIssue(strings.Join(parts, " "))
+	return nil
 }
 
 // ExtractJSON finds the first JSON object ({...}) in s, for callers outside

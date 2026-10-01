@@ -85,8 +85,8 @@ func (p *Pipeline) SetDetailModels(models []string) {
 // ErrNotEnoughSources is returned when a cluster has fewer than 2 unique sources.
 var ErrNotEnoughSources = fmt.Errorf("need at least 2 different sources to generate an article")
 
-// Process generates an article, verifies it, and if the critic finds issues
-// but the score is above threshold, auto-revises once before finalizing.
+// Process generates an article, verifies it, and if the critic left anything
+// to fix (see needsRevision), auto-revises once before finalizing.
 // Requires at least 2 sources from different sites to reduce hallucination risk.
 func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*PipelineResult, error) {
 	// Require multiple sources from different sites
@@ -105,12 +105,13 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 
 	slog.Info("article generated", "type", articleType, "sources", len(sources))
 
-	content, err := p.generator.Generate(articleType, sources)
+	raw, err := p.generator.Generate(articleType, sources)
 	if err != nil {
 		return nil, err
 	}
 
-	content = cleanMarkdown(content)
+	keyDetails, links := replyDetails(raw, sources)
+	content := cleanMarkdown(raw)
 	content, unresolved := cleanSourceRefs("generation", content, sources)
 
 	// Critic reviews the article
@@ -125,14 +126,15 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
 		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
-	// If issues found, generator revises, then critic reviews again
-	if len(verification.Issues) > 0 {
+	// If there is something to fix, generator revises, then critic reviews again
+	if needsRevision(verification) {
 		slog.Info("auto-revision triggered", "issues_count", len(verification.Issues))
 		issuesStr := strings.Join(verification.Issues, "\n- ")
 		revised, err := p.generator.GenerateWithFeedback(sources, content,
 			"Fix ALL of the following issues. Do not add any information not in the original sources. Only state facts that are directly in the sources.",
 			issuesStr)
 		if err == nil && revised != "" {
+			revisedDetails, revisedLinks := replyDetails(revised, sources)
 			revised = cleanMarkdown(revised)
 			revised, revisedUnresolved := cleanSourceRefs("auto-revision", revised, sources)
 			v2, err := p.critic.Verify(revised, sources)
@@ -144,15 +146,17 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 				if v2.Score >= verification.Score {
 					content = revised
 					verification = v2
+					keyDetails, links = revisedDetails, revisedLinks
 				}
 			}
 		}
 	}
 
-	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
+	content, parsedTitle, tldr := p.finalizeContent(content)
 
-	// If structured parsing didn't extract key details, use a separate AI call
+	// Only a reply without usable key details costs a separate call.
 	if len(keyDetails) == 0 {
+		slog.Info("no key details in the generated article, extracting them separately")
 		kd, lk := p.extractDetails(parsedTitle, content)
 		kd = cleanDetailSourceRefs(kd, sources)
 		if len(kd) > 0 {
@@ -173,6 +177,20 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
 	}, nil
+}
+
+// needsRevision reports whether a verdict leaves anything for the
+// auto-revision to fix: an issue that survived dropPassedChecks, which
+// includes the unmappable source-reference issue flagSourceRefs adds.
+//
+// The score and the checks are deliberately not part of the decision. In
+// production (2026-09-21 to 10-01) verdicts with all four checks passing and
+// scores of 85-95 still carried real errors -- a miscalculated per-point
+// price, a wrong joint-venture member, a "202026" typo -- so gating on them
+// would publish fixable mistakes. What wasted revisions was issues that were
+// not problems at all, which the critic prompt and dropPassedChecks remove.
+func needsRevision(v *VerificationResult) bool {
+	return len(v.Issues) > 0
 }
 
 // extractDetails makes a separate AI call to extract key details and links from the article.
@@ -221,8 +239,9 @@ func (p *Pipeline) ProcessWithFeedback(sources []SourceArticle, previousOutput, 
 	return p.buildResult(content, "", sources)
 }
 
-func (p *Pipeline) buildResult(content, articleType string, sources []SourceArticle) (*PipelineResult, error) {
-	content = cleanMarkdown(content)
+func (p *Pipeline) buildResult(raw, articleType string, sources []SourceArticle) (*PipelineResult, error) {
+	keyDetails, links := replyDetails(raw, sources)
+	content := cleanMarkdown(raw)
 	content, unresolved := cleanSourceRefs("revision", content, sources)
 
 	verification, err := p.critic.Verify(content, sources)
@@ -235,7 +254,7 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
 		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
-	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
+	content, parsedTitle, tldr := p.finalizeContent(content)
 
 	return &PipelineResult{
 		Content:         content,
@@ -283,9 +302,33 @@ func flagSourceRefs(v *VerificationResult, unresolved []string, sources []Source
 	v.Issues = append(v.Issues, SourceRefIssue(unresolved, sources))
 }
 
-// cleanDetailSourceRefs applies the same rewrite to key details extracted by a
-// separate call, dropping any detail with a reference it cannot map: a bullet
-// is public copy and there is no revision pass after this point.
+// replyDetails parses the KEY_DETAILS and LINKS sections out of a raw
+// generator reply.
+//
+// It has to see the reply before cleanMarkdown does: cleanMarkdown turns every
+// "- " line into "<li>...</li>", and the section parser only recognises "- "
+// items, so parsing the cleaned text found no key details in a well-formed
+// reply. Every article then paid for the separate extraction call in
+// extractDetails, and shipped without key details whenever that call failed.
+//
+// The whole-reply rewrite in cleanSourceRefs still runs on the copy the critic
+// and the body come from, and still flags references it cannot map. The details
+// are taken from the reply, not from that copy, so they get the same
+// per-detail rewrite as extracted ones.
+func replyDetails(raw string, sources []SourceArticle) ([]KeyDetail, []ArticleLink) {
+	_, _, details, links, _ := parseStructuredContent(raw)
+	for i := range details {
+		// Key details render as plain text, and cleanMarkdown no longer gets
+		// the chance to turn a stray **bold** into tags.
+		details[i].Label = strings.TrimSpace(strings.ReplaceAll(details[i].Label, "**", ""))
+		details[i].Value = strings.TrimSpace(strings.ReplaceAll(details[i].Value, "**", ""))
+	}
+	return cleanDetailSourceRefs(details, sources), links
+}
+
+// cleanDetailSourceRefs applies the same rewrite to key details, dropping any
+// detail with a reference it cannot map: a bullet is public copy and there is
+// no revision pass after this point.
 func cleanDetailSourceRefs(details []KeyDetail, sources []SourceArticle) []KeyDetail {
 	var kept []KeyDetail
 	for _, d := range details {
@@ -300,9 +343,10 @@ func cleanDetailSourceRefs(details []KeyDetail, sources []SourceArticle) []KeyDe
 	return kept
 }
 
-// finalizeContent processes raw generated content through the structured parsing pipeline.
-func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr string, keyDetails []KeyDetail, links []ArticleLink) {
-	parsedTitle, tldr, keyDetails, links, parsedBody := parseStructuredContent(content)
+// finalizeContent turns the cleaned reply into the article body, title and
+// TLDR. Key details and links come from the raw reply; see replyDetails.
+func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr string) {
+	parsedTitle, tldr, _, _, parsedBody := parseStructuredContent(content)
 	if parsedTitle == "" {
 		parsedTitle = extractTitle(content)
 	}
@@ -328,7 +372,7 @@ func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr st
 	} else {
 		content = formatContent(content)
 	}
-	return content, parsedTitle, tldr, keyDetails, links
+	return content, parsedTitle, tldr
 }
 
 // Compiled patterns for structural-marker handling. Resilient to malformed

@@ -84,6 +84,12 @@ reachable critic is enough to publish. `critic_disable_thinking: true` sends
 thinking on, nemotron-super truncates or leaks its reasoning into the JSON. The
 `critic scored` log line names the model that scored.
 
+Any issue the critic returns triggers one auto-revision, so the critic prompts
+ask for fixes only — an empty `issues` list for a clean article — and
+`dropPassedChecks` removes items that merely confirm a check passed ("matches
+both sources", "no source leakage — good") before the pipeline decides. The
+`dropped critic issues that confirm a passed check` log line counts them.
+
 ### Enrichment
 
 Scout's Take, key details, tags and the article image are **not** produced during

@@ -259,6 +259,16 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       not fails the attribution check and goes to the auto-revision. Scout's Take and key
       details refuse such text. `cmd/repair-source-refs` fixes stored articles (dry run by
       default).
+- [x] **Critic listed passed checks as issues** — the pipeline auto-revises whenever the
+      critic returns issues, and 68 of 71 articles verified in the week to 2026-10-01 were
+      revised (about 75 seconds and two extra AI calls each). Many issues were not problems:
+      "Deadline of December 31, 2026 matches both sources.", "No contradictions — coherence
+      is strong." The critic prompts now ask for fixes only and an empty list when nothing
+      needs changing, issues that only confirm a pass are dropped after parsing (32 of 389
+      stored issues, none of them real problems), and a critic reply that sends issues as
+      objects is flattened rather than failing the article. The revision still fires on any
+      remaining issue, whatever the score: verdicts scoring 85-95 with every check passing
+      carried real errors.
 
 ## Up Next
 
