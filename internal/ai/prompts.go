@@ -19,16 +19,38 @@ type SourceArticle struct {
 	Content string
 }
 
+// formatSources renders the source material for a prompt, each piece labelled
+// by the outlet that published it.
+//
+// Sources used to be labelled "--- Source 1: [The Points Guy] ---", and the
+// generator copied the label into published articles ("Source 1 notes this
+// offer..."). The label now carries no number or position for a model to
+// parrot; the outlet name is the only handle it is given. A missing name is
+// rendered visibly rather than as an empty label.
 func formatSources(sources []SourceArticle) string {
 	var b strings.Builder
-	for i, s := range sources {
-		fmt.Fprintf(&b, "--- Source %d: [%s] ---\n", i+1, s.Name)
-		fmt.Fprintf(&b, "Title: %s\n", s.Title)
+	for _, s := range sources {
+		name := strings.TrimSpace(s.Name)
+		if name == "" {
+			name = "(outlet name missing)"
+		}
+		fmt.Fprintf(&b, "=== From %s ===\n", name)
+		fmt.Fprintf(&b, "Headline: %s\n", s.Title)
 		fmt.Fprintf(&b, "URL: %s\n", s.URL)
 		fmt.Fprintf(&b, "Content:\n%s\n\n", s.Content)
 	}
 	return b.String()
 }
+
+// sourceReferenceRule tells the writer how to refer to the source material.
+// Every prompt that hands the model source articles includes it.
+const sourceReferenceRule = `
+REFERRING TO SOURCES:
+- The source articles below are your private research notes. Readers never see them, and they are labelled only by the outlet that published them.
+- Usually you should not refer to them at all: state the facts directly (see FACTUAL INTEGRITY).
+- When you do need to attribute something (the unconfirmed-report EXCEPTION under FACTUAL INTEGRITY), name the outlet: "Doctor of Credit is reporting...", "One Mile at a Time notes...".
+- NEVER refer to a source by number or position. These are all WRONG: "Source 1", "Source 2 notes", "sources 1 and 2", "the first source", "the second article", "Article 1", "[1]", "[Source 2]".
+`
 
 const writingStyle = `
 WRITING STYLE — THIS IS CRITICAL:
@@ -154,9 +176,10 @@ Given the following source articles, extract the key details:
 Write an engaging deal-alert post that makes readers excited about this opportunity.
 %s
 %s
+%s
 Sources (for your reference only — do NOT cite these in the article):
 %s
-Write the deal alert post now.`, writingStyle, htmlFormat, formatSources(sources))
+Write the deal alert post now.`, writingStyle, htmlFormat, sourceReferenceRule, formatSources(sources))
 }
 
 // RoundupPrompt builds a prompt for a roundup article with natural writing.
@@ -168,9 +191,10 @@ Each topic gets an <h3> heading followed by its content, then an <hr class="topi
 End with a brief wrap-up paragraph (no <hr> before the wrap-up).
 %s
 %s
+%s
 Sources (for your reference only — do NOT cite these in the article):
 %s
-Write the roundup post now.`, writingStyle, htmlFormat, formatSources(sources))
+Write the roundup post now.`, writingStyle, htmlFormat, sourceReferenceRule, formatSources(sources))
 }
 
 // SummaryPrompt builds a prompt for a summary article with personality.
@@ -181,9 +205,10 @@ Given the following source articles, synthesize the information into a balanced,
 Add your own analysis and practical advice for readers.
 %s
 %s
+%s
 Sources (for your reference only — do NOT cite these in the article):
 %s
-Write the summary post now.`, writingStyle, htmlFormat, formatSources(sources))
+Write the summary post now.`, writingStyle, htmlFormat, sourceReferenceRule, formatSources(sources))
 }
 
 // CriticPrompt builds a comprehensive verification prompt. The critic checks
@@ -212,6 +237,7 @@ VERIFICATION CHECKLIST:
 6. SOURCE LEAKAGE — Does the article link to or mention source news sites (TPG, OMAAT, Doctor of Credit, View from the Wing, FlyerTalk, Frequent Miler) in the body? It should NOT, unless reporting an unconfirmed claim. Links to thepointsguy.com, onemileatatime.com, doctorofcredit.com, viewfromthewing.com are ALWAYS wrong.
 7. LINK CHECK — The article should NOT link to source news articles. It MAY link to actual deals, products, or official pages (amazon.com, chase.com, united.com, etc.). Check every <a href> tag: if it points to a source news site, that's a FAILURE.
 8. COHERENCE — Does the article make logical sense from start to finish? Are there any contradictions, non-sequiturs, or confusing passages?
+9. SOURCE NUMBERING — The original sources below are private research notes labelled by outlet; readers never see them, numbered or otherwise. Any reference to a source by number or position in the title, TLDR, key details or body ("Source 1 notes", "Source 2", "sources 1 and 2", "the first source", "the second article", "Article 1", "[1]") is an ATTRIBUTION FAILURE: set attribution_check to false and add an issue that quotes the phrase and names the outlet to use instead, or says to drop the attribution. In your own issues, likewise refer to sources by outlet name, never by number or position.
 
 Generated Article:
 %s
@@ -337,7 +363,8 @@ Rules:
 - key_details: 3-6 bullet points with the most important facts (bonus amounts, deadlines, costs, requirements, eligibility)
 - If the offer has an end date, include exactly one key detail with the label "Deadline" whose value is the last day to act, written as Month D, YYYY (e.g. "May 1, 2026"). The site uses it to mark the offer as ended, so never label an effective date, travel window or points-expiry date "Deadline", and leave it out when the article gives no end date.
 - links: 2-4 links to actual deal pages, booking sites, or official program pages found in the article content. Extract real URLs from the HTML <a href> tags. Do NOT invent URLs.
-- If the article has no links, return an empty links array.`, title, truncated)
+- If the article has no links, return an empty links array.
+- Never refer to sources by number or position ("Source 1", "the second source") in a label or value.`, title, truncated)
 }
 
 // ArticleTagsPrompt builds a prompt that asks the AI to pick 1-3 topic tags
@@ -390,6 +417,8 @@ func ScoutsTakePrompt(personaName, title, tldr, content string) string {
 Given this article, write a 1-2 sentence take that captures your honest opinion. Be practical and direct. Tell readers whether this matters and what they should do about it. Do not be generic — reference specific details from the article.
 
 Do NOT start with "Look," or "Listen," or any attention-grabbing opener. Just state your take directly.
+
+Never refer to sources by number or position ("Source 1", "the second source"). If the article does, ignore that wording; name the outlet only if it is essential.
 
 Article Title: %s
 Summary: %s
@@ -467,6 +496,9 @@ IMPORTANT: Address the admin feedback. Do not add editor notes, warnings, or dis
 Also fix any critic issues if present.
 %s
 %s
+%s
+If the previous article refers to a source by number or position ("Source 1 notes...", "the second source"), rewrite it to name the outlet or drop the attribution, even if no one asked.
+
 Previous Article:
 %s
 
@@ -475,5 +507,5 @@ Critic Issues:
 
 Sources (for your reference only — do NOT cite or link to them):
 %s
-Write the revised article now.`, feedback, writingStyle, htmlFormat, previousOutput, criticIssues, formatSources(sources))
+Write the revised article now.`, feedback, writingStyle, htmlFormat, sourceReferenceRule, previousOutput, criticIssues, formatSources(sources))
 }

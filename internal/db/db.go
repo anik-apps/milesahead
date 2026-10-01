@@ -98,8 +98,11 @@ func (d *Database) GetSource(id int64) (*Source, error) {
 	return s, nil
 }
 
+// ListActiveSources returns the active sources by id. The order is part of the
+// contract: the scan builds each cluster's source list in this order, and
+// revisions and the source-reference repair rely on reproducing it.
 func (d *Database) ListActiveSources() ([]Source, error) {
-	rows, err := d.db.Query(`SELECT id, name, url, rss_url, scrape_selector, scan_interval, active, created_at, updated_at FROM sources WHERE active = 1`)
+	rows, err := d.db.Query(`SELECT id, name, url, rss_url, scrape_selector, scan_interval, active, created_at, updated_at FROM sources WHERE active = 1 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +164,7 @@ func (d *Database) CreateRawArticleIfNew(a *RawArticle) (bool, error) {
 
 func (d *Database) GetRawArticlesBySourceID(sourceID int64) ([]RawArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, source_id, title, url, content, published_at, hash, created_at FROM raw_articles WHERE source_id = ?`, sourceID,
+		`SELECT id, source_id, title, url, content, published_at, hash, created_at FROM raw_articles WHERE source_id = ? ORDER BY id`, sourceID,
 	)
 	if err != nil {
 		return nil, err

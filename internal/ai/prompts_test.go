@@ -41,20 +41,20 @@ func TestRevisionPrompt_PassesFeedbackThrough(t *testing.T) {
 }
 
 // TestRevisionPrompt_FormatsSourcesWithNames guards the loadSourceArticles bug:
-// if Name is dropped on the source, the model sees `--- Source 1: [] ---` with
-// empty brackets. Both source names should be present in the rendered prompt.
+// if Name is dropped on the source, the model loses the outlet label. Both
+// source names should be present in the rendered prompt.
 func TestRevisionPrompt_FormatsSourcesWithNames(t *testing.T) {
 	sources := sampleSources()
 	prompt := RevisionPrompt(sources, "<p>previous</p>", "fix typo", "")
 
 	for _, s := range sources {
-		marker := "[" + s.Name + "]"
+		marker := "=== From " + s.Name + " ==="
 		if !strings.Contains(prompt, marker) {
-			t.Errorf("RevisionPrompt missing source name marker %q", marker)
+			t.Errorf("RevisionPrompt missing source label %q", marker)
 		}
 	}
-	if strings.Contains(prompt, "[]") {
-		t.Error("RevisionPrompt contains empty source-name brackets [] — Name field not populated")
+	if strings.Contains(prompt, "(outlet name missing)") {
+		t.Error("RevisionPrompt rendered a missing outlet name — Name field not populated")
 	}
 }
 
@@ -111,17 +111,102 @@ func TestRevisionPrompt_AllowsAdjacentFixes(t *testing.T) {
 }
 
 // TestFormatSources_RendersName is a focused regression test for the helper
-// the revision flow depends on. If Name is empty, formatSources renders empty
-// brackets and the prompt loses publisher context.
+// the revision flow depends on. If Name is empty, the label says so visibly
+// rather than rendering an empty label.
 func TestFormatSources_RendersName(t *testing.T) {
 	got := formatSources([]SourceArticle{{Name: "Upgraded Points", Title: "T", URL: "u", Content: "c"}})
-	if !strings.Contains(got, "[Upgraded Points]") {
-		t.Errorf("formatSources missing name marker; got: %s", got)
+	if !strings.Contains(got, "=== From Upgraded Points ===") {
+		t.Errorf("formatSources missing outlet label; got: %s", got)
 	}
 
 	gotEmpty := formatSources([]SourceArticle{{Title: "T", URL: "u", Content: "c"}})
-	if !strings.Contains(gotEmpty, "[]") {
-		t.Errorf("formatSources should render [] for empty Name as a visible signal; got: %s", gotEmpty)
+	if !strings.Contains(gotEmpty, "(outlet name missing)") {
+		t.Errorf("formatSources should flag an empty Name visibly; got: %s", gotEmpty)
+	}
+}
+
+// TestFormatSources_NoNumbering guards the "Source 1 notes this offer..." leak:
+// the sources were labelled "--- Source 1: [Name] ---" and the generator
+// copied the label into published copy. The labels must carry no number or
+// position for a model to repeat.
+func TestFormatSources_NoNumbering(t *testing.T) {
+	sources := append(sampleSources(), SourceArticle{Name: "Doctor of Credit", Title: "T3", URL: "u3", Content: "c3"})
+	got := formatSources(sources)
+	if refs := FindSourceRefs(got); len(refs) > 0 {
+		t.Errorf("formatSources output contains numbered references %v:\n%s", refs, got)
+	}
+	for _, banned := range []string{"Source 1", "Source 2", "Source 3", "[1]", "#1", "--- Source"} {
+		if strings.Contains(got, banned) {
+			t.Errorf("formatSources output contains %q:\n%s", banned, got)
+		}
+	}
+}
+
+// TestSourcePrompts_LabelByOutletAndForbidNumbering covers every prompt that
+// hands the model source material: the sources are labelled by outlet, and
+// the writing prompts carry the rule against numbered references.
+func TestSourcePrompts_LabelByOutletAndForbidNumbering(t *testing.T) {
+	src := sampleSources()
+	writers := map[string]string{
+		"deal":     DealAlertPrompt(src),
+		"roundup":  RoundupPrompt(src),
+		"summary":  SummaryPrompt(src),
+		"revision": RevisionPrompt(src, "<p>Source 1 notes the cap.</p>", "fix", ""),
+	}
+	all := map[string]string{
+		"critic":  CriticPrompt("<p>article</p>", src),
+		"critic2": Critic2Prompt("<p>article</p>", src),
+	}
+	for k, v := range writers {
+		all[k] = v
+	}
+
+	for name, prompt := range all {
+		for _, s := range src {
+			if !strings.Contains(prompt, "=== From "+s.Name+" ===") {
+				t.Errorf("%s prompt does not label %q by outlet", name, s.Name)
+			}
+		}
+		if strings.Contains(prompt, "--- Source ") {
+			t.Errorf("%s prompt still numbers its sources", name)
+		}
+	}
+	for name, prompt := range writers {
+		if !strings.Contains(prompt, sourceReferenceRule) {
+			t.Errorf("%s prompt missing the source reference rule", name)
+		}
+		for _, want := range []string{"NEVER refer to a source by number or position", `"Source 1"`, `"the first source"`, "name the outlet"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("%s prompt missing %q", name, want)
+			}
+		}
+	}
+	if !strings.Contains(writers["revision"], "If the previous article refers to a source by number or position") {
+		t.Error("revision prompt does not ask for existing numbered references to be fixed")
+	}
+}
+
+// TestCriticPrompt_TreatsNumberedSourcesAsAttributionFailure: the critic must
+// fail attribution on "Source N" phrasing so the auto-revision fixes it.
+func TestCriticPrompt_TreatsNumberedSourcesAsAttributionFailure(t *testing.T) {
+	p := CriticPrompt("<p>Source 1 notes the bonus.</p>", sampleSources())
+	for _, want := range []string{"SOURCE NUMBERING", `"Source 1 notes"`, "ATTRIBUTION FAILURE", "attribution_check to false"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("CriticPrompt missing %q", want)
+		}
+	}
+}
+
+// TestEnrichmentPrompts_ForbidNumberedSources: enrichment reads the article,
+// not the sources, but older articles can still contain "Source 1".
+func TestEnrichmentPrompts_ForbidNumberedSources(t *testing.T) {
+	for name, p := range map[string]string{
+		"scouts_take": ScoutsTakePrompt("Scout", "T", "tldr", "<p>Source 1 notes it.</p>"),
+		"details":     ExtractDetailsPrompt("T", "<p>Source 1 notes it.</p>"),
+	} {
+		if !strings.Contains(p, "Never refer to sources by number or position") {
+			t.Errorf("%s prompt missing the numbered-source rule", name)
+		}
 	}
 }
 
