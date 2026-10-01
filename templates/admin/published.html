@@ -28,7 +28,7 @@
         <tbody>
             {{range .Articles}}
             <tr{{if .Flagged}} class="flagged"{{end}}>
-                <td><span class="badge badge-{{.Type}}">{{.Type}}</span> {{.Title}}{{if .Flagged}} <span class="flag-icon" title="High downvotes">&#9873;</span>{{end}}</td>
+                <td><span class="badge badge-{{.Type}}">{{typeBadge .Type}}</span> {{.Title}}{{if .Flagged}} <span class="flag-icon" title="High downvotes">&#9873;</span>{{end}}</td>
                 <td>{{.PublishedAt}}</td>
                 <td class="hide-mobile">{{.Upvotes}}</td>
                 <td class="hide-mobile">{{.Downvotes}}</td>

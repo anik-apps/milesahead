@@ -26,7 +26,7 @@
     {{if .CurrentNewsletter}}
     <section class="newsletter-status-section" style="margin-bottom:2rem;">
         <h2>Current Week
-            <span class="badge badge-{{.CurrentNewsletter.Status}}" style="margin-left:0.5rem;font-size:0.8rem;">{{.CurrentNewsletter.Status}}</span>
+            <span class="badge badge-{{.CurrentNewsletter.Status}}" style="margin-left:0.5rem;font-size:0.8rem;">{{statusLabel .CurrentNewsletter.Status}}</span>
         </h2>
         <p style="color:#999;font-size:0.9rem;">
             Date: {{.CurrentNewsletter.Date}} &middot;
@@ -144,7 +144,7 @@
                 {{range .History}}
                 <tr>
                     <td>{{.Date}}</td>
-                    <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
+                    <td><span class="badge badge-{{.Status}}">{{statusLabel .Status}}</span></td>
                     <td>{{.ArticleCount}}</td>
                     <td>{{if .SentAt}}{{.SentAt.Format "2006-01-02 15:04"}}{{else}}&mdash;{{end}}</td>
                 </tr>

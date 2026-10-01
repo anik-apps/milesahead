@@ -55,7 +55,7 @@
             {{range .Sources}}
             <tr>
                 <td>{{.Name}}</td>
-                <td><a href="{{.URL}}">{{.URL}}</a></td>
+                <td class="url-cell"><a href="{{.URL}}">{{.URL}}</a></td>
                 <td>{{if .RSSURL}}{{deref .RSSURL}}{{else}}<span class="text-muted" style="font-style:italic;">Not set</span>{{end}}</td>
                 <td>{{if .ScanInterval}}{{deref .ScanInterval}}{{else}}<span class="text-muted" style="font-style:italic;">Not set</span>{{end}}</td>
                 <td>{{if .Active}}Yes{{else}}No{{end}}</td>
