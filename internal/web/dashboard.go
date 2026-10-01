@@ -12,6 +12,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/editornote"
 )
 
 // The review queue's groups, in the order the dashboard shows them.
@@ -67,6 +68,7 @@ func (app *App) buildArticleRow(a db.GeneratedArticle, x queueExtras, now time.T
 		TLDR:           a.TLDR,
 		ImageURL:       a.ImageURL,
 		ScoutsTake:     a.ScoutsTake,
+		EditorNotes:    editornote.Lines(a.EditorNotes),
 		CreatedAt:      a.CreatedAt.Format(adminTimeFormat),
 		UpdatedAt:      a.UpdatedAt.Format(adminTimeFormat),
 		Age:            ago(a.CreatedAt, now),

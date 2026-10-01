@@ -89,30 +89,36 @@
                 <button type="button" class="preview-close" aria-label="Close preview" title="Close (Esc)">&times;</button>
             </div>
             <div class="preview-body">
-                {{if .ImageURL}}
-                <div class="article-hero">
-                    <img src="{{.ImageURL}}" alt="{{.Title}}">
-                </div>
-                {{else}}
-                <p class="preview-missing">No image yet. Enrichment adds one within about 15 minutes of the article being created.</p>
-                {{end}}
+                {{/* The same order as the public article page: headline and
+                     summary, the photo, then the story with its key details
+                     and Scout's Take after it. */}}
                 <article class="article-detail">
                     <header class="article-header">
-                        <span class="type-badge badge-{{.Type}}">{{typeBadge .Type}}</span>
+                        <div class="article-badges"><span class="type-badge badge-{{.Type}}">{{typeBadge .Type}}</span></div>
                         <h1>{{.Title}}</h1>
                         <span class="dim">Created: {{.CreatedAt}} | Updated: {{.UpdatedAt}} | Rev {{.RevisionNumber}}</span>
+                        {{if .TLDR}}<p class="article-standfirst">{{.TLDR}}</p>{{end}}
                     </header>
-                    <div class="article-layout">
-                        <aside class="article-sidebar">
-                            {{if .TLDR}}
-                            <div class="sidebar-section">
-                                <h4>TL;DR</h4>
-                                <p>{{.TLDR}}</p>
-                            </div>
-                            {{end}}
+                    {{if or .KeyDetails .ArticleLinks}}
+                    <details class="article-facts">
+                        <summary>{{if .KeyDetails}}Key details ({{len .KeyDetails}}){{else}}Links ({{len .ArticleLinks}}){{end}}</summary>
+                        {{if .KeyDetails}}<ul class="key-details">{{range .KeyDetails}}<li><strong>{{.Label}}:</strong> {{.Value}}</li>{{end}}</ul>{{end}}
+                        {{if .ArticleLinks}}<ul class="article-links">{{range .ArticleLinks}}<li><a href="{{.URL}}" target="_blank" rel="noopener">→ {{.Text}}</a></li>{{end}}</ul>{{end}}
+                    </details>
+                    {{end}}
+                    {{if .ImageURL}}
+                    <figure class="article-hero">
+                        <img src="{{.ImageURL}}" alt="" width="1100" height="280">
+                    </figure>
+                    {{else}}
+                    <p class="preview-missing">No image yet. Enrichment adds one within about 15 minutes of the article being created.</p>
+                    {{end}}
+                    <div class="article-layout{{if not (or .KeyDetails .ArticleLinks)}} no-sidebar{{end}}">
+                        {{if or .KeyDetails .ArticleLinks}}
+                        <aside class="article-sidebar" aria-label="Key details">
                             {{if .KeyDetails}}
                             <div class="sidebar-section">
-                                <h4>Key Details</h4>
+                                <h2>Key Details</h2>
                                 <ul class="key-details">
                                     {{range .KeyDetails}}
                                     <li><strong>{{.Label}}:</strong> {{.Value}}</li>
@@ -122,7 +128,7 @@
                             {{end}}
                             {{if .ArticleLinks}}
                             <div class="sidebar-section">
-                                <h4>Links</h4>
+                                <h2>Links</h2>
                                 <ul class="article-links">
                                     {{range .ArticleLinks}}
                                     <li><a href="{{.URL}}" target="_blank" rel="noopener">→ {{.Text}}</a></li>
@@ -131,15 +137,19 @@
                             </div>
                             {{end}}
                         </aside>
+                        {{end}}
                         <div class="article-main">
+                            {{range .EditorNotes}}
+                            <div class="editor-note"><strong>Editor note (not published):</strong> {{.}}</div>
+                            {{end}}
                             <div class="article-content">
                                 {{.Content | safeHTML}}
                             </div>
                             {{if .ScoutsTake}}
-                            <div class="scouts-take">
-                                <div class="scout-label">{{$.PersonaName}}'s Take</div>
+                            <section class="scouts-take" aria-labelledby="scouts-take-{{.ID}}">
+                                <h2 class="scout-label" id="scouts-take-{{.ID}}">{{$.PersonaName}}'s Take</h2>
                                 <p>{{.ScoutsTake}}</p>
-                            </div>
+                            </section>
                             {{else}}
                             <p class="preview-missing">No {{$.PersonaName}}'s Take yet. Enrichment adds it within about 15 minutes of the article being created.</p>
                             {{end}}

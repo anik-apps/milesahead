@@ -19,8 +19,8 @@ import (
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
-// Every configured infographic needs its images committed, or the sidebar
-// renders a broken teaser and the viewer opens on nothing.
+// Every configured infographic needs its images committed, or the summary
+// panel renders a broken teaser and the viewer opens on nothing.
 func TestCardInfographics_HaveCommittedImages(t *testing.T) {
 	if len(cardInfographics) == 0 {
 		t.Fatal("cardInfographics is empty")
@@ -105,8 +105,8 @@ func infographicCardData() map[string]interface{} {
 	return data
 }
 
-// The card art stays; the infographic is a compact bar under it, in both the
-// sidebar and the mobile header card.
+// The card art stays; the infographic is a compact bar under it in the
+// summary panel.
 func TestCardPage_InfographicKeepsCardArt(t *testing.T) {
 	out := renderRealCardTemplate(t, infographicCardData())
 
@@ -132,15 +132,16 @@ func TestCardPage_InfographicKeepsCardArt(t *testing.T) {
 			t.Errorf("card page with an infographic should contain %q", want)
 		}
 	}
-	if got := strings.Count(out, `<img src="/static/img/card-placeholder.svg"`); got != 2 {
-		t.Errorf("card art should still render in the sidebar and the mobile header, got %d", got)
+	// One summary panel at every width, so the art and the bar render once.
+	if got := strings.Count(out, `<img src="/static/img/card-placeholder.svg"`); got != 1 {
+		t.Errorf("card art should render once, in the summary panel, got %d", got)
 	}
-	if got := strings.Count(out, `class="ig-bar"`); got != 2 {
-		t.Errorf("expected an infographic bar in the sidebar and the mobile header, got %d", got)
+	if got := strings.Count(out, `class="ig-bar"`); got != 1 {
+		t.Errorf("expected one infographic bar, in the summary panel, got %d", got)
 	}
-	// The bar comes after the card art in each slot.
-	if strings.Index(out, `card-sidebar-image`) > strings.Index(out, `class="ig-bar"`) {
-		t.Error("the sidebar infographic bar should follow the card art")
+	// The bar comes after the card art.
+	if strings.Index(out, `card-summary-art`) > strings.Index(out, `class="ig-bar"`) {
+		t.Error("the infographic bar should follow the card art")
 	}
 	if strings.Contains(out, `<details class="ig-text" open`) {
 		t.Error("the text version must start collapsed")

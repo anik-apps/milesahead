@@ -1,30 +1,14 @@
 package web
 
 import (
-	"context"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/kumaranik/milesahead/internal/db"
 )
-
-// realTemplateApp is the admin test app rendering the repository's templates.
-func realTemplateApp(t *testing.T) (*App, *db.Database) {
-	t.Helper()
-	base, database := setupAdminTestApp(t)
-	base.cfg.Site.PersonaName = "Scout"
-	app, err := NewAppWithTemplateDir(base.cfg, database, base.articleManager, nil, nil, nil,
-		context.Background(), filepath.Join("..", "..", "templates"))
-	if err != nil {
-		t.Fatalf("app with real templates: %v", err)
-	}
-	t.Cleanup(app.WaitBackground)
-	return app, database
-}
 
 func TestApproveArticle_RequiresRevision(t *testing.T) {
 	app, database := setupAdminTestApp(t)
