@@ -4,7 +4,6 @@ import (
 	"errors"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
 )
@@ -97,7 +96,7 @@ func TestUndoApprove(t *testing.T) {
 	m := NewManager(database, nil)
 	id, err := database.CreateGeneratedArticle(&db.GeneratedArticle{
 		Title: "Undo me", Slug: "undo-me", Content: "<p>x</p>", Type: "deal",
-		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+		Status: db.StatusDraft, SourcesJSON: "[]", RevisionNumber: 1,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -105,19 +104,33 @@ func TestUndoApprove(t *testing.T) {
 	if err := m.ApproveRevision(id, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.UndoApprove(id, db.StatusApproved, time.Minute); err == nil {
-		t.Error("undo back to approved should be refused")
-	}
-	if err := m.UndoApprove(id, db.StatusPending, time.Minute); err != nil {
-		t.Fatalf("undo: %v", err)
+	prev, err := m.UndoApprove(id)
+	if err != nil || prev != db.StatusDraft {
+		t.Fatalf("undo = %q, %v; want back to draft, as recorded", prev, err)
 	}
 	a, _ := database.GetGeneratedArticle(id)
-	if a.Status != db.StatusPending || a.PublishedAt != nil {
-		t.Fatalf("after undo: status %q published_at %v, want pending and unpublished", a.Status, a.PublishedAt)
+	if a.Status != db.StatusDraft || a.PublishedAt != nil {
+		t.Fatalf("after undo: status %q published_at %v, want draft and unpublished", a.Status, a.PublishedAt)
 	}
-	// A second undo has nothing to undo.
-	if err := m.UndoApprove(id, db.StatusPending, time.Minute); !errors.Is(err, db.ErrUndoExpired) {
+	// The record is used up: a second undo has nothing to undo.
+	if _, err := m.UndoApprove(id); !errors.Is(err, db.ErrUndoExpired) {
 		t.Errorf("second undo = %v, want ErrUndoExpired", err)
+	}
+}
+
+// An approval with no record (or none left) cannot be undone.
+func TestUndoApprove_NothingRecorded(t *testing.T) {
+	database := setupFileDB(t)
+	m := NewManager(database, nil)
+	id, _ := database.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Never approved", Slug: "never", Content: "<p>x</p>", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+	})
+	if _, err := m.UndoApprove(id); !errors.Is(err, db.ErrUndoExpired) {
+		t.Fatalf("undo with no approval = %v, want ErrUndoExpired", err)
+	}
+	if a, _ := database.GetGeneratedArticle(id); a.Status != db.StatusPending {
+		t.Errorf("status %q changed", a.Status)
 	}
 }
 
@@ -134,11 +147,48 @@ func TestUndoApprove_TooLate(t *testing.T) {
 	if err := m.Approve(id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.DB().Exec(`UPDATE generated_articles SET published_at = datetime('now', '-1 hour') WHERE id = ?`, id); err != nil {
+	if _, err := database.DB().Exec(`UPDATE approval_undo SET expires_at = datetime('now', '-1 minute') WHERE article_id = ?`, id); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.UndoApprove(id, db.StatusPending, 30*time.Second); !errors.Is(err, db.ErrUndoExpired) {
-		t.Fatalf("undo an hour later = %v, want ErrUndoExpired", err)
+	if _, err := m.UndoApprove(id); !errors.Is(err, db.ErrUndoExpired) {
+		t.Fatalf("undo after the window = %v, want ErrUndoExpired", err)
+	}
+	if a, _ := database.GetGeneratedArticle(id); a.Status != db.StatusApproved {
+		t.Errorf("status %q, want still approved", a.Status)
+	}
+}
+
+// If the article changed after the approval (taken down, or a new revision),
+// the undo must not touch it.
+func TestUndoApprove_RefusesWhenChanged(t *testing.T) {
+	database := setupFileDB(t)
+	m := NewManager(database, nil)
+	id, _ := database.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Changed", Slug: "changed", Content: "<p>x</p>", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+	})
+	if err := m.ApproveRevision(id, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Unpublish(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.UndoApprove(id); !errors.Is(err, db.ErrUndoExpired) {
+		t.Fatalf("undo after a take-down = %v, want ErrUndoExpired", err)
+	}
+	if a, _ := database.GetGeneratedArticle(id); a.Status != db.StatusUnpublished {
+		t.Errorf("status %q, want unpublished (untouched)", a.Status)
+	}
+
+	// Approved again, then its revision moves on: also refused.
+	if err := m.ApproveRevision(id, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB().Exec(`UPDATE generated_articles SET revision_number = 2 WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.UndoApprove(id); !errors.Is(err, db.ErrUndoExpired) {
+		t.Fatalf("undo after a new revision = %v, want ErrUndoExpired", err)
 	}
 }
 
@@ -170,8 +220,8 @@ func TestRepublishKeepsPublishDate(t *testing.T) {
 	if a.PublishedAt == nil || a.PublishedAt.Format("2006-01-02") != "2026-06-01" {
 		t.Fatalf("republished published_at = %v, want the June date kept", a.PublishedAt)
 	}
-	if err := m.UndoApprove(id, db.StatusUnpublished, time.Minute); err != nil {
-		t.Fatalf("undo republish: %v", err)
+	if prev, err := m.UndoApprove(id); err != nil || prev != db.StatusUnpublished {
+		t.Fatalf("undo republish: %q %v", prev, err)
 	}
 	a, _ = database.GetGeneratedArticle(id)
 	if a.Status != db.StatusUnpublished || a.PublishedAt == nil || a.PublishedAt.Format("2006-01-02") != "2026-06-01" {

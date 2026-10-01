@@ -254,10 +254,9 @@
     {{if and (eq .Message "approved") .MessageID}}
     <div class="toast" role="status" data-autohide="15000">
         <span>Approved {{if .ApprovedTitle}}&ldquo;{{.ApprovedTitle}}&rdquo;{{else}}article #{{.MessageID}}{{end}} and published{{if .ApprovedSlug}} (<a href="/article/{{.ApprovedSlug}}" target="_blank" rel="noopener">view</a>){{end}}.</span>
-        {{if .UndoPrev}}
+        {{if .CanUndo}}
         <form method="POST" action="/admin/articles/{{.MessageID}}/undo-approve" class="inline-form">
             {{template "csrf_field" $}}
-            <input type="hidden" name="prev" value="{{.UndoPrev}}">
             <button type="submit" class="toast-action">Undo</button>
         </form>
         {{end}}

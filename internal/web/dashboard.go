@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
@@ -24,10 +25,11 @@ const (
 // per article; the page says how many more there are and links to all.
 const readyLimit = 25
 
-// undoWindow is how long after approving the dashboard's Undo still works.
-// The toast offering it hides after 15 seconds; the server allows a little
-// more for a slow click.
-const undoWindow = 30 * time.Second
+// undoWindow is how long after approving the dashboard's Undo still works
+// (recorded with the approval; see article.ApprovalUndoWindow). The toast
+// offering it hides after 15 seconds; the server allows a little more for a
+// slow click.
+const undoWindow = article.ApprovalUndoWindow
 
 // dashboardGroup is one section of the review queue.
 type dashboardGroup struct {
@@ -300,7 +302,6 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"MessageID":    queryInt(r, "id"),
 		"MessageRev":   queryInt(r, "rev"),
 		"OpenID":       queryInt(r, "open"),
-		"UndoPrev":     undoablePrev(r.URL.Query().Get("prev")),
 		"PersonaName":  app.cfg.Site.PersonaName,
 	}
 	if msg == "approved" {
@@ -309,18 +310,14 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 				data["ApprovedTitle"] = a.Title
 				data["ApprovedSlug"] = a.Slug
 			}
+			// Offer Undo only if the server has a live record of this
+			// approval; nothing about it comes from the URL.
+			if u, err := app.db.PendingUndo(id, time.Now()); err == nil && u != nil {
+				data["CanUndo"] = true
+			}
 		}
 	}
 	app.renderTemplate(w, "dashboard.html", data)
-}
-
-// undoablePrev is prev if an approval can be undone back to it, else "".
-func undoablePrev(prev string) string {
-	switch prev {
-	case db.StatusPending, db.StatusDraft, db.StatusUnpublished, db.StatusRevisionRequested:
-		return prev
-	}
-	return ""
 }
 
 // handleDashboardState answers the dashboard's poll with the queue's
@@ -337,19 +334,17 @@ func (app *App) handleDashboardState(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleUndoApprove is the toast's Undo: it puts an article approved moments
-// ago back to the status it was approved from.
+// ago back to the status and publish date it had, as recorded when it was
+// approved, and refuses if the article has changed since.
 func (app *App) handleUndoApprove(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid article ID", http.StatusBadRequest)
 		return
 	}
-	prev := undoablePrev(r.FormValue("prev"))
-	if prev == "" {
-		http.Error(w, "Nothing to undo", http.StatusBadRequest)
-		return
-	}
-	if err := app.articleManager.UndoApprove(id, prev, undoWindow); err != nil {
+	// What to restore comes from the approval's server-side record, never
+	// from the form.
+	if _, err := app.articleManager.UndoApprove(id); err != nil {
 		if errors.Is(err, db.ErrUndoExpired) {
 			http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=undo_expired&id=%d", id), http.StatusSeeOther)
 			return

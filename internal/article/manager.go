@@ -198,6 +198,15 @@ func (m *Manager) decide(articleID int64, to string, revision int) error {
 		return err
 	}
 	if to == db.StatusApproved {
+		// Record what the approval changed, for the dashboard's Undo. A
+		// failure here only costs the undo, not the approval.
+		if err := m.db.RecordApproval(db.ApprovalUndo{
+			ArticleID: articleID, Revision: article.RevisionNumber,
+			PrevStatus: article.Status, PrevPublishedAt: article.PublishedAt,
+			ExpiresAt: time.Now().Add(ApprovalUndoWindow),
+		}); err != nil {
+			slog.Warn("could not record approval for undo", "article_id", articleID, "error", err)
+		}
 		slog.Info("article approved", "article_id", articleID, "revision", article.RevisionNumber)
 		metrics.ArticlesApprovedTotal.Inc()
 	} else {
@@ -207,14 +216,20 @@ func (m *Manager) decide(articleID int64, to string, revision int) error {
 	return nil
 }
 
-// UndoApprove puts an article the admin approved within the last window back
-// to prev, the status it was approved from. It is the dashboard's "Undo".
-func (m *Manager) UndoApprove(articleID int64, prev string, window time.Duration) error {
-	if err := m.db.UndoApproval(articleID, prev, time.Now().Add(-window)); err != nil {
-		return err
+// ApprovalUndoWindow is how long after an approval its Undo still works.
+const ApprovalUndoWindow = 30 * time.Second
+
+// UndoApprove undoes the article's last approval, if it is recent enough and
+// the article has not changed since: it goes back to the status and publish
+// date it had before, as recorded when it was approved. Returns the restored
+// status, or db.ErrUndoExpired.
+func (m *Manager) UndoApprove(articleID int64) (string, error) {
+	prev, err := m.db.UndoApproval(articleID, time.Now())
+	if err != nil {
+		return "", err
 	}
 	slog.Info("article approval undone", "article_id", articleID, "status", prev)
-	return nil
+	return prev, nil
 }
 
 // RequestRevision stores admin feedback and moves the article to

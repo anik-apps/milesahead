@@ -136,6 +136,17 @@ func migrate(db *sql.DB) error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_subscribers_token ON subscribers(token);
 
+	-- The last admin approval of each article, kept for the dashboard's Undo:
+	-- what the article was before (status and publish date) and until when
+	-- the approval can be undone. Undo reads only this, never the browser.
+	CREATE TABLE IF NOT EXISTS approval_undo (
+		article_id INTEGER PRIMARY KEY REFERENCES generated_articles(id),
+		revision INTEGER NOT NULL,
+		prev_status TEXT NOT NULL,
+		prev_published_at TEXT,
+		expires_at TEXT NOT NULL
+	);
+
 	CREATE TABLE IF NOT EXISTS admin_sessions (
 		token TEXT PRIMARY KEY,
 		expires_at DATETIME NOT NULL,

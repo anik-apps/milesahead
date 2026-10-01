@@ -346,43 +346,9 @@ func (d *Database) transitionArticleStatus(id int64, from, newStatus string, rev
 	return nil
 }
 
-// UndoApproval puts an article approved at or after since back to status
-// prev, the status it was approved from, for the admin's "Undo" right after
-// approving. It only succeeds while the article is still approved and was
-// approved that recently -- by published_at, which the approval set, or for
-// a republished article (whose publish date is kept) by updated_at -- so an
-// old publication cannot be pulled back by a stale form. An article that was
-// unpublished before keeps its published_at, which republishing does not
-// change; one that was never published loses the one the approval set.
-func (d *Database) UndoApproval(id int64, prev string, since time.Time) error {
-	switch prev {
-	case StatusPending, StatusDraft, StatusUnpublished, StatusRevisionRequested:
-	default:
-		return fmt.Errorf("cannot undo an approval back to %q", prev)
-	}
-	res, err := d.db.Exec(
-		`UPDATE generated_articles
-		 SET status = ?, updated_at = CURRENT_TIMESTAMP,
-		     published_at = CASE WHEN ? = ? THEN published_at ELSE NULL END
-		 WHERE id = ? AND status = ?
-		   AND CASE WHEN ? = ? THEN updated_at ELSE published_at END >= ?`,
-		prev, prev, StatusUnpublished, id, StatusApproved, prev, StatusUnpublished, since.UTC().Format("2006-01-02 15:04:05"),
-	)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrUndoExpired
-	}
-	return nil
-}
-
-// ErrUndoExpired means an approval can no longer be undone: the article is
-// not approved any more, or was approved too long ago.
+// ErrUndoExpired means an approval can no longer be undone: there is no
+// recorded approval, its window has passed, or the article has changed since
+// (no longer approved, or at another revision).
 var ErrUndoExpired = errors.New("approval can no longer be undone")
 
 func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, error) {

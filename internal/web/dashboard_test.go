@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -107,36 +106,39 @@ func TestDashboard_ApproveNextAndUndo(t *testing.T) {
 	rec := doAdminPOST(t, app, "/admin/articles/"+itoa(first)+"/approve", session, csrf,
 		url.Values{"revision": {"1"}, "next": {itoa(second)}})
 	loc := rec.Header().Get("Location")
-	if want := "/admin/dashboard?msg=approved&id=" + itoa(first) + "&prev=pending&open=" + itoa(second); loc != want {
+	if want := "/admin/dashboard?msg=approved&id=" + itoa(first) + "&open=" + itoa(second); loc != want {
 		t.Fatalf("Location %q, want %q", loc, want)
 	}
 	page := doAdminGET(t, app, loc, session).Body.String()
 	for _, want := range []string{
 		`data-open="preview-` + itoa(second) + `"`,
 		`action="/admin/articles/` + itoa(first) + `/undo-approve"`,
-		`name="prev" value="pending"`,
 		"Approved &ldquo;Approve Then Undo&rdquo; and published",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("after approve, dashboard missing %q", want)
 		}
 	}
+	if strings.Contains(page, `name="prev"`) {
+		t.Error("the undo form should not carry the previous status; the server records it")
+	}
 
-	rec = doAdminPOST(t, app, "/admin/articles/"+itoa(first)+"/undo-approve", session, csrf, url.Values{"prev": {"pending"}})
+	// A tampered prev is ignored: the article goes back to what the server
+	// recorded (pending), not to what the form says.
+	rec = doAdminPOST(t, app, "/admin/articles/"+itoa(first)+"/undo-approve", session, csrf, url.Values{"prev": {"draft"}})
 	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "msg=undone") {
 		t.Fatalf("undo: Location %q", loc)
 	}
 	if a, _ := database.GetGeneratedArticle(first); a.Status != db.StatusPending || a.PublishedAt != nil {
-		t.Errorf("after undo: status %q published %v", a.Status, a.PublishedAt)
+		t.Errorf("after undo: status %q published %v, want pending and unpublished", a.Status, a.PublishedAt)
 	}
-	rec = doAdminPOST(t, app, "/admin/articles/"+itoa(first)+"/undo-approve", session, csrf, url.Values{"prev": {"pending"}})
+	rec = doAdminPOST(t, app, "/admin/articles/"+itoa(first)+"/undo-approve", session, csrf, nil)
 	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "msg=undo_expired") {
 		t.Errorf("second undo: Location %q, want undo_expired", loc)
 	}
-	// Undo can only restore a status an approval comes from.
-	rec = doAdminPOST(t, app, "/admin/articles/"+itoa(first)+"/undo-approve", session, csrf, url.Values{"prev": {"rejected"}})
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("undo to rejected: status %d, want 400", rec.Code)
+	// An article approved by other means, with no record left, offers no Undo.
+	if page := doAdminGET(t, app, "/admin/dashboard?msg=approved&id="+itoa(second), session).Body.String(); strings.Contains(page, "/undo-approve") {
+		t.Error("Undo offered for an approval the server has no record of")
 	}
 }
 
@@ -238,7 +240,7 @@ func TestApprove_CardDetectionWaitsForUndo(t *testing.T) {
 	session, csrf := getSessionAndCSRF(loginAndGetSession(t, app))
 
 	doAdminPOST(t, app, "/admin/articles/"+itoa(undone)+"/approve", session, csrf, url.Values{"revision": {"1"}})
-	doAdminPOST(t, app, "/admin/articles/"+itoa(undone)+"/undo-approve", session, csrf, url.Values{"prev": {"pending"}})
+	doAdminPOST(t, app, "/admin/articles/"+itoa(undone)+"/undo-approve", session, csrf, nil)
 	doAdminPOST(t, app, "/admin/articles/"+itoa(kept)+"/approve", session, csrf, url.Values{"revision": {"1"}})
 	app.WaitBackground()
 

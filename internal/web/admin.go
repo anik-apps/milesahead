@@ -171,12 +171,6 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// The status it is approved from, for the Undo that follows.
-	var prev string
-	if a, err := app.db.GetGeneratedArticle(id); err == nil {
-		prev = a.Status
-	}
-
 	if err := app.articleManager.ApproveRevision(id, revision); err != nil {
 		app.decisionFailed(w, r, id, "approve", err)
 		return
@@ -218,7 +212,7 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=republished&id=%d", id), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=approved&id=%d&prev=%s&open=%d", id, url.QueryEscape(prev), nextParam(r)), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=approved&id=%d&open=%d", id, nextParam(r)), http.StatusSeeOther)
 }
 
 func (app *App) handleRejectArticle(w http.ResponseWriter, r *http.Request) {
