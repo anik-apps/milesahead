@@ -150,7 +150,7 @@ func TestHome_FilteredViewsMarkEndedOffers(t *testing.T) {
 	app := offerApp(t)
 	seedOffers(t, app)
 
-	for _, path := range []string{"/?type=deal", "/?tag=transfer-bonuses"} {
+	for _, path := range []string{"/?type=deal", "/?tag=transfer-bonuses", "/?type=deal&tag=transfer-bonuses"} {
 		body := getPage(t, app, path)
 
 		card := cardFor(body, "ended")
@@ -567,7 +567,7 @@ func TestEndedNewsStory_SaysDeadlinePassed(t *testing.T) {
 	}
 
 	listing := getPage(t, app, "/?tag=transfer-bonuses")
-	if card := cardFor(listing, "bag-fees"); !strings.Contains(card, `<span class="type-badge badge-summary">summary</span> `+passedBadge) {
+	if card := cardFor(listing, "bag-fees"); !strings.Contains(card, `<span class="type-badge badge-summary">News</span> `+passedBadge) {
 		t.Errorf("the listing should badge the news story %q:\n%s", "Deadline passed", card)
 	}
 	if card := cardFor(listing, "ended"); !strings.Contains(card, endedBadge) {
@@ -590,7 +590,7 @@ func TestEndedNewsStory_SaysDeadlinePassed(t *testing.T) {
 		t.Error("the card page should still badge the ended deal \"Ended\"")
 	}
 
-	if page := getPage(t, app, "/article/bag-fees"); !strings.Contains(page, `<span class="type-badge badge-summary">summary</span> `+passedBadge) || strings.Contains(page, endedBadge) {
+	if page := getPage(t, app, "/article/bag-fees"); !strings.Contains(page, `<span class="type-badge badge-summary">News</span> `+passedBadge) || strings.Contains(page, endedBadge) {
 		t.Error("the news story's header should carry the \"Deadline passed\" badge, not \"Ended\"")
 	}
 

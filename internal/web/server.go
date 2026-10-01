@@ -31,6 +31,7 @@ var templateFuncs = template.FuncMap{
 	},
 	"scrollTables": scrollTables,
 	"endedLabel":   endedLabel,
+	"typeBadge":    typeBadge,
 	"deref": func(v interface{}) string {
 		if v == nil {
 			return ""

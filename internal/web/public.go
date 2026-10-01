@@ -29,12 +29,6 @@ type templateArticleLink struct {
 	URL  string
 }
 
-// tagItem holds a tag slug and display name for the tag filter UI.
-type tagItem struct {
-	Slug string
-	Name string
-}
-
 // linkedCardEmbed is the per-card data passed to the article template for the
 // bottom card-embed section. Joined from generated_articles.related_cards_json
 // and reference_pages.
@@ -50,22 +44,6 @@ type linkedCardEmbed struct {
 	ImageURL      string
 	ApplyURL      string
 }
-
-// predefinedTags is the list of tags shown as filter pills on the homepage,
-// derived from ai.ValidTags so there is a single source of truth.
-var predefinedTags = func() []tagItem {
-	items := make([]tagItem, len(ai.ValidTags))
-	for i, s := range ai.ValidTags {
-		words := strings.Split(s, "-")
-		for j, w := range words {
-			if len(w) > 0 {
-				words[j] = strings.ToUpper(w[:1]) + w[1:]
-			}
-		}
-		items[i] = tagItem{Slug: s, Name: strings.Join(words, " ")}
-	}
-	return items
-}()
 
 // articleTagItem holds a tag slug and display name for article badge rendering.
 type articleTagItem struct {
@@ -168,17 +146,17 @@ func absoluteURL(domain, u string) string {
 }
 
 func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
-	typeFilter := r.URL.Query().Get("type")
-	tagFilter := r.URL.Query().Get("tag")
+	typeFilter := strings.TrimSpace(r.URL.Query().Get("type"))
+	tagFilter := strings.TrimSpace(r.URL.Query().Get("tag"))
 
 	var articles []db.GeneratedArticle
 	var err error
 	today := app.offerToday()
 
-	if tagFilter != "" {
-		articles, err = app.db.ListPublishedArticlesByTag(tagFilter, 20, 0)
-	} else if typeFilter != "" {
-		articles, err = app.db.ListPublishedArticlesByType(typeFilter, 20, 0)
+	if typeFilter != "" || tagFilter != "" {
+		// Type and topic apply together. An unknown value matches nothing,
+		// which shows the empty state.
+		articles, err = app.db.ListPublishedArticlesFiltered(typeFilter, tagFilter, 20, 0)
 	} else {
 		// The default feed is what a reader takes as "current", so offers
 		// that have ended are left out of it. Filtered views and search
@@ -197,6 +175,14 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		if published, perr := app.db.ListPublishedArticles(1, 0); perr == nil && len(published) > 0 {
 			allEnded = true
 		}
+	}
+
+	// The type switch offers only types with something published, so a type
+	// with no articles yet (or any more) does not lead to an empty page.
+	publishedTypes, err := app.db.ListPublishedArticleTypes()
+	if err != nil {
+		slog.Warn("home: listing published article types", "error", err)
+		publishedTypes = articleTypes
 	}
 
 	var rows []publicArticleRow
@@ -263,11 +249,8 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		"Sidebar":         sidebar,
 		"Grid":            grid,
 		"Articles":        rows,
-		"TypeFilter":      typeFilter,
+		"Filters":         buildHomeFilters(typeFilter, tagFilter, publishedTypes),
 		"AllEnded":        allEnded,
-		"Types":           []string{"deal", "roundup", "alert", "summary"},
-		"ActiveTag":       tagFilter,
-		"Tags":            predefinedTags,
 		"MetaDescription": "The latest miles, points, and credit card deals — curated daily.",
 		"CanonicalURL":    "https://" + domain + "/",
 		"OGType":          "website",
@@ -485,16 +468,7 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		var slugs []string
 		if err := json.Unmarshal([]byte(article.TagsJSON), &slugs); err == nil {
 			for _, s := range slugs {
-				words := strings.Split(s, "-")
-				for j, w := range words {
-					if len(w) > 0 {
-						words[j] = strings.ToUpper(w[:1]) + w[1:]
-					}
-				}
-				articleTags = append(articleTags, articleTagItem{
-					Slug: s,
-					Name: strings.Join(words, " "),
-				})
+				articleTags = append(articleTags, articleTagItem{Slug: s, Name: tagName(s)})
 			}
 		}
 	}

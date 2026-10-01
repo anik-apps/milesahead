@@ -25,7 +25,7 @@
 - [x] SEO (sitemap.xml, robots.txt, JSON-LD, Open Graph meta tags)
 - [x] Traffic analytics (path normalization, response size, unique visitors)
 - [x] Grafana dashboards (Business + Service) with CI auto-deploy
-- [x] Article tags — AI-generated from 8 categories, tag filter pills on homepage
+- [x] Article tags — AI-generated from 8 categories, six of them topic filters on the homepage
 - [x] Weekly newsletter — Scout's Pick, Card of the Week, tag-grouped articles, newspaper-style template
 - [x] Newsletter admin workflow — AI picks candidates, admin approves, auto-approve fallback
 - [x] Card comparison tool — side-by-side comparison of 2-3 cards with structured data
@@ -349,10 +349,15 @@ image shipped in #73. Everything else is here, most severe first.
       Platinum) because `formatTopEarning` walks a fixed category order. *Fix:* primary
       card first, link to `/cards/{slug}`, rank earn rates numerically including the
       direct/portal variants.
-- [ ] **Home reaches only 20 of 87 stories** — no pagination (`?page=2` is ignored), and two
-      filter rows that look combinable silently reset each other; "Roundups" and "Alerts"
-      lead to empty pages. *Fix:* "Older stories" paging that keeps filters, one merged
-      filter row, hide empty filters.
+- [x] **Home filters** — two filter rows looked combinable but silently reset each other,
+      both "All"s showed as selected, and "Roundups" and "Alerts" led to empty pages. Now
+      one row: a type switch listing only types with a published article ("Summaries" reads
+      "News", as does the summary badge), then six topic chips (Loyalty Programs and Points
+      Deals left out of the bar; their URLs still work). Type and topic apply together,
+      every link keeps the other filter, and a strip lists the applied filters with a link
+      to remove each. On phones the row scrolls sideways instead of wrapping.
+- [ ] **Home reaches only 20 of 87 stories** — no pagination (`?page=2` is ignored).
+      *Fix:* "Older stories" paging that keeps filters.
 - [ ] **Compare** — 40 caveats per comparison are hover-only `title` tooltips; Benefits and
       Protections toggles are click-only `<tr>`s keyboard users cannot open; winner stars
       use only the portal rate in "D | P" rows and "1 year" beats "Yes"; phones see 1.3 of 3
@@ -372,10 +377,10 @@ image shipped in #73. Everything else is here, most severe first.
 
 ### P2: polish and accessibility
 
-- [ ] **Contrast** — in dark mode, white on the `#58a6ff` accent is 2.53:1 (active filter
-      pills, search button); the DEAL badge is 3.83:1 in both themes; dark-mode links in
-      paragraphs are distinguished by colour alone (2.14:1). *Fix:* an `--on-accent`
-      token, a darker deal red, underlined in-text links.
+- [ ] **Contrast** — in dark mode, white on the `#58a6ff` accent is 2.53:1 (search
+      button; the home filter chips now use dark text on it); the DEAL badge is 3.83:1 in
+      both themes; dark-mode links in paragraphs are distinguished by colour alone
+      (2.14:1). *Fix:* an `--on-accent` token, a darker deal red, underlined in-text links.
 - [ ] **404 page** — unknown URLs get Go's bare text "404 page not found"; unpublished
       articles return 200 "Under Review". *Fix:* a branded 404 through the layout with
       search and links; 404 or 410 for unpublished articles.
