@@ -652,22 +652,6 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 
 // --- Public Reference Card Handlers ---
 
-// publicCardRow holds data for a card in the public listing.
-type publicCardRow struct {
-	ID             int64
-	Title          string
-	Slug           string
-	Issuer         string
-	ImageURL       string
-	VerdictPreview string
-}
-
-// publicCardGroup groups cards by category for the public listing.
-type publicCardGroup struct {
-	Name  string
-	Cards []publicCardRow
-}
-
 // compareGroup groups cards by category for the "Compare with..." dropdown.
 type compareGroup struct {
 	Category string
@@ -686,74 +670,6 @@ var categoryDisplayNames = map[string]string{
 
 // categoryOrder defines the display order of categories.
 var categoryOrder = []string{"travel", "cash-back", "hotel", "airline", "business", "rewards"}
-
-func (app *App) handleCardsList(w http.ResponseWriter, r *http.Request) {
-	pages, err := app.db.ListPublishedReferencePages("")
-	if err != nil {
-		http.Error(w, "Failed to load cards", http.StatusInternalServerError)
-		return
-	}
-
-	personaName := app.cfg.Site.PersonaName
-
-	// Group by category.
-	catMap := make(map[string][]publicCardRow)
-	for _, p := range pages {
-		verdict := truncate(p.ScoutsVerdict, 120)
-		row := publicCardRow{
-			ID:             p.ID,
-			Title:          p.Title,
-			Slug:           p.Slug,
-			Issuer:         p.Issuer,
-			ImageURL:       p.ImageURL,
-			VerdictPreview: verdict,
-		}
-		catMap[p.Category] = append(catMap[p.Category], row)
-	}
-
-	var groups []publicCardGroup
-	for _, cat := range categoryOrder {
-		if cards, ok := catMap[cat]; ok {
-			name := categoryDisplayNames[cat]
-			if name == "" {
-				name = cat
-			}
-			groups = append(groups, publicCardGroup{Name: name, Cards: cards})
-		}
-	}
-	// Add any categories not in the predefined order.
-	for cat, cards := range catMap {
-		found := false
-		for _, c := range categoryOrder {
-			if c == cat {
-				found = true
-				break
-			}
-		}
-		if !found {
-			name := categoryDisplayNames[cat]
-			if name == "" {
-				name = cat
-			}
-			groups = append(groups, publicCardGroup{Name: name, Cards: cards})
-		}
-	}
-
-	domain := app.cfg.Server.Domain
-	if domain == "" {
-		domain = "localhost"
-	}
-
-	data := map[string]interface{}{
-		"Title":           "Cards",
-		"PersonaName":     personaName,
-		"Groups":          groups,
-		"MetaDescription": "Compare the best credit cards for travel, cash back, hotels, and more.",
-		"CanonicalURL":    "https://" + domain + "/cards/",
-		"OGType":          "website",
-	}
-	app.renderTemplate(w, "cards.html", data)
-}
 
 func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")

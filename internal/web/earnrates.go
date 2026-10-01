@@ -33,6 +33,12 @@ func (e earnRate) String() string {
 	return s
 }
 
+// Rest is String without the rate, for layouts that set the rate in bold:
+// "flights", "hotels via Amex Travel".
+func (e earnRate) Rest() string {
+	return strings.TrimPrefix(e.String(), e.Rate+" ")
+}
+
 // Detail is String plus the qualifier, for places with room to say it:
 // "4x dining & groceries (capped)".
 func (e earnRate) Detail() string {

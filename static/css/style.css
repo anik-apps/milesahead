@@ -1888,80 +1888,100 @@ tr.flagged { background: #fef2f2; }
 
 /* ========== Card Pages ========== */
 
-/* Cards listing hero */
+/* Cards index: a filter form (category chips, fee bands, issuer and sort),
+   then compact tiles with each card's fee, best earning rate and offer. The
+   chips and fee bands reuse the homepage filter styles above. */
 .cards-hero {
     text-align: center;
-    padding: 3rem 1rem 2rem;
+    padding: 1.75rem 1rem 1.25rem;
 }
 .cards-hero h1 {
     font-size: 2rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.4rem;
 }
 .cards-hero p {
     color: var(--text-muted);
-    font-size: 1.1rem;
+    font-size: 1.05rem;
+}
+.filter-count { margin-left: 0.35rem; font-size: 0.75rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.filter-chip.is-empty, .filter-switch-item.is-empty { opacity: 0.5; cursor: default; }
+.cards-filter-row {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 0.5rem 1.25rem; margin-top: 0.4rem;
+}
+.cards-fee-bar { flex: 0 1 auto; min-width: 0; }
+.cards-filter-label {
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted); white-space: nowrap;
+}
+.cards-selects { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 0.75rem; }
+.cards-select { display: inline-flex; align-items: center; gap: 0.4rem; }
+.cards-select select {
+    min-height: 38px; padding: 0 0.6rem; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; font-size: 0.875rem;
+}
+.cards-filter-apply {
+    min-height: 38px; padding: 0 1rem; border: 1px solid var(--accent); border-radius: 8px;
+    background: var(--bg); color: var(--accent); font: inherit; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+}
+.cards-filter-apply:hover { background: var(--accent-subtle); }
+.cards-select select:focus-visible, .cards-filter-apply:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.cards-count { margin: 0.75rem 0 1.25rem; }
+.cards-sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
-/* Issuer groups */
 .cards-category-group {
-    margin-bottom: 2.5rem;
+    margin-bottom: 2rem;
 }
 .category-heading {
     font-size: 1.25rem;
     font-weight: 700;
-    margin-bottom: 1rem;
+    margin-bottom: 0.9rem;
     padding-bottom: 0.5rem;
     border-bottom: 2px solid var(--border);
 }
 
-/* Card grid */
-.card-grid {
+.card-tiles {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 0.75rem;
 }
-.card-grid-item {
-    display: block;
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    color: var(--text);
-    text-decoration: none;
+.card-tile {
+    display: flex; align-items: flex-start; gap: 0.9rem;
+    padding: 0.85rem; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--card-bg); color: var(--text); text-decoration: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.card-grid-item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--shadow);
+.card-tile:hover { border-color: var(--accent); box-shadow: 0 4px 12px var(--shadow); text-decoration: none; }
+.card-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A fixed box, so tiles don't jump as lazy art arrives. */
+.card-tile-art { flex: none; display: grid; place-items: center; width: 96px; height: 61px; }
+.card-tile-art img { width: 96px; height: 61px; object-fit: contain; border-radius: 5px; }
+.card-tile-body { min-width: 0; }
+.card-tile-title { margin: 0.1rem 0 0.35rem; font-size: 1rem; line-height: 1.3; color: var(--text); }
+.card-tile-facts {
+    display: flex; flex-wrap: wrap; gap: 0.15rem 0.75rem; margin: 0;
+    font-size: 0.84rem; line-height: 1.4; color: var(--text-muted);
 }
-.card-grid-image {
-    padding: 1.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--border);
-}
-.card-grid-image img {
-    max-width: 200px;
-    width: 100%;
-    height: auto;
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-.card-grid-body {
-    padding: 1rem;
-}
-.card-grid-body h3 {
-    font-size: 1.05rem;
-    margin-bottom: 0.5rem;
-    line-height: 1.3;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
-.card-grid-excerpt {
-    font-size: 0.9rem;
-    color: var(--text-muted);
-    line-height: 1.5;
+.card-tile-fact b { color: var(--text); font-weight: 600; }
+
+@media (max-width: 768px) {
+    .cards-hero { padding: 1rem 0.5rem 0.75rem; }
+    .cards-hero h1 { font-size: 1.6rem; }
+    .cards-hero p { font-size: 0.95rem; }
+    .cards-filter-row { display: block; }
+    /* Issuer, sort and Apply share one row, labels above. */
+    .cards-selects { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; margin-top: 0.5rem; }
+    .cards-select { flex-direction: column; align-items: stretch; gap: 0.2rem; min-width: 0; }
+    .cards-select select, .cards-filter-apply { min-height: 40px; width: 100%; }
+    .card-tiles { grid-template-columns: 1fr; gap: 0.5rem; }
+    .card-tile { gap: 0.75rem; padding: 0.65rem 0.7rem; }
+    .card-tile-title { margin-bottom: 0.25rem; }
+    .card-tile-art, .card-tile-art img { width: 80px; height: 51px; }
 }
 
 /* Issuer badge */
@@ -2163,7 +2183,7 @@ tr.flagged { background: #fef2f2; }
 
 /* Cards listing page */
 .cards-listing {
-    max-width: 1000px;
+    max-width: 1100px;
     margin: 0 auto;
     padding: 0 1rem;
 }
