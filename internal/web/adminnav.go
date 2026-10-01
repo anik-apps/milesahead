@@ -1,11 +1,11 @@
 package web
 
 import (
-	"encoding/json"
 	"log/slog"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 // adminNav is the admin bar: which tab is current, and the counts on the
@@ -64,52 +64,38 @@ func (app *App) adminNavFor(name string, data map[string]interface{}) *adminNav 
 		}
 	}
 
-	if pages, err := app.db.ListReferencePages(""); err == nil {
-		for _, p := range pages {
-			nav.CardWork += jsonArrayLen(p.PendingUpdatesJSON) + jsonArrayLen(p.FlaggedFieldsJSON)
+	if n, err := app.db.CardWorkCount(); err == nil {
+		nav.CardWork = n
+	} else {
+		slog.Warn("admin nav: card work count", "error", err)
+	}
+
+	if nl, err := app.db.UpcomingNewsletter(app.newsletterToday()); err == nil && nl != nil {
+		switch nl.Status {
+		case "approved", "auto_approved":
+			if d, err := time.Parse("2006-01-02", nl.Date); err == nil {
+				nav.Newsletter = d.Format("Mon")
+			}
+		case "draft", "hold":
+			nav.Newsletter = statusLabel(nl.Status)
+			nav.NewsletterAlert = true
 		}
 	}
 
-	if nls, err := app.db.ListNewsletters(); err == nil {
-		for _, nl := range nls {
-			if nl.Status == "sent" {
-				continue
-			}
-			switch nl.Status {
-			case "approved", "auto_approved":
-				if d, err := time.Parse("2006-01-02", nl.Date); err == nil {
-					nav.Newsletter = d.Format("Mon")
-				}
-			case "draft", "hold":
-				nav.Newsletter = statusLabel(nl.Status)
-				nav.NewsletterAlert = true
-			}
-			break
-		}
-	}
-
-	if sources, err := app.db.ListAllSources(); err == nil {
-		now := time.Now()
-		if health, err := app.db.ListSourceHealth(now.Add(-sourceRecentWindow)); err == nil {
-			for _, s := range sources {
-				h := health[s.ID]
-				if s.Active && (h.LastArticleAt.IsZero() || now.Sub(h.LastArticleAt) > sourceStaleAfter) {
-					nav.StaleSources++
-				}
-			}
-		}
+	if n, err := app.db.StaleSourceCount(time.Now().Add(-sourceStaleAfter)); err == nil {
+		nav.StaleSources = n
+	} else {
+		slog.Warn("admin nav: stale sources", "error", err)
 	}
 	return nav
 }
 
-// jsonArrayLen is the length of a JSON array, or 0.
-func jsonArrayLen(s string) int {
-	if s == "" || s == "[]" {
-		return 0
+// newsletterToday is today's date ("2006-01-02") in the newsletter's time
+// zone, the zone its issues are dated in.
+func (app *App) newsletterToday() string {
+	now := time.Now
+	if app.now != nil {
+		now = app.now
 	}
-	var items []json.RawMessage
-	if err := json.Unmarshal([]byte(s), &items); err != nil {
-		return 0
-	}
-	return len(items)
+	return now().In(offer.Location(app.cfg.Newsletter.Timezone)).Format("2006-01-02")
 }

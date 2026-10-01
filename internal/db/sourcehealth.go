@@ -20,6 +20,12 @@ type SourceHealth struct {
 	Total int
 }
 
+// Stale reports whether an active source has stored nothing for longer than
+// after (or ever): its feed has probably moved or broken.
+func (h SourceHealth) Stale(active bool, now time.Time, after time.Duration) bool {
+	return active && (h.LastArticleAt.IsZero() || now.Sub(h.LastArticleAt) > after)
+}
+
 // sqliteTime is the layout CURRENT_TIMESTAMP writes.
 const sqliteTime = "2006-01-02 15:04:05"
 

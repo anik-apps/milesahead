@@ -65,3 +65,10 @@ test('Escape closes the shortcut list before the preview', () => {
   const s = load();
   assert.equal(s.action(key('Escape'), true, true), 'hide-help');
 });
+
+test('Enter on a button or link does what the button says', () => {
+  const s = load();
+  assert.equal(s.action(key('Enter', { tagName: 'BUTTON' }), false, false), null);
+  assert.equal(s.action(key('Enter', { tagName: 'A', classList: { contains: () => false } }), false, false), null);
+  assert.equal(s.action(key('Enter', { tagName: 'A', classList: { contains: (c) => c === 'q-row' } }), false, false), 'open');
+});

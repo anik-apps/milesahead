@@ -41,10 +41,19 @@ type dashboardGroup struct {
 // Capped reports whether the group shows fewer rows than it has.
 func (g dashboardGroup) Capped() bool { return len(g.Rows) < g.Total }
 
+// queueExtras is what the queue rows need beyond the article itself, loaded
+// for all rows at once: rewrite retry state, latest critic result and source
+// posts, by article id.
+type queueExtras struct {
+	pending       map[int64]db.PendingRevision
+	verifications map[int64]db.VerificationResult
+	sources       map[int64][]db.LinkedSource
+}
+
 // buildArticleRow turns an article into a queue row with everything the row
-// and its preview show. pending is the retry state of revision_requested
-// articles, by id.
-func (app *App) buildArticleRow(a db.GeneratedArticle, pending map[int64]db.PendingRevision, now time.Time) adminArticleRow {
+// and its preview show.
+func (app *App) buildArticleRow(a db.GeneratedArticle, x queueExtras, now time.Time) adminArticleRow {
+	pending := x.pending
 	row := adminArticleRow{
 		ID:             a.ID,
 		Title:          a.Title,
@@ -103,7 +112,7 @@ func (app *App) buildArticleRow(a db.GeneratedArticle, pending map[int64]db.Pend
 		}
 	}
 
-	if v, err := app.db.GetLatestVerification(a.ID); err == nil {
+	if v, ok := x.verifications[a.ID]; ok {
 		row.VerificationScore = v.Score
 		row.HasScore = true
 		var issues []string
@@ -126,17 +135,10 @@ func (app *App) buildArticleRow(a db.GeneratedArticle, pending map[int64]db.Pend
 	}
 	row.ScoreClass = app.scoreClass(row.VerificationScore, row.HasScore)
 
-	if rawArticles, err := app.db.GetLinkedRawArticles(a.ID); err == nil {
-		for _, ra := range rawArticles {
-			src, _ := app.db.GetSource(ra.SourceID)
-			name := "Unknown"
-			if src != nil {
-				name = src.Name
-			}
-			row.Sources = append(row.Sources, adminSourceInfo{Name: name, Title: ra.Title, URL: ra.URL})
-		}
-		row.SourceCount = len(rawArticles)
+	for _, ls := range x.sources[a.ID] {
+		row.Sources = append(row.Sources, adminSourceInfo{Name: ls.SourceName, Title: ls.Title, URL: ls.URL})
 	}
+	row.SourceCount = len(row.Sources)
 	return row
 }
 
@@ -164,10 +166,10 @@ func (app *App) scoreClass(score int, has bool) string {
 // dashboard's groups. With all false the ready group is capped at
 // readyLimit.
 func (app *App) reviewQueue(all bool) []dashboardGroup {
-	pending := map[int64]db.PendingRevision{}
+	x := queueExtras{pending: map[int64]db.PendingRevision{}}
 	if list, err := app.db.ListPendingRevisions(); err == nil {
 		for _, p := range list {
-			pending[p.ID] = p
+			x.pending[p.ID] = p
 		}
 	} else {
 		slog.Warn("dashboard: could not load revision retry state", "error", err)
@@ -182,7 +184,7 @@ func (app *App) reviewQueue(all bool) []dashboardGroup {
 		groupRewriting: {Key: groupRewriting, Title: "Being rewritten",
 			Note: "Waiting on a rewrite; they move to Ready when it lands. You can still approve or reject what is shown."},
 	}
-	var ready []db.GeneratedArticle
+	var ready, other []db.GeneratedArticle
 	for _, status := range db.QueueStatuses {
 		batch, err := app.db.ListArticlesByStatus(status)
 		if err != nil {
@@ -190,18 +192,11 @@ func (app *App) reviewQueue(all bool) []dashboardGroup {
 			continue
 		}
 		for _, a := range batch {
-			switch a.Status {
-			case db.StatusPending, db.StatusDraft:
+			if a.Status == db.StatusPending || a.Status == db.StatusDraft {
 				ready = append(ready, a)
-				continue
-			}
-			row := app.buildArticleRow(a, pending, now)
-			if a.Status == db.StatusUnpublished || row.RevisionGaveUp {
-				row.Group = groupDecide
 			} else {
-				row.Group = groupRewriting
+				other = append(other, a)
 			}
-			groups[row.Group].Rows = append(groups[row.Group].Rows, row)
 		}
 	}
 
@@ -211,8 +206,31 @@ func (app *App) reviewQueue(all bool) []dashboardGroup {
 	if !all && len(ready) > readyLimit {
 		ready = ready[:readyLimit]
 	}
+
+	// One query each for the critic results and sources of every row shown.
+	ids := make([]int64, 0, len(ready)+len(other))
+	for _, a := range append(append([]db.GeneratedArticle{}, other...), ready...) {
+		ids = append(ids, a.ID)
+	}
+	var err error
+	if x.verifications, err = app.db.LatestVerifications(ids); err != nil {
+		slog.Warn("dashboard: could not load critic results", "error", err)
+	}
+	if x.sources, err = app.db.LinkedSourcesForArticles(ids); err != nil {
+		slog.Warn("dashboard: could not load sources", "error", err)
+	}
+
+	for _, a := range other {
+		row := app.buildArticleRow(a, x, now)
+		if a.Status == db.StatusUnpublished || row.RevisionGaveUp {
+			row.Group = groupDecide
+		} else {
+			row.Group = groupRewriting
+		}
+		groups[row.Group].Rows = append(groups[row.Group].Rows, row)
+	}
 	for _, a := range ready {
-		row := app.buildArticleRow(a, pending, now)
+		row := app.buildArticleRow(a, x, now)
 		row.Group = groupReady
 		groups[groupReady].Rows = append(groups[groupReady].Rows, row)
 	}

@@ -88,7 +88,11 @@ window.adminShortcuts = (function () {
       case 'k': return 'prev';
       case 'ArrowRight': return previewOpen ? 'next' : null;
       case 'ArrowLeft': return previewOpen ? 'prev' : null;
-      case 'o': case 'Enter': return previewOpen ? null : 'open';
+      case 'o': case 'Enter':
+        // Enter on a button or link (Undo, Show all) must do what it says.
+        if (e.key === 'Enter' && e.target && (e.target.tagName === 'BUTTON' ||
+            (e.target.tagName === 'A' && !(e.target.classList && e.target.classList.contains('q-row'))))) return null;
+        return previewOpen ? null : 'open';
       case 'a': return previewOpen ? 'approve' : null;
       case 'x': return previewOpen ? 'reject' : null;
       case 'r': return previewOpen ? 'rewrite' : null;
@@ -224,6 +228,18 @@ window.adminShortcuts = (function () {
   // Poll the queue; when it changed (a rewrite landed, a new article came
   // in), offer a refresh, or refresh by itself when nothing is open and
   // nothing is being typed. Drafts survive either way (data-draft above).
+  // The page to reload: the dashboard as the admin is viewing it (keeping
+  // ?all=1), without the one-off message, toast or preview of an action.
+  function refreshURL() {
+    var keep = new URLSearchParams();
+    var all = new URLSearchParams(location.search).get('all');
+    if (all) keep.set('all', all);
+    var q = keep.toString();
+    return location.pathname + (q ? '?' + q : '');
+  }
+  var refreshLink = dash.querySelector('.q-refresh-link');
+  if (refreshLink) refreshLink.setAttribute('href', refreshURL());
+
   var version = dash.getAttribute('data-state');
   var banner = dash.querySelector('.q-refresh');
   if (version && window.fetch) {
@@ -233,7 +249,7 @@ window.adminShortcuts = (function () {
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (s) {
           if (!s || !s.version || s.version === version) return;
-          if (!current && !typing(document.activeElement)) { location.href = '/admin/dashboard'; return; }
+          if (!current && !typing(document.activeElement)) { location.href = refreshURL(); return; }
           if (banner) banner.hidden = false;
         })
         .catch(function () {});

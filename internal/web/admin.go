@@ -192,6 +192,20 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 					slog.Error("card update detection panicked", "article_id", id, "panic", r)
 				}
 			}()
+			// Wait out the undo window, then only draft card updates if
+			// the article is still published. (A shutdown during the wait
+			// skips detection for this article.)
+			if d := app.cardDetectDelay; d > 0 {
+				select {
+				case <-time.After(d):
+				case <-app.shutdownCtx.Done():
+					return
+				}
+			}
+			if a, err := app.db.GetGeneratedArticle(id); err != nil || a.Status != db.StatusApproved {
+				slog.Info("card update detection skipped: article no longer published", "article_id", id)
+				return
+			}
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			if err := app.cardDetector.DetectAndDraft(app.shutdownCtx, id); err != nil {
@@ -358,7 +372,7 @@ func (app *App) handleAdminSources(w http.ResponseWriter, r *http.Request) {
 			LastArticle: ago(h.LastArticleAt, now),
 			Recent:      h.Recent,
 			Total:       h.Total,
-			Stale:       src.Active && (h.LastArticleAt.IsZero() || now.Sub(h.LastArticleAt) > sourceStaleAfter),
+			Stale:       h.Stale(src.Active, now, sourceStaleAfter),
 		})
 	}
 
@@ -736,7 +750,8 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":             "Newsletter",
 		"PersonaName":       app.cfg.Site.PersonaName,
-		"StatusNote":        newsletterStatusNote(currentNL, confirmed),
+		"StatusNote":        newsletterStatusNote(currentNL, confirmed, app.newsletterToday()),
+		"IssuePassed":       currentNL != nil && currentNL.Status != "sent" && currentNL.Date < app.newsletterToday(),
 		"Confirmed":         confirmed,
 		"PreviewHTML":       previewHTML,
 		"NoContent":         noContent,
@@ -846,9 +861,20 @@ func (app *App) handleNewsletterHistory(w http.ResponseWriter, r *http.Request) 
 // newsletterStatusNote says what will happen to the issue: whether and when
 // it goes out, and to how many people. SendWeekly sends only an approved or
 // auto-approved issue, on its Saturday.
-func newsletterStatusNote(nl *db.Newsletter, confirmed int) string {
+//
+// today ("2006-01-02", the newsletter's zone) marks an unsent issue whose
+// date has passed: SendWeekly only sends its own Saturday's issue, so it
+// will never go out, whatever its status.
+func newsletterStatusNote(nl *db.Newsletter, confirmed int, today string) string {
 	if nl == nil {
 		return ""
+	}
+	if nl.Status != "sent" && nl.Date < today {
+		when := nl.Date
+		if d, err := time.Parse("2006-01-02", nl.Date); err == nil {
+			when = d.Format("Mon Jan 2")
+		}
+		return fmt.Sprintf("Not sent: this issue was for %s, which has passed, so it will not go out. The next issue is built on Friday evening.", when)
 	}
 	when := nl.Date
 	if d, err := time.Parse("2006-01-02", nl.Date); err == nil {

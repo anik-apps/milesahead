@@ -142,6 +142,7 @@ func TestAdminArticleCards_SavedAndBackLink(t *testing.T) {
 // updates and flags, stale sources, and the newsletter's state.
 func TestAdminBar_Counts(t *testing.T) {
 	app, database := realTemplateApp(t)
+	app.now = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) }
 	createPendingArticle(t, database, "Ready One")
 	createPendingArticle(t, database, "Ready Two")
 	down := createPendingArticle(t, database, "Taken Down")
@@ -178,5 +179,17 @@ func TestAdminBar_LoginPageHasNoTabs(t *testing.T) {
 	}
 	if strings.Contains(body, "/admin/logout") {
 		t.Error("login page offers Log out")
+	}
+}
+
+// An unsent issue whose Saturday has passed is not "upcoming": the tab does
+// not warn about it forever.
+func TestAdminBar_IgnoresPastIssues(t *testing.T) {
+	app, database := realTemplateApp(t)
+	app.now = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) }
+	database.CreateNewsletter(&db.Newsletter{Date: "2026-09-26", Subject: "W", Status: "draft"})
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	if body := doAdminGET(t, app, "/admin/settings", session).Body.String(); strings.Contains(body, `<span class="tab-n warn">`) {
+		t.Error("a past draft issue still flags the Newsletter tab")
 	}
 }

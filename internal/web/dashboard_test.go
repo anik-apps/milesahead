@@ -1,11 +1,13 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -208,5 +210,41 @@ func TestPublished_UnpublishWithRewriteHasNoUndo(t *testing.T) {
 	}
 	if page := doAdminGET(t, app, loc, session).Body.String(); strings.Contains(page, `name="return" value="published"`) {
 		t.Error("unpublish-and-rewrite should not offer an undo")
+	}
+}
+
+// countingDetector records which articles card update detection ran for.
+type countingDetector struct {
+	mu  sync.Mutex
+	ran []int64
+}
+
+func (d *countingDetector) DetectAndDraft(_ context.Context, id int64) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.ran = append(d.ran, id)
+	return nil
+}
+
+// Card update detection waits out the undo window: an approval undone in
+// time drafts no card updates; one that stands does.
+func TestApprove_CardDetectionWaitsForUndo(t *testing.T) {
+	app, database := setupAdminTestApp(t)
+	det := &countingDetector{}
+	app.cardDetector = det
+	app.cardDetectDelay = 200 * time.Millisecond
+	undone := createPendingArticle(t, database, "Undone Quickly")
+	kept := createPendingArticle(t, database, "Kept Published")
+	session, csrf := getSessionAndCSRF(loginAndGetSession(t, app))
+
+	doAdminPOST(t, app, "/admin/articles/"+itoa(undone)+"/approve", session, csrf, url.Values{"revision": {"1"}})
+	doAdminPOST(t, app, "/admin/articles/"+itoa(undone)+"/undo-approve", session, csrf, url.Values{"prev": {"pending"}})
+	doAdminPOST(t, app, "/admin/articles/"+itoa(kept)+"/approve", session, csrf, url.Values{"revision": {"1"}})
+	app.WaitBackground()
+
+	det.mu.Lock()
+	defer det.mu.Unlock()
+	if len(det.ran) != 1 || det.ran[0] != kept {
+		t.Errorf("detection ran for %v, want only %d", det.ran, kept)
 	}
 }

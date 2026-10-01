@@ -313,7 +313,13 @@ func (d *Database) transitionArticleStatus(id int64, from, newStatus string, rev
 
 	query := `UPDATE generated_articles SET status = ?, updated_at = CURRENT_TIMESTAMP`
 	args := []interface{}{newStatus}
-	if newStatus == StatusApproved {
+	switch {
+	case newStatus == StatusApproved && from == StatusUnpublished:
+		// Republishing an article that was taken down puts the same text
+		// back: it keeps its original publish date rather than jumping to
+		// the top of the feed (and into this week's newsletter) as new.
+		query += `, published_at = COALESCE(published_at, CURRENT_TIMESTAMP)`
+	case newStatus == StatusApproved:
 		query += `, published_at = CURRENT_TIMESTAMP`
 	}
 	query += ` WHERE id = ? AND status = ?`
@@ -342,10 +348,12 @@ func (d *Database) transitionArticleStatus(id int64, from, newStatus string, rev
 
 // UndoApproval puts an article approved at or after since back to status
 // prev, the status it was approved from, for the admin's "Undo" right after
-// approving. It only succeeds while the article is still approved and its
-// approval is that recent, so an old publication cannot be pulled back by a
-// stale form. An article that was unpublished before keeps its published_at;
-// one that was never published loses the one the approval set.
+// approving. It only succeeds while the article is still approved and was
+// approved that recently -- by published_at, which the approval set, or for
+// a republished article (whose publish date is kept) by updated_at -- so an
+// old publication cannot be pulled back by a stale form. An article that was
+// unpublished before keeps its published_at, which republishing does not
+// change; one that was never published loses the one the approval set.
 func (d *Database) UndoApproval(id int64, prev string, since time.Time) error {
 	switch prev {
 	case StatusPending, StatusDraft, StatusUnpublished, StatusRevisionRequested:
@@ -356,8 +364,9 @@ func (d *Database) UndoApproval(id int64, prev string, since time.Time) error {
 		`UPDATE generated_articles
 		 SET status = ?, updated_at = CURRENT_TIMESTAMP,
 		     published_at = CASE WHEN ? = ? THEN published_at ELSE NULL END
-		 WHERE id = ? AND status = ? AND published_at >= ?`,
-		prev, prev, StatusUnpublished, id, StatusApproved, since.UTC().Format("2006-01-02 15:04:05"),
+		 WHERE id = ? AND status = ?
+		   AND CASE WHEN ? = ? THEN updated_at ELSE published_at END >= ?`,
+		prev, prev, StatusUnpublished, id, StatusApproved, prev, StatusUnpublished, since.UTC().Format("2006-01-02 15:04:05"),
 	)
 	if err != nil {
 		return err

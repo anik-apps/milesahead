@@ -37,6 +37,8 @@ func migrate(db *sql.DB) error {
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE INDEX IF NOT EXISTS idx_raw_articles_hash ON raw_articles(hash);
+	-- Source health (the admin Sources page and tab): newest article per source.
+	CREATE INDEX IF NOT EXISTS idx_raw_articles_source_created ON raw_articles(source_id, created_at);
 
 	CREATE TABLE IF NOT EXISTS generated_articles (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,

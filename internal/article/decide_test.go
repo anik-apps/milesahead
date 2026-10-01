@@ -141,3 +141,40 @@ func TestUndoApprove_TooLate(t *testing.T) {
 		t.Fatalf("undo an hour later = %v, want ErrUndoExpired", err)
 	}
 }
+
+// Republishing keeps the original publish date, and undoing it leaves the
+// article unpublished with that date intact.
+func TestRepublishKeepsPublishDate(t *testing.T) {
+	database := setupFileDB(t)
+	m := NewManager(database, nil)
+	id, err := database.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Old news", Slug: "old-news", Content: "<p>x</p>", Type: "deal",
+		Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Approve(id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB().Exec(`UPDATE generated_articles SET published_at = '2026-06-01 09:00:00' WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Unpublish(id); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.ApproveRevision(id, 1); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := database.GetGeneratedArticle(id)
+	if a.PublishedAt == nil || a.PublishedAt.Format("2006-01-02") != "2026-06-01" {
+		t.Fatalf("republished published_at = %v, want the June date kept", a.PublishedAt)
+	}
+	if err := m.UndoApprove(id, db.StatusUnpublished, time.Minute); err != nil {
+		t.Fatalf("undo republish: %v", err)
+	}
+	a, _ = database.GetGeneratedArticle(id)
+	if a.Status != db.StatusUnpublished || a.PublishedAt == nil || a.PublishedAt.Format("2006-01-02") != "2026-06-01" {
+		t.Fatalf("after undo: %q %v", a.Status, a.PublishedAt)
+	}
+}

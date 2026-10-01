@@ -91,6 +91,10 @@ type App struct {
 	infographicHeights map[string]int
 	// now is the clock offers are judged against; tests replace it.
 	now func() time.Time
+	// cardDetectDelay is how long after an approval card update detection
+	// starts: the approval's undo window, so an approval undone in time
+	// drafts no card updates. Tests shorten it.
+	cardDetectDelay time.Duration
 }
 
 // offerToday is the date offer end dates are compared against
@@ -127,6 +131,8 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 		mux:            http.NewServeMux(),
 		startedAt:      time.Now(),
 		now:            time.Now,
+
+		cardDetectDelay: undoWindow,
 	}
 
 	if err := app.loadTemplates("templates"); err != nil {
@@ -152,6 +158,8 @@ func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *artic
 		mux:            http.NewServeMux(),
 		startedAt:      time.Now(),
 		now:            time.Now,
+
+		cardDetectDelay: undoWindow,
 	}
 
 	if err := app.loadTemplates(templateDir); err != nil {
@@ -259,12 +267,7 @@ func versionedFile(staticDir, urlPath string) string {
 // below the first screen. Tying the URL to the bytes means a changed file is
 // always fetched fresh.
 func versionedStylesheet(staticDir string) string {
-	b, err := os.ReadFile(filepath.Join(staticDir, "css", "style.css"))
-	if err != nil {
-		return stylesheetPath
-	}
-	sum := sha256.Sum256(b)
-	return stylesheetPath + "?v=" + hex.EncodeToString(sum[:])[:12]
+	return versionedFile(staticDir, stylesheetPath)
 }
 
 // renderTemplate executes a named template with the given data.

@@ -23,12 +23,15 @@ func TestNewsletterStatusNote(t *testing.T) {
 		{&db.Newsletter{Date: "2026-10-03", Status: "hold"}, 5, "On hold: it will not go out on Sat Oct 3 unless you approve it."},
 		{&db.Newsletter{Date: "2026-10-03", Status: "skipped"}, 5, "Skipped: the Sat Oct 3 issue will not go out."},
 		{&db.Newsletter{Date: "2026-09-26", Status: "sent", SentAt: &sent}, 5, "Sent Sep 26, 2026 12:00 PM."},
+		// An unsent issue for a Saturday that has passed never goes out.
+		{&db.Newsletter{Date: "2026-09-26", Status: "draft"}, 5, "Not sent: this issue was for Sat Sep 26, which has passed"},
+		{&db.Newsletter{Date: "2026-09-26", Status: "approved"}, 5, "Not sent: this issue was for Sat Sep 26, which has passed"},
 	} {
-		if got := newsletterStatusNote(c.nl, c.n); !strings.HasPrefix(got, c.want) {
+		if got := newsletterStatusNote(c.nl, c.n, "2026-10-01"); !strings.HasPrefix(got, c.want) {
 			t.Errorf("%s: got %q, want it to start %q", c.nl.Status, got, c.want)
 		}
 	}
-	if newsletterStatusNote(nil, 3) != "" {
+	if newsletterStatusNote(nil, 3, "2026-10-01") != "" {
 		t.Error("no issue, no note")
 	}
 }
@@ -37,6 +40,7 @@ func TestNewsletterStatusNote(t *testing.T) {
 // only the status changes that do something, and links to the manual send.
 func TestAdminNewsletter_SaysWhenItGoesOut(t *testing.T) {
 	app, database := realTemplateApp(t)
+	app.now = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) }
 	if _, err := database.CreateNewsletter(&db.Newsletter{Date: "2026-10-03", Subject: "Weekly", HTMLContent: "<p>x</p>", Status: "auto_approved", ArticleCount: 5}); err != nil {
 		t.Fatal(err)
 	}

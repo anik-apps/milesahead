@@ -16,7 +16,7 @@
         <p class="nl-when">{{$.StatusNote}}</p>
         <p class="dim">Issue date {{.Date}} &middot; {{.ArticleCount}} articles</p>
 
-        {{if ne .Status "sent"}}
+        {{if and (ne .Status "sent") (not $.IssuePassed)}}
         <div class="nl-actions">
             {{if or (eq .Status "draft") (eq .Status "hold") (eq .Status "skipped")}}
             <form method="POST" action="/admin/newsletter/status" class="inline-form">
