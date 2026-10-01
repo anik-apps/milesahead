@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -829,5 +830,104 @@ func TestOpen_AppliesPragmasToEveryConnection(t *testing.T) {
 		if journal != "wal" {
 			t.Errorf("conn %d: journal_mode = %q, want wal", i, journal)
 		}
+	}
+}
+
+// Unsubscribing keeps the row so the token still resolves; confirming is
+// idempotent and does not undo an unsubscribe; Resubscribe does.
+func TestSubscriber_States(t *testing.T) {
+	d := openTestDB(t)
+	if _, err := d.CreateSubscriber(&Subscriber{Email: "Mixed@Example.com", Token: "tok"}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := d.GetSubscriberByEmail("mixed@example.com")
+	if err != nil {
+		t.Fatalf("lookup should ignore case: %v", err)
+	}
+	if s.State() != SubscriberPending {
+		t.Errorf("new subscriber state %q, want pending", s.State())
+	}
+
+	if err := d.ConfirmSubscriber("tok"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ConfirmSubscriber("tok"); !errors.Is(err, ErrAlreadyConfirmed) {
+		t.Errorf("second confirm: %v, want ErrAlreadyConfirmed", err)
+	}
+	if err := d.ConfirmSubscriber("nope"); !errors.Is(err, ErrSubscriberNotFound) {
+		t.Errorf("unknown token: %v, want ErrSubscriberNotFound", err)
+	}
+
+	if err := d.Unsubscribe("tok"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Unsubscribe("tok"); err != nil {
+		t.Errorf("unsubscribing twice should not fail: %v", err)
+	}
+	s, err = d.GetSubscriberByToken("tok")
+	if err != nil {
+		t.Fatalf("the row should be kept after unsubscribing: %v", err)
+	}
+	if s.State() != SubscriberUnsubscribed || s.Confirmed {
+		t.Errorf("state %q confirmed=%v, want unsubscribed and not confirmed", s.State(), s.Confirmed)
+	}
+	if subs, _ := d.ListConfirmedSubscribers(); len(subs) != 0 {
+		t.Error("an unsubscribed address must not get the newsletter")
+	}
+	if err := d.ConfirmSubscriber("tok"); !errors.Is(err, ErrUnsubscribed) {
+		t.Errorf("confirm after unsubscribe: %v, want ErrUnsubscribed", err)
+	}
+
+	if err := d.Resubscribe("tok"); err != nil {
+		t.Fatal(err)
+	}
+	if subs, _ := d.ListConfirmedSubscribers(); len(subs) != 1 {
+		t.Error("Resubscribe should make the address active")
+	}
+	if err := d.Resubscribe("nope"); !errors.Is(err, ErrSubscriberNotFound) {
+		t.Errorf("resubscribe unknown token: %v", err)
+	}
+
+	if err := d.Unsubscribe("tok"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ReopenSubscriber(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	s, _ = d.GetSubscriberByToken("tok")
+	if s.State() != SubscriberPending {
+		t.Errorf("after ReopenSubscriber: %q, want pending", s.State())
+	}
+}
+
+func TestClaimConfirmationSend_Cooldown(t *testing.T) {
+	d := openTestDB(t)
+	id, err := d.CreateSubscriber(&Subscriber{Email: "a@example.com", Token: "tok"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	claim := func(at time.Time) bool {
+		t.Helper()
+		ok, err := d.ClaimConfirmationSend(id, at, 10*time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	if !claim(now) {
+		t.Fatal("first send should be allowed")
+	}
+	if claim(now.Add(5 * time.Minute)) {
+		t.Error("a send inside the cooldown should be refused")
+	}
+	if !claim(now.Add(11 * time.Minute)) {
+		t.Error("a send after the cooldown should be allowed")
+	}
+	if err := d.ReleaseConfirmationSend(id); err != nil {
+		t.Fatal(err)
+	}
+	if !claim(now.Add(12 * time.Minute)) {
+		t.Error("a released claim should allow an immediate retry")
 	}
 }

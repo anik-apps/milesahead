@@ -463,10 +463,10 @@ func TestUnsubscribe_Success(t *testing.T) {
 		t.Error("expected unsubscribe success message")
 	}
 
-	// Verify subscriber was removed.
-	subs, _ := database.ListAllSubscribers()
+	// Verify the subscriber no longer gets the newsletter.
+	subs, _ := database.ListConfirmedSubscribers()
 	if len(subs) != 0 {
-		t.Errorf("expected 0 subscribers after unsubscribe, got %d", len(subs))
+		t.Errorf("expected 0 confirmed subscribers after unsubscribe, got %d", len(subs))
 	}
 }
 
