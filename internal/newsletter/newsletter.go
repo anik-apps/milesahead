@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,6 +19,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/mail"
 	"github.com/kumaranik/milesahead/internal/offer"
 )
 
@@ -26,7 +28,9 @@ type MailSender interface {
 	// SendNewsletter sends to recipients in order and returns how many of
 	// them, from the first, it reached. When it fails, it failed at
 	// recipients[sent].
-	SendNewsletter(subject, htmlContent string, recipients []string) (sent int, err error)
+	// htmlContent holds mail.UnsubscribeURLPlaceholder wherever the
+	// reader's own unsubscribe link goes.
+	SendNewsletter(subject, htmlContent string, recipients []mail.Recipient) (sent int, err error)
 }
 
 // PartialSendError reports a send that reached some subscribers and then
@@ -382,9 +386,12 @@ func renderWeeklyNewsletter(articles []db.GeneratedArticle, date, domain string,
 // buildTemplateData converts a list of articles into template data.
 func buildTemplateData(articles []db.GeneratedArticle, date, domain string) newsletterData {
 	data := newsletterData{
-		Date:           date,
-		Domain:         domain,
-		UnsubscribeURL: domain + "/unsubscribe",
+		Date:   date,
+		Domain: domain,
+		// Each copy sent gets its reader's own link in place of this; see
+		// mail.Sender.SendNewsletter. Copies kept for the admin get
+		// forDisplay's.
+		UnsubscribeURL: mail.UnsubscribeURLPlaceholder,
 	}
 
 	if len(articles) == 0 {
@@ -524,6 +531,7 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	if err != nil {
 		slog.Error("failed to render weekly newsletter", "error", err)
 	} else {
+		htmlContent = s.forDisplay(htmlContent)
 		nl.HTMLContent = htmlContent
 		// Persist rendered HTML so the admin preview shows content.
 		if err := s.db.UpdateNewsletterHTML(nlID, htmlContent); err != nil {
@@ -777,14 +785,9 @@ func (s *Service) SendWeekly() error {
 	if err != nil {
 		return fmt.Errorf("re-rendering newsletter at send time: %w", err)
 	}
-	nl.HTMLContent = htmlContent
 
-	recipients := make([]string, len(subscribers))
-	for i, sub := range subscribers {
-		recipients[i] = sub.Email
-	}
-
-	if err := s.sendOnce(nl, nl.HTMLContent, recipients); err != nil {
+	recipients := s.recipients(subscribers)
+	if err := s.sendOnce(nl, htmlContent, recipients); err != nil {
 		if errors.Is(err, ErrAlreadySent) {
 			slog.Info("weekly newsletter already sent", "date", sendDate)
 			return nil
@@ -820,6 +823,7 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("rendering newsletter: %w", err)
 	}
+	htmlContent = s.forDisplay(htmlContent)
 
 	subject := fmt.Sprintf("MilesAhead Daily Digest — %s", date)
 
@@ -982,15 +986,11 @@ func (s *Service) SendDaily() error {
 		return fmt.Errorf("re-rendering newsletter at send time: %w", err)
 	}
 	// Keep the stored copy as sent, for the admin's history.
-	if err := s.db.UpdateNewsletterHTML(nl.ID, htmlContent); err != nil {
+	if err := s.db.UpdateNewsletterHTML(nl.ID, s.forDisplay(htmlContent)); err != nil {
 		slog.Warn("failed to store the daily newsletter as sent", "error", err, "id", nl.ID)
 	}
 
-	recipients := make([]string, len(subscribers))
-	for i, sub := range subscribers {
-		recipients[i] = sub.Email
-	}
-
+	recipients := s.recipients(subscribers)
 	if err := s.sendOnce(nl, htmlContent, recipients); err != nil {
 		slog.Error("newsletter send failed", "error", err)
 		return err
@@ -1008,7 +1008,7 @@ func (s *Service) SendDaily() error {
 // it fails partway it stays sent, and a *PartialSendError says how far it
 // got. It returns ErrAlreadySent when the issue was sent since nl was read,
 // and an error naming the new status when an admin changed it.
-func (s *Service) sendOnce(nl *db.Newsletter, html string, recipients []string) error {
+func (s *Service) sendOnce(nl *db.Newsletter, html string, recipients []mail.Recipient) error {
 	claimed, err := s.db.ClaimNewsletterSend(nl.ID, nl.Status)
 	if err != nil {
 		return fmt.Errorf("nothing sent: could not record the newsletter as sent: %w", err)
@@ -1024,7 +1024,7 @@ func (s *Service) sendOnce(nl *db.Newsletter, html string, recipients []string) 
 		if sent > 0 {
 			failedAt := "the end of the list"
 			if sent < len(recipients) {
-				failedAt = recipients[sent]
+				failedAt = recipients[sent].Email
 			}
 			return &PartialSendError{Sent: sent, Total: len(recipients), FailedAt: failedAt, Err: err}
 		}
@@ -1047,5 +1047,37 @@ func (s *Service) PreviewNext() (string, error) {
 	}
 
 	date := s.todayDate()
-	return renderNewsletter(articles, date, s.baseURL())
+	html, err := renderNewsletter(articles, date, s.baseURL())
+	if err != nil {
+		return "", err
+	}
+	return s.forDisplay(html), nil
+}
+
+// recipients pairs each subscriber with their own unsubscribe link. A
+// subscriber without a token cannot have one, so is left out (none should
+// exist: the column is NOT NULL and every sign-up gets a token).
+func (s *Service) recipients(subscribers []db.Subscriber) []mail.Recipient {
+	out := make([]mail.Recipient, 0, len(subscribers))
+	for _, sub := range subscribers {
+		if sub.Token == "" {
+			slog.Warn("newsletter: leaving out a subscriber with no unsubscribe token", "subscriber_id", sub.ID)
+			continue
+		}
+		out = append(out, mail.Recipient{Email: sub.Email, UnsubscribeURL: s.UnsubscribeURL(sub.Token)})
+	}
+	return out
+}
+
+// UnsubscribeURL is the absolute link that unsubscribes the subscriber
+// with token.
+func (s *Service) UnsubscribeURL(token string) string {
+	return s.baseURL() + "/unsubscribe?token=" + url.QueryEscape(token)
+}
+
+// forDisplay is a rendered issue as the admin sees it (preview, stored
+// copy): with the plain /unsubscribe link, which explains itself, in place
+// of the per-reader one each sent copy gets.
+func (s *Service) forDisplay(html string) string {
+	return strings.ReplaceAll(html, mail.UnsubscribeURLPlaceholder, s.baseURL()+"/unsubscribe")
 }

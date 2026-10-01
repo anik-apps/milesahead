@@ -1,0 +1,162 @@
+package newsletter
+
+import (
+	"bytes"
+	"io"
+	"mime"
+	"mime/quotedprintable"
+	netmail "net/mail"
+	"strings"
+	"testing"
+
+	"github.com/kumaranik/milesahead/internal/config"
+	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/mail"
+)
+
+// captureSMTP stands in for the SMTP connection and keeps every message as
+// it would go over the wire.
+type captureSMTP struct{ raw []string }
+
+func (c *captureSMTP) Send(from string, to []string, msg io.WriterTo) error {
+	var buf bytes.Buffer
+	if _, err := msg.WriteTo(&buf); err != nil {
+		return err
+	}
+	c.raw = append(c.raw, buf.String())
+	return nil
+}
+
+func (c *captureSMTP) Close() error { return nil }
+
+// subscribeTwo adds two confirmed readers with tokens tok-a and tok-b.
+func subscribeTwo(t *testing.T, database *db.Database) {
+	t.Helper()
+	for _, s := range []struct{ email, token string }{{"a@example.com", "tok-a"}, {"b@example.com", "tok-b"}} {
+		if _, err := database.CreateSubscriber(&db.Subscriber{Email: s.email, Token: s.token}); err != nil {
+			t.Fatal(err)
+		}
+		if err := database.ConfirmSubscriber(s.token); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// readMessage parses a captured message and decodes its HTML body.
+func readMessage(t *testing.T, raw string) (netmail.Header, string) {
+	t.Helper()
+	msg, err := netmail.ReadMessage(strings.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mt, _, _ := mime.ParseMediaType(msg.Header.Get("Content-Type")); mt != "text/html" {
+		t.Fatalf("content type %q, want text/html", mt)
+	}
+	var body io.Reader = msg.Body
+	if strings.EqualFold(msg.Header.Get("Content-Transfer-Encoding"), "quoted-printable") {
+		body = quotedprintable.NewReader(body)
+	}
+	b, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return msg.Header, string(b)
+}
+
+// The newsletter as it goes out, through the real template and SMTP sender:
+// each reader's copy links to their own /unsubscribe?token=, in the body and
+// in List-Unsubscribe, and none has the bare /unsubscribe that could not tell
+// readers apart.
+func TestSendDaily_EachReaderGetsTheirOwnUnsubscribeLink(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	seed(t, database)
+	subscribeTwo(t, database)
+
+	smtp := &captureSMTP{}
+	sender := mail.NewSender(config.SMTPConfig{From: "MilesAhead <noreply@milesahead.example>"})
+	sender.SetDialFunc(func() (mail.SendCloser, error) { return smtp, nil })
+	svc := NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "America/New_York"}, nil, nil, "milesahead.example")
+
+	if err := svc.SendDaily(); err != nil {
+		t.Fatal(err)
+	}
+	if len(smtp.raw) != 2 {
+		t.Fatalf("sent %d messages, want 2", len(smtp.raw))
+	}
+	links := map[string]bool{}
+	for _, raw := range smtp.raw {
+		h, body := readMessage(t, raw)
+		to := h.Get("To")
+		token := map[string]string{"a@example.com": "tok-a", "b@example.com": "tok-b"}[to]
+		own := "https://milesahead.example/unsubscribe?token=" + token
+		if token == "" {
+			t.Fatalf("message to unexpected %q", to)
+		}
+		if !strings.Contains(body, `href="`+own+`"`) {
+			t.Errorf("%s: the body's Unsubscribe link is not their own %s", to, own)
+		}
+		if strings.Contains(body, `/unsubscribe"`) || strings.Contains(body, mail.UnsubscribeURLPlaceholder) {
+			t.Errorf("%s: the body has a bare /unsubscribe or the placeholder", to)
+		}
+		if got, want := h.Get("List-Unsubscribe"), "<"+own+">, <mailto:noreply@milesahead.example?subject=unsubscribe>"; got != want {
+			t.Errorf("%s: List-Unsubscribe = %q, want %q", to, got, want)
+		}
+		if got := h.Get("List-Unsubscribe-Post"); got != "List-Unsubscribe=One-Click" {
+			t.Errorf("%s: List-Unsubscribe-Post = %q", to, got)
+		}
+		links[own] = true
+	}
+	if len(links) != 2 {
+		t.Errorf("the two readers got %d distinct links, want 2", len(links))
+	}
+
+	// The copy kept for the admin has no reader's token and no placeholder.
+	nl, err := database.GetNewsletterByDate(svc.todayDate())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(nl.HTMLContent, "tok-") || strings.Contains(nl.HTMLContent, mail.UnsubscribeURLPlaceholder) {
+		t.Error("the stored copy should have the plain /unsubscribe link, not a reader's or the placeholder")
+	}
+}
+
+// The weekly hands the sender the issue with the placeholder and each
+// reader's own link.
+func TestSendWeekly_PassesEachReadersUnsubscribeLink(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	_, live, _ := seed(t, database)
+	subscribeTwo(t, database)
+
+	sender := &mockSender{}
+	svc := NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "America/New_York"}, nil, nil, "milesahead.example")
+	if _, err := database.CreateNewsletter(&db.Newsletter{
+		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &live,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SendWeekly(); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("want one send, got %d", len(sender.calls))
+	}
+	call := sender.calls[0]
+	if !strings.Contains(call.html, mail.UnsubscribeURLPlaceholder) {
+		t.Error("the issue should hold the placeholder for each reader's link")
+	}
+	got := map[string]string{}
+	for _, r := range call.recipients {
+		got[r.Email] = r.UnsubscribeURL
+	}
+	want := map[string]string{
+		"a@example.com": "https://milesahead.example/unsubscribe?token=tok-a",
+		"b@example.com": "https://milesahead.example/unsubscribe?token=tok-b",
+	}
+	if len(got) != 2 || got["a@example.com"] != want["a@example.com"] || got["b@example.com"] != want["b@example.com"] {
+		t.Errorf("recipients = %v, want %v", got, want)
+	}
+}
