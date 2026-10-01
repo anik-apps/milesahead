@@ -112,6 +112,18 @@ func TestPipeline_CriticNeverSeesEditorNotes(t *testing.T) {
 		t.Errorf("revision notes %q", revised.EditorNotes)
 	}
 
+	// Key details are parsed from the reply after the notes are out.
+	for name, r := range map[string]*PipelineResult{"generation": generated, "revision": revised} {
+		if len(r.KeyDetails) == 0 {
+			t.Errorf("%s: key details not parsed from the reply", name)
+		}
+		for _, d := range r.KeyDetails {
+			if strings.Contains(d.Label+d.Value, "Could not find") || strings.Contains(d.Label+d.Value, "editor-note") {
+				t.Errorf("%s: note in key detail %+v", name, d)
+			}
+		}
+	}
+
 	// The critic client also serves the key-details call; every prompt it
 	// got is checked, and the three verdicts must have seen the article.
 	if len(critic.prompts) < 2 || len(revCritic.prompts) < 1 {
