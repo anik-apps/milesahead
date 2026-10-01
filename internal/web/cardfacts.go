@@ -156,17 +156,27 @@ func commaInt(n int) string {
 	return s
 }
 
-// hasCardFacts reports whether a card's structured data has been filled in.
-// Without it a $0 fee means "unknown", not "no annual fee".
+// annualFeeKnown reports whether a card's annual fee has been recorded. The
+// column defaults to 0, so 0 alone can't tell "no annual fee" from "never
+// filled in". A fee counts as known when it is above 0, when there is a fee
+// note, or when the structured data was written (welcome_bonus_verified_at,
+// which the structured-data seeder sets together with the fee). An unknown
+// fee is never shown as $0 or put in the "No fee" band.
+func annualFeeKnown(p *db.ReferencePage) bool {
+	return p.AnnualFeeAmount > 0 || strings.TrimSpace(p.AnnualFeeNote) != "" || p.WelcomeBonusVerifiedAt != nil
+}
+
+// hasCardFacts reports whether a card has any structured fact to show: a
+// known annual fee, a welcome offer or earning rates.
 func hasCardFacts(p *db.ReferencePage) bool {
-	return strings.TrimSpace(p.WelcomeBonusText) != "" ||
+	return annualFeeKnown(p) || strings.TrimSpace(p.WelcomeBonusText) != "" ||
 		(p.EarningRatesJSON != "" && p.EarningRatesJSON != "{}")
 }
 
 // cardFacts is the summary under a card page's title: fee, offer and the best
 // earning rates, all from the card's structured data.
 type cardFacts struct {
-	Fee       string // "$895", "$0"
+	Fee       string // "$895", "$0"; empty when the fee is unknown
 	FeeDetail string // annual_fee_note, or "No annual fee"
 	Offer     cardOffer
 	Earn      []earnRate // best first, at most 3
@@ -177,13 +187,15 @@ func buildCardFacts(p *db.ReferencePage) *cardFacts {
 		return nil
 	}
 	f := &cardFacts{
-		Fee:       feeText(p.AnnualFeeAmount),
-		FeeDetail: shorten(strings.TrimSpace(p.AnnualFeeNote), 70),
-		Offer:     parseOffer(p.WelcomeBonusText),
-		Earn:      topEarnRates(p.EarningRatesJSON, 3),
+		Offer: parseOffer(p.WelcomeBonusText),
+		Earn:  topEarnRates(p.EarningRatesJSON, 3),
 	}
-	if p.AnnualFeeAmount == 0 && f.FeeDetail == "" {
-		f.FeeDetail = "No annual fee"
+	if annualFeeKnown(p) {
+		f.Fee = feeText(p.AnnualFeeAmount)
+		f.FeeDetail = shorten(strings.TrimSpace(p.AnnualFeeNote), 70)
+		if p.AnnualFeeAmount == 0 && f.FeeDetail == "" {
+			f.FeeDetail = "No annual fee"
+		}
 	}
 	return f
 }

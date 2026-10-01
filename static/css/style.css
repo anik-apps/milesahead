@@ -2045,9 +2045,12 @@ tr.flagged { background: #fef2f2; }
 }
 .card-summary-body, .card-summary-media { min-width: 0; }
 .card-summary-media .ig-bar { margin: 0.9rem 0 0; }
+/* One column per fact present (a card may lack a known fee, an offer or
+   rates), sharing the width evenly. */
 .card-facts {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     margin: 0;
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -2344,7 +2347,10 @@ nav.card-toc {
         font-size: 1.35rem;
     }
     .card-summary { grid-template-columns: minmax(0, 1fr); gap: 0.9rem; padding: 0.9rem; margin-bottom: 0.75rem; }
-    .card-summary-media { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 0.75rem; align-items: center; }
+    /* Art and infographic bar side by side; art alone keeps the full width. */
+    .card-summary-media.has-teaser { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 0.75rem; align-items: center; }
+    .card-summary-art { max-width: 320px; margin: 0 auto; }
+    .card-summary-media.has-teaser .card-summary-art { max-width: none; margin: 0; }
     .card-summary-media .ig-bar { margin: 0; }
     .card-summary-media .ig-bar-link img { width: 56px; }
     .card-summary-media .ig-bar-meta { font-size: 0.72rem; }
@@ -2354,8 +2360,10 @@ nav.card-toc {
     .card-facts { order: 1; }
     .card-actions { order: 2; }
     .card-summary-verdict { order: 3; }
-    .card-facts { grid-template-columns: 1fr 1fr; }
-    .card-fact:nth-child(3) { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); }
+    .card-facts { grid-auto-flow: row; grid-template-columns: 1fr 1fr; }
+    /* An odd last fact (the third, or a lone one) takes the full row. */
+    .card-fact:last-child:nth-child(odd) { grid-column: 1 / -1; border-left: 0; }
+    .card-fact:nth-child(n+3) { border-top: 1px solid var(--border); }
     .card-fact-value { font-size: 1.05rem; }
     .card-actions { display: block; margin-top: 0.9rem; }
     .card-apply-btn { display: flex; width: 100%; }

@@ -496,3 +496,21 @@ func TestCategoriesInOrder(t *testing.T) {
 		t.Errorf("got %v", got)
 	}
 }
+
+// On phones the art sits beside the infographic bar only when there is one;
+// alone it keeps the full width.
+func TestCardPage_SummaryMediaColumns(t *testing.T) {
+	if out := renderRealCardTemplate(t, infographicCardData()); !strings.Contains(out, `<div class="card-summary-media has-teaser">`) {
+		t.Error("art and infographic: two-column media")
+	}
+	if out := renderRealCardTemplate(t, baseCardData()); !strings.Contains(out, `<div class="card-summary-media">`) {
+		t.Error("art alone: single-column media")
+	}
+	css, err := os.ReadFile(filepath.Join("..", "..", "static", "css", "style.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(css), "    .card-summary-media { display: grid;") {
+		t.Error("the two-column grid must apply only with a teaser (.has-teaser)")
+	}
+}

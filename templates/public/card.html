@@ -29,7 +29,7 @@
          it, and the two things to do next. One panel at every width; on
          phones it stacks. */}}
     <section class="card-summary" aria-label="Summary">
-        <div class="card-summary-media">
+        <div class="card-summary-media{{if and .Infographic .Card.ImageURL}} has-teaser{{end}}">
             {{if .Card.ImageURL}}
             <div class="card-summary-art">
                 <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}" width="480" height="303" fetchpriority="high">
@@ -40,7 +40,7 @@
         <div class="card-summary-body">
             {{with .Facts}}
             <dl class="card-facts">
-                <div class="card-fact"><dt>Annual fee</dt><dd><span class="card-fact-value">{{.Fee}}</span>{{if .FeeDetail}}<span class="card-fact-detail">{{.FeeDetail}}</span>{{end}}</dd></div>
+                {{if .Fee}}<div class="card-fact"><dt>Annual fee</dt><dd><span class="card-fact-value">{{.Fee}}</span>{{if .FeeDetail}}<span class="card-fact-detail">{{.FeeDetail}}</span>{{end}}</dd></div>{{end}}
                 {{if .Offer.Headline}}<div class="card-fact"><dt>Welcome offer</dt><dd><span class="card-fact-value">{{.Offer.Headline}}</span>{{if .Offer.Condition}}<span class="card-fact-detail">{{.Offer.Condition}}</span>{{end}}</dd></div>{{end}}
                 {{if .Earn}}<div class="card-fact"><dt>Earns</dt><dd><span class="card-fact-value">{{(index .Earn 0).Detail}}</span>{{with .EarnRest}}<span class="card-fact-detail">{{.}}</span>{{end}}</dd></div>{{end}}
             </dl>

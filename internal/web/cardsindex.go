@@ -20,8 +20,9 @@ type cardTile struct {
 	Slug, Title, Issuer, ImageURL string
 	Category                      string
 	FeeAmount                     int
+	FeeKnown                      bool // see annualFeeKnown; false keeps it out of fee bands
 	HasFacts                      bool
-	Fee                           string   // "$895"; empty without facts
+	Fee                           string   // "$895"; empty when the fee is unknown
 	Earn                          earnRate // best earning line; zero without data
 	Offer                         cardOffer
 	Eager                         bool // in the first rows: load the art now
@@ -95,7 +96,7 @@ func (q cardsQuery) matches(t cardTile) bool {
 	}
 	if q.Fee != "" {
 		b, _ := feeBandByKey(q.Fee)
-		if !t.HasFacts || !b.contains(t.FeeAmount) {
+		if !t.FeeKnown || !b.contains(t.FeeAmount) {
 			return false
 		}
 	}
@@ -148,10 +149,12 @@ func countMatching(tiles []cardTile, q cardsQuery) int {
 func newCardTile(p *db.ReferencePage) cardTile {
 	t := cardTile{
 		Slug: p.Slug, Title: p.Title, Issuer: p.Issuer, ImageURL: p.ImageURL,
-		Category: p.Category, FeeAmount: p.AnnualFeeAmount, HasFacts: hasCardFacts(p),
+		Category: p.Category, FeeAmount: p.AnnualFeeAmount, FeeKnown: annualFeeKnown(p), HasFacts: hasCardFacts(p),
+	}
+	if t.FeeKnown {
+		t.Fee = feeText(p.AnnualFeeAmount)
 	}
 	if t.HasFacts {
-		t.Fee = feeText(p.AnnualFeeAmount)
 		if top := topEarnRates(p.EarningRatesJSON, 1); len(top) == 1 {
 			t.Earn = top[0]
 		}
@@ -297,8 +300,8 @@ func buildCardsIndex(pages []db.ReferencePage, v url.Values) cardsIndex {
 		desc := q.Sort == "fee-desc"
 		sort.SliceStable(shown, func(i, j int) bool {
 			a, b := shown[i], shown[j]
-			if a.HasFacts != b.HasFacts { // unknown fees go last either way
-				return a.HasFacts
+			if a.FeeKnown != b.FeeKnown { // unknown fees go last either way
+				return a.FeeKnown
 			}
 			if a.FeeAmount != b.FeeAmount {
 				return (a.FeeAmount < b.FeeAmount) != desc

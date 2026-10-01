@@ -10,18 +10,27 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
 // indexPage is a published card with just the fields the index reads.
+// Cards with structured data get welcome_bonus_verified_at, as the seeder
+// writes it with the fee; that is what makes a $0 fee "no annual fee".
 func indexPage(slug, title, cat, issuer string, fee int, rates, bonus string) db.ReferencePage {
-	return db.ReferencePage{
+	p := db.ReferencePage{
 		Slug: slug, Title: title, Category: cat, Issuer: issuer,
 		ImageURL: "/static/img/cards/" + slug + ".png", Status: "published",
 		AnnualFeeAmount: fee, EarningRatesJSON: rates, WelcomeBonusText: bonus,
 	}
+	if rates != "" || bonus != "" {
+		p.WelcomeBonusVerifiedAt = &seedVerifiedAt
+	}
+	return p
 }
+
+var seedVerifiedAt = time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 
 func indexFixture() []db.ReferencePage {
 	flat2 := `{"base":{"rate":"2%"}}`
@@ -269,6 +278,7 @@ func seedAllCards(t *testing.T, app *App) {
 		if i, ok := byslug[c.Slug]; ok {
 			f := facts[i]
 			p.AnnualFeeAmount, p.AnnualFeeNote, p.WelcomeBonusText, p.EarningRatesJSON = f.Fee, f.Note, f.Bonus, string(f.Rates)
+			p.WelcomeBonusVerifiedAt = &seedVerifiedAt // cmd/seed-structured sets it with the fee
 		}
 		if _, err := app.db.CreateReferencePage(&p); err != nil {
 			t.Fatalf("seeding %s: %v", c.Slug, err)
@@ -378,5 +388,78 @@ func TestHandleCardsList_FilteredView(t *testing.T) {
 	none := getPath(t, app, "/cards/?cat=hotel&fee=none&issuer=discover")
 	if !strings.Contains(none, "No cards match these filters.") {
 		t.Error("an empty result should say so and offer to clear")
+	}
+}
+
+// A $0 fee that was recorded is "No annual fee"; a fee that was never
+// recorded (the column's default 0) shows nothing and stays out of the fee
+// bands, though the card is still listed.
+func TestCardsIndex_UnknownFeeIsNotNoFee(t *testing.T) {
+	app := setupRealTemplateCardApp(t)
+	known := indexPage("zero-fee", "Zero Fee Card", "cash-back", "Citi", 0, `{"base":{"rate":"2%"}}`, "$200 bonus after $500 spend")
+	unknown := indexPage("unknown-fee", "Unknown Fee Card", "cash-back", "Citi", 0, `{"base":{"rate":"1.5%"}}`, "$100 bonus after $500 spend")
+	unknown.WelcomeBonusVerifiedAt = nil // rates and offer entered, the fee never was
+	for _, p := range []db.ReferencePage{known, unknown} {
+		p.SectionsJSON = `[{"key":"overview","title":"Overview","content":"<p>Body.</p>"}]`
+		if _, err := app.db.CreateReferencePage(&p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tile := func(body, slug string) string {
+		m := regexp.MustCompile(`(?s)<a href="/cards/` + slug + `" class="card-tile">.*?</a>`).FindString(body)
+		if m == "" {
+			t.Fatalf("no tile for %s", slug)
+		}
+		return m
+	}
+
+	all := getPath(t, app, "/cards/")
+	if !strings.Contains(tile(all, "zero-fee"), "<b>No</b> annual fee") {
+		t.Error("a recorded $0 fee reads 'No annual fee'")
+	}
+	u := tile(all, "unknown-fee")
+	if strings.Contains(u, "annual fee") || strings.Contains(u, "$0") {
+		t.Errorf("an unknown fee must show nothing: %s", u)
+	}
+	if !strings.Contains(u, "<b>1.5%</b> everything") {
+		t.Error("the card's other facts still show")
+	}
+
+	noFee := getPath(t, app, "/cards/?fee=none")
+	if !strings.Contains(noFee, `href="/cards/zero-fee"`) || strings.Contains(noFee, `href="/cards/unknown-fee"`) {
+		t.Error("the No fee band holds the recorded $0 fee only")
+	}
+	if !strings.Contains(getPath(t, app, "/cards/?fee=any"), `href="/cards/unknown-fee"`) {
+		t.Error("Any still lists the card with an unknown fee")
+	}
+	asc := getPath(t, app, "/cards/?sort=fee-asc")
+	if strings.Index(asc, `href="/cards/unknown-fee"`) < strings.Index(asc, `href="/cards/zero-fee"`) {
+		t.Error("an unknown fee sorts last, after $0")
+	}
+
+	// The card page's summary: no fee cell for the unknown fee.
+	if body := getCardPage(t, app, "unknown-fee"); strings.Contains(body, "<dt>Annual fee</dt>") || !strings.Contains(body, "<dt>Earns</dt>") {
+		t.Error("unknown fee: no Annual fee cell, the other facts stay")
+	}
+	if body := getCardPage(t, app, "zero-fee"); !strings.Contains(body, `<dt>Annual fee</dt><dd><span class="card-fact-value">$0</span><span class="card-fact-detail">No annual fee</span>`) {
+		t.Error("recorded $0 fee: the summary says $0, no annual fee")
+	}
+}
+
+func TestAnnualFeeKnown(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		p    db.ReferencePage
+		want bool
+	}{
+		{"fee above 0", db.ReferencePage{AnnualFeeAmount: 95}, true},
+		{"$0 with a note", db.ReferencePage{AnnualFeeNote: "No annual fee"}, true},
+		{"$0 with structured data written", db.ReferencePage{WelcomeBonusVerifiedAt: &seedVerifiedAt}, true},
+		{"never filled in", db.ReferencePage{}, false},
+		{"rates but no fee record", db.ReferencePage{EarningRatesJSON: `{"base":{"rate":"1x"}}`}, false},
+	} {
+		if got := annualFeeKnown(&c.p); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
 	}
 }
