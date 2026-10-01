@@ -269,6 +269,26 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       attribution, for the admin). Links to outlet sites are unwrapped. Enrichment
       refuses a Scout's Take, and drops a key detail, that names an outlet.
       `cmd/repair-source-refs`, which wrote outlet names into stored articles, is gone.
+- [x] **Critic listed passed checks as issues** — the pipeline auto-revises whenever the
+      critic returns issues, and 68 of 71 articles verified in the week to 2026-10-01 were
+      revised (about 75 seconds and two extra AI calls each). Many issues were not problems:
+      "Deadline of December 31, 2026 matches both sources.", "No contradictions — coherence
+      is strong." The critic prompts now ask for fixes only and an empty list when nothing
+      needs changing, issues that only confirm a pass are dropped after parsing (32 of 389
+      stored issues, none of them real problems), and a critic reply that sends issues as
+      objects is flattened rather than failing the article. The revision still fires on any
+      remaining issue, whatever the score: verdicts scoring 85-95 with every check passing
+      carried real errors.
+- [x] **Editor notes were published, hidden only by CSS** — in March 2026 the revision
+      prompt asked the model to append `<div class="editor-note">Could not find a link
+      for: ...</div>` when it could not do what the admin asked. The note was stored in the
+      article content and `display: none` hid it, but it was in the page source and the
+      search index: searching "Could not find a link" returned articles 53, 57 and 66 with
+      the note highlighted in the snippet. Four approved articles carry one (53, 57, 60,
+      66). Notes are now split out of content before it is stored, into an admin-only
+      `editor_notes` column shown in the dashboard preview and review email; loading an
+      article, and the search index, strip any still inline; startup reindexes affected
+      rows. `cmd/repair-editor-notes` moves them out of stored content (dry run by default).
 
 ## Up Next
 
@@ -278,6 +298,10 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       need a revision request or an edit, after judging the two exceptions (articles
       1019 and 1022 are about Thrifty Traveler Premium itself). Article 336 also ends in
       a leaked revision changelog.
+
+- [ ] **Run `repair-editor-notes -apply` on production** — dry run on 2026-10-01 lists
+      articles 53, 57, 60 and 66, all approved. Take a backup first. Readers see no
+      change; the notes move to the admin-only column.
 
 - [ ] **Newsletter signup and delivery are broken end to end** — found in the
       2026-09-23 UX review, and confirmed in the code. Nobody who signs up on the site
@@ -358,24 +382,30 @@ image shipped in #73. Everything else is here, most severe first.
 
 ### P1: findability and conversion
 
-- [ ] **Card pages lack a key-facts strip** — the fee appears only mid-sentence, and Scout's
-      Verdict sits at 9,546px of 11,019px on a phone. *Fix:* annual fee, welcome offer, top
-      earn rates and the verdict's first sentence under the H1, from the DB fields.
-- [ ] **Card sidebar taller than a laptop screen** — sticky at `top: 5rem` but 914px tall,
-      so "Card Details" and "Compare with…" stay below the fold for the whole page at
-      1440x900 and below. *Fix:* put the CTA and Compare above the TOC, or cap the sidebar
-      at `calc(100vh - 6rem)` with its own scroll.
-- [ ] **Card-page CTA and compare** — "Card Details →" opens the issuer's site in a new tab
-      with no cue; the page ends with no next step; the Compare control does not exist on
-      phones and its `<select>` has no label and navigates on change. *Fix:* "Apply at
-      {issuer} ↗", an end-of-page block (apply, compare with the rivals the page already
-      names, related cards), and a labelled form with a Compare button.
+- [x] **Card pages lack a key-facts strip** — the fee appeared only mid-sentence, and Scout's
+      Verdict sat at 9,546px of 11,019px on a phone. A summary panel under the H1 now gives
+      the annual fee, welcome offer (cut down from the stored text, never with an invented
+      figure), the best earning rates and the verdict's first sentence, at every width.
+- [x] **Card sidebar taller than a laptop screen** — it was 914px tall, so "Card Details"
+      and "Compare with…" stayed below the fold at 1440x900 and below. Apply and Compare
+      are in the summary panel (on screen at 1280x800), the page is 1100px wide (text
+      column 476px → 760px), and the sidebar holds only the table of contents (448px),
+      no longer boxed by the header's `nav` styles, with the current section highlighted.
+      One `--sticky-offset` sets every sticky and anchor offset.
+- [x] **Card-page CTA and compare** — "Card Details →" opened the issuer's site in a new tab
+      with no cue, 34 of 52 pages ended with no next step, and Compare was missing on
+      phones, unlabelled and navigated on change. Now "Apply at {issuer} ↗" (with the new
+      tab announced; "Card details" for cards closed to new applicants), a labelled GET
+      compare form with a button on every screen size, the page's own rivals first, and a
+      "Next steps" block on every card page: apply, one-tap comparisons with the rivals the
+      page links, more cards in its category. Phone section pills stick under the header.
 - [ ] **Article card embeds** — the story's own card is missing (the Freedom Flex article
       embeds Reserve and Platinum, not Flex), "View card" leaves for the issuer, and "Top
       earnings" always shows dining and groceries ("1x Dining · 1x Groceries" for Amex
       Platinum) because `formatTopEarning` walks a fixed category order. *Fix:* primary
       card first, link to `/cards/{slug}`, rank earn rates numerically including the
-      direct/portal variants.
+      direct/portal variants. (Earn-rate ranking done: `rankEarnRates`, shared with the card
+      pages; the embed now reads "5x flights · 5x hotels via Amex Travel".)
 - [x] **Home filters** — two filter rows looked combinable but silently reset each other,
       both "All"s showed as selected, and "Roundups" and "Alerts" led to empty pages. Now
       one row: a type switch listing only types with a published article ("Summaries" reads
@@ -394,9 +424,11 @@ image shipped in #73. Everything else is here, most severe first.
       and "csr" find nothing, and card matches sit below ten articles. *Fix:* per-word
       matching with a prefix on the last word, title weighting, a small synonym map
       (csr, csp, amex), cards first when a title matches.
-- [ ] **/cards/ index** — 52 cards with no filter, sort or fee; 22 screens on a phone.
-      *Fix:* category, fee band and issuer filters with a live count; fee, offer and top
-      earn rates on each tile; lazy-loaded art with fixed dimensions.
+- [x] **/cards/ index** — 52 cards with no filter, sort or fee; 22 screens on a phone. Now a
+      GET filter form (category chips and fee bands with live counts, issuer, sort) whose
+      links keep each other's filters, compact tiles with fee, best earning rate and offer
+      in place of the cut-off quote, and art in a fixed box, lazy after the first six. The
+      phone page is about 10 screens unfiltered, 2-3 filtered.
 - [ ] **Trust signals** — article sources are loaded but never rendered; no byline, About,
       corrections or privacy page, though the site collects emails. *Fix:* a Sources list
       per article, a byline linking to an About page on how stories are researched, and a

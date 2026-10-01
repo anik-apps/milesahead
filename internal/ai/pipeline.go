@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/kumaranik/milesahead/internal/editornote"
 	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
@@ -44,6 +46,10 @@ type PipelineResult struct {
 	ScoutsTake       string
 	RelatedCards     []RelatedCard
 	Tags             []string
+	// EditorNotes are remarks the model addressed to the admin as
+	// <div class="editor-note">, taken out of Content (see package
+	// editornote). One per line; never published.
+	EditorNotes string
 }
 
 // Pipeline orchestrates the generator and two critics to produce verified articles.
@@ -104,8 +110,8 @@ func (p *Pipeline) outletMatcher(sources []SourceArticle) *OutletMatcher {
 // ErrNotEnoughSources is returned when a cluster has fewer than 2 unique sources.
 var ErrNotEnoughSources = fmt.Errorf("need at least 2 different sources to generate an article")
 
-// Process generates an article, verifies it, and if the critic finds issues
-// but the score is above threshold, auto-revises once before finalizing.
+// Process generates an article, verifies it, and if the critic left anything
+// to fix (see needsRevision), auto-revises once before finalizing.
 // Requires at least 2 sources from different sites to reduce hallucination risk.
 func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*PipelineResult, error) {
 	// Require multiple sources from different sites
@@ -125,12 +131,16 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	slog.Info("article generated", "type", articleType, "sources", len(sources))
 	outlets := p.outletMatcher(sources)
 
-	content, err := p.generator.Generate(articleType, sources)
+	raw, err := p.generator.Generate(articleType, sources)
 	if err != nil {
 		return nil, err
 	}
 
-	content = cleanMarkdown(content)
+	// Notes come out first, so neither the key details, the critic nor the
+	// auto-revision ever see them.
+	raw, notes := takeEditorNotes(raw, sources)
+	keyDetails, links := replyDetails(raw, sources)
+	content := cleanMarkdown(raw)
 	content, unresolved := cleanSourceRefs("generation", content, sources)
 	content, mentions := checkOutlets("generation", content, outlets)
 
@@ -147,14 +157,16 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
 		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
-	// If issues found, generator revises, then critic reviews again
-	if len(verification.Issues) > 0 {
+	// If there is something to fix, generator revises, then critic reviews again
+	if needsRevision(verification) {
 		slog.Info("auto-revision triggered", "issues_count", len(verification.Issues))
 		issuesStr := strings.Join(verification.Issues, "\n- ")
 		revised, err := p.generator.GenerateWithFeedback(sources, content,
 			"Fix ALL of the following issues. Do not add any information not in the original sources. Only state facts that are directly in the sources.",
 			issuesStr)
 		if err == nil && revised != "" {
+			revised, revisedNotes := takeEditorNotes(revised, sources)
+			revisedDetails, revisedLinks := replyDetails(revised, sources)
 			revised = cleanMarkdown(revised)
 			revised, revisedUnresolved := cleanSourceRefs("auto-revision", revised, sources)
 			revised, revisedMentions := checkOutlets("auto-revision", revised, outlets)
@@ -170,15 +182,18 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 				if v2.Score >= verification.Score {
 					content = revised
 					verification = v2
+					keyDetails, links = revisedDetails, revisedLinks
+					notes = revisedNotes
 				}
 			}
 		}
 	}
 
-	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
+	content, parsedTitle, tldr := p.finalizeContent(content)
 
-	// If structured parsing didn't extract key details, use a separate AI call
+	// Only a reply without usable key details costs a separate call.
 	if len(keyDetails) == 0 {
+		slog.Info("no key details in the generated article, extracting them separately")
 		kd, lk := p.extractDetails(parsedTitle, content)
 		kd = cleanDetailSourceRefs(kd, sources)
 		kd = dropOutletDetails(kd, outlets, parsedTitle)
@@ -199,7 +214,23 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
+		EditorNotes:     notes,
 	}, nil
+}
+
+// needsRevision reports whether a verdict leaves anything for the
+// auto-revision to fix: an issue that survived dropPassedChecks, which
+// includes the source-reference and news-site issues flagSourceRefs and
+// flagOutletMentions add.
+//
+// The score and the checks are deliberately not part of the decision. In
+// production (2026-09-21 to 10-01) verdicts with all four checks passing and
+// scores of 85-95 still carried real errors -- a miscalculated per-point
+// price, a wrong joint-venture member, a "202026" typo -- so gating on them
+// would publish fixable mistakes. What wasted revisions was issues that were
+// not problems at all, which the critic prompt and dropPassedChecks remove.
+func needsRevision(v *VerificationResult) bool {
+	return len(v.Issues) > 0
 }
 
 // extractDetails makes a separate AI call to extract key details and links from the article.
@@ -248,8 +279,10 @@ func (p *Pipeline) ProcessWithFeedback(sources []SourceArticle, previousOutput, 
 	return p.buildResult(content, "", sources)
 }
 
-func (p *Pipeline) buildResult(content, articleType string, sources []SourceArticle) (*PipelineResult, error) {
-	content = cleanMarkdown(content)
+func (p *Pipeline) buildResult(raw, articleType string, sources []SourceArticle) (*PipelineResult, error) {
+	raw, notes := takeEditorNotes(raw, sources)
+	keyDetails, links := replyDetails(raw, sources)
+	content := cleanMarkdown(raw)
 	content, unresolved := cleanSourceRefs("revision", content, sources)
 	outlets := p.outletMatcher(sources)
 	content, mentions := checkOutlets("revision", content, outlets)
@@ -265,7 +298,7 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
 		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
-	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
+	content, parsedTitle, tldr := p.finalizeContent(content)
 
 	return &PipelineResult{
 		Content:         content,
@@ -276,7 +309,39 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
+		EditorNotes:     notes,
 	}, nil
+}
+
+// takeEditorNotes splits the admin-only editor notes out of a raw generator
+// reply before anything grades or parses it, so the key details, the critic,
+// the auto-revision and the structured parsing see only the article. Notes are
+// never published, so a numbered source reference in them is not flagged; it
+// is spelled out as the outlet's name, which tells the admin which source the
+// note is about.
+func takeEditorNotes(content string, sources []SourceArticle) (clean, notes string) {
+	clean, notes = editornote.Split(content)
+	if notes != "" {
+		notes = nameSourcesInNotes(notes, sources)
+	}
+	return clean, notes
+}
+
+// nameSourcesInNotes replaces "Source N" in admin-only editor notes with the
+// name of the Nth source. Never used on published text: articles must not name
+// the outlets they were written from.
+func nameSourcesInNotes(notes string, sources []SourceArticle) string {
+	return replaceEach(numberedSourceRE, notes, func(g []string, before, after string) string {
+		n, err := strconv.Atoi(g[1])
+		if err != nil || n < 1 || n > len(sources) || notASourceRef(before, after) {
+			return g[0]
+		}
+		name := strings.TrimSpace(sources[n-1].Name)
+		if name == "" {
+			return g[0]
+		}
+		return name
+	})
 }
 
 // cleanSourceRefs removes citation markers ("[1]") from a raw generator reply
@@ -310,6 +375,30 @@ func flagSourceRefs(v *VerificationResult, refs []string, _ []SourceArticle) {
 	}
 	v.AttributionCheck = false
 	v.Issues = append(v.Issues, SourceRefIssue(refs))
+}
+
+// replyDetails parses the KEY_DETAILS and LINKS sections out of a raw
+// generator reply.
+//
+// It has to see the reply before cleanMarkdown does: cleanMarkdown turns every
+// "- " line into "<li>...</li>", and the section parser only recognises "- "
+// items, so parsing the cleaned text found no key details in a well-formed
+// reply. Every article then paid for the separate extraction call in
+// extractDetails, and shipped without key details whenever that call failed.
+//
+// The details are taken from the reply, not from the copy cleanSourceRefs
+// checks, so they get the same per-detail treatment as extracted ones. Outlet
+// mentions in them are left to the whole-reply check (checkOutlets), which
+// sends them to the auto-revision.
+func replyDetails(raw string, sources []SourceArticle) ([]KeyDetail, []ArticleLink) {
+	_, _, details, links, _ := parseStructuredContent(raw)
+	for i := range details {
+		// Key details render as plain text, and cleanMarkdown no longer gets
+		// the chance to turn a stray **bold** into tags.
+		details[i].Label = strings.TrimSpace(strings.ReplaceAll(details[i].Label, "**", ""))
+		details[i].Value = strings.TrimSpace(strings.ReplaceAll(details[i].Value, "**", ""))
+	}
+	return cleanDetailSourceRefs(details, sources), links
 }
 
 // cleanDetailSourceRefs removes citation markers from key details and drops
@@ -393,9 +482,10 @@ func dropOutletDetails(details []KeyDetail, m *OutletMatcher, title string) []Ke
 	return kept
 }
 
-// finalizeContent processes raw generated content through the structured parsing pipeline.
-func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr string, keyDetails []KeyDetail, links []ArticleLink) {
-	parsedTitle, tldr, keyDetails, links, parsedBody := parseStructuredContent(content)
+// finalizeContent turns the cleaned reply into the article body, title and
+// TLDR. Key details and links come from the raw reply; see replyDetails.
+func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr string) {
+	parsedTitle, tldr, _, _, parsedBody := parseStructuredContent(content)
 	if parsedTitle == "" {
 		parsedTitle = extractTitle(content)
 	}
@@ -421,7 +511,7 @@ func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr st
 	} else {
 		content = formatContent(content)
 	}
-	return content, parsedTitle, tldr, keyDetails, links
+	return content, parsedTitle, tldr
 }
 
 // Compiled patterns for structural-marker handling. Resilient to malformed

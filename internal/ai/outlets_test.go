@@ -224,13 +224,13 @@ func TestCheckOutlets_IgnoresDroppedLinkEntries(t *testing.T) {
 	}
 }
 
-// sequenceClient returns its replies in turn, repeating the last.
-type sequenceClient struct {
+// promptSequenceClient returns its replies in turn, repeating the last.
+type promptSequenceClient struct {
 	replies []string
 	prompts []string
 }
 
-func (c *sequenceClient) Generate(model, prompt string, maxTokens int) (string, error) {
+func (c *promptSequenceClient) Generate(model, prompt string, maxTokens int) (string, error) {
 	c.prompts = append(c.prompts, prompt)
 	r := c.replies[min(len(c.prompts), len(c.replies))-1]
 	return r, nil
@@ -240,7 +240,7 @@ func (c *sequenceClient) Generate(model, prompt string, maxTokens int) (string, 
 // fails attribution with an issue naming the outlet, which the auto-revision
 // receives; a revision without the mention passes.
 func TestPipeline_Process_OutletMentionTriggersRevision(t *testing.T) {
-	gen := &sequenceClient{replies: []string{outletReply, cleanOutletReply}}
+	gen := &promptSequenceClient{replies: []string{outletReply, cleanOutletReply}}
 	critic := &recordingClient{reply: cleanVerdict}
 	p := NewPipeline(NewGenerator(gen, "gen", "", nil), NewCritic(critic, "critic"), 80)
 	p.SetOutlets(func() []Outlet { return tableOutlets() })

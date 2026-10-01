@@ -93,6 +93,11 @@ func TestPipeline_Process_NumberedSourceRefsAreFlaggedNotRewritten(t *testing.T)
 	if v.AttributionCheck || len(v.Issues) == 0 || !strings.Contains(v.Issues[len(v.Issues)-1], `"Source 1"`) {
 		t.Errorf("verification = %+v; want a failed attribution check with the issue", v)
 	}
+	// Key details are parsed from the reply: the one citing "Source 2" is
+	// dropped, not rewritten to the outlet's name.
+	if len(res.KeyDetails) != 1 || res.KeyDetails[0].Label != "Deadline" {
+		t.Errorf("key details = %+v; want the Source 2 detail dropped and the deadline kept", res.KeyDetails)
+	}
 }
 
 // TestPipeline_Process_FlagsUnmappableSourceRefs: a number that maps to no
