@@ -98,8 +98,11 @@ func (d *Database) GetSource(id int64) (*Source, error) {
 	return s, nil
 }
 
+// ListActiveSources returns the active sources by id. The order is part of the
+// contract: the scan builds each cluster's source list in this order, and
+// revisions and the source-reference repair rely on reproducing it.
 func (d *Database) ListActiveSources() ([]Source, error) {
-	rows, err := d.db.Query(`SELECT id, name, url, rss_url, scrape_selector, scan_interval, active, created_at, updated_at FROM sources WHERE active = 1`)
+	rows, err := d.db.Query(`SELECT id, name, url, rss_url, scrape_selector, scan_interval, active, created_at, updated_at FROM sources WHERE active = 1 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +164,7 @@ func (d *Database) CreateRawArticleIfNew(a *RawArticle) (bool, error) {
 
 func (d *Database) GetRawArticlesBySourceID(sourceID int64) ([]RawArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, source_id, title, url, content, published_at, hash, created_at FROM raw_articles WHERE source_id = ?`, sourceID,
+		`SELECT id, source_id, title, url, content, published_at, hash, created_at FROM raw_articles WHERE source_id = ? ORDER BY id`, sourceID,
 	)
 	if err != nil {
 		return nil, err
@@ -1246,6 +1249,26 @@ func (d *Database) SyncArticleFTS(id int64) error {
 	// Delete existing entry, then insert.
 	d.db.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id)
 	_, err = d.db.Exec(
+		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
+		id, stripHTMLForDB(title), stripHTMLForDB(tldr), stripHTMLForDB(content),
+	)
+	return err
+}
+
+// SyncArticleFTSTx is SyncArticleFTS inside the caller's transaction, so an
+// article rewrite and its index entry commit or roll back together. Unlike
+// SyncArticleFTS it reports a failed delete too: a stale entry left behind
+// next to the new one is exactly what the transaction is there to prevent.
+func SyncArticleFTSTx(tx *sql.Tx, id int64) error {
+	var title, tldr, content string
+	err := tx.QueryRow(`SELECT title, COALESCE(tldr,''), content FROM generated_articles WHERE id = ?`, id).Scan(&title, &tldr, &content)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id); err != nil {
+		return err
+	}
+	_, err = tx.Exec(
 		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
 		id, stripHTMLForDB(title), stripHTMLForDB(tldr), stripHTMLForDB(content),
 	)
