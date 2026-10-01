@@ -3,37 +3,84 @@
 <div class="cards-listing">
     <div class="cards-hero">
         <h1>Credit Card Guide</h1>
-        <p>In-depth reference pages for top credit cards — maintained by {{.PersonaName}}.</p>
+        <p>In-depth reference pages for {{.Total}} credit cards — maintained by {{.PersonaName}}.</p>
     </div>
 
-    {{if .Groups}}
-    {{range .Groups}}
-    <div class="cards-category-group">
-        <h2 class="category-heading">{{.Name}}</h2>
-        <div class="card-grid">
-            {{range .Cards}}
-            <a href="/cards/{{.Slug}}" class="card-grid-item">
-                {{if .ImageURL}}
-                <div class="card-grid-image">
-                    <img src="{{.ImageURL}}" alt="{{.Title}}">
-                </div>
-                {{end}}
-                <div class="card-grid-body">
-                    <span class="issuer-badge">{{.Issuer}}</span>
-                    <h3>{{.Title}}</h3>
-                    {{if .VerdictPreview}}
-                    <p class="card-grid-excerpt">{{.VerdictPreview}}</p>
-                    {{end}}
-                </div>
-            </a>
+    {{with .Index}}
+    {{/* A plain GET form: the chips and fee bands are links that keep the other
+         filters, and the selects submit with the button. Every view has its
+         own URL and nothing needs JavaScript. Not a <nav>: the site styles every
+         <nav> as the sticky header. */}}
+    <form class="cards-filters" method="get" action="/cards/" aria-label="Filter cards">
+        {{if .Query.Cat}}<input type="hidden" name="cat" value="{{.Query.Cat}}">{{end}}
+        {{if .Query.Fee}}<input type="hidden" name="fee" value="{{.Query.Fee}}">{{end}}
+        <div class="filter-bar" role="group" aria-label="Category">
+            {{range .Categories}}{{if or .Count .Active}}<a href="{{.URL}}" class="filter-chip{{if .Active}} active{{end}}"{{if .Active}} aria-current="true"{{end}}>{{.Label}} <span class="filter-count">{{.Count}}</span></a>{{else}}<span class="filter-chip is-empty" aria-disabled="true">{{.Label}} <span class="filter-count">0</span></span>{{end}}
             {{end}}
         </div>
+        <div class="cards-filter-row">
+            <div class="filter-bar cards-fee-bar">
+                <span class="cards-filter-label" id="cards-fee-label">Annual fee</span>
+                <div class="filter-switch" role="group" aria-labelledby="cards-fee-label">
+                    {{range .FeeBands}}{{if or .Count .Active}}<a href="{{.URL}}" class="filter-switch-item{{if .Active}} active{{end}}"{{if .Active}} aria-current="true"{{end}}>{{.Label}}</a>{{else}}<span class="filter-switch-item is-empty" aria-disabled="true">{{.Label}}</span>{{end}}{{end}}
+                </div>
+            </div>
+            <div class="cards-selects">
+                <label class="cards-select"><span class="cards-filter-label">Issuer</span>
+                    <select name="issuer">{{range .Issuers}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+                </label>
+                <label class="cards-select"><span class="cards-filter-label">Sort</span>
+                    <select name="sort">{{range .Sorts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+                </label>
+                <button type="submit" class="cards-filter-apply">Apply</button>
+            </div>
+        </div>
+    </form>
+
+    <div class="active-filters cards-count" role="status">
+        <span>{{if .Count}}Showing {{.CountText}}{{else}}No cards match{{end}}</span>
+        {{if .Active}}<span class="active-filters-sep" aria-hidden="true">·</span>
+        {{range .Active}}<a href="{{.RemoveURL}}" class="filter-remove" aria-label="Remove filter: {{.Label}}">{{.Label}}<span class="filter-remove-x" aria-hidden="true">✕</span></a>
+        {{end}}<a href="/cards/" class="filter-clear">Clear all</a>{{end}}
+    </div>
+
+    {{if .Grouped}}
+    {{range .Groups}}
+    <section class="cards-category-group">
+        <h2 class="category-heading">{{.Name}}</h2>
+        <div class="card-tiles">{{range .Cards}}{{template "card-tile" .}}{{end}}</div>
+    </section>
+    {{end}}
+    {{else if .Cards}}
+    <h2 class="cards-sr-only">Matching cards</h2>
+    <div class="card-tiles">{{range .Cards}}{{template "card-tile" .}}{{end}}</div>
+    {{end}}
+
+    {{if not .Count}}
+    <div class="empty-state">
+        {{if .Active}}<p>No cards match these filters. <a href="/cards/">Show all cards</a></p>{{else}}<p>No cards published yet. Check back soon!</p>{{end}}
     </div>
     {{end}}
-    {{else}}
-    <div class="empty-state">
-        <p>No cards published yet. Check back soon!</p>
-    </div>
     {{end}}
 </div>
+{{end}}
+
+{{/* A compact tile: art, name, then the facts people choose a card by. The
+     art has a fixed box so nothing shifts as it loads, and only the first rows
+     load it straight away. Its alt is empty because the link names the card. */}}
+{{define "card-tile"}}
+<a href="/cards/{{.Slug}}" class="card-tile">
+    <span class="card-tile-art">{{if .ImageURL}}<img src="{{.ImageURL}}" alt="" width="96" height="61" decoding="async"{{if not .Eager}} loading="lazy"{{end}}>{{end}}</span>
+    <div class="card-tile-body">
+        <span class="issuer-badge">{{.Issuer}}</span>
+        <h3 class="card-tile-title">{{.Title}}</h3>
+        {{if .HasFacts}}
+        <p class="card-tile-facts">
+            {{if .FeeKnown}}<span class="card-tile-fact">{{if .FeeAmount}}<b>{{.Fee}}</b> annual fee{{else}}<b>No</b> annual fee{{end}}</span>{{end}}
+            {{if .Earn.Rate}}<span class="card-tile-fact"><b>{{.Earn.Rate}}</b> {{.Earn.Rest}}{{with .Earn.Qualifier}} ({{.}}){{end}}</span>{{end}}
+            {{if .Offer.Short}}<span class="card-tile-fact">{{if .Offer.Available}}Offer <b>{{.Offer.Short}}</b>{{else}}{{.Offer.Short}}{{end}}</span>{{end}}
+        </p>
+        {{end}}
+    </div>
+</a>
 {{end}}

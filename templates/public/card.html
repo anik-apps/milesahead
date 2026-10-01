@@ -25,16 +25,60 @@
     </div>
     {{end}}
 
-    <div class="card-layout">
-        {{if .Sections}}
-        <aside class="card-sidebar">
+    {{/* The summary: what the card costs, what it gives, what Scout thinks of
+         it, and the two things to do next. One panel at every width; on
+         phones it stacks. */}}
+    <section class="card-summary" aria-label="Summary">
+        <div class="card-summary-media{{if and .Infographic .Card.ImageURL}} has-teaser{{end}}">
             {{if .Card.ImageURL}}
-            <div class="card-sidebar-image">
-                <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}">
+            <div class="card-summary-art">
+                <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}" width="480" height="303" fetchpriority="high">
             </div>
             {{end}}
             {{if .Infographic}}{{template "card-infographic-teaser" .}}{{end}}
-            <nav class="card-toc">
+        </div>
+        <div class="card-summary-body">
+            {{with .Facts}}
+            <dl class="card-facts">
+                {{if .Fee}}<div class="card-fact"><dt>Annual fee</dt><dd><span class="card-fact-value">{{.Fee}}</span>{{if .FeeDetail}}<span class="card-fact-detail">{{.FeeDetail}}</span>{{end}}</dd></div>{{end}}
+                {{if .Offer.Headline}}<div class="card-fact"><dt>Welcome offer</dt><dd><span class="card-fact-value">{{.Offer.Headline}}</span>{{if .Offer.Condition}}<span class="card-fact-detail">{{.Offer.Condition}}</span>{{end}}</dd></div>{{end}}
+                {{if .Earn}}<div class="card-fact"><dt>Earns</dt><dd><span class="card-fact-value">{{(index .Earn 0).Detail}}</span>{{with .EarnRest}}<span class="card-fact-detail">{{.}}</span>{{end}}</dd></div>{{end}}
+            </dl>
+            {{end}}
+            {{if .VerdictLead}}
+            <p class="card-summary-verdict"><span class="card-summary-verdict-label">{{.PersonaName}}'s verdict</span> {{.VerdictLead}} <a href="#section-verdict">Read the verdict</a></p>
+            {{end}}
+            {{if or .Card.ApplyURL .CompareGroups}}
+            <div class="card-actions">
+                {{if .Card.ApplyURL}}{{template "card-apply" .}}{{end}}
+                {{if .CompareGroups}}{{template "card-compare-form" .}}{{end}}
+            </div>
+            {{end}}
+        </div>
+    </section>
+
+    {{/* Phones: the table of contents as a row of pills that sticks under the
+         header. Not a <nav>: the site styles every <nav> as the header. */}}
+    {{if .Sections}}
+    <div class="card-pills-wrap" role="navigation" aria-label="On this page">
+        <div class="card-mobile-pills">
+            {{if $.Video}}<a href="#card-video">Watch ({{$.Video.Duration}})</a>{{end}}
+            {{range .Sections}}<a href="#section-{{.Key}}">{{.Title}}</a>
+            {{end}}
+            {{if $.ScoutsVerdict}}<a href="#section-verdict">{{$.PersonaName}}'s Verdict</a>{{end}}
+            {{if $.RecentChanges}}<a href="#section-recent-changes">Recent Changes</a>{{end}}
+            <a href="#section-next-steps">Next steps</a>
+        </div>
+    </div>
+    {{end}}
+
+    {{/* Without sections there is no table of contents, and the text takes
+         the whole width rather than the contents column. */}}
+    <div class="card-layout{{if not .Sections}} no-toc{{end}}">
+        {{if .Sections}}
+        <aside class="card-sidebar">
+            <nav class="card-toc" aria-label="On this page">
+                <p class="card-toc-title" aria-hidden="true">On this page</p>
                 <ul>
                     {{if $.Video}}
                     <li><a href="#card-video">Watch the video ({{$.Video.Duration}})</a></li>
@@ -48,58 +92,13 @@
                     {{if $.RecentChanges}}
                     <li><a href="#section-recent-changes">Recent Changes</a></li>
                     {{end}}
+                    <li><a href="#section-next-steps">Next steps</a></li>
                 </ul>
             </nav>
-            {{if .Card.ApplyURL}}
-            <a href="{{.Card.ApplyURL}}" target="_blank" rel="noopener noreferrer" class="card-apply-btn">Card Details &rarr;</a>
-            {{end}}
-            {{if .CompareGroups}}
-            <div class="card-compare-section" style="margin-top:1rem;">
-                <h4 style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.5rem;">Compare with...</h4>
-                <select onchange="if(this.value) window.location='/compare?cards={{.Card.Slug}},'+this.value" style="width:100%;padding:0.4rem;background:var(--card-bg);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:0.85rem;">
-                    <option value="">Select a card</option>
-                    {{range .CompareGroups}}
-                    <optgroup label="{{.Category}}">
-                        {{range .Cards}}
-                        <option value="{{.Slug}}">{{.Title}}</option>
-                        {{end}}
-                    </optgroup>
-                    {{end}}
-                </select>
-            </div>
-            {{end}}
         </aside>
         {{end}}
 
         <div class="card-main">
-            {{/* Mobile-only header card */}}
-            <div class="card-mobile-header">
-                {{if .Card.ImageURL}}
-                <div class="card-mobile-image">
-                    <img src="{{.Card.ImageURL}}" alt="{{.Card.Title}}">
-                </div>
-                {{end}}
-            {{if .Infographic}}{{template "card-infographic-teaser" .}}{{end}}
-                {{if .Card.ApplyURL}}
-                <a href="{{.Card.ApplyURL}}" target="_blank" rel="noopener noreferrer" class="card-apply-btn">Card Details &rarr;</a>
-                {{end}}
-            </div>
-
-            {{/* Mobile-only pill nav */}}
-            {{if .Sections}}
-            <div class="card-mobile-pills">
-                {{if $.Video}}
-                <a href="#card-video">Watch ({{$.Video.Duration}})</a>
-                {{end}}
-                {{range .Sections}}
-                <a href="#section-{{.Key}}">{{.Title}}</a>
-                {{end}}
-                {{if $.ScoutsVerdict}}
-                <a href="#section-verdict">{{$.PersonaName}}'s Verdict</a>
-                {{end}}
-            </div>
-            {{end}}
-
             <div class="card-sections">
                 {{range .Sections}}
                 <section class="card-section" id="section-{{.Key}}">
@@ -112,8 +111,8 @@
             </div>
 
             {{if .ScoutsVerdict}}
-            <section class="scouts-verdict" id="section-verdict">
-                <div class="scout-label">{{.PersonaName}}'s Verdict</div>
+            <section class="scouts-verdict" id="section-verdict" aria-labelledby="verdict-heading">
+                <h2 class="scout-label" id="verdict-heading">{{.PersonaName}}'s Verdict</h2>
                 <div class="scouts-verdict-content">
                     {{.ScoutsVerdict | safeHTML}}
                 </div>
@@ -136,6 +135,24 @@
                 </ul>
             </section>
             {{end}}
+
+            {{/* Every card page ends with somewhere to go: apply, compare with the
+                 rivals the page discusses, or more cards like it. */}}
+            <section class="card-next-steps" id="section-next-steps" aria-labelledby="next-steps-heading">
+                <h2 id="next-steps-heading">Next steps</h2>
+                {{if .Card.ApplyURL}}
+                <div class="card-next-apply">{{template "card-apply" .}}{{if .ApplyHost}}<span class="card-next-note" aria-hidden="true">Opens {{.ApplyHost}} in a new tab</span>{{end}}</div>
+                {{end}}
+                {{if .Rivals}}
+                <h3 class="card-next-sub">Compare {{.Card.Title}} with</h3>
+                <ul class="card-rivals">
+                    {{range .Rivals}}
+                    <li><a href="{{.CompareURL}}" class="card-rival">{{if .ImageURL}}<img src="{{.ImageURL}}" alt="" width="52" height="33" loading="lazy" decoding="async">{{end}}<span><span class="card-rival-name">{{.Title}}</span><span class="card-rival-cta">Compare side by side →</span></span></a></li>
+                    {{end}}
+                </ul>
+                {{end}}
+                <p class="card-next-more">{{if .Related}}More {{.CategoryName}} cards: {{range $i, $c := .Related}}{{if $i}}, {{end}}<a href="/cards/{{$c.Slug}}">{{$c.Title}}</a>{{end}}. {{end}}<a href="{{.CategoryURL}}">All {{.CategoryName}} cards</a>{{if .CompareGroups}} · <a href="#compare-with">Compare with any of {{.CompareCount}} cards</a>{{end}}</p>
+            </section>
         </div>
     </div>
 </article>
@@ -143,7 +160,11 @@
 <dialog class="ig-lightbox" id="ig-lightbox" aria-label="{{.Card.Title}} infographic">
     <div class="ig-lightbox-frame">
         <div class="ig-lightbox-bar">
-            <span>Figures checked {{.Infographic.Checked}} &middot; <a href="{{.InfographicImage}}" target="_blank" rel="noopener">Open image</a></span>
+            <span class="ig-lightbox-meta"><span class="ig-lightbox-date">Figures checked {{.Infographic.Checked}} &middot; </span><a href="{{.InfographicImage}}" target="_blank" rel="noopener">Open image</a></span>
+            {{/* Shown by card-infographic.js when the image is drawn smaller than
+                 its real size (phones): switches between fit-to-width and full
+                 size with panning. */}}
+            <button type="button" class="ig-lightbox-zoom" data-ig-zoom aria-pressed="false" hidden>Zoom</button>
             {{/* autofocus: the dialog opens on a named control, not the unnamed scroll area */}}
             <button type="button" class="ig-lightbox-close" data-ig-close autofocus>Close <span aria-hidden="true">&#10005;</span></button>
         </div>
@@ -167,10 +188,10 @@
 <script src="/static/js/card-infographic.js"></script>
 {{end}}
 {{if .Video}}<script src="/static/js/card-video.js"></script>{{end}}
+{{if .Sections}}<script src="/static/js/card-toc.js" defer></script>{{end}}
 {{end}}
 
-{{/* The infographic bar sits under the card art in the sidebar and in the mobile
-     header card. It is a plain link to the full image, so it works without
+{{/* The infographic bar sits under the card art in the summary panel. It is a plain link to the full image, so it works without
      JavaScript; card-infographic.js upgrades it to open the in-page viewer. Its
      accessible name is its visible text ("Infographic Expand"), so speech input
      can target it by what it says (WCAG 2.5.3). */}}
@@ -182,4 +203,28 @@
     </a>
     <p class="ig-bar-meta">Figures checked {{.Infographic.Checked}}</p>
 </div>
+{{end}}
+{{/* Leaves for the issuer's site in a new tab, and says so: the arrow, and
+     hidden text for screen readers. */}}
+{{define "card-apply"}}<a href="{{.Card.ApplyURL}}" target="_blank" rel="noopener noreferrer" class="card-apply-btn">{{.ApplyLabel}} <span aria-hidden="true">&#8599;</span><span class="cards-sr-only"> (opens {{if .ApplyHost}}{{.ApplyHost}}{{else}}the issuer's site{{end}} in a new tab)</span></a>{{end}}
+
+{{/* A labelled GET form: works without JavaScript, and choosing a card does
+     nothing until the button is pressed. Each option's value is the pair of
+     slugs /compare expects. */}}
+{{define "card-compare-form"}}
+<form class="card-compare" method="get" action="/compare">
+    <label for="compare-with">Compare with</label>
+    <div class="card-compare-row">
+        <select id="compare-with" name="cards" required>
+            <option value="">Choose a card</option>
+            {{range .CompareGroups}}
+            <optgroup label="{{.Category}}">
+                {{range .Cards}}<option value="{{$.Card.Slug}},{{.Slug}}">{{.Title}}</option>
+                {{end}}
+            </optgroup>
+            {{end}}
+        </select>
+        <button type="submit">Compare</button>
+    </div>
+</form>
 {{end}}
