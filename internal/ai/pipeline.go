@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/kumaranik/milesahead/internal/editornote"
 	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
@@ -44,6 +45,10 @@ type PipelineResult struct {
 	ScoutsTake       string
 	RelatedCards     []RelatedCard
 	Tags             []string
+	// EditorNotes are remarks the model addressed to the admin as
+	// <div class="editor-note">, taken out of Content (see package
+	// editornote). One per line; never published.
+	EditorNotes string
 }
 
 // Pipeline orchestrates the generator and two critics to produce verified articles.
@@ -110,6 +115,9 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		return nil, err
 	}
 
+	// Notes come out first, so neither the key details, the critic nor the
+	// auto-revision ever see them.
+	raw, notes := takeEditorNotes(raw, sources)
 	keyDetails, links := replyDetails(raw, sources)
 	content := cleanMarkdown(raw)
 	content, unresolved := cleanSourceRefs("generation", content, sources)
@@ -134,6 +142,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 			"Fix ALL of the following issues. Do not add any information not in the original sources. Only state facts that are directly in the sources.",
 			issuesStr)
 		if err == nil && revised != "" {
+			revised, revisedNotes := takeEditorNotes(revised, sources)
 			revisedDetails, revisedLinks := replyDetails(revised, sources)
 			revised = cleanMarkdown(revised)
 			revised, revisedUnresolved := cleanSourceRefs("auto-revision", revised, sources)
@@ -147,6 +156,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 					content = revised
 					verification = v2
 					keyDetails, links = revisedDetails, revisedLinks
+					notes = revisedNotes
 				}
 			}
 		}
@@ -176,6 +186,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
+		EditorNotes:     notes,
 	}, nil
 }
 
@@ -240,6 +251,7 @@ func (p *Pipeline) ProcessWithFeedback(sources []SourceArticle, previousOutput, 
 }
 
 func (p *Pipeline) buildResult(raw, articleType string, sources []SourceArticle) (*PipelineResult, error) {
+	raw, notes := takeEditorNotes(raw, sources)
 	keyDetails, links := replyDetails(raw, sources)
 	content := cleanMarkdown(raw)
 	content, unresolved := cleanSourceRefs("revision", content, sources)
@@ -265,7 +277,21 @@ func (p *Pipeline) buildResult(raw, articleType string, sources []SourceArticle)
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
+		EditorNotes:     notes,
 	}, nil
+}
+
+// takeEditorNotes splits the admin-only editor notes out of a raw generator
+// reply before anything grades or parses it, so the key details, the critic,
+// the auto-revision and the structured parsing see only the article. Numbered
+// source references in the notes are rewritten to outlet names like the
+// article's, but are not flagged to the critic: notes are never published.
+func takeEditorNotes(content string, sources []SourceArticle) (clean, notes string) {
+	clean, notes = editornote.Split(content)
+	if notes != "" {
+		notes, _ = FixSourceRefs(notes, sources)
+	}
+	return clean, notes
 }
 
 // cleanSourceRefs rewrites numbered source references ("Source 1 notes...")

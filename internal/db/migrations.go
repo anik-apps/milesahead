@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kumaranik/milesahead/internal/editornote"
 	"github.com/kumaranik/milesahead/internal/offer"
 )
 
@@ -237,6 +238,12 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE generated_articles ADD COLUMN revision_failures INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE generated_articles ADD COLUMN revision_retry_after INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE generated_articles ADD COLUMN revision_last_error TEXT NOT NULL DEFAULT ''`,
+		// Remarks for the admin reviewing an article, one per line. They
+		// used to be stored inside content as <div class="editor-note"> and
+		// only hidden from readers by CSS, so they reached the page source,
+		// search and anything else built from content. Content is now
+		// stored without them; see package editornote.
+		`ALTER TABLE generated_articles ADD COLUMN editor_notes TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)
@@ -258,6 +265,10 @@ func migrate(db *sql.DB) error {
 
 	if err := populateFTS(db); err != nil {
 		return fmt.Errorf("populating FTS: %w", err)
+	}
+
+	if err := reindexEditorNoteRows(db); err != nil {
+		return fmt.Errorf("reindexing articles with editor notes: %w", err)
 	}
 
 	if err := repairRottedImages(db); err != nil {
@@ -441,7 +452,7 @@ func populateFTS(conn *sql.DB) error {
 			}
 			_, err := conn.Exec(
 				`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
-				id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), stripHTMLForFTS(content),
+				id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), stripHTMLForFTS(editornote.Strip(content)),
 			)
 			if err != nil {
 				return err
@@ -479,6 +490,66 @@ func populateFTS(conn *sql.DB) error {
 		}
 	}
 
+	return nil
+}
+
+// reindexEditorNoteRows rebuilds the search index entry of every article whose
+// stored content still holds an editor note, so search never matches or
+// snippets a note -- before cmd/repair-editor-notes has moved the notes out of
+// the content, too. The index is derived data and the content is not touched.
+// It runs on every startup and only writes entries that differ; once no
+// content holds a note it costs one table scan and writes nothing.
+func reindexEditorNoteRows(conn *sql.DB) error {
+	rows, err := conn.Query(`SELECT id, title, COALESCE(tldr,''), content FROM generated_articles
+		WHERE content LIKE '%` + editornote.Class + `%'`)
+	if err != nil {
+		return err
+	}
+	type entry struct {
+		id                   int64
+		title, tldr, content string
+	}
+	var entries []entry
+	for rows.Next() {
+		var e entry
+		if err := rows.Scan(&e.id, &e.title, &e.tldr, &e.content); err != nil {
+			rows.Close()
+			return err
+		}
+		entries = append(entries, e)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, e := range entries {
+		want := stripHTMLForFTS(editornote.Strip(e.content))
+		var have string
+		err := conn.QueryRow(`SELECT content FROM articles_fts WHERE rowid = ?`, e.id).Scan(&have)
+		if err == nil && have == want {
+			continue
+		}
+		if err != nil && err != sql.ErrNoRows {
+			return err
+		}
+		tx, err := conn.Begin()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, e.id); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
+			e.id, stripHTMLForFTS(e.title), stripHTMLForFTS(e.tldr), want); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		slog.Info("reindexed article without its editor notes", "article_id", e.id)
+	}
 	return nil
 }
 

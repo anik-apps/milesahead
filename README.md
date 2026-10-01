@@ -129,6 +129,23 @@ go run ./cmd/repair-source-refs -db ./data/milesahead.db          # dry run
 go run ./cmd/repair-source-refs -db ./data/milesahead.db -apply   # write
 ```
 
+### Editor notes
+
+A remark for the admin rather than readers ("Could not find a link for: ...")
+is an editor note. If generated text contains one (`<div class="editor-note">`)
+it is split out before the article is stored, kept in the admin-only
+`editor_notes` column and shown in the dashboard preview and the review email.
+Content is never stored with notes, and anything that loads an article (pages,
+feed, newsletter, excerpts, search index, prompts) strips any still inline in
+older rows (`internal/editornote`). To move notes out of articles stored before
+this, run the one-off tool (a read-only dry run unless `-apply` is given; it
+takes no backup, so take one first):
+
+```bash
+go run ./cmd/repair-editor-notes -db ./data/milesahead.db          # dry run
+go run ./cmd/repair-editor-notes -db ./data/milesahead.db -apply   # write
+```
+
 ## Documentation
 
 Full documentation is built with [Hugo](https://gohugo.io/) using the [Hextra](https://imfing.github.io/hextra/) theme.

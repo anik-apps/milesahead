@@ -73,8 +73,11 @@ func newFixture(t *testing.T) *fixture {
 		`<p>Source 1 notes this offer "doesn't come around often."</p>`,
 		"Source 2 confirms 20%.", `[{"Label":"Bonus","Value":"20% (Source 2)"}]`, "", 1, ll, omaat)
 	article("revised-ambiguous", "T", "<p>Source 1 notes it.</p>", "", "[]", "", 2, ll, omaat)
+	// An outlet named next to the number wins even where the orders
+	// disagree. (Production's case was the editor note on article 57; notes
+	// are no longer stored in content, so the reference is in body text.)
 	article("revised-explicit", "T",
-		`<p>ok</p><div class="editor-note">image from Source 2 (LoyaltyLobby)</div>`, "", "[]", "", 2, ll, omaat)
+		`<p>ok</p><p>Image from Source 2 (LoyaltyLobby).</p>`, "", "[]", "", 2, ll, omaat)
 
 	// Here both orders agree, so a revised article is still mappable.
 	omaat2, up := raw("One Mile at a Time"), raw("Upgraded Points")
@@ -155,7 +158,7 @@ func TestApplyRewritesOnlyUnambiguousRowsAndIsIdempotent(t *testing.T) {
 	if a.Slug != "unrevised" {
 		t.Errorf("slug changed to %q", a.Slug)
 	}
-	if got := f.get(t, "revised-explicit").Content; got != `<p>ok</p><div class="editor-note">image from Loyalty Lobby</div>` {
+	if got := f.get(t, "revised-explicit").Content; got != `<p>ok</p><p>Image from Loyalty Lobby.</p>` {
 		t.Errorf("explicit outlet not used: %q", got)
 	}
 	agree := f.get(t, "revised-agree")

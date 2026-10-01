@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kumaranik/milesahead/internal/editornote"
 	"github.com/kumaranik/milesahead/internal/offer"
 )
 
@@ -92,6 +93,9 @@ func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]Arti
 			&a.MissingScoutsTake, &a.MissingKeyDetails, &a.MissingImage, &a.MissingTags); err != nil {
 			return nil, fmt.Errorf("scanning article needing enrichment: %w", err)
 		}
+		// The Scout's Take, key details and tags are written from the
+		// content, and are public: no editor note may feed them.
+		a.Content = editornote.Strip(a.Content)
 		out = append(out, a)
 	}
 	return out, rows.Err()
