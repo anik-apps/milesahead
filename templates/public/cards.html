@@ -77,7 +77,7 @@
         {{if .HasFacts}}
         <p class="card-tile-facts">
             <span class="card-tile-fact">{{if .FeeAmount}}<b>{{.Fee}}</b> annual fee{{else}}<b>No</b> annual fee{{end}}</span>
-            {{if .Earn.Rate}}<span class="card-tile-fact"><b>{{.Earn.Rate}}</b> {{.Earn.Rest}}</span>{{end}}
+            {{if .Earn.Rate}}<span class="card-tile-fact"><b>{{.Earn.Rate}}</b> {{.Earn.Rest}}{{with .Earn.Qualifier}} ({{.}}){{end}}</span>{{end}}
             {{if .Offer.Short}}<span class="card-tile-fact">{{if .Offer.Available}}Offer <b>{{.Offer.Short}}</b>{{else}}{{.Offer.Short}}{{end}}</span>{{end}}
         </p>
         {{end}}

@@ -311,6 +311,8 @@ func TestHandleCardsList_SeedCards(t *testing.T) {
 		`<b>5x</b> flights`,
 		`Offer <b>Up to 175K points</b>`,
 		`<b>No</b> annual fee`,
+		// A condition on the rate stays with it.
+		`<b>5%</b> dining, groceries &amp; more (top category only)`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/cards/ should contain %q", want)
