@@ -28,13 +28,13 @@ func TestLayout_RendersBrand(t *testing.T) {
 	body := getPage(t, app, "/")
 
 	for _, want := range []string{
-		`<nav class="site-nav">`,
+		`<nav class="site-nav" aria-label="Main">`,
 		`class="logo brand-logo" aria-label="MilesAhead home"`,
 		`src="/static/img/brand/mark.svg"`,
 		`src="/static/img/brand/mark-dark.svg"`,
 		`<span class="brand-word">MilesAhead</span>`,
-		`<section class="hero-brand">`,
-		`<h1 class="brand-word">MilesAhead</h1>`,
+		`<section class="hero-strip">`,
+		`<h1>Miles, points and credit card deals, curated daily</h1>`,
 		`<footer class="site-footer">`,
 		`<nav class="footer-links" aria-label="Footer">`,
 		`<a href="/cards/">Cards</a>`,
@@ -55,7 +55,7 @@ func TestLayout_RendersBrand(t *testing.T) {
 	if strings.Contains(body, "Toggle Theme") {
 		t.Error("the theme toggle should be an icon button with an accessible name, not text that wraps on phones")
 	}
-	if !strings.Contains(body, `id="theme-toggle" type="button" class="theme-icon-btn" aria-label="Dark theme" aria-pressed="false"`) {
+	if !strings.Contains(body, `id="theme-toggle" type="button" class="theme-icon-btn nav-icon-btn" data-theme-toggle aria-label="Dark theme" aria-pressed="false"`) {
 		t.Error("the theme toggle should be a labelled toggle button")
 	}
 }

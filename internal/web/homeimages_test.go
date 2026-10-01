@@ -176,9 +176,9 @@ func TestLayout_StylesheetURLIsVersionedByContent(t *testing.T) {
 	}
 }
 
-func TestVersionedStylesheet(t *testing.T) {
+func TestVersionedAsset_Stylesheet(t *testing.T) {
 	static := t.TempDir()
-	if got := versionedStylesheet(static); got != "/static/css/style.css" {
+	if got := versionedAsset(static, stylesheetPath); got != "/static/css/style.css" {
 		t.Errorf("missing file: %q, want the unversioned path", got)
 	}
 	if err := os.MkdirAll(filepath.Join(static, "css"), 0o755); err != nil {
@@ -189,7 +189,7 @@ func TestVersionedStylesheet(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(static, "css", "style.css"), []byte(css), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		return versionedStylesheet(static)
+		return versionedAsset(static, stylesheetPath)
 	}
 	v1 := write(".a { color: red; }")
 	if !regexp.MustCompile(`^/static/css/style\.css\?v=[0-9a-f]{12}$`).MatchString(v1) {

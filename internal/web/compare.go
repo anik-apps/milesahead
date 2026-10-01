@@ -265,7 +265,7 @@ func compareSlugs(r *http.Request) (slugs []string, duplicate bool) {
 func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 	allPages, err := app.db.ListPublishedReferencePages("")
 	if err != nil {
-		http.Error(w, "Failed to load cards", http.StatusInternalServerError)
+		app.serverError(w, r, "compare: loading cards", err)
 		return
 	}
 
@@ -282,6 +282,7 @@ func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 		domain = "localhost"
 	}
 	data := map[string]interface{}{
+		"NavSection":      "compare",
 		"Title":           "Compare Cards",
 		"MetaDescription": "Compare credit cards side by side.",
 		"CanonicalURL":    "https://" + domain + "/compare",
@@ -292,7 +293,7 @@ func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 	var cards []db.ComparisonCard
 	if len(slugs) >= 2 {
 		if cards, err = app.db.GetComparisonData(slugs); err != nil {
-			http.Error(w, "Failed to load comparison data", http.StatusInternalServerError)
+			app.serverError(w, r, "compare: loading comparison data", err)
 			return
 		}
 	}

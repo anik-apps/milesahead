@@ -11,16 +11,6 @@
             });
         });
 
-        // Pin the card header just below the site header, whatever its
-        // height at this width (the stylesheet's values are the fallback).
-        var page = document.querySelector('.compare-page');
-        var nav = document.querySelector('nav.site-nav');
-        if (page && nav) {
-            var pin = function() { page.style.setProperty('--compare-sticky-top', nav.offsetHeight + 'px'); };
-            pin();
-            window.addEventListener('resize', pin);
-        }
-
         var table = document.querySelector('.compare-table');
         var diff = document.getElementById('compare-only-diff');
         if (table && diff) {

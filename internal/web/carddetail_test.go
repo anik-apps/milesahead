@@ -117,8 +117,8 @@ func TestApplyLabel(t *testing.T) {
 		{"Amex", true, "Card details at Amex"},
 		{"", false, "Apply on the issuer's site"},
 	} {
-		if got := applyLabel(c.issuer, c.closed); got != c.want {
-			t.Errorf("applyLabel(%q, %v) = %q, want %q", c.issuer, c.closed, got, c.want)
+		if got := cardApplyLabel(c.issuer, c.closed); got != c.want {
+			t.Errorf("cardApplyLabel(%q, %v) = %q, want %q", c.issuer, c.closed, got, c.want)
 		}
 	}
 	for in, want := range map[string]string{
@@ -355,8 +355,16 @@ func TestCardPageStyles_TOCAndStickyOffset(t *testing.T) {
 	if !strings.Contains(rule(".card-sidebar"), "top: calc(var(--sticky-offset) + 1rem)") {
 		t.Error("the sidebar should stick at --sticky-offset")
 	}
-	if !strings.Contains(rule(".card-section"), "scroll-margin-top: calc(var(--sticky-offset) + 1rem)") {
-		t.Error("section anchors should clear --sticky-offset")
+	// Anchors clear the header through the page's scroll-padding; a
+	// scroll-margin that also added the offset would count it twice.
+	if !strings.Contains(rule("html"), "scroll-padding-top: calc(var(--sticky-offset) + 1rem)") {
+		t.Error("section anchors should clear --sticky-offset (html scroll-padding-top)")
+	}
+	if strings.Contains(css, "scroll-margin-top: calc(var(--sticky-offset)") {
+		t.Error("a scroll-margin-top that adds --sticky-offset doubles the page's scroll-padding")
+	}
+	if !strings.Contains(css, "@media (max-width: 768px) { :root { --sticky-offset: 68px; } }") {
+		t.Error("--sticky-offset should follow the header's 68px height on phones")
 	}
 	if strings.Contains(css, "top: 5rem") {
 		t.Error("no sticky element should hard-code the old 5rem offset")
@@ -409,7 +417,7 @@ func TestLeadSentence(t *testing.T) {
 		"A strong pick vs. the U.S. Bank Altitude Go for most diners. Next.": "A strong pick vs. the U.S. Bank Altitude Go for most diners.",
 		"Pair it with e.g. Chase Freedom. Then more.":                        "Pair it with e.g. Chase Freedom.",
 	} {
-		if got := leadSentence(in, verdictLeadMax); got != want {
+		if got := leadSentence(in, cardVerdictLeadMax); got != want {
 			t.Errorf("leadSentence(%q) = %q, want %q", in, got, want)
 		}
 	}

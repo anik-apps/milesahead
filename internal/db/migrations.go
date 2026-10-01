@@ -238,6 +238,14 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE generated_articles ADD COLUMN revision_failures INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE generated_articles ADD COLUMN revision_retry_after INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE generated_articles ADD COLUMN revision_last_error TEXT NOT NULL DEFAULT ''`,
+		// Unsubscribing keeps the row, marked here, so the page that confirms
+		// it can offer Resubscribe and the token in already-sent emails keeps
+		// resolving. confirmed is cleared at the same time.
+		`ALTER TABLE subscribers ADD COLUMN unsubscribed_at DATETIME DEFAULT NULL`,
+		// When a confirmation email was last sent (unix seconds, 0 = never):
+		// a pending address asking again within the cooldown gets no second
+		// email, so the form cannot be used to flood someone's inbox.
+		`ALTER TABLE subscribers ADD COLUMN confirmation_sent_unix INTEGER NOT NULL DEFAULT 0`,
 		// Remarks for the admin reviewing an article, one per line. They
 		// used to be stored inside content as <div class="editor-note"> and
 		// only hidden from readers by CSS, so they reached the page source,

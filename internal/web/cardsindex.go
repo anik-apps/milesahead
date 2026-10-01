@@ -342,7 +342,7 @@ func buildCardsIndex(pages []db.ReferencePage, v url.Values) cardsIndex {
 func (app *App) handleCardsList(w http.ResponseWriter, r *http.Request) {
 	pages, err := app.db.ListPublishedReferencePages("")
 	if err != nil {
-		http.Error(w, "Failed to load cards", http.StatusInternalServerError)
+		app.serverError(w, r, "cards: loading", err)
 		return
 	}
 
@@ -354,6 +354,7 @@ func (app *App) handleCardsList(w http.ResponseWriter, r *http.Request) {
 	ix := buildCardsIndex(pages, r.URL.Query())
 	data := map[string]interface{}{
 		"Title":           "Credit Card Guide",
+		"NavSection":      "cards",
 		"PersonaName":     app.cfg.Site.PersonaName,
 		"Index":           ix,
 		"Total":           len(pages),

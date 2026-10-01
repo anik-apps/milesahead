@@ -3,6 +3,7 @@ package web
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"html/template"
@@ -159,7 +160,7 @@ func (app *App) handleHome(w http.ResponseWriter, r *http.Request) {
 		articles, err = app.db.ListLivePublishedArticles(today, 20, 0)
 	}
 	if err != nil {
-		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
+		app.serverError(w, r, "home: loading articles", err)
 		return
 	}
 	// An empty live feed on a site that has published articles means every
@@ -372,21 +373,25 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 
 	article, err := app.db.GetGeneratedArticleBySlug(slug)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			http.NotFound(w, r)
+		if errors.Is(err, sql.ErrNoRows) {
+			app.notFound(w, http.StatusNotFound, errKindArticle, slug)
 			return
 		}
-		http.Error(w, "Failed to load article", http.StatusInternalServerError)
+		app.serverError(w, r, "article: loading", err)
 		return
 	}
 
-	// If not approved, show "under review" message.
+	// Anything not approved is not public. It gets the same page as a slug
+	// that never existed, with nothing of the article in it (not even the
+	// headline in <title>), so drafts and rejected stories stay private.
+	// One that was published and has been taken down is 410 Gone, which
+	// tells search engines to drop it.
 	if article.Status != db.StatusApproved {
-		data := map[string]interface{}{
-			"Title":       article.Title,
-			"UnderReview": true,
+		status := http.StatusNotFound
+		if article.Status == db.StatusUnpublished || article.PublishedAt != nil {
+			status = http.StatusGone
 		}
-		app.renderTemplate(w, "article.html", data)
+		app.notFound(w, status, errKindArticle, slug)
 		return
 	}
 
@@ -473,7 +478,6 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"Downvotes":          downvotes,
 		"ShowVoteCounts":     upvotes+downvotes >= minVotesToShowCounts,
 		"PublishedAt":        publishedAt,
-		"UnderReview":        false,
 		"TLDR":               article.TLDR,
 		"KeyDetails":         keyDetails,
 		"Links":              articleLinks,
@@ -512,96 +516,10 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 	app.renderTemplate(w, "article.html", data)
 }
 
-func (app *App) handleSubscribe(w http.ResponseWriter, r *http.Request) {
-	email := strings.TrimSpace(r.FormValue("email"))
-	if email == "" || !strings.Contains(email, "@") {
-		data := map[string]interface{}{
-			"Title": "Subscribe",
-			"Error": "Please provide a valid email address.",
-		}
-		app.renderTemplate(w, "subscribe.html", data)
-		return
-	}
-
-	token := generateToken()
-	_, err := app.db.CreateSubscriber(&db.Subscriber{
-		Email: email,
-		Token: token,
-	})
-	if err != nil {
-		// Likely duplicate email.
-		data := map[string]interface{}{
-			"Title": "Subscribe",
-			"Error": "This email is already subscribed.",
-		}
-		app.renderTemplate(w, "subscribe.html", data)
-		return
-	}
-
-	data := map[string]interface{}{
-		"Title":   "Subscribe",
-		"Success": "Please check your email to confirm your subscription.",
-	}
-	app.renderTemplate(w, "subscribe.html", data)
-}
-
-func (app *App) handleSubscribeConfirm(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		data := map[string]interface{}{
-			"Title": "Confirm Subscription",
-			"Error": "Invalid confirmation link.",
-		}
-		app.renderTemplate(w, "subscribe.html", data)
-		return
-	}
-
-	if err := app.db.ConfirmSubscriber(token); err != nil {
-		data := map[string]interface{}{
-			"Title": "Confirm Subscription",
-			"Error": "Invalid or expired confirmation link.",
-		}
-		app.renderTemplate(w, "subscribe.html", data)
-		return
-	}
-
-	data := map[string]interface{}{
-		"Title":   "Subscription Confirmed",
-		"Success": "Your subscription has been confirmed!",
-	}
-	app.renderTemplate(w, "subscribe.html", data)
-}
-
-func (app *App) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		data := map[string]interface{}{
-			"Title": "Unsubscribe",
-			"Error": "Invalid unsubscribe link.",
-		}
-		app.renderTemplate(w, "subscribe.html", data)
-		return
-	}
-
-	if err := app.db.Unsubscribe(token); err != nil {
-		data := map[string]interface{}{
-			"Title": "Unsubscribe",
-			"Error": "Invalid or expired unsubscribe link.",
-		}
-		app.renderTemplate(w, "subscribe.html", data)
-		return
-	}
-
-	data := map[string]interface{}{
-		"Title":   "Unsubscribed",
-		"Success": "You have been unsubscribed successfully.",
-	}
-	app.renderTemplate(w, "subscribe.html", data)
-}
-
 func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 	articles, err := app.db.ListPublishedArticles(20, 0)
 	if err != nil {
+		slog.Error("feed: generating", "error", err)
 		http.Error(w, "Failed to generate feed", http.StatusInternalServerError)
 		return
 	}
@@ -679,13 +597,19 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 
 	page, err := app.db.GetReferencePageBySlug(slug)
 	if err != nil {
-		http.NotFound(w, r)
+		// Only a missing card is a 404; a failing database is a 500, not a
+		// page telling the reader the card does not exist.
+		if errors.Is(err, sql.ErrNoRows) {
+			app.notFound(w, http.StatusNotFound, errKindCard, slug)
+			return
+		}
+		app.serverError(w, r, "card: loading", err)
 		return
 	}
 
 	// Only show published cards to the public.
 	if page.Status != "published" {
-		http.NotFound(w, r)
+		app.notFound(w, http.StatusNotFound, errKindCard, slug)
 		return
 	}
 
@@ -716,6 +640,7 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
+		"NavSection":      "cards",
 		"Title":           page.Title,
 		"Card":            page,
 		"Sections":        sections,

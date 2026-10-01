@@ -1,4 +1,8 @@
 milesahead.kumaranik.com {
+    # Compress HTML, CSS, JS, SVG and the feeds (Caddy skips images that are
+    # already compressed). Cache-Control is set by the app.
+    encode zstd gzip
+
     reverse_proxy host.docker.internal:9090
 
     # Security headers
