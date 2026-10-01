@@ -328,8 +328,17 @@ func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Say what was left out of the comparison: a card picked twice is shown
+	// once, a card we don't have is dropped. Both can apply at once.
+	var notices []string
+	if duplicate {
+		notices = append(notices, "You picked the same card twice; it's shown once.")
+	}
 	if len(cards) < len(slugs) {
-		data["Notice"] = "We couldn't find one of the cards you picked, so this compares the other two."
+		notices = append(notices, "We couldn't find one of the cards you picked, so it's left out.")
+	}
+	if len(notices) > 0 {
+		data["Notice"] = strings.Join(notices, " ")
 	}
 
 	views := make([]compareCardView, len(cards))

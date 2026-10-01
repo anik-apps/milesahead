@@ -258,7 +258,7 @@ func TestCompare_DropsUnknownAndDraftCards(t *testing.T) {
 		"/compare?cards=amex-gold,chase-sapphire-preferred,amex-green",
 	} {
 		body := getPage(t, app, path)
-		if !strings.Contains(body, `<p class="compare-notice" role="alert">We couldn&#39;t find one of the cards you picked`) {
+		if !strings.Contains(body, `<p class="compare-notice" role="alert">We couldn&#39;t find one of the cards you picked, so it&#39;s left out.`) {
 			t.Errorf("%s: want a notice", path)
 		}
 		if strings.Contains(body, `href="/cards/amex-green"`) || strings.Count(body, `<th scope="col" role="columnheader"`) != 2 {
@@ -267,6 +267,35 @@ func TestCompare_DropsUnknownAndDraftCards(t *testing.T) {
 	}
 	if body := getPage(t, app, "/compare?cards=amex-gold,amex-green"); strings.Contains(body, `<table class="compare-table`) {
 		t.Error("a draft card can't make up a comparison")
+	}
+}
+
+// A card picked twice is compared once, and the page says so, alone or
+// alongside a missing card.
+func TestCompare_DuplicateInComparison(t *testing.T) {
+	app := compareApp(t)
+	const dup = "You picked the same card twice; it&#39;s shown once."
+	const missing = "We couldn&#39;t find one of the cards you picked, so it&#39;s left out."
+	for _, c := range []struct {
+		path   string
+		notice string
+		cards  int
+	}{
+		{"/compare?cards=amex-gold,amex-gold,chase-sapphire-preferred", dup, 2},
+		{"/compare?cards=amex-gold,amex-gold,chase-sapphire-preferred,capital-one-venture", dup, 3},
+		{"/compare?cards=amex-gold,amex-gold,no-such-card,chase-sapphire-preferred", dup + " " + missing, 2},
+		{"/compare?cards=amex-gold,no-such-card,chase-sapphire-preferred", missing, 2},
+	} {
+		body := getPage(t, app, c.path)
+		if !strings.Contains(body, `<p class="compare-notice" role="alert">`+c.notice+`</p>`) {
+			t.Errorf("%s: want notice %q", c.path, c.notice)
+		}
+		if n := strings.Count(body, `<th scope="col" role="columnheader"`); n != c.cards {
+			t.Errorf("%s: %d cards compared, want %d", c.path, n, c.cards)
+		}
+	}
+	if body := getPage(t, app, "/compare?cards=amex-gold,chase-sapphire-preferred"); strings.Contains(body, `class="compare-notice"`) {
+		t.Error("a clean comparison has no notice")
 	}
 }
 
