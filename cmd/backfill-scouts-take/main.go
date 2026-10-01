@@ -1,5 +1,9 @@
 // backfill-scouts-take generates Scout's Take for approved articles that are missing it.
 // Usage: go run ./cmd/backfill-scouts-take [-db path] [-api-key key] [-api-url url] [-persona name] [-model name] [-dry-run]
+//
+// Each take goes through ai.GenerateScoutsTake, the call the enrichment
+// reconciler makes, so a take the site would refuse there (empty, or citing a
+// numbered source) is refused here too: it is logged and the article skipped.
 package main
 
 import (
@@ -17,7 +21,7 @@ func main() {
 	apiKey := flag.String("api-key", "", "NVIDIA/HuggingFace API key")
 	apiURL := flag.String("api-url", "", "API base URL (optional, uses default if empty)")
 	persona := flag.String("persona", "Scout", "persona name for Scout's Take")
-	model := flag.String("model", "meta/llama-3.1-8b-instruct", "model name")
+	model := flag.String("model", "meta/llama-3.1-8b-instruct", "model name, or a comma-separated fallback chain")
 	dryRun := flag.Bool("dry-run", false, "print which articles would be updated without making changes")
 	flag.Parse()
 
@@ -59,23 +63,25 @@ func main() {
 		hfClient.BaseURL = *apiURL
 	}
 
-	succeeded, failed, skipped := 0, 0, 0
+	succeeded, failed, skipped := backfill(database, hfClient, ai.SplitModels(*model), *persona, missing, time.Second)
+	fmt.Printf("\nDone: %d succeeded, %d failed, %d skipped.\n", succeeded, failed, skipped)
+}
 
-	for i, a := range missing {
+// backfill writes a Scout's Take for each article. A take is produced by
+// ai.GenerateScoutsTake and nothing else, so it passes the same checks as one
+// written by the enrichment reconciler. It returns how many takes were
+// written, how many could not be saved, and how many articles were skipped
+// because no usable take came back.
+func backfill(database *db.Database, client ai.HFClientInterface, models []string, persona string,
+	articles []db.GeneratedArticle, pause time.Duration) (succeeded, failed, skipped int) {
+	for i, a := range articles {
 		if i > 0 {
-			time.Sleep(1 * time.Second)
+			time.Sleep(pause)
 		}
 
-		prompt := ai.ScoutsTakePrompt(*persona, a.Title, a.TLDR, a.Content)
-		take, err := hfClient.Generate(*model, prompt, 256)
+		take, err := ai.GenerateScoutsTake(client, models, persona, a.Title, a.TLDR, a.Content)
 		if err != nil {
-			log.Printf("ERROR generating Scout's Take for id=%d slug=%s: %v — skipping", a.ID, a.Slug, err)
-			failed++
-			continue
-		}
-
-		if take == "" {
-			log.Printf("WARN empty response for id=%d slug=%s — skipping", a.ID, a.Slug)
+			log.Printf("WARN no usable Scout's Take for id=%d slug=%s: %v; skipping", a.ID, a.Slug, err)
 			skipped++
 			continue
 		}
@@ -85,7 +91,7 @@ func main() {
 			take, a.ID,
 		)
 		if dbErr != nil {
-			log.Printf("ERROR updating db for id=%d slug=%s: %v — skipping", a.ID, a.Slug, dbErr)
+			log.Printf("ERROR updating db for id=%d slug=%s: %v; skipping", a.ID, a.Slug, dbErr)
 			failed++
 			continue
 		}
@@ -93,6 +99,5 @@ func main() {
 		fmt.Printf("  [ok] id=%d slug=%s\n", a.ID, a.Slug)
 		succeeded++
 	}
-
-	fmt.Printf("\nDone: %d succeeded, %d failed, %d skipped.\n", succeeded, failed, skipped)
+	return succeeded, failed, skipped
 }
