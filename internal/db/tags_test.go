@@ -94,6 +94,10 @@ func TestListPublishedArticlesFiltered_TypeAndTag(t *testing.T) {
 		{Title: "Airline News", Slug: "airline-news", Type: "summary", Status: StatusApproved, TagsJSON: `["airlines"]`},
 		{Title: "Draft Hotel News", Slug: "draft-hotel-news", Type: "summary", Status: StatusDraft, TagsJSON: `["hotels"]`},
 		{Title: "Broken Tags", Slug: "broken-tags", Type: "summary", Status: StatusApproved, TagsJSON: `not json`},
+		// Valid JSON but not an array: json_each would expand these into a
+		// "hotels" value, so they must not match the hotels filter.
+		{Title: "String Tags", Slug: "string-tags", Type: "deal", Status: StatusApproved, TagsJSON: `"hotels"`},
+		{Title: "Object Tags", Slug: "object-tags", Type: "deal", Status: StatusApproved, TagsJSON: `{"a": "hotels"}`},
 	}
 	for i, a := range seed {
 		a.Content, a.SourcesJSON, a.RevisionNumber = "content", "[]", 1
@@ -126,7 +130,7 @@ func TestListPublishedArticlesFiltered_TypeAndTag(t *testing.T) {
 		{"deal", "hotels", []string{"Hotel Deal"}},
 		{"", "hotels", []string{"Hotel News", "Hotel Deal"}},
 		{"summary", "", []string{"Hotel News", "Airline News", "Broken Tags"}},
-		{"", "", []string{"Hotel News", "Hotel Deal", "Airline News", "Broken Tags"}},
+		{"", "", []string{"Hotel News", "Hotel Deal", "Airline News", "Broken Tags", "String Tags", "Object Tags"}},
 		{"deal", "airlines", nil},
 		{"nonsense", "", nil},
 	} {

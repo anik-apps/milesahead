@@ -848,9 +848,11 @@ func (d *Database) ListPublishedArticlesFiltered(articleType, tag string, limit,
 		args = append(args, articleType)
 	}
 	if tag != "" {
-		// A malformed tags_json would make json_each fail the whole query;
-		// treat it as no tags instead.
-		query += ` AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(generated_articles.tags_json) THEN generated_articles.tags_json ELSE '[]' END) WHERE json_each.value = ?)`
+		// A malformed tags_json would make json_each fail the whole query,
+		// and valid JSON that is not an array (a bare string, an object)
+		// would be expanded into values that look like tags. Both count as
+		// no tags.
+		query += ` AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(generated_articles.tags_json) AND json_type(generated_articles.tags_json) = 'array' THEN generated_articles.tags_json ELSE '[]' END) WHERE json_each.value = ?)`
 		args = append(args, tag)
 	}
 	query += ` ORDER BY published_at DESC LIMIT ? OFFSET ?`
