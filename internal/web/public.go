@@ -21,6 +21,9 @@ import (
 type templateKeyDetail struct {
 	Label string
 	Value string
+	// Ended marks the detail that gives the offer's end, once that has
+	// passed: the article page strikes it through and labels it "Ended".
+	Ended bool
 }
 
 // templateArticleLink holds a link for template rendering.
@@ -37,12 +40,16 @@ type linkedCardEmbed struct {
 	Title         string
 	Issuer        string
 	Category      string
-	AnnualFee     string // formatted: "$95" or "$0 (no annual fee)"
+	AnnualFee     string // formatted: "$95 annual fee" or "No annual fee"
 	WelcomeBonus  string
 	TopEarning    string // first 2 entries from earning_rates_json, joined
 	ScoutsVerdict string
-	ImageURL      string
-	ApplyURL      string
+	// VerdictLead is the verdict's opening, short enough for the card's row
+	// on an article; the full verdict is on the card's page.
+	VerdictLead string
+	ImageURL    string
+	ApplyURL    string
+	ApplyLabel  string // "Apply at Chase"
 }
 
 // articleTagItem holds a tag slug and display name for article badge rendering.
@@ -127,12 +134,6 @@ func thumbSrcset(thumbnail, image string) string {
 		return ""
 	}
 	return fmt.Sprintf("%s %dw, %s %dw", thumbnail, tw, image, iw)
-}
-
-// sourceInfo holds source data for article detail pages.
-type sourceInfo struct {
-	Title string
-	URL   string
 }
 
 // absoluteURL turns a site-relative path such as "/static/img/cards/x.png" into
@@ -338,21 +339,19 @@ func (app *App) buildLinkedCardEmbeds(relatedCardsJSON string) []linkedCardEmbed
 		if page.Status != "published" {
 			continue
 		}
-		fee := fmt.Sprintf("$%d", page.AnnualFeeAmount)
-		if page.AnnualFeeAmount == 0 {
-			fee = "$0 (no annual fee)"
-		}
 		out = append(out, linkedCardEmbed{
 			Slug:          page.Slug,
 			Title:         page.Title,
 			Issuer:        page.Issuer,
 			Category:      page.Category,
-			AnnualFee:     fee,
+			AnnualFee:     annualFeeLabel(page.AnnualFeeAmount),
 			WelcomeBonus:  page.WelcomeBonusText,
 			TopEarning:    formatTopEarning(page.EarningRatesJSON, 2),
 			ScoutsVerdict: page.ScoutsVerdict,
+			VerdictLead:   verdictLead(page.ScoutsVerdict, verdictLeadMax),
 			ImageURL:      page.ImageURL,
 			ApplyURL:      page.ApplyURL,
+			ApplyLabel:    applyLabel(page.Issuer),
 		})
 	}
 	return out
@@ -418,18 +417,12 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load linked sources.
-	rawArticles, err := app.db.GetLinkedRawArticles(article.ID)
-	if err != nil {
-		rawArticles = nil // non-fatal
-	}
-
-	var sources []sourceInfo
-	for _, ra := range rawArticles {
-		sources = append(sources, sourceInfo{
-			Title: ra.Title,
-			URL:   ra.URL,
-		})
+	// The stories the article was written from, listed under Sources.
+	var sources []articleSource
+	if links, err := app.db.ListArticleSourceLinks(article.ID); err == nil {
+		sources = articleSources(links)
+	} else {
+		slog.Warn("article: loading sources", "article_id", article.ID, "error", err)
 	}
 
 	// Load vote counts.
@@ -464,12 +457,14 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var articleTags []articleTagItem
+	var tagSlugs []string
 	if article.TagsJSON != "" && article.TagsJSON != "[]" {
-		var slugs []string
-		if err := json.Unmarshal([]byte(article.TagsJSON), &slugs); err == nil {
-			for _, s := range slugs {
+		if err := json.Unmarshal([]byte(article.TagsJSON), &tagSlugs); err == nil {
+			for _, s := range tagSlugs {
 				articleTags = append(articleTags, articleTagItem{Slug: s, Name: tagName(s)})
 			}
+		} else {
+			tagSlugs = nil
 		}
 	}
 
@@ -488,9 +483,23 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		datePublished = article.PublishedAt.Format("2006-01-02")
 	}
 
-	// An ended offer keeps its page, indexable and intact; a banner says it
-	// has ended so nobody acts on it.
-	offerEnded := offer.Ended(article.ExpiresOn, app.offerToday())
+	// An ended offer keeps its page, indexable and intact; a banner under the
+	// headline says it has ended so nobody acts on it, and the Key Detail that
+	// gave the end date is marked.
+	today := app.offerToday()
+	offerEnded := offer.Ended(article.ExpiresOn, today)
+	if offerEnded {
+		for i := range keyDetails {
+			keyDetails[i].Ended = offer.IsEndLabel(keyDetails[i].Label)
+		}
+	}
+
+	// The topic the related stories and the "more in" link are about.
+	topicSlug := articleTopic(tagSlugs)
+	var topic *articleTagItem
+	if topicSlug != "" {
+		topic = &articleTagItem{Slug: topicSlug, Name: tagName(topicSlug)}
+	}
 
 	data := map[string]interface{}{
 		"Title":              article.Title,
@@ -506,12 +515,21 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"Links":              articleLinks,
 		"RelatedCards":       relatedCards,
 		"ArticleTags":        articleTags,
-		"LinkedCards":        app.buildLinkedCardEmbeds(article.RelatedCardsJSON),
+		"LinkedCards":        storyCardsFirst(app.buildLinkedCardEmbeds(article.RelatedCardsJSON), article.Title),
 		"LinkedCardsHeading": article.LinkedCardsHeading,
 		"ScoutsTake":         article.ScoutsTake,
 		"OfferEnded":         offerEnded,
 		"OfferEndedNote":     endedNote(article.Type, article.ExpiresOn),
 		"PersonaName":        app.cfg.Site.PersonaName,
+		"PublishedISO":       datePublished,
+		"Content":            scrollTables("Table", externalLinksNewTab(article.Content, domain)),
+		"HeroSrcset":         heroSrcset(article.ImageThumbnail, article.ImageURL),
+		"HeroSizes":          heroSizes,
+		"HeroWidth":          heroWidth,
+		"HeroHeight":         heroHeight,
+		"Topic":              topic,
+		"Related":            app.relatedStories(article, tagSlugs, topicSlug, today),
+		"Share":              buildShareLinks(article.Title, canonicalURL),
 		"MetaDescription":    metaDesc,
 		"CanonicalURL":       canonicalURL,
 		"OGType":             "article",

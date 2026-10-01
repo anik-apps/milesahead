@@ -6,118 +6,181 @@
     <p>This article is currently under review and will be available once approved.</p>
 </div>
 {{else}}
+{{/* Order: what the story is (headline, whether the offer is still on, a
+     one-paragraph summary), then the photo, then the story with its key
+     details beside it, then Scout's Take, the cards it names, its sources
+     and where to go next. */}}
 <article class="article-detail">
     <a href="/" class="back-link">&larr; Back to all articles</a>
-    {{if .OfferEnded}}
-    <p class="offer-ended-banner" role="note">{{.OfferEndedNote}}</p>
-    {{end}}
-    {{if .Article.ImageURL}}
-    <div class="article-hero">
-        <img src="{{.Article.ImageURL}}" alt="{{.Article.Title}}">
-        {{if .Article.ImageAttribution}}
-        <span class="image-attribution">{{.Article.ImageAttribution}}</span>
-        {{end}}
-    </div>
-    {{end}}
 
     <header class="article-header">
-        <span class="type-badge badge-{{.Article.Type}}">{{typeBadge .Article.Type}}</span>{{if .OfferEnded}} <span class="ended-badge">{{endedLabel .Article.Type}}</span>{{end}}
+        <div class="article-badges"><span class="type-badge badge-{{.Article.Type}}">{{typeBadge .Article.Type}}</span>{{if .OfferEnded}} <span class="ended-badge">{{endedLabel .Article.Type}}</span>{{end}}</div>
         <h1>{{.Article.Title}}</h1>
-        <time class="published-date">{{.PublishedAt}}</time>
-        {{if .ArticleTags}}
-        <div class="article-tags">
-            {{range .ArticleTags}}
-            <a href="/?tag={{.Slug}}" class="tag-badge">{{.Name}}</a>
-            {{end}}
-        </div>
+        {{if .OfferEnded}}
+        <p class="offer-ended-banner" role="note">{{.OfferEndedNote}}{{with .Topic}} <a href="/?tag={{.Slug}}">See the latest in {{.Name}}&nbsp;&rarr;</a>{{end}}</p>
         {{end}}
-    </header>
-
-    <div class="article-layout">
-        <aside class="article-sidebar">
-            {{if .TLDR}}
-            <div class="sidebar-section">
-                <h4>TL;DR</h4>
-                <p>{{.TLDR}}</p>
+        <div class="article-meta-row">
+            <p class="article-meta">
+                {{- if .PublishedAt}}<time class="published-date" datetime="{{.PublishedISO}}">{{.PublishedAt}}</time>{{end -}}
+                {{- if .PersonaName}}<span class="article-byline">By {{.PersonaName}}</span>{{end -}}
+                {{- if .Sources}}<a class="article-source-count" href="#sources">{{len .Sources}} {{if eq (len .Sources) 1}}source{{else}}sources{{end}}</a>{{end -}}
+            </p>
+            {{if .ArticleTags}}
+            <div class="article-tags">
+                {{range .ArticleTags}}
+                <a href="/?tag={{.Slug}}" class="tag-badge">{{.Name}}</a>
+                {{end}}
             </div>
             {{end}}
+        </div>
+        {{if .TLDR}}<p class="article-standfirst">{{.TLDR}}</p>{{end}}
+    </header>
+
+    {{/* Phones: the key details fold into one line under the summary rather
+         than pushing the story down. Desktop shows them in the sidebar. */}}
+    {{if or .KeyDetails .Links}}
+    <details class="article-facts">
+        <summary>{{if .KeyDetails}}Key details ({{len .KeyDetails}}){{else}}Links ({{len .Links}}){{end}}</summary>
+        {{if .KeyDetails}}{{template "article-key-details" .KeyDetails}}{{end}}
+        {{if .Links}}{{if .KeyDetails}}<h2 class="article-facts-subhead">Links</h2>{{end}}{{template "article-links" .Links}}{{end}}
+    </details>
+    {{end}}
+
+    {{if .Article.ImageURL}}
+    {{/* The photo is decorative (a stock picture of the subject), so alt="". */}}
+    <figure class="article-hero">
+        <img src="{{.Article.ImageURL}}" alt="" width="{{.HeroWidth}}" height="{{.HeroHeight}}"{{with .HeroSrcset}} srcset="{{.}}" sizes="{{$.HeroSizes}}"{{end}} fetchpriority="high">
+        {{if .Article.ImageAttribution}}<figcaption class="image-attribution">{{.Article.ImageAttribution}}</figcaption>{{end}}
+    </figure>
+    {{end}}
+
+    <div class="article-layout{{if not (or .KeyDetails .Links)}} no-sidebar{{end}}">
+        {{if or .KeyDetails .Links}}
+        <aside class="article-sidebar" aria-label="Key details">
             {{if .KeyDetails}}
             <div class="sidebar-section">
-                <h4>Key Details</h4>
-                <ul class="key-details">
-                    {{range .KeyDetails}}
-                    <li><strong>{{.Label}}:</strong> {{.Value}}</li>
-                    {{end}}
-                </ul>
+                <h2>Key Details</h2>
+                {{template "article-key-details" .KeyDetails}}
             </div>
             {{end}}
             {{if .Links}}
             <div class="sidebar-section">
-                <h4>Links</h4>
-                <ul class="article-links">
-                    {{range .Links}}
-                    <li><a href="{{.URL}}" target="_blank" rel="noopener">&rarr; {{.Text}}</a></li>
-                    {{end}}
-                </ul>
+                <h2>Links</h2>
+                {{template "article-links" .Links}}
             </div>
             {{end}}
         </aside>
+        {{end}}
         <div class="article-main">
             <div class="article-content">
-                {{scrollTables "Table" .Article.Content | safeHTML}}
+                {{.Content | safeHTML}}
             </div>
-        </div>
-    </div>
 
-    {{if .LinkedCards}}
-    <div class="card-embeds">
-        <h3 class="card-embeds-heading">
-            {{if .LinkedCardsHeading}}{{.LinkedCardsHeading}}{{else}}Cards mentioned in this article{{end}}
-        </h3>
-        {{range .LinkedCards}}
-        <div class="card-embed">
-            <div class="card-embed-top">
-                {{if .ImageURL}}<img class="card-embed-logo" src="{{.ImageURL}}" alt="">{{end}}
-                <div>
-                    <h4 class="card-embed-name"><a href="/cards/{{.Slug}}">{{.Title}}</a></h4>
-                    <span class="card-embed-issuer">{{.Issuer}} · {{.Category}} · {{.AnnualFee}}</span>
+            {{if .ScoutsTake}}
+            <section class="scouts-take" aria-labelledby="scouts-take-title">
+                <h2 class="scout-label" id="scouts-take-title">{{.PersonaName}}'s Take</h2>
+                <p>{{.ScoutsTake}}</p>
+            </section>
+            {{end}}
+
+            {{if .LinkedCards}}
+            <section class="card-embeds" aria-labelledby="card-embeds-title">
+                <h2 class="article-section-title card-embeds-heading" id="card-embeds-title">{{if .LinkedCardsHeading}}{{.LinkedCardsHeading}}{{else}}Cards in this story{{end}}</h2>
+                {{range .LinkedCards}}
+                <div class="card-embed">
+                    {{if .ImageURL}}<img class="card-embed-logo" src="{{.ImageURL}}" alt="" width="84" height="53" loading="lazy" decoding="async">{{end}}
+                    <div class="card-embed-body">
+                        <h3 class="card-embed-name"><a href="/cards/{{.Slug}}">{{.Title}}</a></h3>
+                        <p class="card-embed-issuer">{{if .Issuer}}{{.Issuer}} · {{end}}{{.AnnualFee}}</p>
+                        {{if or .WelcomeBonus .TopEarning}}
+                        <dl class="card-embed-facts">
+                            {{if .WelcomeBonus}}<div><dt>Welcome bonus</dt><dd>{{.WelcomeBonus}}</dd></div>{{end}}
+                            {{if .TopEarning}}<div><dt>Top earnings</dt><dd>{{.TopEarning}}</dd></div>{{end}}
+                        </dl>
+                        {{end}}
+                        {{if .VerdictLead}}<p class="card-embed-verdict">{{.VerdictLead}}</p>{{end}}
+                    </div>
+                    <div class="card-embed-actions">
+                        <a class="card-embed-review" href="/cards/{{.Slug}}">Full review<span class="article-sr-only"> of the {{.Title}}</span></a>
+                        {{if .ApplyURL}}<a class="card-embed-cta{{if $.OfferEnded}} is-muted{{end}}" href="{{.ApplyURL}}" target="_blank" rel="noopener">{{.ApplyLabel}}<span aria-hidden="true">&nbsp;&#8599;</span><span class="article-sr-only"> (opens in a new tab)</span></a>{{end}}
+                    </div>
+                </div>
+                {{end}}
+            </section>
+            {{end}}
+
+            {{if .Sources}}
+            <section class="article-sources" id="sources" aria-labelledby="sources-title">
+                <h2 class="article-section-title" id="sources-title">Sources</h2>
+                <ol>
+                    {{range .Sources}}
+                    <li><span class="article-source-outlet">{{.Outlet}}:</span> <a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}<span aria-hidden="true">&nbsp;&#8599;</span><span class="article-sr-only"> (opens in a new tab)</span></a></li>
+                    {{end}}
+                </ol>
+            </section>
+            {{end}}
+
+            {{if .Related}}
+            <section class="related-stories" aria-labelledby="related-title">
+                <h2 class="article-section-title" id="related-title">Related stories</h2>
+                <ul class="related-list">
+                    {{range .Related}}
+                    <li{{if .Ended}} class="is-ended"{{end}}>
+                        <a href="/article/{{.Slug}}">{{if .Ended}}<span class="ended-badge">{{endedLabel .Type}}</span> {{end}}<span class="related-title">{{.Title}}</span></a>
+                        {{if .PublishedAt}}<span class="related-date">{{.PublishedAt}}</span>{{end}}
+                    </li>
+                    {{end}}
+                </ul>
+                {{with .Topic}}<a class="related-more" href="/?tag={{.Slug}}">More in {{.Name}}&nbsp;&rarr;</a>{{end}}
+            </section>
+            {{end}}
+
+            <div class="article-feedback">
+                <div class="vote-card">
+                    <p class="vote-prompt" id="vote-prompt">Was this article helpful?</p>
+                    {{/* data-vote values are what /api/vote accepts. Counts appear only once there
+                         are enough votes to mean something; "0 / 0" read as an abandoned site. */}}
+                    <div class="vote-buttons" role="group" aria-labelledby="vote-prompt" data-article-id="{{.Article.ID}}">
+                        <button type="button" class="vote-btn vote-up" data-vote="up" aria-pressed="false">
+                            <span aria-hidden="true">&#x1F44D;</span> Yes{{if .ShowVoteCounts}} <span class="vote-count upvotes">{{.Upvotes}}</span>{{end}}
+                        </button>
+                        <button type="button" class="vote-btn vote-down" data-vote="down" aria-pressed="false">
+                            <span aria-hidden="true">&#x1F44E;</span> No{{if .ShowVoteCounts}} <span class="vote-count downvotes">{{.Downvotes}}</span>{{end}}
+                        </button>
+                    </div>
+                    <p class="vote-status" role="status"></p>
+                </div>
+                {{/* Plain links: nothing from a third party loads until a reader
+                     follows one. "Copy link" needs the clipboard API, so main.js
+                     reveals it only where that exists. */}}
+                <div class="article-share">
+                    <span class="article-share-label" id="share-label">Share</span>
+                    <ul aria-labelledby="share-label">
+                        <li><button type="button" class="share-copy" data-share-url="{{.Share.URL}}" hidden>Copy link</button></li>
+                        <li><a href="{{.Share.Email}}">Email</a></li>
+                        <li><a href="{{.Share.X}}" target="_blank" rel="noopener">Post on X<span class="article-sr-only"> (opens in a new tab)</span></a></li>
+                    </ul>
+                    <span class="share-status" role="status"></span>
                 </div>
             </div>
-            {{if .WelcomeBonus}}
-            <div class="card-embed-grid">
-                <div class="stat"><b>Welcome bonus</b><span>{{.WelcomeBonus}}</span></div>
-                {{if .TopEarning}}<div class="stat"><b>Top earnings</b><span>{{.TopEarning}}</span></div>{{end}}
-                <div class="stat"><b>Annual fee</b><span>{{.AnnualFee}}</span></div>
-            </div>
-            {{end}}
-            {{if .ScoutsVerdict}}<p class="card-embed-verdict">{{.ScoutsVerdict}}</p>{{end}}
-            {{if .ApplyURL}}<a href="{{.ApplyURL}}" target="_blank" rel="noopener" class="card-embed-cta">View card &rarr;</a>{{end}}
         </div>
-        {{end}}
-    </div>
-    {{end}}
-
-    {{if .ScoutsTake}}
-    <div class="scouts-take">
-        <div class="scout-label">{{.PersonaName}}'s Take</div>
-        <p>{{.ScoutsTake}}</p>
-    </div>
-    {{end}}
-
-    <div class="vote-card">
-        <p class="vote-prompt" id="vote-prompt">Was this article helpful?</p>
-        {{/* data-vote values are what /api/vote accepts. Counts appear only once there
-             are enough votes to mean something; "0 / 0" read as an abandoned site. */}}
-        <div class="vote-buttons" role="group" aria-labelledby="vote-prompt" data-article-id="{{.Article.ID}}">
-            <button type="button" class="vote-btn vote-up" data-vote="up" aria-pressed="false">
-                <span aria-hidden="true">&#x1F44D;</span> Yes{{if .ShowVoteCounts}} <span class="vote-count upvotes">{{.Upvotes}}</span>{{end}}
-            </button>
-            <button type="button" class="vote-btn vote-down" data-vote="down" aria-pressed="false">
-                <span aria-hidden="true">&#x1F44E;</span> No{{if .ShowVoteCounts}} <span class="vote-count downvotes">{{.Downvotes}}</span>{{end}}
-            </button>
-        </div>
-        <p class="vote-status" role="status"></p>
     </div>
 </article>
 {{end}}
+{{end}}
+
+{{define "article-key-details"}}
+<ul class="key-details">
+    {{range .}}
+    {{if .Ended}}<li class="key-detail-ended"><strong>{{.Label}}:</strong> <s>{{.Value}}</s> <span class="key-detail-ended-tag">Ended</span></li>{{else}}<li><strong>{{.Label}}:</strong> {{.Value}}</li>{{end}}
+    {{end}}
+</ul>
+{{end}}
+
+{{define "article-links"}}
+<ul class="article-links">
+    {{range .}}
+    <li><a href="{{.URL}}" target="_blank" rel="noopener">&rarr; {{.Text}}<span class="article-sr-only"> (opens in a new tab)</span></a></li>
+    {{end}}
+</ul>
 {{end}}

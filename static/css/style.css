@@ -2732,44 +2732,7 @@ tr.flagged { background: #fef2f2; }
     }
 }
 
-/* === Card embeds at bottom of article === */
-.card-embeds { margin-top: 32px; }
-.card-embeds-heading {
-    margin: 0 0 4px;
-    color: var(--text-muted);
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 6px;
-    font-weight: 600;
-}
-.card-embed {
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin: 16px 0;
-    box-shadow: 0 2px 6px var(--shadow);
-}
-.card-embed-top { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
-.card-embed-logo { width: 96px; height: 60px; border-radius: 6px; flex-shrink: 0;
-    object-fit: contain; background: var(--bg); border: 1px solid var(--border); }
-.card-embed-name { font-size: 18px; font-weight: 600; margin: 0; }
-.card-embed-name a { color: var(--text); text-decoration: none; }
-.card-embed-name a:hover { color: var(--accent); }
-.card-embed-issuer { color: var(--text-muted); font-size: 12px; }
-.card-embed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
-    padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-    margin-bottom: 12px; }
-.card-embed-grid .stat b { display: block; color: var(--text-muted); font-weight: 500;
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
-.card-embed-grid .stat span { font-size: 14px; font-weight: 500; color: var(--text); }
-.card-embed-verdict { font-size: 13px; color: var(--text); border-left: 3px solid var(--accent);
-    padding: 2px 12px; margin: 0 0 12px; font-style: italic; }
-.card-embed-cta { display: inline-block; background: var(--accent); color: var(--bg);
-    padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; }
-.card-embed-cta:hover { filter: brightness(0.92); }
+/* Card embeds at the end of an article: see "Article page" below. */
 
 /* === Admin: linked-cards curation UI === */
 .admin-shell { background: var(--card-bg); padding: 16px 24px;
@@ -3048,3 +3011,212 @@ footer .footer-links a, .footer-pillars a { color: #15307a; }
 }
 /* White on the dark theme's light-blue accent is 2.5:1; dark text is about 7.5:1. */
 [data-theme="dark"] .vote-btn.active { color: var(--bg); }
+
+/* ===== Article page =====
+   Headline and summary first: badges, headline, the ended-offer note, date,
+   byline, sources and tags, then the TL;DR as a standfirst. The photo follows
+   as a fixed-height band. The story keeps a sticky Key Details sidebar on
+   desktop; on phones the details fold into a disclosure under the
+   standfirst. After the story: Scout's Take, the cards it names (one compact
+   row each), its sources, related stories, and a one-line vote with share
+   links. The admin dashboard's preview uses the same classes and order. */
+:root { --article-tag-fg: #1d4ed8; }            /* 5.9:1 on the chip */
+[data-theme="dark"] { --article-tag-fg: #79b8ff; } /* 7.5:1 on the chip */
+
+.article-sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.article-detail .back-link { padding: 0.25rem 0; margin-bottom: 0.5rem; }
+.article-header { margin-bottom: 1.25rem; }
+.article-header h1 { margin: 0.5rem 0 0.6rem; }
+.article-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.article-header .offer-ended-banner { margin: 0.25rem 0 0.85rem; }
+.offer-ended-banner a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.article-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; }
+.article-meta { display: flex; flex-wrap: wrap; align-items: center; margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+/* inline-block, so the dot is not underlined with the "sources" link. */
+.article-meta > * + *::before { content: "\00B7"; content: "\00B7" / ""; display: inline-block; margin: 0 0.5rem; }
+.article-meta a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.article-meta a:hover { color: var(--accent); }
+.article-header .article-tags { margin: 0; }
+.article-header .tag-badge { padding: 0.25rem 0.6rem; color: var(--article-tag-fg); }
+.article-header .tag-badge:hover { background: var(--accent-subtle); text-decoration: underline; }
+.article-standfirst { font-size: 1.2rem; line-height: 1.55; margin: 1rem 0 0; max-width: 46em; }
+
+/* The photo band: a fixed height at every width, the photo cropped to fill. */
+figure.article-hero, .article-detail .article-hero, .preview-body .article-hero {
+    height: 280px;
+    max-height: none;
+    margin: 0 0 1.75rem;
+}
+.article-hero img { width: 100%; height: 100%; max-height: none; object-fit: cover; }
+
+/* Key details on phones (the sidebar is hidden there). */
+.article-facts { display: none; }
+.article-facts-subhead { margin: 0.75rem 0 0.25rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+
+.article-layout.no-sidebar { grid-template-columns: minmax(0, 1fr); }
+.sidebar-section h2 {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin: 0 0 0.75rem;
+}
+.key-detail-ended s { color: var(--text-muted); }
+.key-detail-ended-tag {
+    display: inline-block;
+    margin-left: 0.25rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--ended-banner-border);
+    border-radius: 4px;
+    background: var(--ended-banner-bg);
+    color: var(--ended-banner-fg);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* One reading measure for the story and everything after it: about 72
+   characters a line. (68ch measured 95: ch is the width of "0", which in the
+   system font is far wider than an average letter.) */
+.article-main > * { max-width: 36.5rem; }
+.article-main > .article-content { max-width: 33em; }
+
+.scouts-take { margin: 0.5rem 0 2rem; }
+.scouts-take h2.scout-label { margin: 0 0 0.4rem; line-height: 1.4; }
+.scouts-take p { margin: 0; }
+
+.article-section-title {
+    margin: 2rem 0 0.75rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Card rows */
+.card-embed {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr) auto;
+    gap: 0.75rem 1rem;
+    align-items: start;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+    margin: 0.6rem 0;
+    box-shadow: 0 2px 6px var(--shadow);
+}
+.card-embed-logo {
+    width: 84px; height: 53px; border-radius: 5px;
+    object-fit: contain; background: var(--bg); border: 1px solid var(--border);
+}
+.card-embed-name { font-size: 1rem; font-weight: 600; line-height: 1.35; margin: 0; }
+.card-embed-name a { color: var(--text); }
+.card-embed-name a:hover { color: var(--accent); }
+.card-embed-issuer { margin: 0.1rem 0 0; color: var(--text-muted); font-size: 0.8rem; }
+.card-embed-facts { margin: 0.4rem 0 0; font-size: 0.85rem; line-height: 1.45; }
+.card-embed-facts div + div { margin-top: 0.15rem; }
+.card-embed-facts dt { display: inline; font-weight: 600; margin-right: 0.35rem; }
+.card-embed-facts dd { display: inline; margin: 0; }
+.card-embed-verdict {
+    margin: 0.4rem 0 0; color: var(--text-muted); font-size: 0.85rem; line-height: 1.5;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.card-embed-actions { display: flex; flex-direction: column; gap: 0.4rem; }
+.card-embed-actions a {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 36px; padding: 0.4rem 0.8rem; border-radius: 6px;
+    font-size: 0.85rem; font-weight: 600; white-space: nowrap; text-decoration: none;
+}
+.card-embed-review, .card-embed-cta.is-muted {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+}
+.card-embed-review:hover, .card-embed-cta.is-muted:hover { border-color: var(--accent); }
+.card-embed-cta { background: var(--accent); color: var(--bg); border: 1px solid var(--accent); }
+.card-embed-cta:hover { filter: brightness(0.92); }
+.card-embed-cta.is-muted:hover { filter: none; }
+
+/* Sources */
+.article-sources { border-top: 0; padding-top: 0; margin-bottom: 0; }
+.article-sources ol { margin: 0; padding-left: 1.4rem; font-size: 0.95rem; }
+.article-sources li { padding: 0.25rem 0; border-bottom: 0; }
+.article-source-outlet { font-weight: 600; }
+
+/* Related stories */
+.related-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.related-list li { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.7rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; }
+.related-list a { color: var(--text); font-weight: 600; line-height: 1.35; }
+.related-list a:hover { text-decoration: none; }
+.related-list a:hover .related-title { text-decoration: underline; }
+.related-list li.is-ended .related-title { color: var(--ended-text); }
+.related-date { color: var(--text-muted); font-size: 0.8rem; }
+.related-more { display: inline-block; margin-top: 0.6rem; font-weight: 600; font-size: 0.9rem; }
+
+/* Vote and share, one line */
+.article-feedback {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 0.75rem 1.5rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+}
+.article-feedback .vote-card {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem;
+    margin: 0; padding: 0; background: none; border: 0; text-align: left;
+}
+.article-feedback .vote-card .vote-prompt { margin: 0; font-size: 1rem; }
+.article-feedback .vote-card .vote-buttons { gap: 0.5rem; }
+.article-feedback .vote-card .vote-btn { padding: 0.4rem 0.9rem; font-size: 0.95rem; }
+.article-feedback .vote-card .vote-status { min-height: 0; margin: 0; }
+.article-share { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; color: var(--text-muted); font-size: 0.9rem; }
+.article-share ul { display: flex; flex-wrap: wrap; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
+.article-share a, .article-share .share-copy {
+    display: inline-flex; align-items: center; min-height: 32px; padding: 0.2rem 0.75rem;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
+    color: var(--text); font: inherit; font-size: 0.85rem; cursor: pointer; text-decoration: none;
+}
+.article-share a:hover, .article-share .share-copy:hover { border-color: var(--accent); }
+.share-status:empty { display: none; }
+
+@media (max-width: 768px) {
+    .article-standfirst { font-size: 1.05rem; }
+    figure.article-hero, .article-detail .article-hero, .preview-body .article-hero {
+        height: 170px;
+        margin-bottom: 1.25rem;
+    }
+    .article-facts {
+        display: block;
+        margin: 0 0 1.25rem;
+        padding: 0.65rem 1rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+    }
+    .article-facts summary { font-weight: 600; cursor: pointer; padding: 0.15rem 0; }
+    .article-facts summary::marker { color: var(--text-muted); }
+    .article-facts .key-details li { font-size: 0.9rem; }
+    .article-layout > .article-sidebar { display: none; }
+    /* A wide table scrolls; let its columns take the width they need (up to
+       13rem) instead of squeezing every column, which wrapped short values
+       and made each row four lines tall. */
+    .article-content .table-scroll > table { width: max-content; min-width: 100%; }
+    .article-content .table-scroll th, .article-content .table-scroll td { max-width: 13rem; }
+    .related-list { grid-template-columns: 1fr; gap: 0; }
+    .related-list li { padding: 0.7rem 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+}
+@media (max-width: 600px) {
+    .card-embed { grid-template-columns: 64px minmax(0, 1fr); padding: 0.8rem; }
+    .card-embed-logo { width: 64px; height: 40px; }
+    .card-embed-actions { grid-column: 1 / -1; flex-direction: row; }
+    .card-embed-actions a { flex: 1; }
+}
