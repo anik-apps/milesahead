@@ -52,17 +52,19 @@ func csrfMiddleware(next http.Handler) http.Handler {
 }
 
 // adminAuthMiddleware checks for a valid session cookie and redirects to login if missing.
+// The login page is told where to return (see loginRedirect), so an expired
+// session does not drop the admin back on the dashboard.
 func (app *App) adminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("session")
 		if err != nil {
-			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+			http.Redirect(w, r, loginRedirect(r), http.StatusSeeOther)
 			return
 		}
 
 		session, err := app.db.GetSession(cookie.Value)
 		if err != nil || session == nil {
-			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+			http.Redirect(w, r, loginRedirect(r), http.StatusSeeOther)
 			return
 		}
 

@@ -819,6 +819,20 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
     font-size: 0.9rem;
 }
 
+.login-form .login-note {
+    background: var(--accent-subtle);
+    color: var(--text);
+    padding: 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.draft-restored {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
 [data-theme="dark"] .login-form .error {
     background: #3b1114;
     color: #f87171;

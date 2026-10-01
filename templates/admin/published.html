@@ -35,7 +35,7 @@
                 <td class="actions">
                     <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="inline-form">
                         {{template "csrf_field" $}}
-                        <textarea name="feedback" placeholder="Optional feedback..."></textarea>
+                        <textarea name="feedback" placeholder="Optional feedback..." data-draft="unpublish-{{.ID}}"></textarea>
                         <button type="submit" class="btn btn-warn">Unpublish</button>
                     </form>
                 </td>
@@ -47,4 +47,5 @@
     <p>No published articles.</p>
     {{end}}
 </div>
+<script src="/static/js/admin.js"></script>
 {{end}}

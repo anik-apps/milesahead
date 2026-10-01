@@ -73,7 +73,7 @@
                     </form>
                     <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form revision-form">
                         {{template "csrf_field" $}}
-                        <textarea name="feedback" placeholder="Revision feedback..." required></textarea>
+                        <textarea name="feedback" placeholder="Revision feedback..." required data-draft="revise-{{.ID}}"></textarea>
                         <button type="submit" class="btn btn-primary">Request Revision</button>
                     </form>
                 </td>
@@ -164,7 +164,7 @@
                     <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form" style="flex:1">
                         {{template "csrf_field" $}}
                         <div style="display:flex;gap:8px">
-                            <textarea name="feedback" placeholder="Revision feedback..." required style="flex:1;min-height:36px"></textarea>
+                            <textarea name="feedback" placeholder="Revision feedback..." required style="flex:1;min-height:36px" data-draft="revise-{{.ID}}"></textarea>
                             <button type="submit" class="btn btn-primary">Revise</button>
                         </div>
                     </form>
@@ -273,4 +273,5 @@ document.addEventListener('keydown', function(e) {
     }
 });
 </script>
+<script src="/static/js/admin.js"></script>
 {{end}}

@@ -363,7 +363,7 @@ func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
 
 	app.startRevision(id)
 
-	http.Redirect(w, r, "/admin/dashboard?msg=revision_submitted", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=revision_submitted&id=%d&sent=revise-%d", id, id), http.StatusSeeOther)
 }
 
 // startRevision kicks off the AI rewrite in the background so the admin sees it
@@ -401,7 +401,7 @@ func (app *App) handleUnpublishArticle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	http.Redirect(w, r, "/admin/published", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=unpublished&id=%d&sent=unpublish-%d", id, id), http.StatusSeeOther)
 }
 
 func (app *App) handleUnpublishAndRevise(w http.ResponseWriter, r *http.Request) {
@@ -423,7 +423,7 @@ func (app *App) handleUnpublishAndRevise(w http.ResponseWriter, r *http.Request)
 	}
 	app.startRevision(id)
 
-	http.Redirect(w, r, "/admin/published", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=unpublished&id=%d&sent=unpublish-%d", id, id), http.StatusSeeOther)
 }
 
 func (app *App) handleAdminSources(w http.ResponseWriter, r *http.Request) {
