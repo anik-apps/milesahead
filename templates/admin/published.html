@@ -3,6 +3,15 @@
 <div class="admin-published">
     <div class="page-head">
         <h1>Published <span class="page-count">{{.Total}}</span></h1>
+        <div class="page-head-tools">
+            <form method="get" action="/admin/published" class="sort-form">
+                <label for="p-sort">Sort</label>
+                <select id="p-sort" name="sort" data-autosubmit>
+                    {{range .Sorts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+                </select>
+                <noscript><button type="submit" class="btn btn-sm">Sort</button></noscript>
+            </form>
+        </div>
     </div>
     {{if eq .Message "unpublished_revise"}}<div class="message success" role="status">Taken down and a rewrite requested. It is in Review under "Being rewritten".</div>{{end}}
     {{if eq .Message "republished"}}<div class="message success" role="status">Back on the site.</div>{{end}}
@@ -11,7 +20,7 @@
     <ol class="q-list">
         {{range .Articles}}
         <li class="p-row{{if .Flagged}} p-flagged{{end}}">
-            <span class="badge badge-{{.Type}} q-type">{{typeBadge .Type}}</span>
+            <span class="type-pill type-pill-{{.Type}} q-type">{{typeBadge .Type}}</span>
             <span class="q-main">
                 <a class="q-title p-title" href="/article/{{.Slug}}" target="_blank" rel="noopener" title="Open the live article">{{.Title}} <span aria-hidden="true">&#8599;</span></a>
                 <span class="q-meta">
@@ -19,22 +28,34 @@
                     <span class="q-sub" title="Published {{.PublishedAt}}">Published {{.Age}} &middot; <span title="Upvotes">&#9650; {{.Upvotes}}</span> <span title="Downvotes">&#9660; {{.Downvotes}}</span> &middot; #{{.ID}}</span>
                 </span>
             </span>
-            <span class="p-actions">
-                <a class="btn btn-sm" href="/admin/articles/{{.ID}}/cards">Linked cards</a>
-                <details class="p-unpublish">
-                    <summary class="btn btn-sm">Unpublish&hellip;</summary>
-                    <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="p-unpublish-form">
+            <div class="row-menu">
+                <button type="button" class="row-menu-btn" id="menu-btn-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-{{.ID}}" title="Actions"><span aria-hidden="true">&#8943;</span><span class="visually-hidden">Actions for article #{{.ID}}: {{.Title}}</span></button>
+                <div class="row-menu-list" id="menu-{{.ID}}" role="menu" aria-labelledby="menu-btn-{{.ID}}" hidden>
+                    <a role="menuitem" tabindex="-1" href="/article/{{.Slug}}" target="_blank" rel="noopener">View on the site</a>
+                    <a role="menuitem" tabindex="-1" href="/admin/articles/{{.ID}}/cards">Linked cards</a>
+                    {{/* Unpublish at once; the toast that follows can undo it. */}}
+                    <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="row-menu-form">
                         {{template "csrf_field" $}}
-                        <label for="unpub-{{.ID}}">Ask for a rewrite too (optional)</label>
-                        <textarea id="unpub-{{.ID}}" name="feedback" rows="2" placeholder="Leave empty to just take it down" data-draft="unpublish-{{.ID}}"></textarea>
-                        <button type="submit" class="btn btn-warn">Take it down</button>
+                        <input type="hidden" name="sort" value="{{$.Sort}}">
+                        <button type="submit" role="menuitem" tabindex="-1" class="row-menu-danger">Unpublish</button>
                     </form>
-                </details>
-            </span>
+                    <button type="button" role="menuitem" tabindex="-1" data-reveal="unpub-panel-{{.ID}}">Unpublish and request a rewrite&hellip;</button>
+                </div>
+            </div>
+            <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="p-unpublish-panel" id="unpub-panel-{{.ID}}" hidden>
+                {{template "csrf_field" $}}
+                <input type="hidden" name="sort" value="{{$.Sort}}">
+                <label for="unpub-{{.ID}}">Take it down and ask for a rewrite: what should change?</label>
+                <textarea id="unpub-{{.ID}}" name="feedback" rows="2" required data-draft="unpublish-{{.ID}}"></textarea>
+                <span class="p-unpublish-buttons">
+                    <button type="submit" class="btn btn-warn">Take it down and request the rewrite</button>
+                    <button type="button" class="btn" data-hide="unpub-panel-{{.ID}}">Cancel</button>
+                </span>
+            </form>
         </li>
         {{end}}
     </ol>
-    {{if lt (len .Articles) .Total}}<p class="q-more">Showing the {{len .Articles}} most recent of {{.Total}}.</p>{{end}}
+    {{if lt (len .Articles) .Total}}<p class="q-more">Showing the {{len .Articles}} {{if eq .Sort "oldest"}}earliest published{{else}}most recent{{end}} of {{.Total}}.</p>{{end}}
     {{else}}
     <p class="q-empty">No published articles.</p>
     {{end}}
@@ -46,6 +67,7 @@
             {{template "csrf_field" $}}
             <input type="hidden" name="revision" value="{{.UndoRevision}}">
             <input type="hidden" name="return" value="published">
+            <input type="hidden" name="sort" value="{{.Sort}}">
             <button type="submit" class="toast-action">Undo</button>
         </form>
         <button type="button" class="toast-close" aria-label="Dismiss">&times;</button>

@@ -4,6 +4,14 @@
     <div class="page-head">
         <h1>Review <span class="page-count">{{.Total}}</span></h1>
         <div class="page-head-tools">
+            <form method="get" action="/admin/dashboard" class="sort-form">
+                {{if .All}}<input type="hidden" name="all" value="1">{{end}}
+                <label for="q-sort">Sort</label>
+                <select id="q-sort" name="sort" data-autosubmit>
+                    {{range .Sorts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+                </select>
+                <noscript><button type="submit" class="btn btn-sm">Sort</button></noscript>
+            </form>
             <button type="button" class="btn kbd-help-btn" aria-expanded="false" aria-controls="kbd-help">Keyboard shortcuts <kbd>?</kbd></button>
         <div id="kbd-help" class="kbd-help" role="dialog" aria-label="Keyboard shortcuts" hidden>
             <dl>
@@ -15,7 +23,7 @@
                 <dt><kbd>Esc</kbd></dt><dd>Close the preview, or leave the text box</dd>
                 <dt><kbd>?</kbd></dt><dd>Show or hide this list</dd>
             </dl>
-            <p class="dim">Shortcuts never fire while you are typing in a box.</p>
+            <p class="dim">Shortcuts never fire while you are typing in a box or a row's actions menu is open.</p>
         </div>
         </div>
     </div>
@@ -37,9 +45,9 @@
         {{if .Rows}}
         <ol class="q-list">
             {{range .Rows}}
-            <li>
+            <li class="q-item">
                 <a class="q-row{{if eq .Group "decide"}} q-alert{{end}}{{if eq .Group "rewriting"}} q-quiet{{end}}" href="#preview-{{.ID}}" data-preview="preview-{{.ID}}">
-                    <span class="badge badge-{{.Type}} q-type">{{typeBadge .Type}}</span>
+                    <span class="type-pill type-pill-{{.Type}} q-type">{{typeBadge .Type}}</span>
                     <span class="q-main">
                         <span class="q-title">{{.Title}}</span>
                         <span class="q-meta">
@@ -57,10 +65,39 @@
                     <span class="q-score score-{{.ScoreClass}}" title="Critic score">{{if .HasScore}}{{.VerificationScore}}{{else}}&ndash;{{end}}</span>
                     <span class="q-cta">{{if eq .Group "decide"}}Decide{{else if eq .Group "rewriting"}}View{{else}}Review{{end}}</span>
                 </a>
+                {{/* Decide from the list. Only the actions the server allows
+                     for the article's status; approve and reject post the
+                     revision on the row, so the same guard as the preview's
+                     applies, and without "next" the list stays put. */}}
+                <div class="row-menu">
+                    <button type="button" class="row-menu-btn" id="menu-btn-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-{{.ID}}" title="Actions"><span aria-hidden="true">&#8943;</span><span class="visually-hidden">Actions for article #{{.ID}}: {{.Title}}</span></button>
+                    <div class="row-menu-list" id="menu-{{.ID}}" role="menu" aria-labelledby="menu-btn-{{.ID}}" hidden>
+                        <a role="menuitem" tabindex="-1" href="#preview-{{.ID}}" data-preview="preview-{{.ID}}">Open preview</a>
+                        {{if .CanDecide}}
+                        <form method="POST" action="/admin/articles/{{.ID}}/approve" class="row-menu-form">
+                            {{template "csrf_field" $}}
+                            <input type="hidden" name="revision" value="{{.RevisionNumber}}">
+                            <input type="hidden" name="sort" value="{{$.Sort}}">
+                            <button type="submit" role="menuitem" tabindex="-1" class="row-menu-approve">{{if eq .Status "unpublished"}}Republish{{else}}Approve{{end}} rev {{.RevisionNumber}}</button>
+                        </form>
+                        {{end}}
+                        {{if .CanRequestRevision}}
+                        <a role="menuitem" tabindex="-1" href="#preview-{{.ID}}" data-preview="preview-{{.ID}}" data-focus="rewrite">{{if .RevisionGaveUp}}Request the rewrite again&hellip;{{else}}Request rewrite&hellip;{{end}}</a>
+                        {{end}}
+                        {{if .CanDecide}}
+                        <form method="POST" action="/admin/articles/{{.ID}}/reject" class="row-menu-form" data-confirm="Reject article #{{.ID}}? This cannot be undone.">
+                            {{template "csrf_field" $}}
+                            <input type="hidden" name="revision" value="{{.RevisionNumber}}">
+                            <input type="hidden" name="sort" value="{{$.Sort}}">
+                            <button type="submit" role="menuitem" tabindex="-1" class="row-menu-danger">Reject&hellip;</button>
+                        </form>
+                        {{end}}
+                    </div>
+                </div>
             </li>
             {{end}}
         </ol>
-        {{if .Capped}}<p class="q-more">Showing {{len .Rows}} of {{.Total}}, oldest first. <a href="/admin/dashboard?all=1">Show all {{.Total}}</a></p>{{end}}
+        {{if .Capped}}<p class="q-more">Showing {{len .Rows}} of {{.Total}}, {{$.SortLabel}}. <a href="{{$.ShowAllURL}}">Show all {{.Total}}</a></p>{{end}}
         {{else}}
         <p class="q-empty">{{if eq .Key "ready"}}Nothing waiting for review.{{else}}None.{{end}}</p>
         {{end}}
@@ -238,6 +275,7 @@
                 <form method="POST" action="/admin/articles/{{.ID}}/revise" class="actionbar-rewrite">
                     {{template "csrf_field" $}}
                     <input type="hidden" name="next" value="{{.NextID}}">
+                    <input type="hidden" name="sort" value="{{$.Sort}}">
                     <label class="visually-hidden" for="feedback-{{.ID}}">What should change?</label>
                     <textarea id="feedback-{{.ID}}" name="feedback" rows="1" placeholder="{{if .RevisionGaveUp}}Ask for the rewrite again{{else}}What should change?{{end}} (r)" required data-draft="revise-{{.ID}}"></textarea>
                     <button type="submit" class="btn">{{if .RevisionGaveUp}}Request again{{else}}Request rewrite{{end}}</button>
@@ -247,12 +285,14 @@
                         {{template "csrf_field" $}}
                         <input type="hidden" name="revision" value="{{.RevisionNumber}}">
                         <input type="hidden" name="next" value="{{.NextID}}">
+                        <input type="hidden" name="sort" value="{{$.Sort}}">
                         <button type="submit" class="btn btn-outline-danger" title="Reject (x)">Reject</button>
                     </form>
                     <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
                         {{template "csrf_field" $}}
                         <input type="hidden" name="revision" value="{{.RevisionNumber}}">
                         <input type="hidden" name="next" value="{{.NextID}}">
+                        <input type="hidden" name="sort" value="{{$.Sort}}">
                         <button type="submit" class="btn btn-approve" title="Approve (a)">{{if eq .Status "unpublished"}}Republish rev {{.RevisionNumber}}{{else}}Approve rev {{.RevisionNumber}}{{end}}{{if .NextID}} &amp; next{{end}}</button>
                     </form>
                 </div>
@@ -267,6 +307,7 @@
         {{if .CanUndo}}
         <form method="POST" action="/admin/articles/{{.MessageID}}/undo-approve" class="inline-form">
             {{template "csrf_field" $}}
+            <input type="hidden" name="sort" value="{{.Sort}}">
             <button type="submit" class="toast-action">Undo</button>
         </form>
         {{end}}

@@ -32,6 +32,7 @@
 - [x] Structured card data — earning rates, credits, benefits, protections, transfer partners for 52 cards
 - [x] CI/CD refactored into separate build/deploy/seed/grafana jobs
 - [x] Admin rework — own shell with counts on the tabs, grouped review queue with decisions in the preview (revision-checked approve, approve-and-next, undo, shortcuts), source health, card editor with inline flags, card updates as a word diff
+- [x] Review queue sort (newest first by default, oldest, critic score) and per-row actions menus on Review and Published; compact type pills
 
 ## Reliability & Hardening
 

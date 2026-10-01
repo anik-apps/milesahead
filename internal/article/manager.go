@@ -164,6 +164,17 @@ func (e *ErrArticleChanged) Error() string {
 // decidable are the statuses an admin can approve or reject from.
 var decidable = map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true, db.StatusDraft: true}
 
+// revisable are the statuses an admin can ask for a rewrite from.
+var revisable = map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true, db.StatusDraft: true}
+
+// Decidable reports whether an article in status can be approved or
+// rejected, so pages only offer the decisions the server will accept.
+func Decidable(status string) bool { return decidable[status] }
+
+// Revisable reports whether a rewrite can be requested for an article in
+// status (see RequestRevision).
+func Revisable(status string) bool { return revisable[status] }
+
 // decide moves the article to approved or rejected. revision > 0 makes the
 // move conditional on the article still being at that revision, in the same
 // write as the status check, so a rewrite landing in between cannot be
@@ -241,7 +252,7 @@ func (m *Manager) UndoApprove(articleID int64) (string, error) {
 // feedback it is meant to answer. The other order let a rewrite start against
 // the previous note (or none).
 func (m *Manager) RequestRevision(articleID int64, feedback string, source string) error {
-	allowed := map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true, db.StatusDraft: true}
+	allowed := revisable
 	article, err := m.db.GetGeneratedArticle(articleID)
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
