@@ -21,8 +21,8 @@ var cardHref = regexp.MustCompile(`href="/cards/([a-z0-9][a-z0-9-]*)"`)
 const (
 	maxRivals  = 3 // cards offered for a one-tap comparison
 	maxRelated = 3 // more cards from the same category
-	// verdictLeadMax caps the verdict's first sentence in the summary panel.
-	verdictLeadMax = 220
+	// cardVerdictLeadMax caps the verdict's first sentence in the summary panel.
+	cardVerdictLeadMax = 220
 )
 
 // linkedCardSlugs lists the card pages a card's sections link to, in order of
@@ -41,9 +41,9 @@ func linkedCardSlugs(sections []db.ReferenceSection) []string {
 	return out
 }
 
-// applyLabel names the button that leaves for the issuer. A card that is
+// cardApplyLabel names the button that leaves for the issuer. A card that is
 // closed to new applicants gets "Card details", not "Apply".
-func applyLabel(issuer string, closed bool) string {
+func cardApplyLabel(issuer string, closed bool) string {
 	issuer = strings.TrimSpace(issuer)
 	switch {
 	case issuer == "" && closed:
@@ -149,8 +149,8 @@ func cardDetailData(page *db.ReferencePage, sections []db.ReferenceSection, all 
 	offer := parseOffer(page.WelcomeBonusText)
 	return map[string]interface{}{
 		"Facts":         buildCardFacts(page),
-		"VerdictLead":   leadSentence(page.ScoutsVerdict, verdictLeadMax),
-		"ApplyLabel":    applyLabel(page.Issuer, offer.Closed),
+		"VerdictLead":   leadSentence(page.ScoutsVerdict, cardVerdictLeadMax),
+		"ApplyLabel":    cardApplyLabel(page.Issuer, offer.Closed),
 		"ApplyHost":     applyHost(page.ApplyURL),
 		"Rivals":        rivals,
 		"Related":       related,
