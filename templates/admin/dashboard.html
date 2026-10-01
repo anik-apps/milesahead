@@ -1,82 +1,92 @@
 {{template "admin_layout" .}}
 {{define "content"}}
-<div class="admin-dashboard">
-    {{if eq .Message "revision_submitted"}}
-    <div class="message success">Revision feedback submitted. The AI is regenerating the article — refresh in about 30 seconds to see the updated version.</div>
-    {{end}}
-    {{if eq .Message "approved"}}
-    <div class="message success">Article approved and published.</div>
-    {{end}}
-    {{if eq .Message "rejected"}}
-    <div class="message success">Article rejected.</div>
-    {{end}}
+<div class="admin-dashboard" data-state="{{.StateVersion}}" data-open="{{if .OpenID}}preview-{{.OpenID}}{{end}}">
+    <div class="page-head">
+        <h1>Review <span class="page-count">{{.Total}}</span></h1>
+        <div class="page-head-tools">
+            <button type="button" class="btn kbd-help-btn" aria-expanded="false" aria-controls="kbd-help">Keyboard shortcuts <kbd>?</kbd></button>
+        <div id="kbd-help" class="kbd-help" role="dialog" aria-label="Keyboard shortcuts" hidden>
+            <dl>
+                <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next / previous article (in the list or the preview)</dd>
+                <dt><kbd>Enter</kbd> <kbd>o</kbd></dt><dd>Open the selected article</dd>
+                <dt><kbd>a</kbd></dt><dd>Approve the revision shown, then open the next</dd>
+                <dt><kbd>x</kbd></dt><dd>Reject (asks first)</dd>
+                <dt><kbd>r</kbd></dt><dd>Write a rewrite request</dd>
+                <dt><kbd>Esc</kbd></dt><dd>Close the preview, or leave the text box</dd>
+                <dt><kbd>?</kbd></dt><dd>Show or hide this list</dd>
+            </dl>
+            <p class="dim">Shortcuts never fire while you are typing in a box.</p>
+        </div>
+        </div>
+    </div>
+
+    <div class="q-refresh" role="status" hidden>The queue has changed since this page loaded. <a href="/admin/dashboard" class="q-refresh-link">Refresh</a> <span class="dim">(anything you typed is kept)</span></div>
+
+    {{if .MessageText}}<div class="message success" role="status">{{.MessageText}}</div>{{end}}
     {{if eq .Message "changed"}}
-    <div class="message error">Article #{{.MessageID}} changed after you opened it: it is now revision {{.MessageRev}}. Nothing was approved or rejected. Review the new version first.</div>
+    <div class="message error" role="alert">Article #{{.MessageID}} changed after you opened it: it is now revision {{.MessageRev}}. Nothing was approved or rejected. Review the new version first.</div>
     {{end}}
     {{if eq .Message "status_changed"}}
-    <div class="message error">Article #{{.MessageID}} changed status after you opened it, so nothing was done. Check its current state below.</div>
+    <div class="message error" role="alert">Article #{{.MessageID}} changed status after you opened it, so nothing was done. Check its current state below.</div>
     {{end}}
-    <h1>Pending Articles</h1>
-    {{if .Articles}}
-    <table class="admin-table">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Score</th>
-                <th title="Revision number">Rev</th>
-                <th>Date</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Articles}}
-            <tr{{if eq .Status "revision_requested"}} class="row-revising"{{end}}>
-                <td>
-                    <span class="badge badge-{{.Type}}">{{typeBadge .Type}}</span>
-                    <a href="#" class="preview-link" onclick="openPreview('preview-{{.ID}}'); return false;">{{.Title}}</a>
-                    {{if eq .Status "pending"}}<span class="status-badge pending">Pending</span>{{end}}
-                    {{if eq .Status "revision_requested"}}{{if .RevisionGaveUp}}<span class="status-badge revision-failed" title="{{.RevisionLastError}}">Revision failed {{.RevisionFailures}} times &mdash; request it again, approve or reject</span>{{else if .RevisionFailures}}<span class="status-badge revising" title="{{.RevisionLastError}}">Revising... (failed {{.RevisionFailures}}&times;, retrying)</span>{{else}}<span class="status-badge revising">Revising...</span>{{end}}{{end}}
-                    {{if eq .Status "unpublished"}}<span class="status-badge unpublished">Unpublished</span>{{end}}
-                    {{if eq .Status "draft"}}<span class="status-badge draft">Draft</span>{{end}}
-                    {{if .Tags}}
-                    <div class="article-tags" style="margin-top:0.25rem;">
-                        {{range .Tags}}<span class="tag-badge">{{.}}</span>{{end}}
-                    </div>
-                    {{end}}
-                </td>
-                <td>{{.VerificationScore}}</td>
-                <td>{{.RevisionNumber}}</td>
-                <td><span class="dim">{{.CreatedAt}}</span><br><span class="dim">Updated: {{.UpdatedAt}}</span></td>
-                <td class="actions">
-                    <a href="/admin/articles/{{.ID}}/cards" class="btn btn-primary">Linked cards</a>
-                    <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
-                        {{template "csrf_field" $}}
-                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
-                        <button type="submit" class="btn btn-approve" onclick="return confirm('Are you sure you want to approve this article for publishing?')">Approve</button>
-                    </form>
-                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form">
-                        {{template "csrf_field" $}}
-                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
-                        <button type="submit" class="btn btn-reject" onclick="return confirm('Are you sure you want to reject this article?')">Reject</button>
-                    </form>
-                    <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form revision-form">
-                        {{template "csrf_field" $}}
-                        <textarea name="feedback" placeholder="Revision feedback..." required data-draft="revise-{{.ID}}"></textarea>
-                        <button type="submit" class="btn btn-primary">Request Revision</button>
-                    </form>
-                </td>
-            </tr>
+
+    {{range .Groups}}
+    <section class="q-group q-{{.Key}}" aria-labelledby="q-{{.Key}}-head">
+        <h2 class="q-head" id="q-{{.Key}}-head">{{.Title}} <span class="tab-n{{if and (eq .Key "decide") .Total}} alert{{end}}">{{.Total}}</span></h2>
+        <p class="q-note">{{.Note}}</p>
+        {{if .Rows}}
+        <ol class="q-list">
+            {{range .Rows}}
+            <li>
+                <a class="q-row{{if eq .Group "decide"}} q-alert{{end}}{{if eq .Group "rewriting"}} q-quiet{{end}}" href="#preview-{{.ID}}" data-preview="preview-{{.ID}}">
+                    <span class="badge badge-{{.Type}} q-type">{{typeBadge .Type}}</span>
+                    <span class="q-main">
+                        <span class="q-title">{{.Title}}</span>
+                        <span class="q-meta">
+                            {{if .RevisionGaveUp}}<span class="chip chip-bad" title="{{.RevisionLastError}}">Rewrite gave up after {{.RevisionFailures}} tries</span>{{end}}
+                            {{if .RetryNote}}<span class="chip {{if .RevisionFailures}}chip-warn{{else}}chip-info{{end}}"{{if .RevisionLastError}} title="{{.RevisionLastError}}"{{end}}>{{.RetryNote}}</span>{{end}}
+                            {{if eq .Status "unpublished"}}<span class="chip chip-warn">Unpublished</span>{{end}}
+                            {{if eq .Status "draft"}}<span class="chip chip-mute" title="Below the critic's threshold">Draft</span>{{end}}
+                            {{if .FailedChecks}}<span class="chip chip-bad">{{.FailedChecks}} critic {{if eq .FailedChecks 1}}check{{else}}checks{{end}} failed</span>{{end}}
+                            {{if not .Enriched}}<span class="chip chip-warn" title="Enrichment adds the photo and {{$.PersonaName}}'s Take within about 15 minutes">{{if .ImageURL}}No {{$.PersonaName}}'s Take yet{{else if .ScoutsTake}}No image yet{{else}}No image or take yet{{end}}</span>{{end}}
+                            {{if and (eq .Group "ready") .Enriched (not .FailedChecks)}}<span class="chip chip-ok">Ready</span>{{end}}
+                            {{if gt .RevisionNumber 1}}<span class="chip chip-mute">Rev {{.RevisionNumber}}</span>{{end}}
+                            <span class="q-sub">{{.SourceCount}} {{if eq .SourceCount 1}}source{{else}}sources{{end}} &middot; {{.Age}}</span>
+                        </span>
+                    </span>
+                    <span class="q-score score-{{.ScoreClass}}" title="Critic score">{{if .HasScore}}{{.VerificationScore}}{{else}}&ndash;{{end}}</span>
+                    <span class="q-cta">{{if eq .Group "decide"}}Decide{{else if eq .Group "rewriting"}}View{{else}}Review{{end}}</span>
+                </a>
+            </li>
             {{end}}
-        </tbody>
-    </table>
+        </ol>
+        {{if .Capped}}<p class="q-more">Showing {{len .Rows}} of {{.Total}}, oldest first. <a href="/admin/dashboard?all=1">Show all {{.Total}}</a></p>{{end}}
+        {{else}}
+        <p class="q-empty">{{if eq .Key "ready"}}Nothing waiting for review.{{else}}None.{{end}}</p>
+        {{end}}
+    </section>
+    {{end}}
 
     <!-- Preview modals -->
-    {{range .Articles}}
-    <div id="preview-{{.ID}}" class="preview-overlay" onclick="if(event.target===this)closePreview(this)">
-        <div class="preview-modal">
+    {{range .Groups}}{{range .Rows}}
+    <div id="preview-{{.ID}}" class="preview-overlay" data-id="{{.ID}}" data-next="{{if .NextID}}preview-{{.NextID}}{{end}}" data-prev="{{if .PrevID}}preview-{{.PrevID}}{{end}}">
+        <div class="preview-modal" role="dialog" aria-modal="true" aria-label="Article #{{.ID}} preview">
             <div class="preview-header">
-                <span class="preview-label">Article Preview <span class="preview-id">#{{.ID}}</span></span>
-                <button class="preview-close" onclick="closePreview(document.getElementById('preview-{{.ID}}'))">&times;</button>
+                <span class="preview-label"><span class="hide-sm">Article </span><span class="preview-id">#{{.ID}}</span></span>
+                <span class="preview-chips">
+                    <span class="chip chip-mute">Rev {{.RevisionNumber}}</span>
+                    {{if .HasScore}}<span class="chip score-{{.ScoreClass}}">Critic {{.VerificationScore}}</span>{{end}}
+                    {{if .RevisionGaveUp}}<span class="chip chip-bad">Rewrite gave up</span>{{else if .RetryNote}}<span class="chip chip-warn">{{.RetryNote}}</span>{{end}}
+                    {{if eq .Status "unpublished"}}<span class="chip chip-warn">Unpublished</span>{{end}}
+                    {{if eq .Status "draft"}}<span class="chip chip-mute">Draft</span>{{end}}
+                </span>
+                <span class="preview-nav">
+                    {{if .PrevID}}<a class="btn btn-sm" href="#preview-{{.PrevID}}" data-preview="preview-{{.PrevID}}" aria-label="Previous article" title="Previous (k)">&larr;</a>{{else}}<span class="btn btn-sm is-disabled" aria-hidden="true">&larr;</span>{{end}}
+                    <span class="dim">{{.Position}} of {{.QueueLen}}</span>
+                    {{if .NextID}}<a class="btn btn-sm" href="#preview-{{.NextID}}" data-preview="preview-{{.NextID}}" aria-label="Next article" title="Next (j)">&rarr;</a>{{else}}<span class="btn btn-sm is-disabled" aria-hidden="true">&rarr;</span>{{end}}
+                </span>
+                <a class="btn btn-sm" href="/admin/articles/{{.ID}}/cards">Linked cards</a>
+                <button type="button" class="preview-close" aria-label="Close preview" title="Close (Esc)">&times;</button>
             </div>
             <div class="preview-body">
                 {{if .ImageURL}}
@@ -136,27 +146,6 @@
                         </div>
                     </div>
                 </article>
-
-                <!-- Actions inside preview -->
-                <div class="preview-actions">
-                    <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
-                        {{template "csrf_field" $}}
-                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
-                        <button type="submit" class="btn btn-approve" onclick="return confirm('Approve this article for publishing?')">Approve</button>
-                    </form>
-                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form">
-                        {{template "csrf_field" $}}
-                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
-                        <button type="submit" class="btn btn-reject" onclick="return confirm('Reject this article?')">Reject</button>
-                    </form>
-                    <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form" style="flex:1">
-                        {{template "csrf_field" $}}
-                        <div style="display:flex;gap:8px">
-                            <textarea name="feedback" placeholder="Revision feedback..." required style="flex:1;min-height:36px" data-draft="revise-{{.ID}}"></textarea>
-                            <button type="submit" class="btn btn-primary">Revise</button>
-                        </div>
-                    </form>
-                </div>
             </div>
 
             <!-- Admin-only sections below the preview -->
@@ -232,33 +221,48 @@
                 </div>
                 {{end}}
             </div>
+
+            <!-- Actions: always in view at the bottom of the preview -->
+            <div class="preview-actionbar">
+                {{if eq .Group "rewriting"}}<p class="actionbar-note">A rewrite is pending. Approving or rejecting decides on revision {{.RevisionNumber}}, shown above, and drops the pending request.</p>{{end}}
+                <form method="POST" action="/admin/articles/{{.ID}}/revise" class="actionbar-rewrite">
+                    {{template "csrf_field" $}}
+                    <input type="hidden" name="next" value="{{.NextID}}">
+                    <label class="visually-hidden" for="feedback-{{.ID}}">What should change?</label>
+                    <textarea id="feedback-{{.ID}}" name="feedback" rows="1" placeholder="{{if .RevisionGaveUp}}Ask for the rewrite again{{else}}What should change?{{end}} (r)" required data-draft="revise-{{.ID}}"></textarea>
+                    <button type="submit" class="btn">{{if .RevisionGaveUp}}Request again{{else}}Request rewrite{{end}}</button>
+                </form>
+                <div class="actionbar-decide">
+                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form" data-confirm="Reject article #{{.ID}}? This cannot be undone.">
+                        {{template "csrf_field" $}}
+                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
+                        <input type="hidden" name="next" value="{{.NextID}}">
+                        <button type="submit" class="btn btn-outline-danger" title="Reject (x)">Reject</button>
+                    </form>
+                    <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
+                        <input type="hidden" name="next" value="{{.NextID}}">
+                        <button type="submit" class="btn btn-approve" title="Approve (a)">{{if eq .Status "unpublished"}}Republish rev {{.RevisionNumber}}{{else}}Approve rev {{.RevisionNumber}}{{end}}{{if .NextID}} &amp; next{{end}}</button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
-    {{end}}
+    {{end}}{{end}}
 
-    {{else}}
-    <div class="empty-state">
-        <p>No pending articles to review.</p>
-        <p style="margin-top: 0.5rem;"><a href="/admin/published">View published articles</a> &middot; <a href="/admin/sources">Manage sources</a></p>
+    {{if and (eq .Message "approved") .MessageID}}
+    <div class="toast" role="status" data-autohide="15000">
+        <span>Approved {{if .ApprovedTitle}}&ldquo;{{.ApprovedTitle}}&rdquo;{{else}}article #{{.MessageID}}{{end}} and published{{if .ApprovedSlug}} (<a href="/article/{{.ApprovedSlug}}" target="_blank" rel="noopener">view</a>){{end}}.</span>
+        {{if .UndoPrev}}
+        <form method="POST" action="/admin/articles/{{.MessageID}}/undo-approve" class="inline-form">
+            {{template "csrf_field" $}}
+            <input type="hidden" name="prev" value="{{.UndoPrev}}">
+            <button type="submit" class="toast-action">Undo</button>
+        </form>
+        {{end}}
+        <button type="button" class="toast-close" aria-label="Dismiss">&times;</button>
     </div>
     {{end}}
 </div>
-
-<script>
-function openPreview(id) {
-    document.getElementById(id).classList.add('active');
-    document.body.style.overflow = 'hidden';
-}
-function closePreview(el) {
-    el.classList.remove('active');
-    document.body.style.overflow = '';
-}
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        document.querySelectorAll('.preview-overlay.active').forEach(function(el) {
-            closePreview(el);
-        });
-    }
-});
-</script>
 {{end}}

@@ -119,15 +119,38 @@ func TestAdminDashboard_ShowsRevisionFailures(t *testing.T) {
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		"failed 1&times;, retrying",
-		"Revision failed 3 times",
+		"Rewriting, requested",
+		"Failed 1×, retrying in 60 min",
+		"Rewrite gave up after 3 tries",
 		`title="provider returned 503"`,
 	} {
-		if !strings.Contains(body, want) && !strings.Contains(body, strings.ReplaceAll(want, "&times;", "×")) {
+		if !strings.Contains(body, want) && !strings.Contains(body, strings.ReplaceAll(want, "×", "&times;")) {
 			t.Errorf("dashboard missing %q", want)
 		}
 	}
-	if n := strings.Count(body, `class="status-badge revision-failed"`); n != 1 {
-		t.Errorf("given-up badges = %d, want 1", n)
+	// The given-up article waits on the admin, so it is in "Needs a
+	// decision"; the other two are still being rewritten.
+	decide := section(body, "q-decide")
+	rewriting := section(body, "q-rewriting")
+	if !strings.Contains(decide, "Abandoned Request") || strings.Contains(decide, "Retrying Request") {
+		t.Errorf("Needs a decision should hold only the abandoned request:\n%s", decide)
 	}
+	for _, title := range []string{"Fresh Request", "Retrying Request"} {
+		if !strings.Contains(rewriting, title) {
+			t.Errorf("Being rewritten is missing %q", title)
+		}
+	}
+}
+
+// section returns the dashboard group <section class="q-group q-key">.
+func section(body, key string) string {
+	start := strings.Index(body, `<section class="q-group `+key+`"`)
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(body[start:], "</section>")
+	if end < 0 {
+		return body[start:]
+	}
+	return body[start : start+end]
 }

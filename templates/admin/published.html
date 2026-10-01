@@ -1,38 +1,55 @@
 {{template "admin_layout" .}}
 {{define "content"}}
 <div class="admin-published">
-    <h1>Published Articles</h1>
+    <div class="page-head">
+        <h1>Published <span class="page-count">{{.Total}}</span></h1>
+    </div>
+    {{if eq .Message "unpublished_revise"}}<div class="message success" role="status">Taken down and a rewrite requested. It is in Review under "Being rewritten".</div>{{end}}
+    {{if eq .Message "republished"}}<div class="message success" role="status">Back on the site.</div>{{end}}
+
     {{if .Articles}}
-    <table class="admin-table">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Published</th>
-                <th class="hide-mobile">Upvotes</th>
-                <th class="hide-mobile">Downvotes</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Articles}}
-            <tr{{if .Flagged}} class="flagged"{{end}}>
-                <td><span class="badge badge-{{.Type}}">{{typeBadge .Type}}</span> {{.Title}}{{if .Flagged}} <span class="flag-icon" title="High downvotes">&#9873;</span>{{end}}</td>
-                <td>{{.PublishedAt}}</td>
-                <td class="hide-mobile">{{.Upvotes}}</td>
-                <td class="hide-mobile">{{.Downvotes}}</td>
-                <td class="actions">
-                    <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="inline-form">
+    <ol class="q-list">
+        {{range .Articles}}
+        <li class="p-row{{if .Flagged}} p-flagged{{end}}">
+            <span class="badge badge-{{.Type}} q-type">{{typeBadge .Type}}</span>
+            <span class="q-main">
+                <a class="q-title p-title" href="/article/{{.Slug}}" target="_blank" rel="noopener" title="Open the live article">{{.Title}} <span aria-hidden="true">&#8599;</span></a>
+                <span class="q-meta">
+                    {{if .Flagged}}<span class="chip chip-bad">Many downvotes</span>{{end}}
+                    <span class="q-sub" title="Published {{.PublishedAt}}">Published {{.Age}} &middot; <span title="Upvotes">&#9650; {{.Upvotes}}</span> <span title="Downvotes">&#9660; {{.Downvotes}}</span> &middot; #{{.ID}}</span>
+                </span>
+            </span>
+            <span class="p-actions">
+                <a class="btn btn-sm" href="/admin/articles/{{.ID}}/cards">Linked cards</a>
+                <details class="p-unpublish">
+                    <summary class="btn btn-sm">Unpublish&hellip;</summary>
+                    <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="p-unpublish-form">
                         {{template "csrf_field" $}}
-                        <textarea name="feedback" placeholder="Optional feedback..." data-draft="unpublish-{{.ID}}"></textarea>
-                        <button type="submit" class="btn btn-warn">Unpublish</button>
+                        <label for="unpub-{{.ID}}">Ask for a rewrite too (optional)</label>
+                        <textarea id="unpub-{{.ID}}" name="feedback" rows="2" placeholder="Leave empty to just take it down" data-draft="unpublish-{{.ID}}"></textarea>
+                        <button type="submit" class="btn btn-warn">Take it down</button>
                     </form>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+                </details>
+            </span>
+        </li>
+        {{end}}
+    </ol>
+    {{if lt (len .Articles) .Total}}<p class="q-more">Showing the {{len .Articles}} most recent of {{.Total}}.</p>{{end}}
     {{else}}
-    <p>No published articles.</p>
+    <p class="q-empty">No published articles.</p>
+    {{end}}
+
+    {{if .UndoRevision}}
+    <div class="toast" role="status" data-autohide="15000">
+        <span>Took down &ldquo;{{.UndoTitle}}&rdquo;.</span>
+        <form method="POST" action="/admin/articles/{{.MessageID}}/approve" class="inline-form">
+            {{template "csrf_field" $}}
+            <input type="hidden" name="revision" value="{{.UndoRevision}}">
+            <input type="hidden" name="return" value="published">
+            <button type="submit" class="toast-action">Undo</button>
+        </form>
+        <button type="button" class="toast-close" aria-label="Dismiss">&times;</button>
+    </div>
     {{end}}
 </div>
 {{end}}

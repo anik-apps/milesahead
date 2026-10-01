@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -80,140 +79,40 @@ type adminArticleRow struct {
 	// RevisionThread is the article's feedback and the rewrites that answered
 	// it, oldest first, for the preview; nil when no feedback was ever sent.
 	RevisionThread []revisionRequest
-	createdAtRaw   time.Time // for sorting only, not exposed to template
+
+	// Queue row extras (dashboard.go).
+	Group        string // groupDecide, groupReady or groupRewriting
+	Age          string // "3 h ago"
+	Enriched     bool   // has its image and Scout's Take
+	RetryNote    string // a rewrite's state: "Failed 2×, retrying in 8 min"
+	HasScore     bool
+	ScoreClass   string // "ok", "warn", "bad" against the critic threshold
+	FailedChecks int    // critic checks that did not pass
+	// Position is the row's place in the queue (1-based) of QueueLen;
+	// PrevID and NextID are its neighbours, 0 at the ends.
+	Position, QueueLen int
+	PrevID, NextID     int64
+
+	createdAtRaw time.Time // for sorting only, not exposed to template
+	updatedAtRaw time.Time
 }
 
 // adminTimeFormat is how admin views show timestamps.
 const adminTimeFormat = "Jan 2, 2006 3:04 PM"
 
-func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
-	// Show all articles needing admin attention: pending, unpublished, and revision_requested
-	var articles []db.GeneratedArticle
-	for _, status := range []string{"pending", "unpublished", "revision_requested", "draft"} {
-		batch, err := app.db.ListArticlesByStatus(status)
-		if err != nil {
-			continue
-		}
-		articles = append(articles, batch...)
-	}
-
-	// Retry state for revision_requested articles, in one query.
-	revisionState := map[int64]db.PendingRevision{}
-	if pending, err := app.db.ListPendingRevisions(); err == nil {
-		for _, p := range pending {
-			revisionState[p.ID] = p
-		}
-	} else {
-		slog.Warn("dashboard: could not load revision retry state", "error", err)
-	}
-
-	var rows []adminArticleRow
-	for _, a := range articles {
-		row := adminArticleRow{
-			ID:             a.ID,
-			Title:          a.Title,
-			Type:           a.Type,
-			Status:         a.Status,
-			Slug:           a.Slug,
-			Content:        a.Content,
-			RevisionNumber: a.RevisionNumber,
-			TLDR:           a.TLDR,
-			ImageURL:       a.ImageURL,
-			ScoutsTake:     a.ScoutsTake,
-			CreatedAt:      a.CreatedAt.Format(adminTimeFormat),
-			UpdatedAt:      a.UpdatedAt.Format(adminTimeFormat),
-			createdAtRaw:   a.CreatedAt,
-		}
-		if p, ok := revisionState[a.ID]; ok && a.Status == db.StatusRevisionRequested && p.Failures > 0 {
-			row.RevisionFailures = p.Failures
-			row.RevisionLastError = p.LastError
-			row.RevisionGaveUp = app.articleManager != nil && app.articleManager.RevisionGaveUp(p.Failures)
-		}
-
-		// Parse key details and links from JSON
-		if a.KeyDetails != "" && a.KeyDetails != "[]" {
-			var kd []struct{ Label, Value string }
-			if err := json.Unmarshal([]byte(a.KeyDetails), &kd); err != nil {
-				slog.Warn("failed to parse key details", "article_id", a.ID, "error", err)
-			}
-			row.KeyDetails = kd
-		}
-		if a.Links != "" && a.Links != "[]" {
-			var links []struct{ Text, URL string }
-			if err := json.Unmarshal([]byte(a.Links), &links); err != nil {
-				slog.Warn("failed to parse links", "article_id", a.ID, "error", err)
-			}
-			row.ArticleLinks = links
-		}
-		if a.TagsJSON != "" && a.TagsJSON != "[]" {
-			var tags []string
-			if err := json.Unmarshal([]byte(a.TagsJSON), &tags); err == nil {
-				row.Tags = tags
-			}
-		}
-
-		if v, err := app.db.GetLatestVerification(a.ID); err == nil {
-			row.VerificationScore = v.Score
-			var issues []string
-			if v.IssuesJSON != "" && v.IssuesJSON != "[]" {
-				json.Unmarshal([]byte(v.IssuesJSON), &issues)
-			}
-			row.CriticReport = &adminCriticReport{
-				Score:              v.Score,
-				Issues:             issues,
-				FactualCheck:       v.FactualCheck,
-				AttributionCheck:   v.AttributionCheck,
-				CompletenessCheck:  v.CompletenessCheck,
-				HallucinationCheck: v.HallucinationCheck,
-			}
-		}
-		if count, err := app.db.CountArticleSources(a.ID); err == nil {
-			row.SourceCount = count
-		}
-		if rawArticles, err := app.db.GetLinkedRawArticles(a.ID); err == nil {
-			for _, ra := range rawArticles {
-				src, _ := app.db.GetSource(ra.SourceID)
-				name := "Unknown"
-				if src != nil {
-					name = src.Name
-				}
-				row.Sources = append(row.Sources, adminSourceInfo{
-					Name:  name,
-					Title: ra.Title,
-					URL:   ra.URL,
-				})
-			}
-		}
-
-		rows = append(rows, row)
-	}
-
-	// Sort by CreatedAt DESC (most recent first) and limit to 20 for dashboard
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].createdAtRaw.After(rows[j].createdAtRaw)
-	})
-	if len(rows) > 20 {
-		rows = rows[:20]
-	}
-	app.attachRevisionHistory(rows)
-
-	data := map[string]interface{}{
-		"Title":       "Dashboard",
-		"Articles":    rows,
-		"CSRFToken":   getCSRFToken(w, r),
-		"Message":     r.URL.Query().Get("msg"),
-		"MessageID":   queryInt(r, "id"),
-		"MessageRev":  queryInt(r, "rev"),
-		"PersonaName": app.cfg.Site.PersonaName,
-	}
-	app.renderTemplate(w, "dashboard.html", data)
-}
+// publishedLimit is how many published articles the Published page lists,
+// most recent first; it says how many there are in all.
+const publishedLimit = 100
 
 func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
-	articles, err := app.db.ListPublishedArticles(100, 0)
+	articles, err := app.db.ListPublishedArticles(publishedLimit, 0)
 	if err != nil {
 		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
 		return
+	}
+	total := len(articles)
+	if counts, err := app.db.CountArticlesByStatus(); err == nil {
+		total = counts[db.StatusApproved]
 	}
 
 	threshold := app.cfg.Votes.AlertThreshold
@@ -221,6 +120,7 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		threshold = 5
 	}
 
+	now := time.Now()
 	var rows []adminArticleRow
 	for _, a := range articles {
 		row := adminArticleRow{
@@ -232,7 +132,8 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 			RevisionNumber: a.RevisionNumber,
 		}
 		if a.PublishedAt != nil {
-			row.PublishedAt = a.PublishedAt.Format("2006-01-02 15:04")
+			row.PublishedAt = a.PublishedAt.Format(adminTimeFormat)
+			row.Age = ago(*a.PublishedAt, now)
 		}
 
 		if vc, err := app.db.GetVoteCounts(a.ID); err == nil {
@@ -249,7 +150,18 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":     "Published Articles",
 		"Articles":  rows,
+		"Total":     total,
 		"CSRFToken": getCSRFToken(w, r),
+		"Message":   r.URL.Query().Get("msg"),
+		"MessageID": queryInt(r, "id"),
+	}
+	// After a plain unpublish, the toast offers to put it back: approving
+	// the revision that was live, which needs that revision number.
+	if data["Message"] == "unpublished" && r.URL.Query().Get("undo") == "1" {
+		if a, err := app.db.GetGeneratedArticle(queryInt(r, "id")); err == nil && a.Status == db.StatusUnpublished {
+			data["UndoRevision"] = a.RevisionNumber
+			data["UndoTitle"] = a.Title
+		}
 	}
 	app.renderTemplate(w, "published.html", data)
 }
@@ -258,6 +170,11 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 	id, revision, ok := articleDecisionForm(w, r)
 	if !ok {
 		return
+	}
+	// The status it is approved from, for the Undo that follows.
+	var prev string
+	if a, err := app.db.GetGeneratedArticle(id); err == nil {
+		prev = a.Status
 	}
 
 	if err := app.articleManager.ApproveRevision(id, revision); err != nil {
@@ -283,7 +200,11 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	http.Redirect(w, r, "/admin/dashboard?msg=approved", http.StatusSeeOther)
+	if r.FormValue("return") == "published" {
+		http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=republished&id=%d", id), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=approved&id=%d&prev=%s&open=%d", id, url.QueryEscape(prev), nextParam(r)), http.StatusSeeOther)
 }
 
 func (app *App) handleRejectArticle(w http.ResponseWriter, r *http.Request) {
@@ -297,17 +218,7 @@ func (app *App) handleRejectArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/admin/dashboard?msg=rejected", http.StatusSeeOther)
-}
-
-// queryInt is the query parameter name as a positive integer, or 0. Banner
-// text built from the URL only ever shows numbers.
-func queryInt(r *http.Request, name string) int64 {
-	n, err := strconv.ParseInt(r.URL.Query().Get(name), 10, 64)
-	if err != nil || n < 0 {
-		return 0
-	}
-	return n
+	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=rejected&id=%d&open=%d", id, nextParam(r)), http.StatusSeeOther)
 }
 
 // articleDecisionForm reads an approve or reject request: the article id from
@@ -363,7 +274,7 @@ func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
 
 	app.startRevision(id)
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=revision_submitted&id=%d&sent=revise-%d", id, id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=revision_submitted&id=%d&sent=revise-%d&open=%d", id, id, nextParam(r)), http.StatusSeeOther)
 }
 
 // startRevision kicks off the AI rewrite in the background so the admin sees it
@@ -394,14 +305,15 @@ func (app *App) handleUnpublishArticle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		app.startRevision(id)
-	} else {
-		if err := app.articleManager.Unpublish(id); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to unpublish: %v", err), http.StatusBadRequest)
-			return
-		}
+		http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=unpublished_revise&id=%d&sent=unpublish-%d", id, id), http.StatusSeeOther)
+		return
+	}
+	if err := app.articleManager.Unpublish(id); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to unpublish: %v", err), http.StatusBadRequest)
+		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=unpublished&id=%d&sent=unpublish-%d", id, id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=unpublished&undo=1&id=%d&sent=unpublish-%d", id, id), http.StatusSeeOther)
 }
 
 func (app *App) handleUnpublishAndRevise(w http.ResponseWriter, r *http.Request) {

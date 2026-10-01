@@ -91,7 +91,7 @@ func setupAdminTestApp(t *testing.T) (*App, *db.Database) {
 
 	// Write dashboard template.
 	dashboardContent := `{{template "layout" .}}
-{{define "content"}}<h1>Dashboard</h1>{{range .Articles}}<div class="article">{{.Title}}<a href="/admin/articles/{{.ID}}/cards">Linked cards</a></div>{{end}}{{end}}`
+{{define "content"}}<h1>Dashboard</h1>{{range .Groups}}{{range .Rows}}<div class="article">{{.Title}}<a href="/admin/articles/{{.ID}}/cards">Linked cards</a></div>{{end}}{{end}}{{end}}`
 	if err := os.WriteFile(filepath.Join(templateDir, "dashboard.html"), []byte(dashboardContent), 0644); err != nil {
 		t.Fatalf("failed to write dashboard template: %v", err)
 	}
@@ -716,7 +716,7 @@ func setupNewsletterTestApp(t *testing.T, mock *mockNewsletterSvc) (*App, *db.Da
 	}
 
 	dashboardContent := `{{template "layout" .}}
-{{define "content"}}<h1>Dashboard</h1>{{range .Articles}}<div class="article">{{.Title}}<a href="/admin/articles/{{.ID}}/cards">Linked cards</a></div>{{end}}{{end}}`
+{{define "content"}}<h1>Dashboard</h1>{{range .Groups}}{{range .Rows}}<div class="article">{{.Title}}<a href="/admin/articles/{{.ID}}/cards">Linked cards</a></div>{{end}}{{end}}{{end}}`
 	if err := os.WriteFile(filepath.Join(templateDir, "dashboard.html"), []byte(dashboardContent), 0644); err != nil {
 		t.Fatalf("failed to write dashboard template: %v", err)
 	}
