@@ -270,11 +270,13 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 - [ ] **Newsletter signup and delivery** — found in the 2026-09-23 UX review. Items 1,
       3 and 4 are done on the site side; the newsletter itself still cannot be
       unsubscribed from (2), so sign-up is not promoted yet.
-      1. ~~**No confirmation email is sent.**~~ Done: `web.App` takes the SMTP sender
-         (`SetConfirmationMailer`) and `handleSubscribe` sends the confirmation in a
-         tracked background goroutine, at most once per 10 minutes per address; a failed
-         send is logged and releases the claim so the reader can retry. *Still to do:*
-         an alert on repeated send failures.
+      1. **No confirmation email is sent.** The site side is ready: `web.App` takes an
+         SMTP sender (`SetConfirmationMailer`) and `handleSubscribe` sends the
+         confirmation in a tracked background goroutine, at most once per 10 minutes per
+         address; a failed send is logged and releases the claim so the reader can retry.
+         *Not yet wired in `cmd/milesahead/main.go`* (one call): turn it on together with
+         #2, so newly confirmed readers never get a newsletter whose Unsubscribe link
+         cannot work. Also add an alert on repeated send failures.
       2. **Every Unsubscribe link in the newsletter fails.** It is rendered once for all
          recipients with `UnsubscribeURL: domain + "/unsubscribe"`, no token. There is
          no `List-Unsubscribe` header either, which Gmail and Yahoo require of bulk
