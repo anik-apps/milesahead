@@ -1073,7 +1073,7 @@ func (app *App) renderCardForm(w http.ResponseWriter, r *http.Request, status in
 
 // cardFlagFields are the editor's fields an admin can flag, in form order.
 var cardFlagFields = []struct{ Name, Label string }{
-	{"title", "Title"}, {"slug", "Slug"}, {"category", "Category"}, {"issuer", "Issuer"},
+	{"title", "Title"}, {"slug", "Slug"}, {"category", "Category"}, {"issuer", "Issuer"}, {"status", "Status"},
 	{"keywords", "Keywords"}, {"image_url", "Image URL"}, {"apply_url", "Card details URL"},
 	{"annual_fee_amount", "Annual fee"}, {"annual_fee_note", "Annual fee note"},
 	{"welcome_bonus_text", "Welcome bonus"}, {"earning_rates_json", "Earning rates"},

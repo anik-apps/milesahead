@@ -107,3 +107,24 @@ func TestAdminCards_NeedsAttentionFirst(t *testing.T) {
 		t.Error("delete does not name the card it removes")
 	}
 }
+
+// Every field the editor marks as flagged shows the flag's note and a
+// Resolve button: the status field had the outline but not the note.
+func TestCardEditor_StatusFlagShowsNoteAndResolve(t *testing.T) {
+	app, database := realTemplateApp(t)
+	page := createEditableCard(t, database)
+	database.AppendFlaggedField(page.ID, "status", "Card was discontinued in August")
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	body := html.UnescapeString(doAdminGET(t, app, "/admin/cards/"+itoa(page.ID)+"/edit", session).Body.String())
+
+	field := body[strings.Index(body, `<label for="status">`):]
+	field = field[:strings.Index(field, "</div>\n")]
+	for _, want := range []string{"Card was discontinued in August", `name="field" value="status"`, `formaction="/admin/cards/` + itoa(page.ID) + `/resolve-flag"`} {
+		if !strings.Contains(field, want) {
+			t.Errorf("status field missing %q:\n%s", want, field)
+		}
+	}
+	if strings.Contains(body, "<code>status</code>:") {
+		t.Error("a status flag should show on the field, not in the unknown-field list")
+	}
+}

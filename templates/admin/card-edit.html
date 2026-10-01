@@ -66,6 +66,7 @@
                         <option value="draft"{{if eq .Card.Status "draft"}} selected{{end}}>Draft (not on the site)</option>
                         <option value="published"{{if eq .Card.Status "published"}} selected{{end}}>Published</option>
                     </select>
+                    {{with index .FlagMap "status"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
                 </div>
                 <div class="field{{if index .FlagMap "keywords"}} flagged{{end}}">
                     <label for="keywords">Keywords <span class="dim">(comma-separated; how articles are matched to this card)</span></label>
