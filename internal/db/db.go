@@ -834,12 +834,31 @@ func (d *Database) GetGeneratedArticleBySlug(slug string) (*GeneratedArticle, er
 	return a, nil
 }
 
-// ListPublishedArticlesByType returns approved articles filtered by type.
-func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset int) ([]GeneratedArticle, error) {
-	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles WHERE status = ? AND type = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
-		StatusApproved, articleType, limit, offset,
-	)
+// ListPublishedArticlesFiltered returns approved articles, newest first,
+// narrowed to articleType and to articles carrying tag in their tags_json
+// array. An empty articleType or tag leaves that filter off, so both empty
+// lists every approved article. Ended offers are included: filtered views
+// list them, marked as ended.
+func (d *Database) ListPublishedArticlesFiltered(articleType, tag string, limit, offset int) ([]GeneratedArticle, error) {
+	query := `SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles
+		WHERE status = ?`
+	args := []any{StatusApproved}
+	if articleType != "" {
+		query += ` AND type = ?`
+		args = append(args, articleType)
+	}
+	if tag != "" {
+		// A malformed tags_json would make json_each fail the whole query,
+		// and valid JSON that is not an array (a bare string, an object)
+		// would be expanded into values that look like tags. Both count as
+		// no tags.
+		query += ` AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(generated_articles.tags_json) AND json_type(generated_articles.tags_json) = 'array' THEN generated_articles.tags_json ELSE '[]' END) WHERE json_each.value = ?)`
+		args = append(args, tag)
+	}
+	query += ` ORDER BY published_at DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+
+	rows, err := d.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -847,19 +866,24 @@ func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset
 	return scanGeneratedArticles(rows)
 }
 
-// ListPublishedArticlesByTag returns approved articles that have the given tag in their tags_json array.
-func (d *Database) ListPublishedArticlesByTag(tag string, limit, offset int) ([]GeneratedArticle, error) {
-	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles
-		WHERE status = 'approved'
-		AND id IN (SELECT ga.id FROM generated_articles ga, json_each(ga.tags_json) je WHERE je.value = ?)
-		ORDER BY published_at DESC LIMIT ? OFFSET ?`, tag, limit, offset,
-	)
+// ListPublishedArticleTypes returns the distinct types of approved articles,
+// in no particular order. The homepage offers a type filter only for types
+// that have something to show.
+func (d *Database) ListPublishedArticleTypes() ([]string, error) {
+	rows, err := d.db.Query(`SELECT DISTINCT type FROM generated_articles WHERE status = ?`, StatusApproved)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanGeneratedArticles(rows)
+	var types []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		types = append(types, t)
+	}
+	return types, rows.Err()
 }
 
 // ListApprovedArticlesSince returns approved articles published since the given time.

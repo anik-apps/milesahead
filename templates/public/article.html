@@ -21,7 +21,7 @@
     {{end}}
 
     <header class="article-header">
-        <span class="type-badge badge-{{.Article.Type}}">{{.Article.Type}}</span>{{if .OfferEnded}} <span class="ended-badge">{{endedLabel .Article.Type}}</span>{{end}}
+        <span class="type-badge badge-{{.Article.Type}}">{{typeBadge .Article.Type}}</span>{{if .OfferEnded}} <span class="ended-badge">{{endedLabel .Article.Type}}</span>{{end}}
         <h1>{{.Article.Title}}</h1>
         <time class="published-date">{{.PublishedAt}}</time>
         {{if .ArticleTags}}

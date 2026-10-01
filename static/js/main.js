@@ -144,14 +144,3 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
-
-// Category Filter - highlight active tab based on URL
-document.addEventListener('DOMContentLoaded', function() {
-    var tabs = document.querySelectorAll('.category-tabs .tab');
-    tabs.forEach(function(tab) {
-        tab.addEventListener('click', function(e) {
-            // Let the default link behavior handle navigation.
-            // The server re-renders with the active class based on query param.
-        });
-    });
-});
