@@ -176,7 +176,7 @@ func TestHandleCompare_AcceptsCompareFormSubmit(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
 	seedAllCards(t, app)
 	body := getPath(t, app, "/compare?cards=amex-platinum%2Ccapital-one-venture-x")
-	for _, want := range []string{"American Express Platinum Card", "Capital One Venture X", "$895/yr"} {
+	for _, want := range []string{"American Express Platinum Card", "Capital One Venture X", "$895 a year"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/compare from the card page form should show %q", want)
 		}

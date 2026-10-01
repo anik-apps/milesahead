@@ -2603,9 +2603,110 @@ nav.card-toc {
 .search-form button:hover {
     opacity: 0.9;
 }
-.search-empty {
+.search-summary {
     color: var(--text-muted);
-    font-size: 1.05rem;
+    font-size: 0.95rem;
+    margin: -1rem 0 1.5rem;
+}
+.search-summary strong {
+    color: var(--text);
+}
+.search-empty {
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 1.1rem 1.25rem;
+    color: var(--text-muted);
+}
+.search-empty h2 {
+    font-size: 1.15rem;
+    color: var(--text);
+    margin: 0 0 0.35rem;
+}
+.search-empty a {
+    color: var(--accent);
+}
+.search-empty-links {
+    list-style: none;
+    padding: 0;
+    margin: 0.85rem 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.search-empty-links a {
+    display: inline-block;
+    padding: 0.35rem 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.9rem;
+    text-decoration: none;
+    background: var(--card-bg);
+}
+.search-empty-links a:hover {
+    border-color: var(--accent);
+}
+/* Cards whose title holds every word of the query, above the articles. */
+.search-card-tiles {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+}
+.search-card-tile {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    height: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card-bg);
+    text-decoration: none;
+    color: var(--text);
+}
+.search-card-tile:hover {
+    border-color: var(--accent);
+}
+.search-card-tile img {
+    width: 64px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.search-card-name {
+    display: block;
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 1.3;
+}
+.search-card-meta {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+}
+.search-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.3rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.search-item-meta .type-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.45rem;
+}
+.search-more-cards summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.92rem;
+    padding: 0.6rem 0;
 }
 .search-section {
     margin-bottom: 2rem;
@@ -2650,8 +2751,18 @@ nav.card-toc {
 }
 .search-pagination {
     display: flex;
-    gap: 0.75rem;
-    margin-top: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+.btn-page.is-current {
+    background: var(--accent-subtle);
+    color: var(--text);
+    font-weight: 600;
+}
+.page-gap {
+    color: var(--text-muted);
 }
 .btn-page {
     padding: 0.35rem 0.85rem;
@@ -2681,11 +2792,21 @@ nav.card-toc {
 }
 .compare-intro {
     color: var(--text-muted);
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
+}
+.compare-notice {
+    margin: 0 0 1.25rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--ended-banner-border);
+    border-left-width: 5px;
+    border-radius: 8px;
+    background: var(--ended-banner-bg);
+    color: var(--ended-banner-fg);
+    font-weight: 600;
 }
 
-/* Selector form */
-.compare-selector-form {
+/* Picker */
+.compare-picker {
     max-width: 900px;
 }
 .compare-selector-row {
@@ -2695,7 +2816,7 @@ nav.card-toc {
 }
 .compare-selector-row label {
     flex: 1;
-    min-width: 250px;
+    min-width: 220px;
     font-weight: 600;
     font-size: 0.9rem;
     display: flex;
@@ -2716,20 +2837,117 @@ nav.card-toc {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
-
-/* Table wrapper */
-.compare-table-wrap {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+.compare-submit {
     margin-top: 1rem;
+    padding: 0.6rem 1.5rem;
+    border: 0;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+[data-theme="dark"] .compare-submit {
+    color: #0d1117;
+}
+.compare-submit:hover {
+    opacity: 0.9;
+}
+.compare-popular {
+    margin-top: 2.5rem;
+}
+.compare-popular h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.6rem;
+}
+.compare-popular ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.compare-popular a {
+    display: inline-block;
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card-bg);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+.compare-popular a:hover {
+    border-color: var(--accent);
+}
+
+/* Legend and tools above the table */
+.compare-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1.25rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0.25rem 0 0.75rem;
+}
+.compare-legend strong {
+    color: var(--text);
+}
+.compare-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+}
+.compare-diff-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.9rem;
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+}
+.compare-diff-toggle[hidden] {
+    display: none;
+}
+.compare-change summary {
+    display: inline-block;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent);
+    padding: 0.35rem 0;
+}
+.compare-change[open] {
+    flex-basis: 100%;
+}
+.compare-change .compare-picker {
+    margin: 0.5rem 0 0.5rem;
 }
 
 /* Table */
 .compare-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     table-layout: fixed;
-    min-width: 600px;
+}
+.compare-table [hidden] {
+    display: none !important;
+}
+/* The site's generic th style is upper case; here th holds card names and
+   row labels. */
+.compare-table th {
+    text-transform: none;
+    letter-spacing: normal;
+}
+.compare-table .compare-section-head tr:hover,
+.compare-table thead tr:hover {
+    background: none;
 }
 .compare-table th,
 .compare-table td {
@@ -2738,84 +2956,144 @@ nav.card-toc {
     vertical-align: top;
     border-bottom: 1px solid var(--border);
     font-size: 0.92rem;
+    overflow-wrap: anywhere;
 }
-
-/* Zebra striping */
-.compare-table tbody tr:nth-child(even) {
-    background: var(--card-bg);
-}
-
-/* Column tinting for 2nd and 3rd card columns */
-.compare-table th.compare-card-col:nth-child(3),
 .compare-table td:nth-child(3) {
-    background: rgba(37, 99, 235, 0.03);
+    background: rgba(37, 99, 235, 0.035);
 }
-[data-theme="dark"] .compare-table th.compare-card-col:nth-child(3),
 [data-theme="dark"] .compare-table td:nth-child(3) {
-    background: rgba(88, 166, 255, 0.04);
+    background: rgba(88, 166, 255, 0.07);
 }
 
-/* Label column — fixed narrow width, card columns share remaining space equally */
-.compare-label-col {
-    font-weight: 600;
-    white-space: nowrap;
-    width: 18%;
-    color: var(--text-muted);
-    font-size: 0.88rem;
+/* The card header stays in view under the site header. */
+.compare-table thead th,
+.compare-table thead td {
+    position: sticky;
+    top: var(--sticky-offset); /* below the sticky site header */
+    z-index: 3;
+    background: var(--bg);
+    border-bottom: 2px solid var(--border);
+    box-shadow: 0 6px 8px -8px var(--shadow);
 }
-
-/* Card column header */
+.compare-corner {
+    width: 180px;
+}
 .compare-card-col {
-    text-align: center;
-    min-width: 180px;
+    text-align: left;
+}
+.compare-card-link {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    text-decoration: none;
+}
+.compare-card-link:hover .compare-card-name {
+    text-decoration: underline;
 }
 .compare-card-img {
-    max-width: 140px;
-    width: 100%;
+    width: 72px;
     height: auto;
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-    margin-bottom: 0.5rem;
+    flex: none;
+    border-radius: 5px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
-.compare-header-select {
-    font-weight: 600;
-    font-size: 0.82rem;
-    width: 100%;
-    display: block;
-}
-.compare-fee {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    margin-top: 0.35rem;
-}
-
-/* Winner star */
-.compare-winner {
-    color: var(--accent);
-    font-weight: 600;
-}
-
-/* Section headers (collapsible) */
-.compare-section-header td {
+.compare-card-name {
     font-weight: 700;
     font-size: 0.95rem;
-    background: var(--card-bg);
-    border-bottom: 2px solid var(--border);
-    padding: 0.75rem 0.85rem;
+    line-height: 1.25;
+    color: var(--accent);
 }
-.compare-section-header:hover td {
-    background: var(--accent-subtle);
-}
-.compare-toggle-icon {
-    display: inline-block;
-    width: 1em;
-    font-size: 0.75rem;
-    margin-right: 0.35rem;
-    vertical-align: middle;
+.compare-fee {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
 }
 
-/* Scout's Take row */
-.compare-scouts-take td {
+/* Row labels: a fixed column that wraps (labels used to spill into the
+   first card's column). */
+.compare-label-col {
+    width: 180px;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+}
+.compare-value {
+    font-weight: 600;
+}
+.compare-value.is-winner {
+    color: var(--accent);
+}
+.compare-winner {
+    color: var(--accent);
+}
+.compare-note {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+.compare-none {
+    color: var(--text-muted);
+}
+.compare-list {
+    margin: 0;
+    padding-left: 1.05rem;
+}
+.compare-list li + li {
+    margin-top: 0.3rem;
+}
+
+/* Section headers: a button that shows and hides the rows below. */
+.compare-section-head th {
+    background: var(--card-bg);
+    border-bottom: 2px solid var(--border);
+    padding: 0;
+}
+.compare-section-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 0.85rem;
+    background: none;
+    border: 0;
+    color: var(--text);
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.98rem;
+    cursor: pointer;
+}
+.compare-section-toggle:hover {
+    color: var(--accent);
+}
+.compare-section-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+.compare-toggle-icon::before {
+    content: "\25BE"; /* down: open */
+    display: inline-block;
+    width: 1em;
+    font-size: 0.85rem;
+}
+.compare-section-toggle[aria-expanded="false"] .compare-toggle-icon::before {
+    content: "\25B8"; /* right: closed */
+}
+.compare-section-note {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+.compare-table.only-differences tr[data-same] {
+    display: none;
+}
+
+/* Closing rows */
+.compare-scouts-take td,
+.compare-scouts-take th {
     border-top: 2px solid var(--border);
     padding-top: 1rem;
 }
@@ -2823,98 +3101,113 @@ nav.card-toc {
     font-size: 0.9rem;
     line-height: 1.5;
     color: var(--text-muted);
-    word-wrap: break-word;
-    overflow-wrap: break-word;
+}
+.compare-links td,
+.compare-links th {
+    border-bottom: 0;
+}
+.compare-review-link {
+    font-size: 0.88rem;
+    font-weight: 600;
 }
 
-/* Responsive: sticky first column on mobile */
+/* Phones and small tablets: each row's label goes on its own line above the
+   values, so every card gets a full column and all of them fit without
+   scrolling sideways. Roles in the markup keep the table semantics. */
 @media (max-width: 768px) {
     .compare-page {
         padding: 0.5rem;
     }
-
-    /* Make the table wrapper show a right-edge shadow as a scroll hint */
-    .compare-table-wrap {
-        position: relative;
+    .compare-table,
+    .compare-table thead,
+    .compare-table tbody {
+        display: block;
     }
-    .compare-table-wrap::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        right: 0;
-        width: 24px;
-        height: 100%;
-        background: linear-gradient(to right, transparent, rgba(0,0,0,0.08));
-        pointer-events: none;
+    .compare-table tr {
+        display: grid;
+        grid-template-columns: repeat(var(--compare-cols, 2), minmax(0, 1fr));
+        column-gap: 0.5rem;
+        border-bottom: 1px solid var(--border);
     }
-
-    .compare-table .compare-label-col {
-        position: sticky;
-        left: 0;
-        background: var(--bg);
-        z-index: 1;
-        min-width: 90px;
-        max-width: 110px;
-        font-size: 0.78rem;
-        white-space: normal;
-        word-break: break-word;
-        padding: 0.5rem 0.5rem;
-    }
-    .compare-table tbody tr:nth-child(even) .compare-label-col {
-        background: var(--card-bg);
+    .compare-cols-3 tr {
+        --compare-cols: 3;
     }
     .compare-table th,
     .compare-table td {
-        padding: 0.5rem 0.5rem;
+        padding: 0.35rem 0.15rem 0.55rem;
+        border-bottom: 0;
         font-size: 0.82rem;
     }
-    .compare-table td {
-        word-wrap: break-word;
-        overflow-wrap: break-word;
+    .compare-table td:nth-child(3),
+    [data-theme="dark"] .compare-table td:nth-child(3) {
+        background: none;
     }
-    .compare-card-col {
-        min-width: 150px;
-        text-align: center;
+    .compare-table .compare-label-col {
+        grid-column: 1 / -1;
+        width: auto;
+        padding: 0.6rem 0.15rem 0;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
     }
-
-    /* Stack card image and select vertically; make select full-width of its column */
-    .compare-card-col {
-        display: table-cell; /* keep table cell layout */
+    .compare-corner {
+        display: none;
+    }
+    .compare-table thead {
+        position: sticky;
+        top: var(--sticky-offset); /* below the sticky site header */
+        z-index: 3;
+        background: var(--bg);
+        box-shadow: 0 6px 8px -8px var(--shadow);
+    }
+    .compare-table thead th {
+        position: static;
+        box-shadow: none;
+        border-bottom: 0;
+        padding: 0.5rem 0.15rem;
+    }
+    .compare-table thead tr {
+        border-bottom: 2px solid var(--border);
+    }
+    .compare-card-link {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.3rem;
     }
     .compare-card-img {
-        max-width: 90px;
-        display: block;
-        margin: 0 auto 0.4rem;
-    }
-    .compare-header-select {
-        font-size: 0.7rem;
-        min-width: 0;
-        max-width: none;
         width: 100%;
-        box-sizing: border-box;
+        max-width: 52px;
     }
-
-    /* Verdict text smaller on mobile */
+    .compare-card-name {
+        font-size: 0.78rem;
+        line-height: 1.2;
+    }
+    .compare-fee {
+        font-size: 0.72rem;
+        margin-top: 0.15rem;
+    }
+    .compare-section-head tr {
+        display: block;
+    }
+    .compare-section-head th {
+        display: block;
+    }
+    .compare-note {
+        font-size: 0.72rem;
+    }
+    .compare-list {
+        padding-left: 0.9rem;
+    }
     .compare-verdict {
-        font-size: 0.8rem;
+        font-size: 0.78rem;
     }
-
-    /* Welcome bonus cells: prevent overflow */
-    .compare-table td {
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-        hyphens: auto;
+    .compare-legend {
+        font-size: 0.78rem;
     }
-
-    /* Selector page: make dropdowns full-width on mobile */
     .compare-selector-row {
         flex-direction: column;
     }
     .compare-selector-row label {
-        min-width: 0;
-        width: 100%;
-    }
-    .compare-select {
         min-width: 0;
         width: 100%;
     }

@@ -125,12 +125,12 @@ func (app *App) notFound(w http.ResponseWriter, status int, kind, slug string) {
 	if len(words) > 0 {
 		page.Query = strings.Join(words, " ")
 		q := ftsAnyPrefix(words)
-		if arts, err := app.db.SearchArticles(q, 3, 0); err == nil {
+		if arts, err := app.db.SearchArticles(q, "", app.offerToday(), 3, 0); err == nil {
 			page.Articles = arts
 		} else {
 			slog.Warn("not found: suggesting articles", "error", err)
 		}
-		if cards, err := app.db.SearchCards(q, 3, 0); err == nil {
+		if cards, err := app.db.SearchCards(q, "", 3, 0); err == nil {
 			page.Cards = cards
 		} else {
 			slog.Warn("not found: suggesting cards", "error", err)

@@ -28,7 +28,7 @@ func stored(t *testing.T, d *Database, id int64) (content, notes string) {
 
 func searchHits(t *testing.T, d *Database, phrase string) int {
 	t.Helper()
-	res, err := d.SearchArticles(phrase, 10, 0)
+	res, err := d.SearchArticles(phrase, "", "2000-01-01", 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

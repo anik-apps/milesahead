@@ -219,7 +219,7 @@ func TestApplyMovesNotesAndReindexes(t *testing.T) {
 		t.Errorf("search index still holds notes for %v", got)
 	}
 	// The rest of the article is still searchable.
-	res, err := f.database.SearchArticles(`"EVA Air bonus body"`, 10, 0)
+	res, err := f.database.SearchArticles(`"EVA Air bonus body"`, "", "2000-01-01", 10, 0)
 	if err != nil || len(res) != 1 || res[0].ID != f.ids["a57"] {
 		t.Errorf("article body no longer searchable: %v %v", res, err)
 	}

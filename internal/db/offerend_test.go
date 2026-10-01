@@ -243,7 +243,7 @@ func TestOfferEndsBySlugAndSearch(t *testing.T) {
 		t.Errorf("OfferEndsBySlug = %v, want only ended=%v", m, want)
 	}
 
-	results, err := d.SearchArticles(`"Chase"`, 10, 0)
+	results, err := d.SearchArticles(`"Chase"`, "", "2026-01-01", 10, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

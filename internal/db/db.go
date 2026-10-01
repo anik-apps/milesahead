@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"log/slog"
 	"strings"
 	"time"
@@ -1310,7 +1309,8 @@ type ComparisonCard struct {
 	ScoutsVerdict          string
 }
 
-// GetComparisonData returns structured comparison data for the given slugs,
+// GetComparisonData returns structured comparison data for the given slugs
+// (published cards only),
 // sorted to match the input slug order.
 func (d *Database) GetComparisonData(slugs []string) ([]ComparisonCard, error) {
 	if len(slugs) == 0 {
@@ -1324,7 +1324,7 @@ func (d *Database) GetComparisonData(slugs []string) ([]ComparisonCard, error) {
 		args[i] = s
 	}
 
-	query := `SELECT id, slug, title, issuer, image_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, scouts_verdict FROM reference_pages WHERE slug IN (` + strings.Join(placeholders, ",") + `)`
+	query := `SELECT id, slug, title, issuer, image_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, scouts_verdict FROM reference_pages WHERE status = 'published' AND slug IN (` + strings.Join(placeholders, ",") + `)`
 
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
@@ -1438,7 +1438,7 @@ func (d *Database) SyncArticleFTS(id int64) error {
 	d.db.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id)
 	_, err = d.db.Exec(
 		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
-		id, stripHTMLForDB(title), stripHTMLForDB(tldr), articleFTSContent(content),
+		id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), articleFTSContent(content),
 	)
 	return err
 }
@@ -1458,7 +1458,7 @@ func SyncArticleFTSTx(tx *sql.Tx, id int64) error {
 	}
 	_, err = tx.Exec(
 		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
-		id, stripHTMLForDB(title), stripHTMLForDB(tldr), articleFTSContent(content),
+		id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), articleFTSContent(content),
 	)
 	return err
 }
@@ -1467,7 +1467,7 @@ func SyncArticleFTSTx(tx *sql.Tx, id int64) error {
 // without editor notes, which search results must never show, and without
 // markup.
 func articleFTSContent(content string) string {
-	return stripHTMLForDB(editornote.Strip(content))
+	return stripHTMLForFTS(editornote.Strip(content))
 }
 
 // SyncCardFTS updates the FTS index for a single reference page.
@@ -1480,7 +1480,7 @@ func (d *Database) SyncCardFTS(id int64) error {
 	d.db.Exec(`DELETE FROM cards_fts WHERE rowid = ?`, id)
 	_, err = d.db.Exec(
 		`INSERT INTO cards_fts(rowid, title, sections_text, scouts_verdict) VALUES (?, ?, ?, ?)`,
-		id, stripHTMLForDB(title), extractSectionsTextDB(sectionsJSON), stripHTMLForDB(verdict),
+		id, stripHTMLForFTS(title), extractSectionsText(sectionsJSON), stripHTMLForFTS(verdict),
 	)
 	return err
 }
@@ -1495,116 +1495,6 @@ func (d *Database) DeleteArticleFTS(id int64) error {
 func (d *Database) DeleteCardFTS(id int64) error {
 	_, err := d.db.Exec(`DELETE FROM cards_fts WHERE rowid = ?`, id)
 	return err
-}
-
-// stripHTMLForDB removes HTML tags from a string and HTML-escapes the result
-// so that FTS content is safe to render with safeHTML (only FTS5 snippet
-// <mark> tags should be unescaped at render time).
-func stripHTMLForDB(s string) string {
-	var result []byte
-	inTag := false
-	for i := 0; i < len(s); i++ {
-		switch {
-		case s[i] == '<':
-			inTag = true
-		case s[i] == '>':
-			inTag = false
-			result = append(result, ' ')
-		case !inTag:
-			result = append(result, s[i])
-		}
-	}
-	return html.EscapeString(strings.TrimSpace(string(result)))
-}
-
-// extractSectionsTextDB extracts plain text from sections_json for FTS indexing.
-func extractSectionsTextDB(sectionsJSON string) string {
-	var sections []struct {
-		Title   string `json:"title"`
-		Content string `json:"content"`
-	}
-	if err := json.Unmarshal([]byte(sectionsJSON), &sections); err != nil {
-		return ""
-	}
-	var parts []string
-	for _, s := range sections {
-		parts = append(parts, stripHTMLForDB(s.Title))
-		parts = append(parts, stripHTMLForDB(s.Content))
-	}
-	return strings.Join(parts, " ")
-}
-
-// --- FTS Search ---
-
-// SearchResult holds a single search result.
-type SearchResult struct {
-	ID      int64
-	Title   string
-	Slug    string
-	Excerpt string
-	Type    string // "article" or "card"
-	// ArticleType is the article's own type ("deal", "summary", ...); "" for
-	// cards.
-	ArticleType string
-	// ExpiresOn is the article's offer end date ("2006-01-02"), or "" when it
-	// has none. Always "" for cards.
-	ExpiresOn string
-}
-
-// SearchArticles performs a full-text search on articles, returning only approved ones.
-func (d *Database) SearchArticles(query string, limit, offset int) ([]SearchResult, error) {
-	rows, err := d.db.Query(
-		`SELECT a.id, a.title, a.slug, snippet(articles_fts, 2, '<mark>', '</mark>', '...', 40) AS excerpt, a.type, COALESCE(a.expires_on, '')
-		FROM articles_fts f
-		JOIN generated_articles a ON a.id = f.rowid
-		WHERE articles_fts MATCH ? AND a.status = ?
-		ORDER BY rank
-		LIMIT ? OFFSET ?`,
-		query, StatusApproved, limit, offset,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []SearchResult
-	for rows.Next() {
-		var r SearchResult
-		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt, &r.ArticleType, &r.ExpiresOn); err != nil {
-			return nil, err
-		}
-		r.Type = "article"
-		results = append(results, r)
-	}
-	return results, rows.Err()
-}
-
-// SearchCards performs a full-text search on reference pages, returning only published ones.
-func (d *Database) SearchCards(query string, limit, offset int) ([]SearchResult, error) {
-	rows, err := d.db.Query(
-		`SELECT p.id, p.title, p.slug, snippet(cards_fts, 1, '<mark>', '</mark>', '...', 40) AS excerpt
-		FROM cards_fts f
-		JOIN reference_pages p ON p.id = f.rowid
-		WHERE cards_fts MATCH ? AND p.status = 'published'
-		ORDER BY rank
-		LIMIT ? OFFSET ?`,
-		query, limit, offset,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []SearchResult
-	for rows.Next() {
-		var r SearchResult
-		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt); err != nil {
-			return nil, err
-		}
-		r.Type = "card"
-		results = append(results, r)
-	}
-	return results, rows.Err()
 }
 
 // --- Newsletter Candidate CRUD ---
