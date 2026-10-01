@@ -116,6 +116,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	}
 
 	content = cleanMarkdown(content)
+	content, notes := takeEditorNotes(content, sources)
 	content, unresolved := cleanSourceRefs("generation", content, sources)
 
 	// Critic reviews the article
@@ -139,6 +140,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 			issuesStr)
 		if err == nil && revised != "" {
 			revised = cleanMarkdown(revised)
+			revised, revisedNotes := takeEditorNotes(revised, sources)
 			revised, revisedUnresolved := cleanSourceRefs("auto-revision", revised, sources)
 			v2, err := p.critic.Verify(revised, sources)
 			if err == nil {
@@ -149,12 +151,12 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 				if v2.Score >= verification.Score {
 					content = revised
 					verification = v2
+					notes = revisedNotes
 				}
 			}
 		}
 	}
 
-	content, notes := editornote.Split(content)
 	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
 
 	// If structured parsing didn't extract key details, use a separate AI call
@@ -230,6 +232,7 @@ func (p *Pipeline) ProcessWithFeedback(sources []SourceArticle, previousOutput, 
 
 func (p *Pipeline) buildResult(content, articleType string, sources []SourceArticle) (*PipelineResult, error) {
 	content = cleanMarkdown(content)
+	content, notes := takeEditorNotes(content, sources)
 	content, unresolved := cleanSourceRefs("revision", content, sources)
 
 	verification, err := p.critic.Verify(content, sources)
@@ -242,7 +245,6 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
 		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
-	content, notes := editornote.Split(content)
 	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
 
 	return &PipelineResult{
@@ -256,6 +258,19 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 		PassedThreshold: verification.Score >= p.threshold,
 		EditorNotes:     notes,
 	}, nil
+}
+
+// takeEditorNotes splits the admin-only editor notes out of a raw generator
+// reply before anything grades or parses it, so the critic, the auto-revision
+// and the structured parsing see only the article. Numbered source references
+// in the notes are rewritten to outlet names like the article's, but are not
+// flagged to the critic: notes are never published.
+func takeEditorNotes(content string, sources []SourceArticle) (clean, notes string) {
+	clean, notes = editornote.Split(content)
+	if notes != "" {
+		notes, _ = FixSourceRefs(notes, sources)
+	}
+	return clean, notes
 }
 
 // cleanSourceRefs rewrites numbered source references ("Source 1 notes...")
