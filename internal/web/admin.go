@@ -509,7 +509,7 @@ func (app *App) handleExportSubscribers(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Disposition", "attachment; filename=subscribers.csv")
 
 	writer := csv.NewWriter(w)
-	writer.Write([]string{"Email", "Confirmed", "Subscribed At", "Confirmed At"})
+	writer.Write([]string{"Email", "Confirmed", "Subscribed At", "Confirmed At", "Unsubscribed At"})
 
 	for _, s := range subscribers {
 		confirmed := "No"
@@ -520,11 +520,16 @@ func (app *App) handleExportSubscribers(w http.ResponseWriter, r *http.Request) 
 		if s.ConfirmedAt != nil {
 			confirmedAt = s.ConfirmedAt.Format("2006-01-02 15:04:05")
 		}
+		unsubscribedAt := ""
+		if s.UnsubscribedAt != nil {
+			unsubscribedAt = s.UnsubscribedAt.Format("2006-01-02 15:04:05")
+		}
 		writer.Write([]string{
 			s.Email,
 			confirmed,
 			s.SubscribedAt.Format("2006-01-02 15:04:05"),
 			confirmedAt,
+			unsubscribedAt,
 		})
 	}
 	writer.Flush()

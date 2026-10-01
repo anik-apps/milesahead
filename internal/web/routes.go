@@ -15,7 +15,7 @@ func (app *App) setupRoutes() {
 	app.mux.Handle("GET /metrics", promhttp.Handler())
 
 	// Static files.
-	app.mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	app.mux.Handle("GET /static/", staticHandler(http.StripPrefix("/static/", http.FileServer(http.Dir("static")))))
 
 	// SEO routes.
 	app.mux.HandleFunc("GET /sitemap.xml", app.handleSitemap)
@@ -25,9 +25,15 @@ func (app *App) setupRoutes() {
 	app.mux.HandleFunc("GET /{$}", app.handleHome)
 	app.mux.HandleFunc("GET /article/{slug}", app.handleArticle)
 	app.mux.HandleFunc("GET /feed.xml", app.handleFeed)
+
+	// Newsletter sign-up, confirmation and unsubscribe (subscribe.go).
+	app.mux.HandleFunc("GET /subscribe", app.handleSubscribePage)
 	app.mux.HandleFunc("POST /subscribe", app.handleSubscribe)
+	app.mux.HandleFunc("GET /subscribe/check-email", app.handleCheckEmail)
 	app.mux.HandleFunc("GET /subscribe/confirm", app.handleSubscribeConfirm)
-	app.mux.HandleFunc("GET /unsubscribe", app.handleUnsubscribe)
+	app.mux.HandleFunc("GET /unsubscribe", app.handleUnsubscribePage)
+	app.mux.HandleFunc("POST /unsubscribe", app.handleUnsubscribe)
+	app.mux.HandleFunc("POST /resubscribe", app.handleResubscribe)
 
 	// Search route.
 	app.mux.HandleFunc("GET /search", app.handleSearch)
@@ -95,4 +101,45 @@ func (app *App) setupRoutes() {
 
 	// API routes.
 	app.mux.HandleFunc("POST /api/vote", app.handleVoteAPI)
+
+	// Everything else: the branded 404 page.
+	app.mux.HandleFunc("/", app.handleNotFound)
+}
+
+// staticHandler sets Cache-Control on static files. A URL carrying ?v= names
+// its content (versionedAsset, the infographic versions), so it can be
+// cached for a year; anything else may change under the same URL and is
+// kept for an hour. Errors (a missing file) are not marked cacheable.
+func staticHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		policy := "public, max-age=3600"
+		if r.URL.Query().Get("v") != "" {
+			policy = "public, max-age=31536000, immutable"
+		}
+		next.ServeHTTP(&cacheControlWriter{ResponseWriter: w, policy: policy}, r)
+	})
+}
+
+// cacheControlWriter adds a Cache-Control header to successful responses.
+type cacheControlWriter struct {
+	http.ResponseWriter
+	policy      string
+	wroteHeader bool
+}
+
+func (c *cacheControlWriter) WriteHeader(status int) {
+	if !c.wroteHeader {
+		c.wroteHeader = true
+		if status == http.StatusOK || status == http.StatusNotModified || status == http.StatusPartialContent {
+			c.Header().Set("Cache-Control", c.policy)
+		}
+	}
+	c.ResponseWriter.WriteHeader(status)
+}
+
+func (c *cacheControlWriter) Write(b []byte) (int, error) {
+	if !c.wroteHeader {
+		c.WriteHeader(http.StatusOK)
+	}
+	return c.ResponseWriter.Write(b)
 }

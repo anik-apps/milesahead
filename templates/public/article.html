@@ -1,11 +1,5 @@
 {{template "layout" .}}
 {{define "content"}}
-{{if .UnderReview}}
-<div class="under-review">
-    <h1>Article Under Review</h1>
-    <p>This article is currently under review and will be available once approved.</p>
-</div>
-{{else}}
 <article class="article-detail">
     <a href="/" class="back-link">&larr; Back to all articles</a>
     {{if .OfferEnded}}
@@ -119,5 +113,4 @@
         <p class="vote-status" role="status"></p>
     </div>
 </article>
-{{end}}
 {{end}}

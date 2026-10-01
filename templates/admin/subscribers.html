@@ -21,7 +21,7 @@
         <thead>
             <tr>
                 <th>Email</th>
-                <th>Confirmed</th>
+                <th>Status</th>
                 <th>Subscribed At</th>
                 <th>Confirmed At</th>
             </tr>
@@ -30,7 +30,7 @@
             {{range .Subscribers}}
             <tr>
                 <td>{{.Email}}</td>
-                <td>{{if .Confirmed}}Yes{{else}}No{{end}}</td>
+                <td>{{with .State}}{{if eq . "active"}}Active{{else if eq . "pending"}}Pending{{else}}Unsubscribed{{end}}{{end}}</td>
                 <td>{{.SubscribedAt.Format "2006-01-02 15:04"}}</td>
                 <td>{{if .ConfirmedAt}}{{.ConfirmedAt.Format "2006-01-02 15:04"}}{{else}}-{{end}}</td>
             </tr>
