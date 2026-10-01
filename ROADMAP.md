@@ -305,8 +305,10 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       change; the notes move to the admin-only column.
 
 - [ ] **Newsletter signup and delivery** — found in the 2026-09-23 UX review. Items 1-4
-      are done; the newsletter launched on `feat/newsletter-launch`. Left: readability
-      (5) and two follow-ups below.
+      are done on `feat/newsletter-launch`, but sign-up ships **closed**
+      (`newsletter.signup_enabled: false`) until production can send mail; see the
+      turn-on checklist below. Left: that checklist, readability (5), and the
+      follow-ups below.
       1. ~~**No confirmation email is sent.**~~ `cmd/milesahead/main.go` hands the SMTP
          sender to the web app (`SetConfirmationMailer`). The email is plain text plus
          HTML, links absolutely to `https://DOMAIN`, says what the newsletter is and when
@@ -343,14 +345,29 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       confirmations in 6 hours and any failed newsletter send in 6 hours. Import them
       into Grafana with the others.
 
-      *Before deploying:* production's `mail.smtp` (checked read-only on 2026-10-01)
-      points at `localhost:587` with placeholder credentials, and nothing listens on a
-      mail port there, so every confirmation email will fail (and the alert will fire)
-      until a real SMTP relay is configured (the example config uses OCI Email
-      Delivery, `smtp.email.oci.oraclecloud.com:587`). The sending domain also needs SPF
-      and DKIM for Gmail and Yahoo to accept bulk mail. The `List-Unsubscribe` mailto
-      goes to the From address (`noreply@...`): someone has to read that mailbox, or
-      the mailto should be dropped.
+      **Turn-on checklist.** Production's `mail.smtp` (checked read-only on 2026-10-01)
+      is `localhost:587` with placeholder credentials and nothing listens on a mail
+      port there, so `newsletter.signup_enabled` stays `false` in
+      `.github/workflows/deploy.yml`. With it off there are no sign-up placements and
+      `/subscribe` says sign-up opens soon. To open it:
+      1. Set up an SMTP relay, e.g. OCI Email Delivery: an approved sender for the From
+         address and SMTP credentials for an OCI user; the endpoint is
+         `smtp.email.<region>.oci.oraclecloud.com`, port 587.
+      2. Add the repository secrets `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, and if
+         they differ from the defaults `SMTP_PORT` (587) and `SMTP_FROM`
+         (`noreply@milesahead.kumaranik.com`). The deploy workflow writes them into
+         `mail.smtp`; unset, it keeps the placeholders.
+      3. Publish SPF and DKIM for the sending domain (and DMARC), as the relay
+         documents. Gmail and Yahoo reject or junk bulk mail without them.
+      4. Decide the `List-Unsubscribe` mailto: it goes to the From address, so either
+         make that a mailbox someone reads, or drop the mailto in
+         `mail.Sender.setListUnsubscribe` (the https one-click link is the one that
+         matters).
+      5. Set `signup_enabled: true` in the deploy workflow's config and deploy. The log
+         should say "newsletter sign-up is open"; an ERROR "newsletter sign-up stays
+         closed" means the SMTP settings still look unset.
+      6. Sign up with a real address, confirm it, and import the two email rules in
+         `deploy/grafana-alerts.json` into Grafana.
 
       Also found: the daily digest (admin "Send", not the weekly) shows its excerpts as
       raw HTML (`<p>...`), because `buildTemplateData` cuts `Content`, which is HTML,
