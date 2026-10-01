@@ -117,8 +117,8 @@ func TestApplyLabel(t *testing.T) {
 		{"Amex", true, "Card details at Amex"},
 		{"", false, "Apply on the issuer's site"},
 	} {
-		if got := applyLabel(c.issuer, c.closed); got != c.want {
-			t.Errorf("applyLabel(%q, %v) = %q, want %q", c.issuer, c.closed, got, c.want)
+		if got := cardApplyLabel(c.issuer, c.closed); got != c.want {
+			t.Errorf("cardApplyLabel(%q, %v) = %q, want %q", c.issuer, c.closed, got, c.want)
 		}
 	}
 	for in, want := range map[string]string{
@@ -409,7 +409,7 @@ func TestLeadSentence(t *testing.T) {
 		"A strong pick vs. the U.S. Bank Altitude Go for most diners. Next.": "A strong pick vs. the U.S. Bank Altitude Go for most diners.",
 		"Pair it with e.g. Chase Freedom. Then more.":                        "Pair it with e.g. Chase Freedom.",
 	} {
-		if got := leadSentence(in, verdictLeadMax); got != want {
+		if got := leadSentence(in, cardVerdictLeadMax); got != want {
 			t.Errorf("leadSentence(%q) = %q, want %q", in, got, want)
 		}
 	}

@@ -1019,7 +1019,7 @@ func (d *Database) ListRelatedArticles(excludeID int64, topic string, tags []str
 	args = append(args, limit)
 
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, '') FROM generated_articles
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles
 		WHERE status = ? AND id != ? AND `+shared+` > 0
 		ORDER BY CASE WHEN expires_on IS NULL OR expires_on >= ? THEN 0 ELSE 1 END,
 			`+hasTopic+` DESC, `+shared+` DESC, published_at DESC, id DESC
