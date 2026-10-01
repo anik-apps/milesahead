@@ -28,6 +28,9 @@ func TestParseSearchQuery_Match(t *testing.T) {
 		{"venture x", `"venture"* AND "x"`, ``},
 		{"the card", `"the"* AND "card"*`, ``}, // only stopwords: keep them
 		{"Hilton's Aspire card", `"hilton"* AND "aspire"*`, ``},
+		{"hilton’s? aspire", `"hilton"* AND "aspire"*`, ``},
+		{"bank of america", `("bank of america" OR "boa")`, ``},
+		{"card of the year", `"year"*`, ``},
 		{`"quoted" NEAR(a b) OR -x title:y`, `"quoted"* AND "near"* AND "b" AND "x" AND "title"* AND "y"`, ``},
 		{"ab", `"ab"*`, ``},
 		{"ab cd", `"ab" AND "cd"*`, ``},
@@ -49,6 +52,9 @@ func TestParseSearchQuery_Match(t *testing.T) {
 		"transfer bonuses":          `"transfer bonus"*`,
 		"venture x":                 `"venture x"`,
 		"American Express Platinum": `"american express platinum"*`,
+		"world of hyatt":            `"world of hyatt"*`,
+		"transfer bonuses offer":    `"transfer bonus offer"*`,
+		"the hyatt transfers card":  `"hyatt transfer"*`,
 	} {
 		if got := db.ParseSearchQuery(in).Phrase(); got != want {
 			t.Errorf("ParseSearchQuery(%q).Phrase() = %s, want %s", in, got, want)
@@ -180,7 +186,6 @@ func TestSearchArticles_QueryForms(t *testing.T) {
 		"hyatt transfer":            "bilt-hyatt",
 		"amex plat":                 "plat-saks",
 		"american express platinum": "plat-saks", // the story only says "Amex Platinum"
-		"cafe":                      "",
 	} {
 		got := articleSlugs(t, d, query)
 		if want != "" && !contains(got, want) {
@@ -403,14 +408,93 @@ func TestOpen_RebuildsOldSearchIndex(t *testing.T) {
 	}
 	d.Close()
 
-	// A second start leaves the index alone.
+	// A second start leaves the index alone: a marker row planted in it
+	// survives.
+	d, err = db.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plantSentinel(t, d)
+	d.Close()
 	d, err = db.Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer d.Close()
-	if again := readFTS(t, d); !reflect.DeepEqual(again, after) {
-		t.Error("a second start should not change the index")
+	if got := rawMatch(t, d, `"zzsentinel"`); len(got) != 1 {
+		t.Error("a second start should not rebuild the index")
+	}
+}
+
+// plantSentinel replaces one article's index row with a word its source
+// doesn't have, so a rebuild would remove it.
+func plantSentinel(t *testing.T, d *db.Database) {
+	t.Helper()
+	a, err := d.GetGeneratedArticleBySlug("csp-100k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range []string{
+		`DELETE FROM articles_fts WHERE rowid = ?`,
+		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, 'zzsentinel', '', '')`,
+	} {
+		if _, err := d.DB().Exec(stmt, a.ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// Raising the index version rebuilds an index that already has the current
+// tokenizer.
+func TestOpen_RebuildsOnVersionChange(t *testing.T) {
+	d, path := seededDB(t)
+	plantSentinel(t, d)
+	if _, err := d.DB().Exec(`UPDATE search_index_versions SET version = 1 WHERE name = 'articles_fts'`); err != nil {
+		t.Fatal(err)
+	}
+	d.Close()
+	d, err := db.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if got := rawMatch(t, d, `"zzsentinel"`); len(got) != 0 {
+		t.Error("an out-of-date version should rebuild the index")
+	}
+	if got := articleSlugs(t, d, "100k"); !contains(got, "csp-100k") {
+		t.Errorf("the rebuilt index should hold the real row: %v", got)
+	}
+}
+
+// The index holds plain text: entities are decoded, not indexed as numbers,
+// and excerpts are escaped exactly once.
+func TestSearch_PlainTextIndex(t *testing.T) {
+	d, _ := seededDB(t)
+	if _, err := d.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Let&#39;s Talk About AT&amp;T and the Caf&eacute; Card", Slug: "entities",
+		Content: "<p>Let&#39;s compare: AT&amp;T perks at the Café, x &lt; y.</p>", TLDR: "",
+		Type: "summary", Status: db.StatusApproved, SourcesJSON: "[]", RevisionNumber: 1,
+		KeyDetails: "[]", Links: "[]", RelatedCardsJSON: "[]",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{"39", "amp", "eacute"} {
+		if got := rawMatch(t, d, `"`+q+`"`); len(got) != 0 {
+			t.Errorf("%q should not be indexed, found %v", q, got)
+		}
+	}
+	rs, err := d.SearchArticles(db.ParseSearchQuery("cafe perks").Match(false), "", "2000-01-01", 10, 0)
+	if err != nil || len(rs) != 1 {
+		t.Fatalf("accents should fold: %v %v", rs, err)
+	}
+	ex := rs[0].Excerpt
+	for _, want := range []string{"Let&#39;s compare", "AT&amp;T", "<mark>perks</mark>", "<mark>Café</mark>", "x &lt; y"} {
+		if !strings.Contains(ex, want) {
+			t.Errorf("excerpt should contain %q: %q", want, ex)
+		}
+	}
+	if strings.Contains(ex, "&amp;#39;") || strings.Contains(ex, "&amp;amp;") {
+		t.Errorf("excerpt escaped twice: %q", ex)
 	}
 }
 

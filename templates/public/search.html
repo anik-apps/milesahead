@@ -14,7 +14,7 @@
         <p class="search-summary" role="status">
             {{if .AnyWord}}No results have every word, so these have <strong>any of them</strong>: {{end}}
             <strong>{{.ArticleTotal}} {{if eq .ArticleTotal 1}}article{{else}}articles{{end}}</strong>
-            and <strong>{{.CardTotal}} {{if eq .CardTotal 1}}card{{else}}cards{{end}}</strong>{{if and .MultiWord (not .AnyWord)}} match every word{{end}}{{if gt .Pages 1}} &middot; page {{.Page}} of {{.Pages}}{{end}}
+            and <strong>{{.CardTotal}} {{if eq .CardTotal 1}}card{{else}}cards{{end}}</strong>{{if and .MultiWord (not .AnyWord)}} match every word{{end}}{{if gt .Pages 1}} &middot; page {{.Page}} of {{.Pages}}{{end}}{{if .CardsURL}} &middot; <a href="{{.CardsURL}}">cards are on page 1</a>{{end}}
         </p>
         {{else}}
         <div class="search-empty" role="status">

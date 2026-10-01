@@ -270,8 +270,9 @@ func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slugs, duplicate := compareSlugs(r)
-	// The picker submits card1..card3: send it to the canonical URL.
-	if r.URL.Query().Get("cards") == "" && len(slugs) >= 2 && !duplicate {
+	// The picker submits card1..card3: send it to the canonical URL. Only
+	// slug-shaped values go into the Location header.
+	if r.URL.Query().Get("cards") == "" && len(slugs) >= 2 && !duplicate && allSlugs(slugs) {
 		http.Redirect(w, r, "/compare?cards="+strings.Join(slugs, ","), http.StatusSeeOther)
 		return
 	}
@@ -327,6 +328,10 @@ func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(cards) < len(slugs) {
+		data["Notice"] = "We couldn't find one of the cards you picked, so this compares the other two."
+	}
+
 	views := make([]compareCardView, len(cards))
 	current := make([]string, len(cards))
 	for i, c := range cards {
@@ -345,6 +350,19 @@ func (app *App) handleCompare(w http.ResponseWriter, r *http.Request) {
 	data["Sections"] = buildCompareSections(cards)
 	data["PickerSlots"] = pickerSlots(current)
 	app.renderTemplate(w, "compare.html", data)
+}
+
+// slugShape is what a card slug looks like.
+var slugShape = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// allSlugs reports whether every value is slug-shaped.
+func allSlugs(values []string) bool {
+	for _, v := range values {
+		if !slugShape.MatchString(v) {
+			return false
+		}
+	}
+	return true
 }
 
 // pickerSlots fills the picker's three selects with the chosen cards.

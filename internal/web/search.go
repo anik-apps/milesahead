@@ -167,6 +167,9 @@ func (app *App) searchResults(query string, page int) map[string]interface{} {
 		out["PageLinks"] = pageLinks(page, pages, pageURL)
 		if page > 1 {
 			out["PrevURL"] = pageURL(page - 1)
+			if len(cardMatches) > 0 {
+				out["CardsURL"] = pageURL(1) // cards are listed on page 1 only
+			}
 		}
 		if page < pages {
 			out["NextURL"] = pageURL(page + 1)
@@ -192,19 +195,20 @@ func (app *App) countSearch(match, phrase string) (int, []db.SearchResult) {
 
 // pageLinks lists the pager's page links: all of them when there are few,
 // otherwise the first, the last and two either side of the current page,
-// with gaps between.
+// with "…" for the gaps (a gap of one page shows that page instead).
 func pageLinks(page, pages int, pageURL func(int) string) []searchPageLink {
+	show := func(n int) bool {
+		return pages <= 7 || n == 1 || n == pages || (n >= page-2 && n <= page+2)
+	}
 	var links []searchPageLink
-	last := 0
 	for n := 1; n <= pages; n++ {
-		if pages > 7 && n != 1 && n != pages && (n < page-2 || n > page+2) {
+		if !show(n) && !(show(n-1) && show(n+1)) {
+			if len(links) > 0 && links[len(links)-1].N != 0 {
+				links = append(links, searchPageLink{})
+			}
 			continue
 		}
-		if last != 0 && n != last+1 {
-			links = append(links, searchPageLink{})
-		}
 		links = append(links, searchPageLink{N: n, URL: pageURL(n), Current: n == page})
-		last = n
 	}
 	return links
 }

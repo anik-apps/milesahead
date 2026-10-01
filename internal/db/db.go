@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html"
 	"log/slog"
 	"strings"
 	"time"
@@ -1122,7 +1121,8 @@ type ComparisonCard struct {
 	ScoutsVerdict          string
 }
 
-// GetComparisonData returns structured comparison data for the given slugs,
+// GetComparisonData returns structured comparison data for the given slugs
+// (published cards only),
 // sorted to match the input slug order.
 func (d *Database) GetComparisonData(slugs []string) ([]ComparisonCard, error) {
 	if len(slugs) == 0 {
@@ -1136,7 +1136,7 @@ func (d *Database) GetComparisonData(slugs []string) ([]ComparisonCard, error) {
 		args[i] = s
 	}
 
-	query := `SELECT id, slug, title, issuer, image_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, scouts_verdict FROM reference_pages WHERE slug IN (` + strings.Join(placeholders, ",") + `)`
+	query := `SELECT id, slug, title, issuer, image_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, scouts_verdict FROM reference_pages WHERE status = 'published' AND slug IN (` + strings.Join(placeholders, ",") + `)`
 
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
@@ -1250,7 +1250,7 @@ func (d *Database) SyncArticleFTS(id int64) error {
 	d.db.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id)
 	_, err = d.db.Exec(
 		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
-		id, stripHTMLForDB(title), stripHTMLForDB(tldr), stripHTMLForDB(content),
+		id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), stripHTMLForFTS(content),
 	)
 	return err
 }
@@ -1270,7 +1270,7 @@ func SyncArticleFTSTx(tx *sql.Tx, id int64) error {
 	}
 	_, err = tx.Exec(
 		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
-		id, stripHTMLForDB(title), stripHTMLForDB(tldr), stripHTMLForDB(content),
+		id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), stripHTMLForFTS(content),
 	)
 	return err
 }
@@ -1285,7 +1285,7 @@ func (d *Database) SyncCardFTS(id int64) error {
 	d.db.Exec(`DELETE FROM cards_fts WHERE rowid = ?`, id)
 	_, err = d.db.Exec(
 		`INSERT INTO cards_fts(rowid, title, sections_text, scouts_verdict) VALUES (?, ?, ?, ?)`,
-		id, stripHTMLForDB(title), extractSectionsTextDB(sectionsJSON), stripHTMLForDB(verdict),
+		id, stripHTMLForFTS(title), extractSectionsText(sectionsJSON), stripHTMLForFTS(verdict),
 	)
 	return err
 }
@@ -1300,43 +1300,6 @@ func (d *Database) DeleteArticleFTS(id int64) error {
 func (d *Database) DeleteCardFTS(id int64) error {
 	_, err := d.db.Exec(`DELETE FROM cards_fts WHERE rowid = ?`, id)
 	return err
-}
-
-// stripHTMLForDB removes HTML tags from a string and HTML-escapes the result
-// so that FTS content is safe to render with safeHTML (only FTS5 snippet
-// <mark> tags should be unescaped at render time).
-func stripHTMLForDB(s string) string {
-	var result []byte
-	inTag := false
-	for i := 0; i < len(s); i++ {
-		switch {
-		case s[i] == '<':
-			inTag = true
-		case s[i] == '>':
-			inTag = false
-			result = append(result, ' ')
-		case !inTag:
-			result = append(result, s[i])
-		}
-	}
-	return html.EscapeString(strings.TrimSpace(string(result)))
-}
-
-// extractSectionsTextDB extracts plain text from sections_json for FTS indexing.
-func extractSectionsTextDB(sectionsJSON string) string {
-	var sections []struct {
-		Title   string `json:"title"`
-		Content string `json:"content"`
-	}
-	if err := json.Unmarshal([]byte(sectionsJSON), &sections); err != nil {
-		return ""
-	}
-	var parts []string
-	for _, s := range sections {
-		parts = append(parts, stripHTMLForDB(s.Title))
-		parts = append(parts, stripHTMLForDB(s.Content))
-	}
-	return strings.Join(parts, " ")
 }
 
 // --- Newsletter Candidate CRUD ---

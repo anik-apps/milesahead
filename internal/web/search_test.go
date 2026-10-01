@@ -278,6 +278,9 @@ func TestSearch_Pager(t *testing.T) {
 	if n := len(articleRe.FindAllString(body, -1)); n != 3 {
 		t.Errorf("page 3 has %d articles, want 3", n)
 	}
+	if strings.Contains(body, `cards are on page 1`) {
+		t.Error("no card matches zebra, so page 3 shouldn't point to cards")
+	}
 	if !strings.Contains(body, `rel="prev"`) || strings.Contains(body, `rel="next"`) {
 		t.Error("the last page links back, not forward")
 	}
@@ -313,6 +316,7 @@ func TestPageLinks(t *testing.T) {
 		{4, 7, "1 2 3 [4] 5 6 7"},
 		{1, 12, "[1] 2 3 … 12"},
 		{6, 12, "1 … 4 5 [6] 7 8 … 12"},
+		{5, 12, "1 2 3 4 [5] 6 7 … 12"},
 		{12, 12, "1 … 10 11 [12]"},
 	} {
 		if got := render(c.page, c.pages); got != c.want {

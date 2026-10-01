@@ -28,6 +28,8 @@
         <span>Notes under a value give its limits and conditions</span>
     </p>
 
+    {{if .Notice}}<p class="compare-notice" role="alert">{{.Notice}}</p>{{end}}
+
     <div class="compare-tools">
         <label class="compare-diff-toggle" hidden><input type="checkbox" id="compare-only-diff"> Only differences</label>
         <details class="compare-change">
@@ -61,7 +63,7 @@
         {{range .Sections}}
         <tbody role="rowgroup" class="compare-section-head">
             <tr role="row">
-                <th colspan="{{$.ColSpan}}" scope="colgroup" role="columnheader">
+                <th colspan="{{$.ColSpan}}" scope="rowgroup" role="rowheader">
                     <button type="button" class="compare-section-toggle" aria-expanded="true" aria-controls="compare-sec-{{.Key}}">
                         <span class="compare-toggle-icon" aria-hidden="true"></span>{{.Title}}
                     </button>{{if .Hidden}} <span class="compare-section-note">{{.Hidden}} {{if eq .Hidden 1}}row{{else}}rows{{end}} hidden: none of these cards has them</span>{{end}}

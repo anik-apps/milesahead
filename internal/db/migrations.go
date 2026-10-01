@@ -410,8 +410,11 @@ func repairRottedImages(conn *sql.DB) error {
 	return nil
 }
 
-// stripHTMLForFTS removes HTML tags from a string and HTML-escapes the result
-// so that FTS content is safe to render with safeHTML.
+// stripHTMLForFTS turns stored HTML into the plain text the search index
+// holds: tags become spaces and entities are decoded ("&#39;" is an
+// apostrophe, not the word "39"). The two control characters search uses to
+// mark matches in snippets are removed. Snippets are HTML-escaped when they
+// are read (see renderSnippet), so the index never needs to be.
 func stripHTMLForFTS(s string) string {
 	var result []byte
 	inTag := false
@@ -422,11 +425,12 @@ func stripHTMLForFTS(s string) string {
 		case s[i] == '>':
 			inTag = false
 			result = append(result, ' ')
-		case !inTag:
+		case !inTag && s[i] != snippetOpen[0] && s[i] != snippetClose[0]:
 			result = append(result, s[i])
 		}
 	}
-	return html.EscapeString(strings.TrimSpace(string(result)))
+	text := html.UnescapeString(strings.TrimSpace(string(result)))
+	return strings.NewReplacer(snippetOpen, "", snippetClose, "").Replace(text)
 }
 
 // extractSectionsText extracts plain text from sections_json for FTS indexing.

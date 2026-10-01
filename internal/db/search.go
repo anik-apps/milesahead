@@ -3,7 +3,9 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"html"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 	"unicode"
@@ -75,43 +77,67 @@ type searchTerm struct {
 // SearchQuery is a reader's query, parsed for FTS5.
 type SearchQuery struct {
 	terms []searchTerm
+	// phrase is the run of the reader's words the terms came from, stopwords
+	// inside it kept ("world of hyatt"), for ranking.
+	phrase []string
 }
+
+// possessive matches "'s" at the end of a word ("hilton's").
+var possessive = regexp.MustCompile(`['’]s\b`)
 
 // ParseSearchQuery parses a reader's query. The last word is always matched
 // as a prefix (the reader may still be typing it), and so is every word of
-// three letters or more.
+// three letters or more. Stopwords are dropped unless the query has nothing
+// else, but still count inside a multi-word name ("bank of america").
 func ParseSearchQuery(q string) SearchQuery {
-	q = strings.ToLower(q)
-	q = strings.NewReplacer("'s ", " ", "’s ", " ").Replace(q + " ")
+	q = possessive.ReplaceAllString(strings.ToLower(q), "")
 	words := strings.FieldsFunc(q, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
 	})
-
-	kept := make([]string, 0, len(words))
-	for _, w := range words {
+	onlyStopwords := true
+	lastWord := -1 // index of the last word that becomes a term on its own
+	for i, w := range words {
 		if !searchStopwords[w] {
-			kept = append(kept, w)
+			onlyStopwords = false
+			lastWord = i
 		}
 	}
-	if len(kept) == 0 {
-		kept = words
+	if onlyStopwords {
+		lastWord = len(words) - 1
 	}
 
-	var terms []searchTerm
-	for i := 0; i < len(kept) && len(terms) < maxSearchTerms; i++ {
+	var out SearchQuery
+	first, end := -1, -1 // the span of words the terms came from
+	for i := 0; i < len(words) && len(out.terms) < maxSearchTerms; i++ {
 		// A multi-word name ("american express") is one term.
-		if t, n, ok := phraseTerm(kept[i:]); ok {
-			terms = append(terms, t)
+		if t, n, ok := phraseTerm(words[i:]); ok {
+			out.terms = append(out.terms, t)
+			if first < 0 {
+				first = i
+			}
 			i += n - 1
+			end = i
 			continue
 		}
-		w := kept[i]
-		last := i == len(kept)-1
-		t := searchTerm{word: w, prefix: len([]rune(w)) >= 3 || (last && len([]rune(w)) >= 2)}
-		t.alts = searchNicknames[w]
-		terms = append(terms, t)
+		w := words[i]
+		if searchStopwords[w] && !onlyStopwords {
+			continue
+		}
+		n := len([]rune(w))
+		out.terms = append(out.terms, searchTerm{
+			word:   w,
+			prefix: n >= 3 || (i >= lastWord && n >= 2),
+			alts:   searchNicknames[w],
+		})
+		if first < 0 {
+			first = i
+		}
+		end = i
 	}
-	return SearchQuery{terms: terms}
+	if first >= 0 {
+		out.phrase = words[first : end+1]
+	}
+	return out
 }
 
 // phraseTerm reports whether words starts with a known multi-word name.
@@ -165,18 +191,17 @@ func (q SearchQuery) TitleMatch() string {
 
 // Phrase returns the query's words as one FTS5 phrase (the last word as a
 // prefix when it is one), for ranking pages with the words side by side
-// first. It returns "" for a one-word query.
+// first. Plural endings are trimmed, since porter stems a plural and its
+// singular differently in some words. It returns "" for a one-term query.
 func (q SearchQuery) Phrase() string {
-	if len(q.terms) < 2 {
+	if len(q.terms) < 2 || len(q.phrase) < 2 {
 		return ""
 	}
-	words := make([]string, len(q.terms))
-	for i, t := range q.terms {
-		words[i] = t.word
+	words := make([]string, len(q.phrase))
+	for i, w := range q.phrase {
+		words[i] = singular(w)
 	}
-	last := q.terms[len(q.terms)-1]
-	if last.prefix {
-		words[len(words)-1] = singular(last.word)
+	if q.terms[len(q.terms)-1].prefix {
 		return ftsQuote(strings.Join(words, " ")) + "*"
 	}
 	return ftsQuote(strings.Join(words, " "))
@@ -240,7 +265,7 @@ type SearchResult struct {
 	ID      int64
 	Title   string
 	Slug    string
-	Excerpt string // HTML: escaped text with <mark> around matches
+	Excerpt string // safe HTML: escaped text with <mark> around matches
 	Type    string // "article" or "card"
 	// ArticleType is the article's own type ("deal", "summary", ...); "" for
 	// cards.
@@ -263,8 +288,22 @@ type SearchResult struct {
 const (
 	articleRank = `bm25(articles_fts, 10.0, 4.0, 1.0)`
 	cardRank    = `bm25(cards_fts, 10.0, 1.0, 2.0)`
-	snippetArgs = `'<mark>', '</mark>', '…', 32`
+	// Snippets mark matches with two control characters (stripped from
+	// indexed text), so the text can be HTML-escaped before they become
+	// <mark> tags: see renderSnippet.
+	snippetOpen  = "\x02"
+	snippetClose = "\x03"
+	snippetArgs  = `char(2), char(3), '…', 32`
 )
+
+// snippetMarks turns the escaped match markers into <mark> tags.
+var snippetMarks = strings.NewReplacer(snippetOpen, "<mark>", snippetClose, "</mark>")
+
+// renderSnippet makes an FTS5 snippet safe HTML: the text escaped, the
+// matches in <mark>.
+func renderSnippet(s string) string {
+	return snippetMarks.Replace(html.EscapeString(s))
+}
 
 // SearchArticles returns approved articles matching an FTS5 expression (see
 // SearchQuery.Match). Offers that ended before today ("2006-01-02") come
@@ -304,7 +343,7 @@ func (d *Database) SearchArticles(match, phrase, today string, limit, offset int
 		if published.Valid {
 			r.PublishedAt = published.Time
 		}
-		r.Excerpt = pickSnippet(tldr, body)
+		r.Excerpt = pickSnippet(renderSnippet(tldr), renderSnippet(body))
 		results = append(results, r)
 	}
 	return results, rows.Err()
@@ -355,7 +394,7 @@ func (d *Database) searchCards(match, order string, orderArgs []any, limit, offs
 			return nil, err
 		}
 		r.Type = "card"
-		r.Excerpt = pickSnippet(sections, verdict)
+		r.Excerpt = pickSnippet(renderSnippet(sections), renderSnippet(verdict))
 		results = append(results, r)
 	}
 	return results, rows.Err()
@@ -424,37 +463,91 @@ var ftsTables = []struct {
 	},
 }
 
-// ensureFTS creates the search indexes, and rebuilds any built with an
-// older tokenizer. Each rebuild runs in one transaction: the old index stays
-// in place until the new one holds a row for every source row, so a failure
+// ftsIndexVersion is the version of what the search indexes hold. Bump it
+// when the tokenizer or the indexed text changes, and every index is rebuilt
+// once at the next start. 1 was the original unstemmed index of HTML-escaped
+// text; 2 is porter stemming over plain text.
+const ftsIndexVersion = 2
+
+// querier is a *sql.DB or *sql.Tx.
+type querier interface {
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// ftsState reads an index's schema and recorded version. exists is false
+// when the index table is missing.
+func ftsState(q querier, name string) (exists, current bool, err error) {
+	var schema string
+	err = q.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&schema)
+	if err == sql.ErrNoRows {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	var version int
+	err = q.QueryRow(`SELECT version FROM search_index_versions WHERE name = ?`, name).Scan(&version)
+	if err == sql.ErrNoRows {
+		return true, false, nil
+	}
+	if err != nil {
+		return true, false, err
+	}
+	return true, version == ftsIndexVersion && strings.Contains(schema, ftsTokenizer), nil
+}
+
+// ensureFTS creates the search indexes, and rebuilds any whose version is
+// out of date. Each rebuild runs in one transaction: the old index stays in
+// place until the new one holds a row for every source row, so a failure
 // leaves search working as before (it is logged and retried next start).
 func ensureFTS(conn *sql.DB) error {
+	if _, err := conn.Exec(`CREATE TABLE IF NOT EXISTS search_index_versions (
+		name TEXT PRIMARY KEY,
+		version INTEGER NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("creating search_index_versions: %w", err)
+	}
 	for _, t := range ftsTables {
-		var existing string
-		err := conn.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, t.name).Scan(&existing)
+		exists, current, err := ftsState(conn, t.name)
 		switch {
-		case err == sql.ErrNoRows:
+		case err != nil:
+			return fmt.Errorf("reading %s state: %w", t.name, err)
+		case !exists:
 			if _, err := conn.Exec(t.schema); err != nil {
 				return fmt.Errorf("creating %s: %w", t.name, err)
 			}
-		case err != nil:
-			return fmt.Errorf("reading %s schema: %w", t.name, err)
-		case !strings.Contains(existing, ftsTokenizer):
+			if err := setFTSVersion(conn, t.name); err != nil {
+				return err
+			}
+		case !current:
 			start := time.Now()
 			n, err := rebuildFTS(conn, t.name, t.schema, t.source, t.fill)
 			if err != nil {
 				slog.Warn("search index rebuild failed; keeping the old index", "table", t.name, "error", err)
 				continue
 			}
-			slog.Info("rebuilt search index", "table", t.name, "rows", n, "took", time.Since(start).Round(time.Millisecond).String())
+			if n >= 0 {
+				slog.Info("rebuilt search index", "table", t.name, "rows", n, "took", time.Since(start).Round(time.Millisecond).String())
+			}
 		}
 	}
 	return nil
 }
 
+// execer is a *sql.DB or *sql.Tx.
+type execer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+func setFTSVersion(e execer, name string) error {
+	_, err := e.Exec(`INSERT INTO search_index_versions (name, version) VALUES (?, ?)
+		ON CONFLICT(name) DO UPDATE SET version = excluded.version`, name, ftsIndexVersion)
+	return err
+}
+
 // rebuildFTS drops and recreates one index from its source table in a
 // single transaction, and refuses to commit unless every source row was
-// indexed.
+// indexed. It returns -1 if another process rebuilt the index first.
 func rebuildFTS(conn *sql.DB, name, schema, source string, fill func(tx *sql.Tx) (int, error)) (int, error) {
 	tx, err := conn.Begin()
 	if err != nil {
@@ -462,7 +555,13 @@ func rebuildFTS(conn *sql.DB, name, schema, source string, fill func(tx *sql.Tx)
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`DROP TABLE ` + name); err != nil {
+	// Another process opening the same database may have got here first.
+	if exists, current, err := ftsState(tx, name); err != nil {
+		return 0, err
+	} else if exists && current {
+		return -1, nil
+	}
+	if _, err := tx.Exec(`DROP TABLE IF EXISTS ` + name); err != nil {
 		return 0, fmt.Errorf("dropping: %w", err)
 	}
 	if _, err := tx.Exec(schema); err != nil {
@@ -481,6 +580,9 @@ func rebuildFTS(conn *sql.DB, name, schema, source string, fill func(tx *sql.Tx)
 	}
 	if got != want {
 		return 0, fmt.Errorf("indexed %d rows, %s has %d", got, source, want)
+	}
+	if err := setFTSVersion(tx, name); err != nil {
+		return 0, err
 	}
 	return n, tx.Commit()
 }

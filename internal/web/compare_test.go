@@ -199,6 +199,14 @@ func TestCompare_PickerWithoutJavaScript(t *testing.T) {
 		t.Fatalf("got %d to %q", rec.Code, rec.Header().Get("Location"))
 	}
 
+	// Only slug-shaped values are redirected; anything else is reported.
+	req = httptest.NewRequest(http.MethodGet, "/compare?card1=amex-gold&card2=%2F%2Fevil.example", nil)
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "We couldn&#39;t find one of those cards") {
+		t.Errorf("a non-slug value should not redirect: %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+
 	body := getPage(t, app, "/compare")
 	form := regexp.MustCompile(`(?s)<form class="compare-picker" action="/compare" method="GET">.*?</form>`).FindString(body)
 	for _, want := range []string{`name="card1"`, `name="card2"`, `name="card3"`, `<optgroup label="American Express">`, `<optgroup label="Chase">`, `<button type="submit" class="compare-submit">Compare</button>`} {
@@ -236,6 +244,29 @@ func TestCompare_InvalidChoices(t *testing.T) {
 		if strings.Contains(body, `<table class="compare-table`) {
 			t.Errorf("%s: no table without two cards", c.path)
 		}
+	}
+}
+
+// An unknown or unpublished third card is left out, and the page says so.
+func TestCompare_DropsUnknownAndDraftCards(t *testing.T) {
+	app := compareApp(t)
+	if _, err := app.db.DB().Exec(`UPDATE reference_pages SET status = 'draft' WHERE slug = 'amex-green'`); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		"/compare?cards=amex-gold,chase-sapphire-preferred,no-such-card",
+		"/compare?cards=amex-gold,chase-sapphire-preferred,amex-green",
+	} {
+		body := getPage(t, app, path)
+		if !strings.Contains(body, `<p class="compare-notice" role="alert">We couldn&#39;t find one of the cards you picked`) {
+			t.Errorf("%s: want a notice", path)
+		}
+		if strings.Contains(body, `href="/cards/amex-green"`) || strings.Count(body, `<th scope="col" role="columnheader"`) != 2 {
+			t.Errorf("%s: want exactly the two published cards", path)
+		}
+	}
+	if body := getPage(t, app, "/compare?cards=amex-gold,amex-green"); strings.Contains(body, `<table class="compare-table`) {
+		t.Error("a draft card can't make up a comparison")
 	}
 }
 
