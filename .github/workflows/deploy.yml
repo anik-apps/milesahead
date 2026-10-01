@@ -34,7 +34,24 @@ env:
   CADDY_SITES_DIR: /opt/fynans/caddy-sites
 
 jobs:
+  # Nothing ships until the tests pass. This repeats CI's test job rather than
+  # waiting on the CI workflow, so a manual dispatch (reseed, full setup) is
+  # gated the same way. It was added after #90 deployed with failing tests:
+  # CI went red on the related-stories query, but Deploy ran on the same push
+  # without waiting, and every article page lost its related stories.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test ./... -race
+      - run: node --test tests/js/*.test.mjs
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
