@@ -81,10 +81,19 @@ func RewriteSourceRefs(text string, known []string, byNumber func(n int) (string
 		return g[1]
 	})
 
+	// An explicit form whose outlet is not one of the sources is left alone
+	// and reported: the text names an outlet the article was not written
+	// from, so mapping the number by position would print a clean-looking
+	// but possibly wrong name ("Loyalty Lobby (Some Blog)"). The span is
+	// swapped for a placeholder so the passes below cannot rewrite its
+	// "Source N", and restored at the end.
+	var held []string
 	text = replaceEach(explicitSourceRE, text, func(g []string, _, _ string) string {
 		name, ok := matchOutlet(g[2], known)
 		if !ok {
-			return g[0] // the bare "Source N" part is handled below
+			rep.Unresolved = append(rep.Unresolved, g[0])
+			held = append(held, g[0])
+			return heldPlaceholder(len(held) - 1)
 		}
 		rep.Rewritten = append(rep.Rewritten, g[0]+" -> "+name)
 		return name
@@ -137,7 +146,17 @@ func RewriteSourceRefs(text string, known []string, byNumber func(n int) (string
 		return name
 	})
 
+	for i, h := range held {
+		text = strings.Replace(text, heldPlaceholder(i), h, 1)
+	}
 	return text, rep
+}
+
+// heldPlaceholder marks a span the rewrite passes must not touch. It is built
+// from private-use code points, which never occur in generated prose and
+// contain nothing the patterns match.
+func heldPlaceholder(i int) string {
+	return "\uE000" + strconv.Itoa(i) + "\uE001"
 }
 
 // FixSourceRefs rewrites numbered references using the order the sources were

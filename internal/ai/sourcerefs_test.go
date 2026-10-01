@@ -79,6 +79,36 @@ func TestFixSourceRefs_UnmappableIsFlaggedAndLeftInPlace(t *testing.T) {
 	}
 }
 
+// TestFixSourceRefs_ExplicitUnknownOutletIsUnresolved: when the text names an
+// outlet the article was not written from, the number must not be mapped by
+// position, which would print "Upgraded Points (Some Unknown Blog)".
+func TestFixSourceRefs_ExplicitUnknownOutletIsUnresolved(t *testing.T) {
+	sources := []SourceArticle{{Name: "One Mile at a Time"}, {Name: "Upgraded Points"}}
+	in := "Source 2 (Some Unknown Blog) says the cap is 160,000. Source 1 agrees."
+	got, rep := FixSourceRefs(in, sources)
+	want := "Source 2 (Some Unknown Blog) says the cap is 160,000. One Mile at a Time agrees."
+	if got != want {
+		t.Errorf("FixSourceRefs = %q, want %q", got, want)
+	}
+	if len(rep.Unresolved) != 1 || rep.Unresolved[0] != "Source 2 (Some Unknown Blog)" {
+		t.Errorf("unresolved = %q, want the whole explicit form", rep.Unresolved)
+	}
+	for _, c := range rep.Rewritten {
+		if strings.HasPrefix(c, "Source 2") {
+			t.Errorf("Source 2 was rewritten: %q", c)
+		}
+	}
+	if strings.ContainsRune(got, '\uE000') || strings.ContainsRune(got, '\uE001') {
+		t.Errorf("placeholder leaked into %q", got)
+	}
+
+	// Two held spans restore to their own text.
+	in = "Source 1 (Blog A) and Source 2 (Blog B) disagree."
+	if got, rep := FixSourceRefs(in, sources); got != in || len(rep.Unresolved) != 2 {
+		t.Errorf("FixSourceRefs(%q) = %q, unresolved %q", in, got, rep.Unresolved)
+	}
+}
+
 func TestFixSourceRefs_NoFalsePositives(t *testing.T) {
 	legit := []string{
 		"Sources say the devaluation is coming.",
