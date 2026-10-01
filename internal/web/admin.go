@@ -17,6 +17,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/linker"
+	"github.com/kumaranik/milesahead/internal/newsletter"
 	"github.com/kumaranik/milesahead/internal/offer"
 )
 
@@ -776,8 +777,16 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 		history = append(history, nl)
 	}
 
+	confirmed := 0
+	if subs, err := app.db.ListConfirmedSubscribers(); err == nil {
+		confirmed = len(subs)
+	}
+
 	data := map[string]interface{}{
 		"Title":             "Newsletter",
+		"PersonaName":       app.cfg.Site.PersonaName,
+		"StatusNote":        newsletterStatusNote(currentNL, confirmed),
+		"Confirmed":         confirmed,
 		"PreviewHTML":       previewHTML,
 		"NoContent":         noContent,
 		"CurrentNewsletter": currentNL,
@@ -877,19 +886,43 @@ func (app *App) handleNewsletterSend(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/newsletter?success=Newsletter+sent+successfully", http.StatusSeeOther)
 }
 
+// handleNewsletterHistory keeps the old URL working: the history is the
+// "Past newsletters" section of the newsletter page.
 func (app *App) handleNewsletterHistory(w http.ResponseWriter, r *http.Request) {
-	newsletters, err := app.db.ListNewsletters()
-	if err != nil {
-		http.Error(w, "Failed to load newsletters", http.StatusInternalServerError)
-		return
-	}
+	http.Redirect(w, r, "/admin/newsletter#history", http.StatusSeeOther)
+}
 
-	data := map[string]interface{}{
-		"Title":     "Newsletter History",
-		"History":   newsletters,
-		"CSRFToken": getCSRFToken(w, r),
+// newsletterStatusNote says what will happen to the issue: whether and when
+// it goes out, and to how many people. SendWeekly sends only an approved or
+// auto-approved issue, on its Saturday.
+func newsletterStatusNote(nl *db.Newsletter, confirmed int) string {
+	if nl == nil {
+		return ""
 	}
-	app.renderTemplate(w, "newsletter.html", data)
+	when := nl.Date
+	if d, err := time.Parse("2006-01-02", nl.Date); err == nil {
+		when = d.Format("Mon Jan 2")
+	}
+	people := fmt.Sprintf("%d confirmed subscribers", confirmed)
+	if confirmed == 1 {
+		people = "1 confirmed subscriber"
+	}
+	switch nl.Status {
+	case "approved", "auto_approved":
+		return fmt.Sprintf("Goes out %s, %s, to %s.", when, newsletter.WeeklySendLabel, people)
+	case "draft":
+		return fmt.Sprintf("Draft: it will not go out on %s unless you approve it. Approving sends it at %s to %s.", when, newsletter.WeeklySendLabel, people)
+	case "hold":
+		return fmt.Sprintf("On hold: it will not go out on %s unless you approve it.", when)
+	case "skipped":
+		return fmt.Sprintf("Skipped: the %s issue will not go out.", when)
+	case "sent":
+		if nl.SentAt != nil {
+			return "Sent " + nl.SentAt.Format(adminTimeFormat) + "."
+		}
+		return "Sent."
+	}
+	return ""
 }
 
 // dbSource is a type alias to avoid import cycle in this file.

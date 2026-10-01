@@ -895,18 +895,16 @@ func TestNewsletterHistory_ListsSentNewsletters(t *testing.T) {
 	cookies := loginAndGetSession(t, app)
 	session, _ := getSessionAndCSRF(cookies)
 
+	// The old history URL now points at the newsletter page's history.
 	rec := doAdminGET(t, app, "/admin/newsletter/history", session)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rec.Code)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/newsletter#history" {
+		t.Fatalf("history: %d %q, want 303 to /admin/newsletter#history", rec.Code, rec.Header().Get("Location"))
 	}
 
-	body := rec.Body.String()
+	// The unsent March 24 issue is the current one; the sent one is history.
+	body := doAdminGET(t, app, "/admin/newsletter", session).Body.String()
 	if !strings.Contains(body, "Daily Digest March 23") {
-		t.Error("expected body to contain 'Daily Digest March 23'")
-	}
-	if !strings.Contains(body, "Daily Digest March 24") {
-		t.Error("expected body to contain 'Daily Digest March 24'")
+		t.Error("expected history to contain 'Daily Digest March 23'")
 	}
 }
 

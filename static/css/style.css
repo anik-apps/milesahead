@@ -1467,6 +1467,36 @@ tr:hover {
     font-size: 1rem;
 }
 
+/* Admin newsletter page: theme colours only, so it reads in both themes. */
+.nl-section { margin-bottom: 2rem; }
+.nl-section h2 { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
+.nl-when { font-weight: 600; margin-bottom: 0.25rem; }
+.nl-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.9rem; }
+.nl-help { margin-top: 0.5rem; }
+.nl-candidates { display: flex; flex-direction: column; gap: 0.6rem; }
+.nl-candidate {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 1rem;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+}
+.nl-candidate.featured { border-color: var(--accent); background: var(--accent-subtle); }
+.nl-candidate .dim, .nl-candidate .badge { margin-left: 0.4rem; }
+.nl-submit { margin-top: 0.9rem; }
+.nl-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+.nl-current { padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
+.admin-select {
+    padding: 0.45rem 0.6rem; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 0.9rem;
+}
+.admin-newsletter .preview-note {
+    margin: 0 0 0.75rem; padding: 0.6rem 0.9rem; border-left: 4px solid #b45309;
+    background: #fef3c7; color: #78350f; border-radius: 4px;
+}
+[data-theme="dark"] .admin-newsletter .preview-note { background: #2a2110; color: #fde68a; }
+/* The email is designed on white, so its preview stays on white. */
+.nl-preview { width: 100%; min-height: 600px; border: 1px solid var(--border); border-radius: 8px; background: #ffffff; }
+.nl-manual summary { cursor: pointer; font-weight: 600; color: var(--text-muted); }
+.nl-manual p { margin: 0.5rem 0 0.75rem; }
+
 /* Admin Navigation */
 .admin-nav {
     display: flex;
