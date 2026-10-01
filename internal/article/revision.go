@@ -249,6 +249,7 @@ func (m *Manager) processRevision(articleID int64) error {
 		Title:           result.Title,
 		PreviousContent: article.Content,
 		NewContent:      result.Content,
+		EditorNotes:     result.EditorNotes,
 		Status:          newStatus,
 		Verification: &db.VerificationResult{
 			Score:              result.Verification.Score,

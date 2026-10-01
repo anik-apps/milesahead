@@ -126,6 +126,9 @@
                             {{end}}
                         </aside>
                         <div class="article-main">
+                            {{range .EditorNotes}}
+                            <div class="editor-note"><strong>Editor note (not published):</strong> {{.}}</div>
+                            {{end}}
                             <div class="article-content">
                                 {{.Content | safeHTML}}
                             </div>

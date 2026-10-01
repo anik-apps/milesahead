@@ -1719,7 +1719,10 @@ tr:hover {
     margin-top: 16px;
 }
 
-/* Editor notes - hidden on public site, visible in admin preview */
+/* Editor notes: admin-only remarks. Stored apart from article content and
+   shown by the admin preview; the old revision history still has some inline.
+   Hidden everywhere else as a fallback only -- the server never sends them to
+   public pages. */
 .editor-note {
     display: none;
 }

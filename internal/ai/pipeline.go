@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/kumaranik/milesahead/internal/editornote"
 	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
@@ -44,6 +45,10 @@ type PipelineResult struct {
 	ScoutsTake       string
 	RelatedCards     []RelatedCard
 	Tags             []string
+	// EditorNotes are remarks the model addressed to the admin as
+	// <div class="editor-note">, taken out of Content (see package
+	// editornote). One per line; never published.
+	EditorNotes string
 }
 
 // Pipeline orchestrates the generator and two critics to produce verified articles.
@@ -145,6 +150,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		}
 	}
 
+	content, notes := editornote.Split(content)
 	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
 
 	// If structured parsing didn't extract key details, use a separate AI call
@@ -167,6 +173,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
+		EditorNotes:     notes,
 	}, nil
 }
 
@@ -228,6 +235,7 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
 		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
+	content, notes := editornote.Split(content)
 	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
 
 	return &PipelineResult{
@@ -239,6 +247,7 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
+		EditorNotes:     notes,
 	}, nil
 }
 

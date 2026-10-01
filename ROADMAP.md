@@ -249,8 +249,22 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       show SVG. The name is one word everywhere, as on the infographics. The phone header
       was 101px and wrapped the logo and "Toggle Theme" into "Cards"; it is now one line,
       with a sun/moon toggle that follows the OS dark-mode setting before first paint.
+- [x] **Editor notes were published, hidden only by CSS** — in March 2026 the revision
+      prompt asked the model to append `<div class="editor-note">Could not find a link
+      for: ...</div>` when it could not do what the admin asked. The note was stored in the
+      article content and `display: none` hid it, but it was in the page source and the
+      search index: searching "Could not find a link" returned articles 53, 57 and 66 with
+      the note highlighted in the snippet. Four approved articles carry one (53, 57, 60,
+      66). Notes are now split out of content before it is stored, into an admin-only
+      `editor_notes` column shown in the dashboard preview and review email; loading an
+      article, and the search index, strip any still inline; startup reindexes affected
+      rows. `cmd/repair-editor-notes` moves them out of stored content (dry run by default).
 
 ## Up Next
+
+- [ ] **Run `repair-editor-notes -apply` on production** — dry run on 2026-10-01 lists
+      articles 53, 57, 60 and 66, all approved. Take a backup first. Readers see no
+      change; the notes move to the admin-only column.
 
 - [ ] **Newsletter signup and delivery are broken end to end** — found in the
       2026-09-23 UX review, and confirmed in the code. Nobody who signs up on the site

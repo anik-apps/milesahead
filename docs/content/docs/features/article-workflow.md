@@ -82,6 +82,14 @@ indefinitely.
   be read (not attempted), and `pass_skipped` for overlapping passes;
   `milesahead_revisions_waiting{state}` gauges due, backoff and exhausted
   articles. `exhausted > 0` means an article needs the admin.
+- **Editor notes.** A remark the model addresses to the admin instead of
+  readers (`<div class="editor-note">Could not find a link for: ...</div>`) is
+  split out of the content before it is stored and kept in the admin-only
+  `editor_notes` column. The dashboard preview and the review email show it;
+  public pages, the feed, the newsletter, excerpts and search never do. Older
+  rows that still hold a note inline are stripped wherever they are loaded or
+  indexed, and `cmd/repair-editor-notes` moves their notes out of the stored
+  content.
 
 ## Article Types
 
