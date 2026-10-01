@@ -1,12 +1,13 @@
 {{template "layout" .}}
 {{define "content"}}
-<section class="hero-brand">
+{{/* A short strip that says what the site is. The logo is already in the
+     header and footer, so the hero no longer repeats it. The newsletter
+     sign-up goes here once delivery works (ROADMAP). */}}
+<section class="hero-strip">
     <img class="brand-plane on-light" src="/static/img/brand/plane.svg" alt="" width="300" height="56">
     <img class="brand-plane on-dark" src="/static/img/brand/plane-dark.svg" alt="" width="300" height="56">
-    {{template "brand-mark"}}
-    <h1 class="brand-word">MilesAhead</h1>
-    <span class="brand-tag">Travel further. Earn smarter.</span>
-    <p class="hero-sub">The latest miles, points, and credit card deals — curated daily.</p>
+    <h1>Miles, points and credit card deals, curated daily</h1>
+    <p class="hero-sub">What changed, what it&rsquo;s worth, and when it ends.</p>
 </section>
 
 {{/* One filter bar: the type switch, then topic chips. Every link keeps the

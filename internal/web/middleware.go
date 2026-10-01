@@ -103,6 +103,11 @@ func (rl *rateLimiter) allow(ip string) bool {
 		}
 	}
 	rl.attempts[ip] = valid
+	if len(valid) == 0 {
+		// Forget addresses with nothing in the window, so the map does not
+		// grow with every visitor who ever tried.
+		delete(rl.attempts, ip)
+	}
 
 	if len(rl.attempts[ip]) >= rl.max {
 		return false
@@ -152,7 +157,7 @@ func normalizePath(p string) string {
 	// Known static paths — pass through as-is.
 	switch p {
 	case "/", "/cards/", "/search", "/healthz", "/metrics",
-		"/subscribe", "/subscribe/confirm", "/unsubscribe",
+		"/subscribe", "/subscribe/confirm", "/subscribe/check-email", "/unsubscribe", "/resubscribe",
 		"/api/vote", "/feed.xml", "/robots.txt", "/sitemap.xml",
 		"/admin/login", "/admin/logout",
 		"/admin/dashboard", "/admin/published", "/admin/sources",

@@ -85,7 +85,6 @@ func (app *App) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 
 	err := bcrypt.CompareHashAndPassword([]byte(app.cfg.Admin.PasswordHash), []byte(password))
 	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
 		data := map[string]interface{}{
 			"Title":     "Login",
 			"Error":     "Invalid password",
@@ -93,7 +92,7 @@ func (app *App) handleLoginSubmit(w http.ResponseWriter, r *http.Request) {
 			"Next":      safeAdminNext(r.FormValue("next")),
 			"Noindex":   true,
 		}
-		app.renderTemplate(w, "login.html", data)
+		app.renderStatus(w, http.StatusUnauthorized, "login.html", data)
 		return
 	}
 

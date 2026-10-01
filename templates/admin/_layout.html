@@ -16,6 +16,7 @@
     <link rel="icon" href="/static/img/brand/favicon.svg" type="image/svg+xml">
 </head>
 <body class="admin-body">
+    <a class="skip-link" href="#main">Skip to content</a>
     <header class="admin-bar">
         <a class="admin-brand" href="{{if .Nav}}/admin/dashboard{{else}}/{{end}}" aria-label="MilesAhead admin">
             {{template "brand-mark"}}<span class="admin-brand-word">MilesAhead</span><span class="admin-brand-tag">Admin</span>
@@ -44,10 +45,10 @@
             {{end}}
         </div>
     </header>
-    <main class="admin-main">
+    <main id="main" class="admin-main">
         {{template "content" .}}
     </main>
-    <script src="/static/js/main.js"></script>
+    <script src="{{scriptURL}}"></script>
     <script src="{{adminScriptURL}}"></script>
 </body>
 </html>{{end}}

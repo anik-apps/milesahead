@@ -111,7 +111,7 @@ func TestAdminSubscribers_TotalsAndNoDeadLink(t *testing.T) {
 	}
 	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
 	body := doAdminGET(t, app, "/admin/subscribers", session).Body.String()
-	if !strings.Contains(body, "3 total: 2 confirmed") || !strings.Contains(body, "1 waiting for confirmation") {
+	if !strings.Contains(body, "3 total: 2 active") || !strings.Contains(body, "1 waiting for confirmation") {
 		t.Error("subscribers page has no totals")
 	}
 	if strings.Contains(body, `href="/subscribe"`) {

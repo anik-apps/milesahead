@@ -26,6 +26,9 @@ var templateFuncs = template.FuncMap{
 	// URL; this unversioned default serves code that parses the layout on
 	// its own.
 	"stylesheetURL": func() string { return stylesheetPath },
+	"scriptURL":     func() string { return scriptPath },
+	// currentYear is for the footer's copyright line.
+	"currentYear": func() int { return time.Now().Year() },
 	"safeHTML": func(s string) template.HTML {
 		return template.HTML(s)
 	},
@@ -95,6 +98,10 @@ type App struct {
 	// starts: the approval's undo window, so an approval undone in time
 	// drafts no card updates. Tests shorten it.
 	cardDetectDelay time.Duration
+	// mailer sends subscription confirmations; nil means none are sent.
+	mailer ConfirmationMailer
+	// subscribeLimiter caps sign-up attempts per IP address.
+	subscribeLimiter *rateLimiter
 }
 
 // offerToday is the date offer end dates are compared against
@@ -132,7 +139,8 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 		startedAt:      time.Now(),
 		now:            time.Now,
 
-		cardDetectDelay: undoWindow,
+		cardDetectDelay:  undoWindow,
+		subscribeLimiter: newRateLimiter(subscribeMaxAttempts, subscribeWindow),
 	}
 
 	if err := app.loadTemplates("templates"); err != nil {
@@ -159,7 +167,8 @@ func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *artic
 		startedAt:      time.Now(),
 		now:            time.Now,
 
-		cardDetectDelay: undoWindow,
+		cardDetectDelay:  undoWindow,
+		subscribeLimiter: newRateLimiter(subscribeMaxAttempts, subscribeWindow),
 	}
 
 	if err := app.loadTemplates(templateDir); err != nil {
@@ -206,11 +215,13 @@ func (app *App) loadTemplates(dir string) error {
 
 	// static/ sits beside templates/, as it does in the repository and on the server.
 	staticDir := filepath.Join(filepath.Dir(dir), "static")
-	css := versionedStylesheet(staticDir)
-	adminCSS := versionedFile(staticDir, adminStylesheetPath)
-	adminJS := versionedFile(staticDir, adminScriptPath)
+	css := versionedAsset(staticDir, stylesheetPath)
+	js := versionedAsset(staticDir, scriptPath)
+	adminCSS := versionedAsset(staticDir, adminStylesheetPath)
+	adminJS := versionedAsset(staticDir, adminScriptPath)
 	appFuncs := template.FuncMap{
 		"stylesheetURL":      func() string { return css },
+		"scriptURL":          func() string { return js },
 		"adminStylesheetURL": func() string { return adminCSS },
 		"adminScriptURL":     func() string { return adminJS },
 	}
@@ -236,8 +247,12 @@ func (app *App) loadTemplates(dir string) error {
 	return nil
 }
 
-// stylesheetPath is the site stylesheet's URL path.
-const stylesheetPath = "/static/css/style.css"
+// stylesheetPath and scriptPath are the site stylesheet's and script's URL
+// paths.
+const (
+	stylesheetPath = "/static/css/style.css"
+	scriptPath     = "/static/js/main.js"
+)
 
 // The admin pages' own stylesheet and script, versioned like the site's.
 const (
@@ -245,10 +260,18 @@ const (
 	adminScriptPath     = "/static/js/admin.js"
 )
 
-// versionedFile returns urlPath (a /static/... path) with a short hash of the
-// file's content as ?v=, or the bare path if it cannot be read.
-func versionedFile(staticDir, urlPath string) string {
-	b, err := os.ReadFile(filepath.Join(staticDir, filepath.FromSlash(strings.TrimPrefix(urlPath, "/static/"))))
+// versionedAsset returns the URL of a file under /static/ with a short hash
+// of its content as ?v=, or the bare path if the file cannot be read.
+//
+// Without it a browser keeps using its cached copy after a deploy: when new
+// markup depends on new rules -- the featured image became an <img>
+// positioned by .featured-image -- a returning visitor saw the new HTML laid
+// out by the old CSS. Tying the URL to the bytes means a changed file is
+// always fetched fresh, which is also what lets versioned URLs be cached for
+// a year (staticHandler).
+func versionedAsset(staticDir, urlPath string) string {
+	rel := strings.TrimPrefix(urlPath, "/static/")
+	b, err := os.ReadFile(filepath.Join(staticDir, filepath.FromSlash(rel)))
 	if err != nil {
 		return urlPath
 	}
@@ -256,41 +279,9 @@ func versionedFile(staticDir, urlPath string) string {
 	return urlPath + "?v=" + hex.EncodeToString(sum[:])[:12]
 }
 
-// versionedStylesheet returns the stylesheet URL with a short hash of its
-// content as ?v=, or the bare path if the file cannot be read.
-//
-// Static files are served with only Last-Modified, so a browser keeps using
-// its cached copy for a heuristic period after a deploy. When new markup
-// depends on new rules -- the featured image became an <img> positioned by
-// .featured-image -- a returning visitor would see the new HTML laid out by
-// the old CSS: on desktop, the photo above a white gap and the headline pushed
-// below the first screen. Tying the URL to the bytes means a changed file is
-// always fetched fresh.
-func versionedStylesheet(staticDir string) string {
-	return versionedFile(staticDir, stylesheetPath)
-}
-
-// renderTemplate executes a named template with the given data.
+// renderTemplate renders a page template with status 200 (see renderStatus).
 func (app *App) renderTemplate(w http.ResponseWriter, name string, data interface{}) {
-	t, ok := app.templates[name]
-	if !ok {
-		http.Error(w, "Template not found: "+name, http.StatusInternalServerError)
-		return
-	}
-	if m, ok := data.(map[string]interface{}); ok {
-		// Signed-in admin pages get the admin bar's tab and counts.
-		if t.Lookup("admin_layout") != nil && name != "login.html" {
-			m["Nav"] = app.adminNavFor(name, m)
-		}
-		// Pages without their own image (home, compare, search) still get a
-		// branded preview when shared. Crawlers need an absolute URL.
-		if img, _ := m["OGImage"].(string); img == "" {
-			m["OGImage"] = "https://" + app.siteDomain() + defaultOGImage
-		}
-	}
-	if err := t.ExecuteTemplate(w, name, data); err != nil {
-		http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
-	}
+	app.renderStatus(w, http.StatusOK, name, data)
 }
 
 // defaultOGImage is the share image for pages that have none of their own.

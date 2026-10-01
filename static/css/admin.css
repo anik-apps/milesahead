@@ -94,7 +94,15 @@ nav.admin-tabs::-webkit-scrollbar { display: none; }
     font-size: 0.88rem;
 }
 .admin-bar-link { color: var(--text-muted); white-space: nowrap; }
+.admin-bar #theme-toggle svg { flex-shrink: 0; }
+/* The public site moves its theme toggle to the footer on phones; admin
+   pages have no footer, so it stays in the bar. */
 .admin-bar #theme-toggle.theme-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 999px;
     width: 32px;
     height: 32px;
     border: 1px solid var(--border);
@@ -380,3 +388,15 @@ a.chip:hover { text-decoration: none; filter: brightness(0.96); }
 .cards-table td { vertical-align: middle; }
 .card-row-title { display: inline-flex !important; align-items: center; gap: 0.5rem; font-weight: 600; }
 .card-thumb { width: 36px; height: 23px; object-fit: cover; border-radius: 3px; flex-shrink: 0; }
+
+/* The site's anchor offset (--sticky-offset) is for the public header; the
+   admin bar is shorter, and the card editor adds its own sticky bar. */
+html:has(body.admin-body) { --sticky-offset: 52px; }
+html:has(.editor-bar) { --sticky-offset: 112px; }
+@media (max-width: 760px) {
+    html:has(body.admin-body) { --sticky-offset: 84px; }
+    html:has(.editor-bar) { --sticky-offset: 190px; }
+}
+/* The preview takes focus when it opens so keys reach it; that is not a
+   keyboard target of its own, so it gets no ring. */
+.preview-modal:focus, .preview-modal:focus-visible { outline: none; }

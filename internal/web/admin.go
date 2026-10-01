@@ -110,7 +110,7 @@ const publishedLimit = 100
 func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 	articles, err := app.db.ListPublishedArticles(publishedLimit, 0)
 	if err != nil {
-		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
+		app.serverError(w, r, "admin: failed to load articles", err)
 		return
 	}
 	total := len(articles)
@@ -352,7 +352,7 @@ func (app *App) handleUnpublishAndRevise(w http.ResponseWriter, r *http.Request)
 func (app *App) handleAdminSources(w http.ResponseWriter, r *http.Request) {
 	sources, err := app.db.ListAllSources()
 	if err != nil {
-		http.Error(w, "Failed to load sources", http.StatusInternalServerError)
+		app.serverError(w, r, "admin: failed to load sources", err)
 		return
 	}
 
@@ -456,7 +456,7 @@ func (app *App) handleEditSource(w http.ResponseWriter, r *http.Request) {
 
 	source, err := app.db.GetSource(id)
 	if err != nil {
-		http.Error(w, "Source not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -494,22 +494,22 @@ func (app *App) handleToggleSource(w http.ResponseWriter, r *http.Request) {
 func (app *App) handleAdminSubscribers(w http.ResponseWriter, r *http.Request) {
 	subscribers, err := app.db.ListAllSubscribers()
 	if err != nil {
-		http.Error(w, "Failed to load subscribers", http.StatusInternalServerError)
+		app.serverError(w, r, "admin: failed to load subscribers", err)
 		return
 	}
 
-	confirmed := 0
+	// Totals by state: only active subscribers get the newsletter.
+	states := map[string]int{}
 	for _, s := range subscribers {
-		if s.Confirmed {
-			confirmed++
-		}
+		states[s.State()]++
 	}
 	data := map[string]interface{}{
-		"Title":       "Subscribers",
-		"Subscribers": subscribers,
-		"Confirmed":   confirmed,
-		"Unconfirmed": len(subscribers) - confirmed,
-		"CSRFToken":   getCSRFToken(w, r),
+		"Title":        "Subscribers",
+		"Subscribers":  subscribers,
+		"Active":       states[db.SubscriberActive],
+		"Pending":      states[db.SubscriberPending],
+		"Unsubscribed": states[db.SubscriberUnsubscribed],
+		"CSRFToken":    getCSRFToken(w, r),
 	}
 	app.renderTemplate(w, "subscribers.html", data)
 }
@@ -517,7 +517,7 @@ func (app *App) handleAdminSubscribers(w http.ResponseWriter, r *http.Request) {
 func (app *App) handleExportSubscribers(w http.ResponseWriter, r *http.Request) {
 	subscribers, err := app.db.ListAllSubscribers()
 	if err != nil {
-		http.Error(w, "Failed to load subscribers", http.StatusInternalServerError)
+		app.serverError(w, r, "admin: failed to load subscribers", err)
 		return
 	}
 
@@ -525,7 +525,7 @@ func (app *App) handleExportSubscribers(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Disposition", "attachment; filename=subscribers.csv")
 
 	writer := csv.NewWriter(w)
-	writer.Write([]string{"Email", "Confirmed", "Subscribed At", "Confirmed At"})
+	writer.Write([]string{"Email", "Confirmed", "Subscribed At", "Confirmed At", "Unsubscribed At"})
 
 	for _, s := range subscribers {
 		confirmed := "No"
@@ -536,11 +536,16 @@ func (app *App) handleExportSubscribers(w http.ResponseWriter, r *http.Request) 
 		if s.ConfirmedAt != nil {
 			confirmedAt = s.ConfirmedAt.Format("2006-01-02 15:04:05")
 		}
+		unsubscribedAt := ""
+		if s.UnsubscribedAt != nil {
+			unsubscribedAt = s.UnsubscribedAt.Format("2006-01-02 15:04:05")
+		}
 		writer.Write([]string{
 			s.Email,
 			confirmed,
 			s.SubscribedAt.Format("2006-01-02 15:04:05"),
 			confirmedAt,
+			unsubscribedAt,
 		})
 	}
 	writer.Flush()
@@ -928,7 +933,7 @@ type adminIssuerGroup struct {
 func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
 	pages, err := app.db.ListReferencePages("")
 	if err != nil {
-		http.Error(w, "Failed to load cards", http.StatusInternalServerError)
+		app.serverError(w, r, "admin: failed to load cards", err)
 		return
 	}
 
@@ -1068,10 +1073,7 @@ func (app *App) renderCardForm(w http.ResponseWriter, r *http.Request, status in
 		"FieldErrors":    f.FieldErrors,
 		"Message":        f.Message,
 	}
-	if status != http.StatusOK {
-		w.WriteHeader(status)
-	}
-	app.renderTemplate(w, "card-edit.html", data)
+	app.renderStatus(w, status, "card-edit.html", data)
 }
 
 // cardFlagFields are the editor's fields an admin can flag, in form order.
@@ -1247,7 +1249,7 @@ func (app *App) handleAdminCardEdit(w http.ResponseWriter, r *http.Request) {
 
 	page, err := app.db.GetReferencePage(id)
 	if err != nil {
-		http.Error(w, "Card not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -1286,7 +1288,7 @@ func (app *App) handleAdminCardUpdate(w http.ResponseWriter, r *http.Request) {
 
 	page, err := app.db.GetReferencePage(id)
 	if err != nil {
-		http.Error(w, "Card not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -1384,7 +1386,7 @@ func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
 
 	page, err := app.db.GetReferencePage(id)
 	if err != nil {
-		http.Error(w, "Card not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -1449,7 +1451,7 @@ func (app *App) handleApproveCardUpdate(w http.ResponseWriter, r *http.Request) 
 
 	page, err := app.db.GetReferencePage(id)
 	if err != nil {
-		http.Error(w, "Card not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -1470,7 +1472,7 @@ func (app *App) handleApproveCardUpdate(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if approved == nil {
-		http.Error(w, "Update not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -1526,7 +1528,7 @@ func (app *App) handleRejectCardUpdate(w http.ResponseWriter, r *http.Request) {
 
 	page, err := app.db.GetReferencePage(id)
 	if err != nil {
-		http.Error(w, "Card not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -1577,7 +1579,7 @@ func (app *App) handleAdminArticleCardsGET(w http.ResponseWriter, r *http.Reques
 
 	article, err := app.db.GetGeneratedArticle(id)
 	if err != nil {
-		http.Error(w, "Article not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 

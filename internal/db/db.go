@@ -720,6 +720,50 @@ func (d *Database) ListNewsletters() ([]Newsletter, error) {
 
 // --- Subscriber CRUD ---
 
+// Subscriber lookup and state errors.
+var (
+	ErrSubscriberNotFound = errors.New("subscriber not found")
+	ErrAlreadyConfirmed   = errors.New("subscriber already confirmed")
+	ErrUnsubscribed       = errors.New("subscriber has unsubscribed")
+)
+
+const subscriberColumns = `id, email, confirmed, token, subscribed_at, confirmed_at, unsubscribed_at`
+
+func scanSubscriber(row interface{ Scan(...any) error }) (Subscriber, error) {
+	var s Subscriber
+	err := row.Scan(&s.ID, &s.Email, &s.Confirmed, &s.Token, &s.SubscribedAt, &s.ConfirmedAt, &s.UnsubscribedAt)
+	return s, err
+}
+
+func (d *Database) querySubscribers(query string, args ...any) ([]Subscriber, error) {
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subscribers []Subscriber
+	for rows.Next() {
+		s, err := scanSubscriber(rows)
+		if err != nil {
+			return nil, err
+		}
+		subscribers = append(subscribers, s)
+	}
+	return subscribers, rows.Err()
+}
+
+func (d *Database) getSubscriber(where string, arg any) (*Subscriber, error) {
+	s, err := scanSubscriber(d.db.QueryRow(`SELECT `+subscriberColumns+` FROM subscribers WHERE `+where, arg))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrSubscriberNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
 func (d *Database) CreateSubscriber(s *Subscriber) (int64, error) {
 	res, err := d.db.Exec(
 		`INSERT INTO subscribers (email, token) VALUES (?, ?)`,
@@ -731,9 +775,26 @@ func (d *Database) CreateSubscriber(s *Subscriber) (int64, error) {
 	return res.LastInsertId()
 }
 
+// GetSubscriberByToken returns the subscriber with this token, or
+// ErrSubscriberNotFound.
+func (d *Database) GetSubscriberByToken(token string) (*Subscriber, error) {
+	return d.getSubscriber(`token = ?`, token)
+}
+
+// GetSubscriberByEmail returns the subscriber with this address, compared
+// without regard to case, or ErrSubscriberNotFound.
+func (d *Database) GetSubscriberByEmail(email string) (*Subscriber, error) {
+	return d.getSubscriber(`lower(email) = lower(?)`, email)
+}
+
+// ConfirmSubscriber confirms the subscription with this token. A second
+// confirmation is not an error a reader should see, so it returns
+// ErrAlreadyConfirmed for the caller to tell apart; an unsubscribed row is
+// left alone (an old confirmation link must not undo an unsubscribe) and
+// returns ErrUnsubscribed.
 func (d *Database) ConfirmSubscriber(token string) error {
 	res, err := d.db.Exec(
-		`UPDATE subscribers SET confirmed = 1, confirmed_at = ? WHERE token = ? AND confirmed = 0`, time.Now().UTC(), token,
+		`UPDATE subscribers SET confirmed = 1, confirmed_at = ? WHERE token = ? AND confirmed = 0 AND unsubscribed_at IS NULL`, time.Now().UTC(), token,
 	)
 	if err != nil {
 		return err
@@ -742,34 +803,33 @@ func (d *Database) ConfirmSubscriber(token string) error {
 	if err != nil {
 		return err
 	}
-	if n == 0 {
-		return fmt.Errorf("subscriber not found or already confirmed")
+	if n > 0 {
+		return nil
 	}
-	return nil
+	s, err := d.GetSubscriberByToken(token)
+	if err != nil {
+		return err
+	}
+	if s.State() == SubscriberUnsubscribed {
+		return ErrUnsubscribed
+	}
+	return ErrAlreadyConfirmed
 }
 
 func (d *Database) ListConfirmedSubscribers() ([]Subscriber, error) {
-	rows, err := d.db.Query(
-		`SELECT id, email, confirmed, token, subscribed_at, confirmed_at FROM subscribers WHERE confirmed = 1`,
+	return d.querySubscribers(
+		`SELECT ` + subscriberColumns + ` FROM subscribers WHERE confirmed = 1 AND unsubscribed_at IS NULL`,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var subscribers []Subscriber
-	for rows.Next() {
-		var s Subscriber
-		if err := rows.Scan(&s.ID, &s.Email, &s.Confirmed, &s.Token, &s.SubscribedAt, &s.ConfirmedAt); err != nil {
-			return nil, err
-		}
-		subscribers = append(subscribers, s)
-	}
-	return subscribers, rows.Err()
 }
 
+// Unsubscribe marks the subscription with this token unsubscribed. The row
+// is kept so the token still resolves (for Resubscribe, and for links in
+// emails already sent). Unsubscribing twice is not an error.
 func (d *Database) Unsubscribe(token string) error {
-	res, err := d.db.Exec(`DELETE FROM subscribers WHERE token = ?`, token)
+	res, err := d.db.Exec(
+		`UPDATE subscribers SET confirmed = 0, unsubscribed_at = COALESCE(unsubscribed_at, ?) WHERE token = ?`,
+		time.Now().UTC(), token,
+	)
 	if err != nil {
 		return err
 	}
@@ -778,9 +838,67 @@ func (d *Database) Unsubscribe(token string) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("subscriber not found")
+		return ErrSubscriberNotFound
 	}
 	return nil
+}
+
+// Resubscribe makes the subscription with this token active again. The token
+// only ever reaches its owner's inbox, so holding it is proof enough; no new
+// confirmation is needed.
+func (d *Database) Resubscribe(token string) error {
+	res, err := d.db.Exec(
+		`UPDATE subscribers SET confirmed = 1, confirmed_at = ?, unsubscribed_at = NULL WHERE token = ?`,
+		time.Now().UTC(), token,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrSubscriberNotFound
+	}
+	return nil
+}
+
+// ReopenSubscriber turns an unsubscribed address back into a pending one,
+// for someone who signs up again through the form: they must confirm again
+// before anything is sent. The old confirmed_at goes too, so the stored row
+// reads as pending everywhere (the subscriber list, the CSV export).
+func (d *Database) ReopenSubscriber(id int64) error {
+	_, err := d.db.Exec(
+		`UPDATE subscribers SET confirmed = 0, confirmed_at = NULL, unsubscribed_at = NULL WHERE id = ? AND unsubscribed_at IS NOT NULL`, id,
+	)
+	return err
+}
+
+// ClaimConfirmationSend records that a confirmation email is about to go to
+// subscriber id, unless one went within cooldown. It reports whether the
+// caller should send. The check and the write are one statement, so two
+// requests at once cannot both send.
+func (d *Database) ClaimConfirmationSend(id int64, now time.Time, cooldown time.Duration) (bool, error) {
+	res, err := d.db.Exec(
+		`UPDATE subscribers SET confirmation_sent_unix = ? WHERE id = ? AND confirmation_sent_unix <= ?`,
+		now.Unix(), id, now.Add(-cooldown).Unix(),
+	)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// ReleaseConfirmationSend clears a claim whose email failed to send, so the
+// reader can ask again straight away.
+func (d *Database) ReleaseConfirmationSend(id int64) error {
+	_, err := d.db.Exec(`UPDATE subscribers SET confirmation_sent_unix = 0 WHERE id = ?`, id)
+	return err
 }
 
 // --- AdminSession CRUD ---
@@ -842,23 +960,7 @@ func (d *Database) ToggleSourceActive(id int64) error {
 
 // ListAllSubscribers returns all subscribers regardless of confirmation status.
 func (d *Database) ListAllSubscribers() ([]Subscriber, error) {
-	rows, err := d.db.Query(
-		`SELECT id, email, confirmed, token, subscribed_at, confirmed_at FROM subscribers ORDER BY subscribed_at DESC`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var subscribers []Subscriber
-	for rows.Next() {
-		var s Subscriber
-		if err := rows.Scan(&s.ID, &s.Email, &s.Confirmed, &s.Token, &s.SubscribedAt, &s.ConfirmedAt); err != nil {
-			return nil, err
-		}
-		subscribers = append(subscribers, s)
-	}
-	return subscribers, rows.Err()
+	return d.querySubscribers(`SELECT ` + subscriberColumns + ` FROM subscribers ORDER BY subscribed_at DESC`)
 }
 
 // CountArticleSources returns the number of raw article sources linked to a generated article.

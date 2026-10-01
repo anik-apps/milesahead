@@ -92,7 +92,7 @@ func setupPublicTestApp(t *testing.T) (*App, *db.Database) {
 	}
 
 	subscribeContent := `{{template "layout" .}}
-{{define "content"}}{{if .Error}}<div class="error">{{.Error}}</div>{{end}}{{if .Success}}<div class="success">{{.Success}}</div>{{end}}<form method="POST" action="/subscribe"><input name="email"><button type="submit">Subscribe</button></form>{{end}}`
+{{define "content"}}<div class="state">{{.State}}</div>{{if .Error}}<div class="error">{{.Error}}</div>{{end}}<form method="POST" action="/subscribe"><input name="email"><button type="submit">Subscribe</button></form>{{end}}`
 	if err := os.WriteFile(filepath.Join(publicDir, "subscribe.html"), []byte(subscribeContent), 0644); err != nil {
 		t.Fatalf("failed to write subscribe template: %v", err)
 	}
@@ -266,7 +266,9 @@ func TestArticle_Returns200WithContent(t *testing.T) {
 	}
 }
 
-func TestArticle_UnpublishedShowsUnderReview(t *testing.T) {
+// An article that is not approved is not public: 404, and nothing of it on
+// the page.
+func TestArticle_UnpublishedIsNotFound(t *testing.T) {
 	app, database := setupPublicTestApp(t)
 
 	slug := "pending-test-article-abc123"
@@ -287,16 +289,12 @@ func TestArticle_UnpublishedShowsUnderReview(t *testing.T) {
 	rec := httptest.NewRecorder()
 	app.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rec.Code)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", rec.Code)
 	}
-
 	body := rec.Body.String()
-	if !strings.Contains(body, "under review") {
-		t.Error("expected body to contain 'under review' message")
-	}
-	if strings.Contains(body, "Some pending content") {
-		t.Error("body should NOT contain article content for unpublished article")
+	if strings.Contains(body, "Some pending content") || strings.Contains(body, "Pending Test Article") {
+		t.Error("the page must not show the unpublished article's content or headline")
 	}
 }
 
@@ -375,13 +373,12 @@ func TestSubscribe_Success(t *testing.T) {
 	rec := httptest.NewRecorder()
 	app.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rec.Code)
+	// Post/redirect/get: a refresh must not post the form again.
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("expected status 303, got %d", rec.Code)
 	}
-
-	body := rec.Body.String()
-	if !strings.Contains(body, "check your email") {
-		t.Error("expected success message about checking email")
+	if loc := rec.Header().Get("Location"); loc != "/subscribe/check-email" {
+		t.Errorf("expected a redirect to /subscribe/check-email, got %q", loc)
 	}
 
 	// Verify subscriber was created.
@@ -409,8 +406,8 @@ func TestSubscribe_InvalidEmail(t *testing.T) {
 	rec := httptest.NewRecorder()
 	app.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
 	}
 
 	body := rec.Body.String()
@@ -437,11 +434,12 @@ func TestSubscribeConfirm_Success(t *testing.T) {
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "confirmed") {
-		t.Error("expected confirmation success message")
+	if !strings.Contains(body, `<div class="state">confirmed</div>`) {
+		t.Error("expected the confirmed page")
 	}
 }
 
+// The Unsubscribe link only asks; the button's POST unsubscribes.
 func TestUnsubscribe_Success(t *testing.T) {
 	app, database := setupPublicTestApp(t)
 
@@ -449,24 +447,30 @@ func TestUnsubscribe_Success(t *testing.T) {
 		Email: "unsub@example.com",
 		Token: "unsub-token-456",
 	})
+	database.ConfirmSubscriber("unsub-token-456")
 
 	req := httptest.NewRequest(http.MethodGet, "/unsubscribe?token=unsub-token-456", nil)
 	rec := httptest.NewRecorder()
 	app.ServeHTTP(rec, req)
-
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rec.Code)
 	}
-
-	body := rec.Body.String()
-	if !strings.Contains(body, "unsubscribed") {
-		t.Error("expected unsubscribe success message")
+	if !strings.Contains(rec.Body.String(), `<div class="state">unsub-confirm</div>`) {
+		t.Error("expected the page asking to confirm")
+	}
+	if subs, _ := database.ListConfirmedSubscribers(); len(subs) != 1 {
+		t.Fatalf("opening the link must not unsubscribe; %d confirmed", len(subs))
 	}
 
-	// Verify subscriber was removed.
-	subs, _ := database.ListAllSubscribers()
-	if len(subs) != 0 {
-		t.Errorf("expected 0 subscribers after unsubscribe, got %d", len(subs))
+	req = httptest.NewRequest(http.MethodPost, "/unsubscribe", strings.NewReader("token=unsub-token-456"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("expected status 303, got %d", rec.Code)
+	}
+	if subs, _ := database.ListConfirmedSubscribers(); len(subs) != 0 {
+		t.Errorf("expected 0 confirmed subscribers after unsubscribe, got %d", len(subs))
 	}
 }
 
