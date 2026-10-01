@@ -9,6 +9,9 @@
     --text-muted: #64748b;
     --nav-bg: #ffffff;
     --shadow: rgba(0, 0, 0, 0.08);
+    /* Text on an accent-coloured fill: white on #2563eb is 5.2:1. */
+    --on-accent: #ffffff;
+    --nav-link: #334155;
 }
 
 /* Dark theme overrides */
@@ -22,6 +25,9 @@
     --text-muted: #8b949e;
     --nav-bg: #161b22;
     --shadow: rgba(0, 0, 0, 0.3);
+    /* White on the dark theme's #58a6ff is 2.5:1; near-black is 7.5:1. */
+    --on-accent: #0d1117;
+    --nav-link: #c9d1d9;
 }
 
 /* Reset & Base */
@@ -45,6 +51,55 @@ body {
 img {
     max-width: 100%;
     height: auto;
+}
+
+/* In-page anchors land below the sticky header (84px desktop, 62px phone). */
+html {
+    scroll-padding-top: 6rem;
+}
+
+/* One visible focus ring for everything a keyboard can reach. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+}
+/* The skip link moves focus to <main>; it needs no ring of its own. */
+#main:focus, #main:focus-visible { outline: none; }
+
+/* First thing a keyboard reaches: jumps past the header. Hidden until focused. */
+.skip-link {
+    position: absolute;
+    left: 0.75rem;
+    top: -4rem;
+    z-index: 1000;
+    padding: 0.7rem 1rem;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 700;
+}
+.skip-link:focus {
+    top: 0.75rem;
+    text-decoration: none;
+}
+
+/* Read by screen readers, not shown. */
+.visually-hidden {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 a {
@@ -82,69 +137,13 @@ nav .nav-links {
 }
 
 nav .nav-links a {
-    color: var(--text-muted);
-    font-weight: 500;
+    color: var(--nav-link);
+    font-weight: 600;
 }
 
 nav .nav-links a:hover {
     color: var(--text);
     text-decoration: none;
-}
-
-/* Nav dropdown */
-.nav-dropdown {
-    position: relative;
-}
-.nav-dropdown-btn {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-weight: 500;
-    font-size: inherit;
-    cursor: pointer;
-    padding: 0;
-    font-family: inherit;
-}
-.nav-dropdown-btn:hover {
-    color: var(--text);
-}
-.nav-dropdown-menu {
-    display: none;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.4rem 0;
-    min-width: 160px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 200;
-    padding-top: 0.6rem;
-}
-/* Invisible bridge between button and menu to prevent hover gap */
-.nav-dropdown::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 0;
-    width: 100%;
-    height: 0.5rem;
-}
-.nav-dropdown:hover .nav-dropdown-menu,
-.nav-dropdown.open .nav-dropdown-menu {
-    display: block;
-}
-.nav-dropdown-menu a {
-    display: block;
-    padding: 0.5rem 1rem;
-    color: var(--text);
-    font-size: 0.9rem;
-    font-weight: 400;
-}
-.nav-dropdown-menu a:hover {
-    background: var(--accent-subtle, rgba(88,166,255,0.1));
-    color: var(--accent);
 }
 
 #theme-toggle {
@@ -328,11 +327,15 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
     text-decoration: none;
 }
 
+/* The scrim fades in over the overlay's top padding only, so every line of
+   text sits on at least 72% black: white text then stays above 9:1 even on
+   a white photo (it measured 2.7:1 at the title's first line before). */
 .featured-overlay {
     padding: 2rem;
-    background: linear-gradient(transparent 0%, rgba(0, 0, 0, 0.7) 15%, rgba(0, 0, 0, 0.85) 100%);
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0.72) 3rem, rgba(0, 0, 0, 0.85) 100%);
     margin-top: auto;
     padding-top: 3rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .featured-title {
@@ -422,7 +425,7 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
     color: #ffffff;
 }
 
-.badge-deal { background: #e94560; }
+.badge-deal { background: #c81e3a; } /* white text 5.7:1 */
 .badge-roundup { background: #4ecdc4; }
 .badge-alert { background: #f9a826; color: #1a1a2e; }
 .badge-summary { background: #2563eb; }
@@ -626,7 +629,7 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
 .vote-btn.active {
     border-color: var(--accent);
     background: var(--accent);
-    color: #ffffff;
+    color: var(--on-accent);
 }
 
 .vote-btn:disabled {
@@ -636,68 +639,6 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
 
 .vote-count {
     font-weight: 600;
-}
-
-/* Under Review */
-.under-review {
-    text-align: center;
-    padding: 4rem 2rem;
-    max-width: 600px;
-    margin: 0 auto;
-}
-
-.under-review h1 {
-    margin-bottom: 1rem;
-    color: var(--text-muted);
-}
-
-/* Subscribe Page */
-.subscribe-page {
-    max-width: 500px;
-    margin: 2rem auto;
-    text-align: center;
-}
-
-.subscribe-page h1 {
-    margin-bottom: 0.5rem;
-}
-
-.subscribe-page > p {
-    color: var(--text-muted);
-    margin-bottom: 2rem;
-}
-
-.subscribe-form {
-    display: flex;
-    gap: 0.75rem;
-    justify-content: center;
-}
-
-.subscribe-form input[type="email"] {
-    padding: 0.75rem 1rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--card-bg);
-    color: var(--text);
-    font-size: 1rem;
-    flex: 1;
-    max-width: 300px;
-}
-
-.subscribe-form button {
-    padding: 0.75rem 1.5rem;
-    background: var(--accent);
-    color: #ffffff;
-    border: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s;
-}
-
-.subscribe-form button:hover {
-    opacity: 0.9;
 }
 
 /* Messages */
@@ -710,13 +651,13 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
 
 .message.error {
     background: #fef2f2;
-    color: #dc2626;
+    color: #b91c1c; /* 5.9:1 */
     border: 1px solid #fecaca;
 }
 
 .message.success {
     background: #f0fdf4;
-    color: #16a34a;
+    color: #15803d; /* 4.8:1 */
     border: 1px solid #bbf7d0;
 }
 
@@ -906,7 +847,7 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
     color: #ffffff;
 }
 
-.badge-deal { background: #e94560; }
+.badge-deal { background: #c81e3a; } /* white text 5.7:1 */
 .badge-roundup { background: #4ecdc4; }
 .badge-alert { background: #f9a826; color: #1a1a2e; }
 .badge-summary { background: #2563eb; }
@@ -1544,6 +1485,9 @@ tr:hover {
         grid-template-columns: 1fr;
     }
 
+    /* The card and its link share one height, so no unlinked strip of
+       photo is left below the text. */
+    .featured-card,
     .featured-card a {
         min-height: 280px;
     }
@@ -1582,16 +1526,6 @@ tr:hover {
         height: 75px;
         margin: 0;
         border-radius: 6px;
-    }
-
-    .subscribe-form {
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .subscribe-form input[type="email"] {
-        max-width: 100%;
-        width: 100%;
     }
 
     .source-form-grid {
@@ -1793,11 +1727,6 @@ tr:hover {
     /* Issue 12: Sources table URL cells - mobile override */
     .admin-table td a[href] {
         max-width: 120px;
-    }
-
-    /* Issue 6: Hero card title readability */
-    .featured-overlay {
-        background: linear-gradient(transparent 20%, rgba(0,0,0,0.85));
     }
 
     /* Issue N2: Hide columns on mobile */
@@ -2408,7 +2337,7 @@ tr.flagged { background: #fef2f2; }
     border: none;
     border-radius: 6px;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     font-size: 1rem;
     cursor: pointer;
 }
@@ -2479,7 +2408,7 @@ tr.flagged { background: #fef2f2; }
 .article-tags { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.5rem 0; }
 .tag-badge { padding: 0.15rem 0.5rem; border-radius: 4px; background: var(--accent-subtle);
              color: var(--accent); font-size: 0.75rem; text-decoration: none; font-weight: 500; }
-.tag-badge:hover { background: var(--accent); color: #fff; }
+.tag-badge:hover { background: var(--accent); color: var(--on-accent); }
 
 /* ========== Compare Page ========== */
 .compare-page {
@@ -2900,36 +2829,49 @@ nav .brand-logo:hover { text-decoration: none; }
 nav .brand-logo .brand-mark { width: 50px; }
 nav .brand-logo .brand-word { font-size: 1.65rem; }
 nav .brand-logo .brand-tag { font-size: 0.66rem; margin-top: 0.35rem; }
-nav.site-nav .nav-links { gap: 1.1rem; }
-#theme-toggle.theme-icon-btn {
-    width: 38px; height: 38px; padding: 0; border-radius: 999px;
-    display: inline-flex; align-items: center; justify-content: center;
-    background: rgba(255, 255, 255, 0.7);
+nav.site-nav .nav-links { gap: 0.25rem; }
+/* Every header control is at least 44px tall, the touch-target guideline. */
+nav.site-nav .nav-link {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.7rem;
+    border-radius: 8px; font-size: 1rem;
 }
+nav.site-nav .nav-link:hover { background: rgba(37, 99, 235, 0.08); }
+nav.site-nav .nav-link[aria-current="page"] { color: var(--text); box-shadow: inset 0 -3px 0 var(--accent); border-radius: 0; }
+.nav-icon-btn, .nav-search button#search-toggle {
+    width: 44px; height: 44px; padding: 0; border-radius: 999px;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.nav-search button#search-toggle:hover { background: rgba(37, 99, 235, 0.08); }
+#theme-toggle.theme-icon-btn { background: rgba(255, 255, 255, 0.7); margin-left: 0.25rem; }
 [data-theme="dark"] #theme-toggle.theme-icon-btn { background: rgba(13, 21, 38, 0.6); }
-#theme-toggle .i-sun { display: none; }
-[data-theme="dark"] #theme-toggle .i-sun { display: block; }
-[data-theme="dark"] #theme-toggle .i-moon { display: none; }
+#theme-toggle .i-sun, .footer-theme-toggle .i-sun { display: none; }
+[data-theme="dark"] #theme-toggle .i-sun, [data-theme="dark"] .footer-theme-toggle .i-sun { display: block; }
+[data-theme="dark"] #theme-toggle .i-moon, [data-theme="dark"] .footer-theme-toggle .i-moon { display: none; }
+/* Off until the newsletter's delivery works (see layout.html). */
+.nav-subscribe {
+    display: inline-flex; align-items: center; min-height: 44px; margin-left: 0.5rem; padding: 0 1.1rem;
+    border-radius: 999px; background: var(--accent); color: var(--on-accent) !important; font-weight: 700;
+}
 
-/* Home hero: the misty mountain scene */
-.hero-brand {
-    position: relative; overflow: hidden; text-align: center;
-    margin-bottom: 2rem; padding: 2.4rem 1rem 9rem;
+/* Home hero: one line about the site over the misty ridges. The logo is
+   already in the header, so it is not repeated here. */
+.hero-strip {
+    position: relative; overflow: hidden;
+    margin-bottom: 1.5rem; padding: 1.6rem 2rem 3.4rem;
     border: 1px solid #d6e7f7; border-radius: 12px; color: #15307a;
-    background: url(/static/img/brand/band-light.svg) center bottom / 100% 190px no-repeat,
+    background: url(/static/img/brand/band-light.svg) center bottom / 100% 64px no-repeat,
                 linear-gradient(180deg, #f6fafe 0%, #e3f0fb 100%);
 }
-[data-theme="dark"] .hero-brand {
-    border-color: var(--border);
-    background: url(/static/img/brand/band-dark.svg) center bottom / 100% 190px no-repeat,
+[data-theme="dark"] .hero-strip {
+    border-color: var(--border); color: #d6e7ff;
+    background: url(/static/img/brand/band-dark.svg) center bottom / 100% 64px no-repeat,
                 linear-gradient(180deg, #0a1120 0%, #0e1930 100%);
 }
-.hero-brand .brand-mark { width: 92px; margin: 0 auto 0.6rem; }
-.hero-brand h1 { font-size: 2.9rem; margin: 0; }
-.hero-brand .brand-tag { font-size: 0.85rem; margin-top: 0.55rem; }
-.hero-brand .hero-sub { margin-top: 0.85rem; font-size: 1.05rem; color: #2a4478; }
-[data-theme="dark"] .hero-brand .hero-sub { color: #b7cbe8; }
-.brand-plane { position: absolute; top: 1.2rem; right: 3%; width: 260px; height: auto; pointer-events: none; }
+.hero-strip h1 { position: relative; font-size: 1.9rem; line-height: 1.2; letter-spacing: -0.02em; color: #0f1f6e; max-width: 34ch; }
+[data-theme="dark"] .hero-strip h1 { color: #e6edf3; }
+.hero-strip .hero-sub { position: relative; margin-top: 0.4rem; font-size: 1.05rem; color: #2a4478; }
+[data-theme="dark"] .hero-strip .hero-sub { color: #b7cbe8; }
+.brand-plane { position: absolute; top: 1rem; right: 3%; width: 220px; height: auto; pointer-events: none; }
 
 /* Footer: the infographic band, with live text over it */
 footer.site-footer {
@@ -2958,35 +2900,55 @@ footer.site-footer::before { /* mist behind the lockup, as in the infographic */
 .footer-lockup .brand-tag { font-size: 0.78rem; margin-top: 0.45rem; }
 footer .footer-links { /* a <nav>, so undo the sticky header styles */
     position: static; z-index: auto; padding: 0; background: none; border: 0;
-    display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0.35rem 1.25rem;
-    margin-top: 1.1rem; font-weight: 600; font-size: 0.95rem;
+    display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0 0.5rem;
+    margin-top: 0.6rem; font-weight: 600; font-size: 0.95rem;
 }
+/* Footer links are 44px tall targets; the padding is inside the link. */
+footer .footer-links a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.4rem; margin-left: -0.4rem; }
 footer .footer-links a, .footer-pillars a { color: #15307a; }
 [data-theme="dark"] footer .footer-links a, [data-theme="dark"] .footer-pillars a { color: #cfe3ff; }
-.footer-legal { margin-top: 0.75rem; font-size: 0.8rem; color: #3d5a8a; }
+.footer-legal { margin-top: 0.25rem; font-size: 0.8rem; color: #3d5a8a; }
 [data-theme="dark"] .footer-legal { color: #9fb6d9; }
 .footer-pillars {
     font-size: 0.9rem; letter-spacing: 0.24em; font-weight: 600; text-transform: uppercase;
-    white-space: nowrap; margin-bottom: 0.2rem;
+    white-space: nowrap; margin-bottom: 0;
 }
+.footer-pillars a { display: inline-flex; align-items: center; min-height: 44px; }
 .footer-pillars span { margin: 0 0.5em; }
+/* The header has the theme switch on wider screens; this one is for phones. */
+.footer-theme-toggle {
+    display: none; align-items: center; gap: 0.5rem; min-height: 44px; margin-top: 0.25rem; padding: 0 1rem;
+    border: 1px solid #b9d3ee; border-radius: 999px; background: rgba(255, 255, 255, 0.75);
+    color: #15307a; font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+}
+[data-theme="dark"] .footer-theme-toggle { border-color: #34507e; background: rgba(13, 21, 38, 0.6); color: #cfe3ff; }
+/* Shows the toggle's state next to its fixed name ("Dark theme"). */
+.footer-theme-state::before { content: "Off"; }
+.footer-theme-toggle[aria-pressed="true"] .footer-theme-state::before { content: "On"; }
+.footer-theme-state { font-size: 0.75rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 999px; background: #dbeafe; color: #1e3a8a; }
+[data-theme="dark"] .footer-theme-state { background: #1e3a8a; color: #dbeafe; }
 
 @media (max-width: 768px) {
-    nav.site-nav { padding: 0.6rem 1rem 1.1rem; }
+    nav.site-nav { padding: 0.45rem 0.6rem 1rem 1rem; }
     nav .brand-logo { gap: 0.45rem; }
     nav .brand-logo .brand-mark { width: 38px; }
     nav .brand-logo .brand-word { font-size: 1.3rem; }
-    nav .brand-logo .brand-tag { font-size: 0.5rem; letter-spacing: 0.12em; margin-top: 0.25rem; }
-    nav.site-nav .nav-links { gap: 0.75rem; }
-    #theme-toggle.theme-icon-btn { width: 34px; height: 34px; }
+    /* At this width the tagline would be 8px: leave it to the footer. */
+    nav .brand-logo .brand-tag { display: none; }
+    nav.site-nav .nav-links { gap: 0; }
+    nav.site-nav .nav-link { padding: 0 0.55rem; font-size: 0.95rem; }
+    #theme-toggle.theme-icon-btn { display: none; }
+    .footer-theme-toggle { display: inline-flex; }
+    /* The search field opens full width under the header. */
+    .nav-search { position: static; }
+    .nav-search-form { left: 0.75rem; right: 0.75rem; top: calc(100% - 0.6rem); }
+    .nav-search-form input { width: 100%; font-size: 1rem; padding: 0.7rem 0.85rem; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18); }
 
-    .hero-brand { padding: 1.6rem 1rem 7.25rem; }
-    .hero-brand, [data-theme="dark"] .hero-brand { background-size: 100% 120px, auto; }
-    .hero-brand .brand-mark { width: 64px; }
-    .hero-brand h1 { font-size: 2.1rem; }
-    .hero-brand .brand-tag { font-size: 0.66rem; letter-spacing: 0.13em; }
-    .hero-brand .hero-sub { font-size: 0.95rem; }
-    .brand-plane { width: 140px; top: 0.5rem; right: 0.5rem; }
+    .hero-strip { padding: 1rem 1rem 2.4rem; margin-bottom: 1rem; }
+    .hero-strip, [data-theme="dark"] .hero-strip { background-size: 100% 40px, auto; }
+    .hero-strip h1 { font-size: 1.35rem; padding-right: 3.5rem; }
+    .hero-strip .hero-sub { font-size: 0.95rem; }
+    .brand-plane { width: 110px; top: 0.6rem; right: 0.5rem; }
 
     footer.site-footer::before {
         background: linear-gradient(180deg, rgba(246, 250, 254, 0.95) 0%, rgba(246, 250, 254, 0.8) 55%, rgba(246, 250, 254, 0) 85%);
@@ -2995,16 +2957,82 @@ footer .footer-links a, .footer-pillars a { color: #15307a; }
         background: linear-gradient(180deg, rgba(10, 17, 32, 0.92) 0%, rgba(10, 17, 32, 0.75) 55%, rgba(10, 17, 32, 0) 85%);
     }
     .footer-plane { width: 170px; top: 0.6rem; right: 1rem; }
-    .footer-inner { flex-direction: column; align-items: center; text-align: center; padding: 2rem 1.25rem 1.5rem; min-height: 330px; gap: 1.25rem; }
+    .footer-inner { flex-direction: column; align-items: center; text-align: center; padding: 2rem 1.25rem 1rem; min-height: 330px; gap: 0.75rem; }
+    .footer-brand { display: flex; flex-direction: column; align-items: center; }
     .footer-lockup { flex-direction: column; gap: 0.5rem; }
     .footer-lockup .brand-mark { width: 84px; }
     .footer-lockup .brand-word { font-size: 2.2rem; }
     footer .footer-links { justify-content: center; }
-    .footer-pillars { font-size: 0.72rem; letter-spacing: 0.16em; }
+    footer .footer-links a { margin-left: 0; }
+    .footer-pillars { font-size: 0.75rem; letter-spacing: 0.16em; }
+    .footer-pillars a { padding: 0 0.15rem; }
     .footer-pillars span { margin: 0 0.3em; }
 }
-@media (max-width: 400px) {
-    nav .brand-logo .brand-tag { display: none; }
+@media (max-width: 360px) {
+    nav .brand-logo .brand-word { font-size: 1.15rem; }
+    nav.site-nav .nav-link { padding: 0 0.4rem; }
+}
+
+/* Status pages: the 404/410/500 page and every step of the newsletter
+   flow (error.html, subscribe.html). */
+.status-page { max-width: 560px; margin: 2.5rem auto 1rem; text-align: center; }
+.status-page h1 { font-size: 1.9rem; line-height: 1.2; letter-spacing: -0.02em; }
+.status-kicker { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #1d3f8a; margin-bottom: 0.4rem; }
+[data-theme="dark"] .status-kicker { color: #9cc3f5; }
+.status-lead { margin-top: 0.6rem; font-size: 1.05rem; color: var(--text); }
+.status-note { margin-top: 0.9rem; font-size: 0.95rem; color: var(--text-muted); }
+.status-page p a, .status-note a { text-decoration: underline; text-underline-offset: 2px; }
+.status-icon {
+    width: 56px; height: 56px; margin: 0 auto 0.9rem; border-radius: 999px;
+    display: grid; place-items: center; font-size: 1.6rem; font-weight: 700;
+}
+.status-icon.ok { background: #dcfce7; color: #166534; }
+.status-icon.info { background: #dbeafe; color: #1e40af; }
+.status-icon.warn { background: #fef3c7; color: #92400e; }
+[data-theme="dark"] .status-icon.ok { background: #052e16; color: #86efac; }
+[data-theme="dark"] .status-icon.info { background: #172554; color: #93c5fd; }
+[data-theme="dark"] .status-icon.warn { background: #3a2a06; color: #fcd34d; }
+.status-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; margin-top: 1.4rem; }
+.status-page .status-btn {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 1.3rem;
+    border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent);
+    font: inherit; font-weight: 700; cursor: pointer; text-decoration: none;
+}
+.status-page .status-btn.secondary { background: var(--bg); color: var(--text); border-color: var(--border); }
+.status-page .status-btn:hover { text-decoration: none; filter: brightness(0.95); }
+.status-page .message { margin-top: 1.2rem; margin-bottom: 0; }
+.suggestions { list-style: none; margin: 1.4rem 0 0; padding: 0; text-align: left; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.suggestions li + li { border-top: 1px solid var(--border); }
+.suggestions a { display: flex; align-items: baseline; gap: 0.75rem; min-height: 44px; padding: 0.7rem 1rem; color: var(--text); font-weight: 600; }
+.suggestions a:hover { background: var(--card-bg); text-decoration: none; color: var(--accent); }
+.suggestion-kind { flex-shrink: 0; width: 3.4rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.status-search, .subscribe-row { display: flex; gap: 0.5rem; margin-top: 1.4rem; }
+.status-search input, .subscribe-form input[type="email"] {
+    flex: 1; min-width: 0; min-height: 44px; padding: 0 0.9rem; border: 1px solid #94a3b8; border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit;
+}
+[data-theme="dark"] .status-search input, [data-theme="dark"] .subscribe-form input[type="email"] { border-color: #5b6573; }
+.status-search button, .subscribe-form button {
+    min-height: 44px; padding: 0 1.2rem; border: 0; border-radius: 8px;
+    background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 700; cursor: pointer;
+}
+.status-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 0.5rem; margin-top: 1rem; }
+.status-links a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.5rem; font-weight: 600; }
+.subscribe-form { margin-top: 1.4rem; text-align: left; }
+.subscribe-form label { display: block; font-weight: 600; font-size: 0.95rem; }
+.subscribe-form .subscribe-row { margin-top: 0.35rem; }
+.subscribe-form .status-note { margin-top: 0.6rem; }
+.hp-field { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+@media (max-width: 480px) {
+    .status-page { margin-top: 1.5rem; }
+    .status-page h1 { font-size: 1.55rem; }
+    .subscribe-row, .status-search { flex-direction: column; }
+}
+
+/* In-text links are underlined, not told apart by colour alone. */
+.article-content a, .card-section-content a, .scouts-verdict-content a, .empty-state a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 
 /* Wide tables in card sections and articles scroll inside their own box

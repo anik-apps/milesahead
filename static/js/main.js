@@ -1,6 +1,7 @@
 // Theme Toggle
 // layout.html applies the saved theme (or the OS setting) in <head> before first
-// paint; this only wires up the button and keeps its pressed state in sync.
+// paint; this only wires up the buttons (one in the header, one in the footer
+// for phones) and keeps their pressed state in sync.
 (function() {
     const html = document.documentElement;
     const saved = localStorage.getItem('theme');
@@ -9,20 +10,20 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        const toggleBtn = document.getElementById('theme-toggle');
-        if (toggleBtn) {
-            const sync = function() {
-                toggleBtn.setAttribute('aria-pressed', html.getAttribute('data-theme') === 'dark' ? 'true' : 'false');
-            };
-            sync();
-            toggleBtn.addEventListener('click', function() {
-                const current = html.getAttribute('data-theme');
-                const next = current === 'dark' ? 'light' : 'dark';
+        const buttons = document.querySelectorAll('[data-theme-toggle]');
+        const sync = function() {
+            const dark = html.getAttribute('data-theme') === 'dark';
+            buttons.forEach(function(b) { b.setAttribute('aria-pressed', dark ? 'true' : 'false'); });
+        };
+        sync();
+        buttons.forEach(function(b) {
+            b.addEventListener('click', function() {
+                const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
                 html.setAttribute('data-theme', next);
                 localStorage.setItem('theme', next);
                 sync();
             });
-        }
+        });
     });
 })();
 
@@ -101,46 +102,37 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Search Toggle
+// The button shows and hides the header search field. aria-expanded follows
+// it; Escape or a click elsewhere closes it, and Escape returns focus to the
+// button.
 document.addEventListener('DOMContentLoaded', function() {
     var searchToggle = document.getElementById('search-toggle');
     var searchForm = document.getElementById('nav-search-form');
     if (!searchToggle || !searchForm) return;
+    var input = searchForm.querySelector('input');
+
+    function setOpen(open) {
+        searchForm.classList.toggle('active', open);
+        searchToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
 
     searchToggle.addEventListener('click', function(e) {
         e.stopPropagation();
-        searchForm.classList.toggle('active');
-        if (searchForm.classList.contains('active')) {
-            searchForm.querySelector('input').focus();
-        }
+        var open = !searchForm.classList.contains('active');
+        setOpen(open);
+        if (open) input.focus();
     });
 
-    // Close search form when clicking outside.
     document.addEventListener('click', function(e) {
-        if (!searchForm.contains(e.target) && e.target !== searchToggle) {
-            searchForm.classList.remove('active');
+        if (searchForm.classList.contains('active') && !searchForm.contains(e.target) && e.target !== searchToggle) {
+            setOpen(false);
         }
     });
 
-    // Submit on Enter.
-    searchForm.querySelector('input').addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            searchForm.classList.remove('active');
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && searchForm.classList.contains('active')) {
+            setOpen(false);
+            searchToggle.focus();
         }
     });
-});
-
-// Nav dropdown touch support
-document.addEventListener('DOMContentLoaded', function() {
-    var dropdownBtn = document.querySelector('.nav-dropdown-btn');
-    if (dropdownBtn) {
-        dropdownBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            this.parentElement.classList.toggle('open');
-        });
-        document.addEventListener('click', function(e) {
-            if (!e.target.closest('.nav-dropdown')) {
-                document.querySelector('.nav-dropdown').classList.remove('open');
-            }
-        });
-    }
 });
