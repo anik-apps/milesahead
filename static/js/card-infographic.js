@@ -17,8 +17,30 @@
       if (img && !img.getAttribute('src')) img.setAttribute('src', img.getAttribute('data-src'));
       opener = link;
       dialog.showModal();
+      offerZoom();
     });
   });
+
+  // On a screen narrower than the image, offer a zoom: the image at its real
+  // width, panned inside the viewer, instead of type shrunk to a third.
+  var frame = dialog.querySelector('.ig-lightbox-frame');
+  var zoom = dialog.querySelector('[data-ig-zoom]');
+  function setZoom(on) {
+    if (!zoom || !frame) return;
+    frame.classList.toggle('is-zoomed', on);
+    zoom.setAttribute('aria-pressed', on ? 'true' : 'false');
+    zoom.textContent = on ? 'Zoom out' : 'Zoom';
+  }
+  if (zoom && frame && img) {
+    zoom.addEventListener('click', function () {
+      setZoom(zoom.getAttribute('aria-pressed') !== 'true');
+    });
+    dialog.addEventListener('close', function () { setZoom(false); });
+  }
+  function offerZoom() {
+    if (!zoom || !frame || !img) return;
+    zoom.hidden = frame.clientWidth >= (parseInt(img.getAttribute('width'), 10) || 1024);
+  }
 
   var close = dialog.querySelector('[data-ig-close]');
   if (close) close.addEventListener('click', function () { dialog.close(); });

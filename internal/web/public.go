@@ -706,29 +706,10 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 	canonicalURL := "https://" + domain + "/cards/" + page.Slug
 	metaDesc := truncate(page.ScoutsVerdict, 160)
 
-	// Build "Compare with..." groups: all published cards except the current one.
-	var compareGroups []compareGroup
+	// The other published cards, for the compare list and next steps.
 	allCards, err := app.db.ListPublishedReferencePages("")
-	if err == nil {
-		groupMap := map[string]*compareGroup{}
-		var groupOrder []string
-		for _, c := range allCards {
-			if c.Slug == page.Slug {
-				continue
-			}
-			cat := c.Category
-			if display, ok := categoryDisplayNames[cat]; ok {
-				cat = display
-			}
-			if _, exists := groupMap[cat]; !exists {
-				groupMap[cat] = &compareGroup{Category: cat}
-				groupOrder = append(groupOrder, cat)
-			}
-			groupMap[cat].Cards = append(groupMap[cat].Cards, struct{ Slug, Title string }{c.Slug, c.Title})
-		}
-		for _, cat := range groupOrder {
-			compareGroups = append(compareGroups, *groupMap[cat])
-		}
+	if err != nil {
+		slog.Warn("card page: listing other cards", "slug", page.Slug, "err", err)
 	}
 
 	data := map[string]interface{}{
@@ -742,7 +723,6 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		"CanonicalURL":    canonicalURL,
 		"OGType":          "website",
 		"OGImage":         absoluteURL(domain, page.ImageURL),
-		"CompareGroups":   compareGroups,
 		"JSONLD": buildJSONLD(cardLDData{
 			Context:     "https://schema.org",
 			Type:        "Product",
@@ -751,6 +731,10 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 			Image:       absoluteURL(domain, page.ImageURL),
 			Brand:       jsonLDBrand{Type: "Brand", Name: page.Issuer},
 		}),
+	}
+
+	for k, v := range cardDetailData(page, sections, allCards) {
+		data[k] = v
 	}
 
 	// Video embed is beta-gated: it renders only with ?beta=1 so it can be
