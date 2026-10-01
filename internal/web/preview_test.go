@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -46,7 +47,7 @@ func TestAdminPreview_ShowsIDAndScoutsTakeOnlyInAdmin(t *testing.T) {
 	for _, want := range []string{
 		`<span class="preview-id">#` + strconv.FormatInt(enriched, 10) + `</span>`,
 		`<span class="preview-id">#` + strconv.FormatInt(bare, 10) + `</span>`,
-		`<div class="scout-label">Scout's Take</div>`,
+		`<h2 class="scout-label" id="scouts-take-` + strconv.FormatInt(enriched, 10) + `">Scout's Take</h2>`,
 		"<p>" + take + "</p>",
 		"No image yet.",
 		"No Scout's Take yet.",
@@ -75,4 +76,48 @@ func TestAdminPreview_ShowsIDAndScoutsTakeOnlyInAdmin(t *testing.T) {
 			t.Errorf("public article contains admin-only %q", leak)
 		}
 	}
+}
+
+// Integration, real templates: the admin preview shows the article in the
+// public page's order -- headline and summary, photo, story with key details,
+// Scout's Take after the story.
+func TestAdminPreview_ArticleOrderMatchesPublicPage(t *testing.T) {
+	base, database := setupAdminTestApp(t)
+	base.cfg.Site.PersonaName = "Scout"
+	app, err := NewAppWithTemplateDir(base.cfg, database, base.articleManager, nil, nil, nil,
+		context.Background(), filepath.Join("..", "..", "templates"))
+	if err != nil {
+		t.Fatalf("app with real templates: %v", err)
+	}
+	t.Cleanup(app.WaitBackground)
+
+	id, err := database.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Preview Order Article", Slug: "preview-order-article",
+		Content: "<p>Preview body text.</p>", Type: "deal", Status: db.StatusPending,
+		SourcesJSON: "[]", RevisionNumber: 1,
+		TLDR:       "Preview summary sentence.",
+		KeyDetails: `[{"Label":"Bonus","Value":"25%"}]`,
+		ImageURL:   "https://images.pexels.com/photos/1/p.jpeg", ScoutsTake: "Preview take.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	rec := doAdminGET(t, app, "/admin/dashboard", session)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dashboard status %d", rec.Code)
+	}
+	modal := regexp.MustCompile(`(?s)<div id="preview-` + strconv.FormatInt(id, 10) + `" class="preview-overlay".*?<div class="preview-actions">`).FindString(rec.Body.String())
+	inOrder(t, modal,
+		`<h1>Preview Order Article</h1>`,
+		`<p class="article-standfirst">Preview summary sentence.</p>`,
+		`<details class="article-facts">`,
+		`<figure class="article-hero">`,
+		`<img src="https://images.pexels.com/photos/1/p.jpeg" alt="" width="1100" height="280">`,
+		`<aside class="article-sidebar"`,
+		`<div class="article-content">`,
+		`Preview body text.`,
+		`<section class="scouts-take"`,
+		`Preview take.`,
+	)
 }
