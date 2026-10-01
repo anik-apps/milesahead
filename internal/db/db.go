@@ -959,8 +959,9 @@ func (d *Database) ListRelatedArticles(excludeID int64, topic string, tags []str
 	// ListPublishedArticlesFiltered.
 	const articleTags = `json_each(CASE WHEN json_valid(generated_articles.tags_json) AND json_type(generated_articles.tags_json) = 'array' THEN generated_articles.tags_json ELSE '[]' END)`
 	in := strings.TrimSuffix(strings.Repeat("?,", len(tags)), ",")
-	shared := `(SELECT COUNT(*) FROM ` + articleTags + ` WHERE json_each.value IN (` + in + `))`
-	hasTopic := `(SELECT COUNT(*) FROM ` + articleTags + ` WHERE json_each.value = ?)`
+	// DISTINCT and EXISTS, so a tag repeated in tags_json counts once.
+	shared := `(SELECT COUNT(DISTINCT json_each.value) FROM ` + articleTags + ` WHERE json_each.value IN (` + in + `))`
+	hasTopic := `EXISTS (SELECT 1 FROM ` + articleTags + ` WHERE json_each.value = ?)`
 
 	args := []any{StatusApproved, excludeID}
 	for _, t := range tags {

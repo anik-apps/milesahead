@@ -67,3 +67,24 @@ func TestListRelatedArticles_Rules(t *testing.T) {
 		t.Errorf("no tags should find nothing: %v, %v", none, err)
 	}
 }
+
+// A tag repeated in tags_json counts once: neither the topic match nor the
+// shared-tag count is inflated by it.
+func TestListRelatedArticles_DuplicateTagCountsOnce(t *testing.T) {
+	d := openTestDB(t)
+	self := relatedFixture(t, d, "self", `["hotels","airlines"]`, "", StatusApproved, 1)
+	relatedFixture(t, d, "dup", `["hotels","hotels","hotels"]`, "", StatusApproved, 2) // newer, one distinct shared tag
+	relatedFixture(t, d, "both", `["hotels","airlines"]`, "", StatusApproved, 30)      // older, two shared tags
+
+	got, err := d.ListRelatedArticles(self, "hotels", []string{"hotels", "airlines"}, "2026-09-23", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var slugs []string
+	for _, a := range got {
+		slugs = append(slugs, a.Slug)
+	}
+	if want := "both,dup"; fmt.Sprint(slugs) != fmt.Sprint([]string{"both", "dup"}) {
+		t.Errorf("related = %v, want %s", slugs, want)
+	}
+}

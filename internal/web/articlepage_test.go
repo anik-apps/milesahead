@@ -107,6 +107,10 @@ func TestArticleTopicAndRelatedTags(t *testing.T) {
 	}{
 		{[]string{"points-deals", "credit-cards", "loyalty-programs"}, "credit-cards", "credit-cards"},
 		{[]string{"credit-cards", "transfer-bonuses", "points-deals"}, "transfer-bonuses", "credit-cards,transfer-bonuses"},
+		// A specific tag beats credit-cards even when it is not a homepage topic.
+		{[]string{"credit-cards", "amex", "points-deals"}, "amex", "credit-cards,amex"},
+		// credit-cards is the fallback when everything else is broad.
+		{[]string{"points-deals", "credit-cards"}, "credit-cards", "credit-cards"},
 		{[]string{"loyalty-programs", "amex", "transfer-bonuses"}, "transfer-bonuses", "amex,transfer-bonuses"},
 		{[]string{"loyalty-programs", "amex"}, "amex", "amex"},
 		{[]string{"points-deals", "loyalty-programs"}, "points-deals", "points-deals,loyalty-programs"},

@@ -161,23 +161,24 @@ func heroSrcset(thumbnail, image string) string {
 }
 
 // articleTopic is the topic an article's related stories and its "more in"
-// link are about: its first tag that is a homepage topic, preferring any over
-// "credit-cards", which is on most card and points stories (an ended Citi
-// transfer bonus should point to Transfer Bonuses); else its first tag that is
-// not a broad one; else its first tag; "" with no tags.
+// link are about, the most specific of its tags: its first homepage topic
+// other than "credit-cards"; else its first other tag that is not a broad
+// one; else "credit-cards", which is on most card and points stories (an
+// ended Citi transfer bonus should point to Transfer Bonuses, an Amex story
+// to its Amex tag); else its first tag; "" with no tags.
 func articleTopic(tags []string) string {
 	for _, t := range tags {
 		if t != "credit-cards" && slices.Contains(homeTopics, t) {
 			return t
 		}
 	}
-	if slices.Contains(tags, "credit-cards") {
-		return "credit-cards"
-	}
 	for _, t := range tags {
-		if !slices.Contains(broadTags, t) {
+		if t != "credit-cards" && !slices.Contains(broadTags, t) {
 			return t
 		}
+	}
+	if slices.Contains(tags, "credit-cards") {
+		return "credit-cards"
 	}
 	if len(tags) > 0 {
 		return tags[0]
