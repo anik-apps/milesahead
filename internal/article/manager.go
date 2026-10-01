@@ -97,6 +97,7 @@ func (m *Manager) CreateFromPipeline(result *ai.PipelineResult, rawArticleIDs []
 		ScoutsTake:       result.ScoutsTake,
 		RelatedCardsJSON: string(relatedCardsJSON),
 		TagsJSON:         string(tagsJSON),
+		EditorNotes:      result.EditorNotes,
 	}
 
 	articleID, err := m.db.CreateGeneratedArticle(article)

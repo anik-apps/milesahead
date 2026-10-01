@@ -211,31 +211,34 @@ func TestSearch_MarksEndedOffers(t *testing.T) {
 	}
 }
 
-// The article page of an ended offer says so near the top, as a note, and
-// otherwise stays as it was: indexable, content intact.
+// The article page of an ended offer says so under the headline, as a note
+// with a way on to current stories in the same topic, marks the Key Detail
+// that gave the end date, and otherwise stays as it was: indexable, content
+// intact.
 func TestArticle_EndedOfferShowsBanner(t *testing.T) {
 	app := offerApp(t)
 	seedOffers(t, app)
 
 	body := getPage(t, app, "/article/ended")
-	banner := `<p class="offer-ended-banner" role="note">This offer ended on September 19, 2026.</p>`
+	banner := `<p class="offer-ended-banner" role="note">This offer ended on September 19, 2026. <a href="/?tag=transfer-bonuses">See the latest in Transfer Bonuses`
 	i := strings.Index(body, banner)
 	if i < 0 {
-		t.Fatalf("ended article should show %s", banner)
+		t.Fatalf("ended article should show %s\n%s", banner, articleHeader(body))
 	}
-	if h1 := strings.Index(body, "<h1>Citi 25% Transfer Bonus"); h1 < 0 || i > h1 {
-		t.Error("the banner should come before the headline")
+	if h1 := strings.Index(body, "<h1>Citi 25% Transfer Bonus"); h1 < 0 || i < h1 {
+		t.Error("the banner should come right under the headline")
 	}
-	if !strings.Contains(body, `<span class="type-badge badge-deal">deal</span> `+endedBadge) {
+	if !strings.Contains(articleHeader(body), `<span class="type-badge badge-deal">deal</span> `+endedBadge) {
 		t.Error("the article header should carry the Ended badge next to the type badge")
 	}
 	for _, want := range []string{
-		"Citi ThankYou points transfer body",                     // body intact
-		"<li><strong>Deadline:</strong> September 19, 2026</li>", // key details intact
+		"Citi ThankYou points transfer body", // body intact
+		`<li><strong>Bonus:</strong> 20% transfer bonus</li>`,
+		`<li class="key-detail-ended"><strong>Deadline:</strong> <s>September 19, 2026</s> <span class="key-detail-ended-tag">Ended</span></li>`,
 		`<link rel="canonical" href="https://localhost/article/ended">`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("ended article should still contain %s", want)
+			t.Errorf("ended article should contain %s", want)
 		}
 	}
 	if strings.Contains(body, `name="robots"`) {
@@ -243,10 +246,28 @@ func TestArticle_EndedOfferShowsBanner(t *testing.T) {
 	}
 
 	for _, slug := range []string{"ends-today", "ends-next-week", "no-deadline"} {
-		if b := getPage(t, app, "/article/"+slug); strings.Contains(b, "offer-ended-banner") || strings.Contains(b, endedBadge) {
-			t.Errorf("live article %q should not show the ended banner or badge", slug)
+		b := getPage(t, app, "/article/"+slug)
+		if strings.Contains(b, "offer-ended-banner") || strings.Contains(articleHeader(b), endedBadge) || strings.Contains(b, "key-detail-ended") {
+			t.Errorf("live article %q should not show the ended banner, badge or deadline mark", slug)
+		}
+		if !strings.Contains(b, `<li><strong>Deadline:</strong>`) && slug != "no-deadline" {
+			t.Errorf("live article %q should list its deadline unmarked", slug)
 		}
 	}
+}
+
+// articleHeader returns the article page's header (badges, headline, ended
+// note, meta and standfirst), or "".
+func articleHeader(body string) string {
+	i := strings.Index(body, `<header class="article-header">`)
+	if i < 0 {
+		return ""
+	}
+	j := strings.Index(body[i:], "</header>")
+	if j < 0 {
+		return ""
+	}
+	return body[i : i+j]
 }
 
 // A card page's Recent Changes link to articles; the ones whose offer ended
@@ -460,7 +481,7 @@ func TestArticle_EndedNewsStoryBannerWording(t *testing.T) {
 	publishOffer(t, app, "bag-fees", "Airlines Keep Raising Bag Fees", "summary", "April 8, 2026", `["airlines"]`)
 
 	body := getPage(t, app, "/article/bag-fees")
-	if want := `<p class="offer-ended-banner" role="note">The deadline in this story passed on April 8, 2026.</p>`; !strings.Contains(body, want) {
+	if want := `<p class="offer-ended-banner" role="note">The deadline in this story passed on April 8, 2026. <a href="/?tag=airlines">`; !strings.Contains(body, want) {
 		t.Errorf("a news story's banner should read %s", want)
 	}
 	if strings.Contains(body, "This offer ended") {
@@ -590,7 +611,7 @@ func TestEndedNewsStory_SaysDeadlinePassed(t *testing.T) {
 		t.Error("the card page should still badge the ended deal \"Ended\"")
 	}
 
-	if page := getPage(t, app, "/article/bag-fees"); !strings.Contains(page, `<span class="type-badge badge-summary">News</span> `+passedBadge) || strings.Contains(page, endedBadge) {
+	if header := articleHeader(getPage(t, app, "/article/bag-fees")); !strings.Contains(header, `<span class="type-badge badge-summary">News</span> `+passedBadge) || strings.Contains(header, endedBadge) {
 		t.Error("the news story's header should carry the \"Deadline passed\" badge, not \"Ended\"")
 	}
 

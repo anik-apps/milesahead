@@ -1719,7 +1719,10 @@ tr:hover {
     margin-top: 16px;
 }
 
-/* Editor notes - hidden on public site, visible in admin preview */
+/* Editor notes: admin-only remarks. Stored apart from article content and
+   shown by the admin preview; the old revision history still has some inline.
+   Hidden everywhere else as a fallback only -- the server never sends them to
+   public pages. */
 .editor-note {
     display: none;
 }
@@ -1888,80 +1891,100 @@ tr.flagged { background: #fef2f2; }
 
 /* ========== Card Pages ========== */
 
-/* Cards listing hero */
+/* Cards index: a filter form (category chips, fee bands, issuer and sort),
+   then compact tiles with each card's fee, best earning rate and offer. The
+   chips and fee bands reuse the homepage filter styles above. */
 .cards-hero {
     text-align: center;
-    padding: 3rem 1rem 2rem;
+    padding: 1.75rem 1rem 1.25rem;
 }
 .cards-hero h1 {
     font-size: 2rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.4rem;
 }
 .cards-hero p {
     color: var(--text-muted);
-    font-size: 1.1rem;
+    font-size: 1.05rem;
+}
+.filter-count { margin-left: 0.35rem; font-size: 0.75rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.filter-chip.is-empty, .filter-switch-item.is-empty { opacity: 0.5; cursor: default; }
+.cards-filter-row {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 0.5rem 1.25rem; margin-top: 0.4rem;
+}
+.cards-fee-bar { flex: 0 1 auto; min-width: 0; }
+.cards-filter-label {
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted); white-space: nowrap;
+}
+.cards-selects { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 0.75rem; }
+.cards-select { display: inline-flex; align-items: center; gap: 0.4rem; }
+.cards-select select {
+    min-height: 38px; padding: 0 0.6rem; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; font-size: 0.875rem;
+}
+.cards-filter-apply {
+    min-height: 38px; padding: 0 1rem; border: 1px solid var(--accent); border-radius: 8px;
+    background: var(--bg); color: var(--accent); font: inherit; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+}
+.cards-filter-apply:hover { background: var(--accent-subtle); }
+.cards-select select:focus-visible, .cards-filter-apply:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.cards-count { margin: 0.75rem 0 1.25rem; }
+.cards-sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
-/* Issuer groups */
 .cards-category-group {
-    margin-bottom: 2.5rem;
+    margin-bottom: 2rem;
 }
 .category-heading {
     font-size: 1.25rem;
     font-weight: 700;
-    margin-bottom: 1rem;
+    margin-bottom: 0.9rem;
     padding-bottom: 0.5rem;
     border-bottom: 2px solid var(--border);
 }
 
-/* Card grid */
-.card-grid {
+.card-tiles {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 0.75rem;
 }
-.card-grid-item {
-    display: block;
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    color: var(--text);
-    text-decoration: none;
+.card-tile {
+    display: flex; align-items: flex-start; gap: 0.9rem;
+    padding: 0.85rem; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--card-bg); color: var(--text); text-decoration: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.card-grid-item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--shadow);
+.card-tile:hover { border-color: var(--accent); box-shadow: 0 4px 12px var(--shadow); text-decoration: none; }
+.card-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A fixed box, so tiles don't jump as lazy art arrives. */
+.card-tile-art { flex: none; display: grid; place-items: center; width: 96px; height: 61px; }
+.card-tile-art img { width: 96px; height: 61px; object-fit: contain; border-radius: 5px; }
+.card-tile-body { min-width: 0; }
+.card-tile-title { margin: 0.1rem 0 0.35rem; font-size: 1rem; line-height: 1.3; color: var(--text); }
+.card-tile-facts {
+    display: flex; flex-wrap: wrap; gap: 0.15rem 0.75rem; margin: 0;
+    font-size: 0.84rem; line-height: 1.4; color: var(--text-muted);
 }
-.card-grid-image {
-    padding: 1.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--border);
-}
-.card-grid-image img {
-    max-width: 200px;
-    width: 100%;
-    height: auto;
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-.card-grid-body {
-    padding: 1rem;
-}
-.card-grid-body h3 {
-    font-size: 1.05rem;
-    margin-bottom: 0.5rem;
-    line-height: 1.3;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
-.card-grid-excerpt {
-    font-size: 0.9rem;
-    color: var(--text-muted);
-    line-height: 1.5;
+.card-tile-fact b { color: var(--text); font-weight: 600; }
+
+@media (max-width: 768px) {
+    .cards-hero { padding: 1rem 0.5rem 0.75rem; }
+    .cards-hero h1 { font-size: 1.6rem; }
+    .cards-hero p { font-size: 0.95rem; }
+    .cards-filter-row { display: block; }
+    /* Issuer, sort and Apply share one row, labels above. */
+    .cards-selects { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; margin-top: 0.5rem; }
+    .cards-select { flex-direction: column; align-items: stretch; gap: 0.2rem; min-width: 0; }
+    .cards-select select, .cards-filter-apply { min-height: 40px; width: 100%; }
+    .card-tiles { grid-template-columns: 1fr; gap: 0.5rem; }
+    .card-tile { gap: 0.75rem; padding: 0.65rem 0.7rem; }
+    .card-tile-title { margin-bottom: 0.25rem; }
+    .card-tile-art, .card-tile-art img { width: 80px; height: 51px; }
 }
 
 /* Issuer badge */
@@ -1988,77 +2011,172 @@ tr.flagged { background: #fef2f2; }
     color: var(--text-muted);
 }
 
-/* Card detail page */
+/* Card detail page: title, a summary panel (art and infographic; fee, offer
+   and earning rates; the verdict's first sentence; Apply and Compare), then a
+   sticky table of contents beside the sections, and a "Next steps" block at
+   the end. */
+
+/* How far sticky elements and anchor targets sit below the site header. The
+   header's height is set elsewhere; change it here if that changes. */
+:root { --sticky-offset: 84px; }
+@media (max-width: 768px) { :root { --sticky-offset: 62px; } }
+
 .card-page {
-    max-width: 800px;
+    max-width: 1100px;
     margin: 0 auto;
     padding: 1rem;
 }
 
-/* Card detail — sidebar layout */
-.card-layout {
+/* Summary panel */
+.card-summary {
     display: grid;
-    grid-template-columns: 260px 1fr;
-    gap: 2rem;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 1.5rem;
     align-items: start;
-}
-.card-sidebar {
-    position: sticky;
-    top: 5rem;
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    margin-bottom: 1.75rem;
     padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card-bg);
 }
-.card-sidebar-image {
-    margin-bottom: 1rem;
-}
-.card-sidebar-image img {
+.card-summary-art img {
+    display: block;
     width: 100%;
     height: auto;
-    border-radius: 8px;
+    border-radius: 10px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
-
-/* Apply/Details button */
-.card-apply-btn {
+.card-summary-body, .card-summary-media { min-width: 0; }
+.card-summary-media .ig-bar { margin: 0.9rem 0 0; }
+/* One column per fact present (a card may lack a known fee, an offer or
+   rates), sharing the width evenly. */
+.card-facts {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    margin: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg);
+}
+.card-fact { min-width: 0; padding: 0.75rem 1rem; border-left: 1px solid var(--border); }
+.card-fact:first-child { border-left: 0; }
+.card-fact dt {
+    font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+.card-fact dd { margin: 0.2rem 0 0; }
+.card-fact-value { display: block; font-size: 1.15rem; font-weight: 700; line-height: 1.3; }
+.card-fact-detail { display: block; margin-top: 0.2rem; font-size: 0.82rem; line-height: 1.4; color: var(--text-muted); }
+.card-summary-verdict {
+    margin: 0.9rem 0 0;
+    padding: 0.6rem 0.9rem;
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    background: var(--bg);
+    font-size: 0.95rem;
+    line-height: 1.55;
+}
+.card-summary-verdict-label {
     display: block;
-    text-align: center;
-    padding: 0.6rem 1rem;
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--accent);
+}
+.card-summary-verdict a { white-space: nowrap; }
+.card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1rem;
     margin-top: 1rem;
+}
+
+/* Apply: leaves for the issuer in a new tab, and says so (the arrow, plus
+   hidden text for screen readers). */
+.card-apply-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 42px;
+    padding: 0 1.1rem;
     background: var(--accent);
     color: var(--bg);
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     border-radius: 8px;
     text-decoration: none;
     transition: opacity 0.15s;
 }
-.card-apply-btn:hover {
-    opacity: 0.85;
-}
+.card-apply-btn:hover { opacity: 0.88; text-decoration: none; }
+.card-apply-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-/* TOC in sidebar */
+/* Compare: a labelled GET form; the button submits, choosing doesn't. */
+.card-compare { flex: 1 1 280px; max-width: 440px; }
+/* "Compare with any of N cards" at the page end jumps here. */
+.card-compare select { scroll-margin-top: calc(var(--sticky-offset) + 3rem); }
+.card-compare label { display: block; margin-bottom: 0.3rem; font-size: 0.82rem; font-weight: 600; }
+.card-compare-row { display: flex; gap: 0.5rem; }
+.card-compare select {
+    flex: 1; min-width: 0; width: 100%; min-height: 42px; padding: 0 0.6rem;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; font-size: 0.9rem;
+}
+.card-compare button {
+    min-height: 42px; padding: 0 1rem;
+    border: 1px solid var(--accent); border-radius: 8px;
+    background: var(--bg); color: var(--accent); font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+}
+.card-compare button:hover { background: var(--accent-subtle); }
+.card-compare select:focus-visible, .card-compare button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Sections beside a sticky table of contents */
+.card-layout {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 760px);
+    gap: 3rem;
+    align-items: start;
+}
+.card-layout.no-toc { grid-template-columns: minmax(0, 760px); }
+.card-sidebar {
+    position: sticky;
+    top: calc(var(--sticky-offset) + 1rem);
+    max-height: calc(100vh - var(--sticky-offset) - 2rem);
+    overflow-y: auto;
+}
+/* A <nav>, so undo the site header's nav styles (sticky, padded, boxed). */
+nav.card-toc {
+    position: static; z-index: auto; display: block;
+    padding: 0; background: none; border: 0;
+}
+.card-toc-title {
+    margin: 0 0 0.4rem 0.5rem;
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
 .card-toc ul {
     list-style: none;
     padding: 0;
     margin: 0;
 }
-.card-toc li { padding: 0.2rem 0; }
+.card-toc li { padding: 0.1rem 0; }
 .card-toc li a {
+    display: block;
+    padding: 0.3rem 0.5rem;
+    border-radius: 6px;
     font-size: 0.88rem;
     color: var(--accent);
     text-decoration: none;
-    display: block;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
     transition: background 0.15s;
 }
-.card-toc li a:hover {
-    background: rgba(88,166,255,0.1);
+.card-toc li a:hover { background: var(--accent-subtle); }
+.card-toc li a[aria-current] {
+    background: var(--accent-subtle);
+    box-shadow: inset 3px 0 0 var(--accent);
+    font-weight: 600;
 }
 
-/* Page title — single H1, above the video hero, shared by both breakpoints */
+/* Page title — single H1, above the video hero */
 .card-title-block {
     margin-bottom: 1rem;
 }
@@ -2068,11 +2186,8 @@ tr.flagged { background: #fef2f2; }
     line-height: 1.2;
 }
 
-/* Mobile header + pills (hidden on desktop) */
-.card-mobile-header {
-    display: none;
-}
-.card-mobile-pills {
+/* Phone section pills (hidden on desktop) */
+.card-pills-wrap {
     display: none;
 }
 
@@ -2081,7 +2196,7 @@ tr.flagged { background: #fef2f2; }
     margin-bottom: 2rem;
     padding-bottom: 1.5rem;
     border-bottom: 1px solid var(--border);
-    scroll-margin-top: 5rem;
+    scroll-margin-top: calc(var(--sticky-offset) + 1rem);
 }
 .card-section:last-child {
     border-bottom: none;
@@ -2105,6 +2220,12 @@ tr.flagged { background: #fef2f2; }
 .card-section-content li {
     margin-bottom: 0.35rem;
 }
+/* Links in the card's text are underlined: colour alone doesn't set them
+   apart (2.14:1 against the body text in dark mode). */
+.card-section-content a, .scouts-verdict-content a, .card-next-more a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
 
 /* Scout's Verdict (card detail page) */
 .scouts-verdict {
@@ -2113,7 +2234,7 @@ tr.flagged { background: #fef2f2; }
     padding: 1.25rem 1.5rem;
     margin: 2rem 0;
     border-radius: 0 8px 8px 0;
-    scroll-margin-top: 5rem;
+    scroll-margin-top: calc(var(--sticky-offset) + 1rem);
 }
 .scouts-verdict-content {
     line-height: 1.7;
@@ -2126,7 +2247,7 @@ tr.flagged { background: #fef2f2; }
 /* Recent changes */
 .recent-changes {
     margin-top: 2rem;
-    scroll-margin-top: 5rem;
+    scroll-margin-top: calc(var(--sticky-offset) + 1rem);
 }
 .recent-changes h2 {
     font-size: 1.3rem;
@@ -2161,23 +2282,60 @@ tr.flagged { background: #fef2f2; }
     white-space: nowrap;
 }
 
+/* Next steps: on every card page, after the verdict */
+.card-next-steps {
+    margin-top: 2rem;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card-bg);
+    scroll-margin-top: calc(var(--sticky-offset) + 1rem);
+}
+.card-next-steps h2 { margin: 0 0 0.75rem; font-size: 1.3rem; }
+.card-next-apply { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }
+.card-next-note { font-size: 0.85rem; color: var(--text-muted); }
+.card-next-sub {
+    margin: 1.1rem 0 0.5rem;
+    font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+.card-rivals {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.card-rival {
+    display: flex; align-items: center; gap: 0.6rem; height: 100%;
+    padding: 0.55rem 0.65rem; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg); color: var(--text); text-decoration: none;
+}
+.card-rival:hover { border-color: var(--accent); text-decoration: none; }
+.card-rival:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card-rival img { flex: none; width: 52px; height: 33px; object-fit: contain; }
+.card-rival-name { display: block; font-size: 0.9rem; font-weight: 600; line-height: 1.3; }
+.card-rival-cta { display: block; font-size: 0.8rem; font-weight: 600; color: var(--accent); }
+.card-next-more { margin: 1rem 0 0; font-size: 0.9rem; line-height: 1.6; color: var(--text-muted); }
+
 /* Cards listing page */
 .cards-listing {
-    max-width: 1000px;
+    max-width: 1100px;
     margin: 0 auto;
     padding: 0 1rem;
 }
 
 /* Card pages responsive — tablet */
 @media (max-width: 900px) {
-    .card-layout {
-        grid-template-columns: 200px 1fr;
-        gap: 1.25rem;
-    }
+    .card-summary { grid-template-columns: 200px minmax(0, 1fr); gap: 1.1rem; }
+    .card-layout { grid-template-columns: 180px minmax(0, 1fr); gap: 1.5rem; }
     .card-toc li a { font-size: 0.82rem; }
+    .card-fact { padding: 0.65rem 0.75rem; }
 }
 
-/* Card pages responsive — mobile */
+/* Card pages responsive — mobile: one column; the table of contents becomes
+   a row of pills that sticks under the header. */
 @media (max-width: 768px) {
     .card-layout {
         display: block;
@@ -2191,58 +2349,79 @@ tr.flagged { background: #fef2f2; }
     .card-title-block h1 {
         font-size: 1.35rem;
     }
-    .card-mobile-header {
+    .card-summary { grid-template-columns: minmax(0, 1fr); gap: 0.9rem; padding: 0.9rem; margin-bottom: 0.75rem; }
+    /* Art and infographic bar side by side; art alone keeps the full width. */
+    .card-summary-media.has-teaser { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 0.75rem; align-items: center; }
+    .card-summary-art { max-width: 320px; margin: 0 auto; }
+    .card-summary-media.has-teaser .card-summary-art { max-width: none; margin: 0; }
+    .card-summary-media .ig-bar { margin: 0; }
+    .card-summary-media .ig-bar-link img { width: 56px; }
+    .card-summary-media .ig-bar-meta { font-size: 0.72rem; }
+    /* The actions come straight after the facts, so they are on the first
+       screen; the verdict line follows them. */
+    .card-summary-body { display: flex; flex-direction: column; }
+    .card-facts { order: 1; }
+    .card-actions { order: 2; }
+    .card-summary-verdict { order: 3; }
+    .card-facts { grid-auto-flow: row; grid-template-columns: 1fr 1fr; }
+    /* An odd last fact (the third, or a lone one) takes the full row. */
+    .card-fact:last-child:nth-child(odd) { grid-column: 1 / -1; border-left: 0; }
+    .card-fact:nth-child(n+3) { border-top: 1px solid var(--border); }
+    .card-fact-value { font-size: 1.05rem; }
+    .card-actions { display: block; margin-top: 0.9rem; }
+    .card-apply-btn { display: flex; width: 100%; }
+    .card-compare { max-width: none; margin-top: 0.75rem; }
+    .card-pills-wrap {
         display: block;
-        background: var(--card-bg);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        text-align: center;
+        position: sticky;
+        top: var(--sticky-offset);
+        z-index: 50;
+        margin: 0 -1rem 1rem;
+        background: var(--bg);
+        border-bottom: 1px solid var(--border);
     }
-    .card-mobile-image {
-        width: 180px;
-        margin: 0 auto 0.75rem;
-    }
-    .card-mobile-image img {
-        width: 100%;
-        height: auto;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    }
+    /* Scrolls sideways under a fade at the right edge, padded so the last
+       pill can scroll clear of it. */
     .card-mobile-pills {
         display: flex;
         gap: 0.35rem;
         overflow-x: auto;
-        padding: 0.6rem 0;
-        margin-bottom: 1rem;
+        padding: 0.5rem 2.5rem 0.5rem 1rem;
         scrollbar-width: none;
         -webkit-overflow-scrolling: touch;
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
     }
     .card-mobile-pills::-webkit-scrollbar { display: none; }
     .card-mobile-pills a {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
         flex-shrink: 0;
-        padding: 0.3rem 0.7rem;
+        min-height: 34px;
+        padding: 0 0.8rem;
         background: var(--card-bg);
         color: var(--text-muted);
         border: 1px solid var(--border);
-        border-radius: 16px;
-        font-size: 0.78rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
         text-decoration: none;
         white-space: nowrap;
     }
-    .card-mobile-pills a:hover {
-        background: rgba(88,166,255,0.1);
+    .card-mobile-pills a:hover, .card-mobile-pills a[aria-current] {
+        background: var(--accent-subtle);
         color: var(--accent);
         border-color: var(--accent);
     }
+    .card-mobile-pills a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    /* Anchors land below the header and the pills. */
+    .card-section, .scouts-verdict, .recent-changes, .card-next-steps, .card-video {
+        scroll-margin-top: calc(var(--sticky-offset) + 3.75rem);
+    }
+    .card-next-steps { padding: 1rem; }
+    .card-rivals { grid-template-columns: 1fr; }
     .changes-list li {
         flex-direction: column;
         gap: 0.25rem;
-    }
-    .cards-hero h1 {
-        font-size: 1.5rem;
     }
 }
 
@@ -3039,44 +3218,7 @@ tr.flagged { background: #fef2f2; }
     }
 }
 
-/* === Card embeds at bottom of article === */
-.card-embeds { margin-top: 32px; }
-.card-embeds-heading {
-    margin: 0 0 4px;
-    color: var(--text-muted);
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 6px;
-    font-weight: 600;
-}
-.card-embed {
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin: 16px 0;
-    box-shadow: 0 2px 6px var(--shadow);
-}
-.card-embed-top { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
-.card-embed-logo { width: 96px; height: 60px; border-radius: 6px; flex-shrink: 0;
-    object-fit: contain; background: var(--bg); border: 1px solid var(--border); }
-.card-embed-name { font-size: 18px; font-weight: 600; margin: 0; }
-.card-embed-name a { color: var(--text); text-decoration: none; }
-.card-embed-name a:hover { color: var(--accent); }
-.card-embed-issuer { color: var(--text-muted); font-size: 12px; }
-.card-embed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
-    padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-    margin-bottom: 12px; }
-.card-embed-grid .stat b { display: block; color: var(--text-muted); font-weight: 500;
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
-.card-embed-grid .stat span { font-size: 14px; font-weight: 500; color: var(--text); }
-.card-embed-verdict { font-size: 13px; color: var(--text); border-left: 3px solid var(--accent);
-    padding: 2px 12px; margin: 0 0 12px; font-style: italic; }
-.card-embed-cta { display: inline-block; background: var(--accent); color: var(--bg);
-    padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; }
-.card-embed-cta:hover { filter: brightness(0.92); }
+/* Card embeds at the end of an article: see "Article page" below. */
 
 /* === Admin: linked-cards curation UI === */
 .admin-shell { background: var(--card-bg); padding: 16px 24px;
@@ -3119,7 +3261,7 @@ tr.flagged { background: #fef2f2; }
     padding: 10px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; text-decoration: none; }
 
 /* Card video — click-to-load YouTube facade */
-.card-video { margin: 0 0 24px; scroll-margin-top: 5rem; }
+.card-video { margin: 0 0 24px; scroll-margin-top: calc(var(--sticky-offset) + 1rem); }
 .card-video-heading { font-size: 1.1rem; margin-bottom: 10px; }
 .card-video-facade, .card-video-frame { width: 100%; aspect-ratio: 16 / 9; display: block;
     border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 2px 6px var(--shadow); }
@@ -3134,11 +3276,10 @@ tr.flagged { background: #fef2f2; }
 .card-video-facade:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .card-video-caption { color: var(--text-muted); font-size: 0.85rem; margin-top: 8px; }
 
-/* Card infographic: a compact bar under the card art (sidebar and mobile header)
+/* Card infographic: a compact bar under the card art in the summary panel
    that opens the full image in a viewer. The thumbnail keeps a white ground
    because the artwork is light in both themes. */
 .ig-bar { margin: 0 0 1rem; }
-.card-mobile-header .ig-bar { max-width: 320px; margin: 0.75rem auto; }
 .ig-bar-link { display: flex; align-items: center; gap: 0.7rem; padding: 0.45rem;
     border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text);
     text-decoration: none; cursor: zoom-in; }
@@ -3166,7 +3307,7 @@ html:has(dialog.ig-lightbox[open]) { overflow: hidden; }
 .ig-text summary:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
 .ig-text ul { margin: 0; padding-left: 1.2rem; }
 .ig-text li { font-size: 0.92rem; line-height: 1.55; margin: 0 0 0.55rem; }
-.ig-lightbox-bar { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between;
+.ig-lightbox-bar { position: sticky; top: 0; left: 0; z-index: 1; display: flex; justify-content: space-between;
     align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.85rem;
     background: #0f172a; color: #fff; }
 /* Underlined: colour alone does not separate it from the text beside it. */
@@ -3174,6 +3315,19 @@ html:has(dialog.ig-lightbox[open]) { overflow: hidden; }
 .ig-lightbox-close { font: inherit; font-size: 0.9rem; color: #fff; background: rgba(255,255,255,0.12);
     border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 0.25rem 0.6rem; cursor: pointer; }
 .ig-lightbox-close:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.ig-lightbox-meta { min-width: 0; margin-right: auto; }
+.ig-lightbox-zoom { font: inherit; font-size: 0.9rem; color: #fff; background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 0.25rem 0.6rem; cursor: pointer; white-space: nowrap; }
+.ig-lightbox-zoom[aria-pressed="true"] { background: rgba(255,255,255,0.28); }
+.ig-lightbox-zoom:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+/* Zoomed: the image at its real width; the frame scrolls both ways and the
+   bar stays put. */
+.ig-lightbox-frame.is-zoomed img { width: auto; max-width: none; }
+.ig-lightbox-frame.is-zoomed .ig-text { max-width: 96vw; }
+.ig-lightbox-close, .ig-lightbox-zoom { white-space: nowrap; }
+/* Narrow screens: the teaser under the card art already gives the date, so
+   the bar keeps to one line with "Open image", Zoom and Close. */
+@media (max-width: 480px) { .ig-lightbox-date { display: none; } }
 
 /* ==========================================================================
    Brand: the mountain mark, misty header, home hero and footer band. The
@@ -3355,3 +3509,206 @@ footer .footer-links a, .footer-pillars a { color: #15307a; }
 }
 /* White on the dark theme's light-blue accent is 2.5:1; dark text is about 7.5:1. */
 [data-theme="dark"] .vote-btn.active { color: var(--bg); }
+
+/* ===== Article page =====
+   Headline and summary first: badges, headline, the ended-offer note, date,
+   byline and tags, then the TL;DR as a standfirst. The photo follows
+   as a fixed-height band. The story keeps a sticky Key Details sidebar on
+   desktop; on phones the details fold into a disclosure under the
+   standfirst. After the story: Scout's Take, the cards it names (one compact
+   row each), related stories, and a one-line vote with share
+   links. The admin dashboard's preview uses the same classes and order. */
+:root { --article-tag-fg: #1d4ed8; }            /* 5.9:1 on the chip */
+[data-theme="dark"] { --article-tag-fg: #79b8ff; } /* 7.5:1 on the chip */
+
+.article-sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.article-detail .back-link { padding: 0.25rem 0; margin-bottom: 0.5rem; }
+.article-header { margin-bottom: 1.25rem; }
+.article-header h1 { margin: 0.5rem 0 0.6rem; }
+.article-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.article-header .offer-ended-banner { margin: 0.25rem 0 0.85rem; }
+.offer-ended-banner a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.article-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; }
+.article-meta { display: flex; flex-wrap: wrap; align-items: center; margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+/* inline-block, so the dot is never underlined with a link beside it. */
+.article-meta > * + *::before { content: "\00B7"; content: "\00B7" / ""; display: inline-block; margin: 0 0.5rem; }
+.article-meta a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.article-meta a:hover { color: var(--accent); }
+.article-header .article-tags { margin: 0; }
+.article-header .tag-badge { padding: 0.25rem 0.6rem; color: var(--article-tag-fg); }
+.article-header .tag-badge:hover { background: var(--accent-subtle); text-decoration: underline; }
+.article-standfirst { font-size: 1.2rem; line-height: 1.55; margin: 1rem 0 0; max-width: 46em; }
+
+/* The photo band: a fixed height at every width, the photo cropped to fill. */
+figure.article-hero, .article-detail .article-hero, .preview-body .article-hero {
+    height: 280px;
+    max-height: none;
+    margin: 0 0 1.75rem;
+}
+.article-hero img { width: 100%; height: 100%; max-height: none; object-fit: cover; }
+
+/* Key details on phones (the sidebar is hidden there). */
+.article-facts { display: none; }
+.article-facts-subhead { margin: 0.75rem 0 0.25rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+
+.article-layout.no-sidebar { grid-template-columns: minmax(0, 1fr); }
+.sidebar-section h2 {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin: 0 0 0.75rem;
+}
+.key-detail-ended s { color: var(--text-muted); }
+.key-detail-ended-tag {
+    display: inline-block;
+    margin-left: 0.25rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--ended-banner-border);
+    border-radius: 4px;
+    background: var(--ended-banner-bg);
+    color: var(--ended-banner-fg);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* One reading measure for the story and everything after it: about 72
+   characters a line. (68ch measured 95: ch is the width of "0", which in the
+   system font is far wider than an average letter.) */
+.article-main > * { max-width: 36.5rem; }
+.article-main > .article-content { max-width: 33em; }
+
+.scouts-take { margin: 0.5rem 0 2rem; }
+.scouts-take h2.scout-label { margin: 0 0 0.4rem; line-height: 1.4; }
+.scouts-take p { margin: 0; }
+
+.article-section-title {
+    margin: 2rem 0 0.75rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Card rows */
+.card-embed {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr) auto;
+    gap: 0.75rem 1rem;
+    align-items: start;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+    margin: 0.6rem 0;
+    box-shadow: 0 2px 6px var(--shadow);
+}
+.card-embed-logo {
+    width: 84px; height: 53px; border-radius: 5px;
+    object-fit: contain; background: var(--bg); border: 1px solid var(--border);
+}
+.card-embed-name { font-size: 1rem; font-weight: 600; line-height: 1.35; margin: 0; }
+.card-embed-name a { color: var(--text); }
+.card-embed-name a:hover { color: var(--accent); }
+.card-embed-issuer { margin: 0.1rem 0 0; color: var(--text-muted); font-size: 0.8rem; }
+.card-embed-facts { margin: 0.4rem 0 0; font-size: 0.85rem; line-height: 1.45; }
+.card-embed-facts div + div { margin-top: 0.15rem; }
+.card-embed-facts dt { display: inline; font-weight: 600; margin-right: 0.35rem; }
+.card-embed-facts dd { display: inline; margin: 0; }
+.card-embed-verdict {
+    margin: 0.4rem 0 0; color: var(--text-muted); font-size: 0.85rem; line-height: 1.5;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.card-embed-actions { display: flex; flex-direction: column; gap: 0.4rem; }
+.card-embed-actions a {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 36px; padding: 0.4rem 0.8rem; border-radius: 6px;
+    font-size: 0.85rem; font-weight: 600; white-space: nowrap; text-decoration: none;
+}
+.card-embed-review, .card-embed-cta.is-muted {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+}
+.card-embed-review:hover, .card-embed-cta.is-muted:hover { border-color: var(--accent); }
+.card-embed-cta { background: var(--accent); color: var(--bg); border: 1px solid var(--accent); }
+.card-embed-cta:hover { filter: brightness(0.92); }
+.card-embed-cta.is-muted:hover { filter: none; }
+
+/* Related stories */
+.related-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.related-list li { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.7rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; }
+.related-list a { color: var(--text); font-weight: 600; line-height: 1.35; }
+.related-list a:hover { text-decoration: none; }
+.related-list a:hover .related-title { text-decoration: underline; }
+.related-list li.is-ended .related-title { color: var(--ended-text); }
+.related-date { color: var(--text-muted); font-size: 0.8rem; }
+.related-more { display: inline-block; margin-top: 0.6rem; font-weight: 600; font-size: 0.9rem; }
+
+/* Vote and share, one line */
+.article-feedback {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 0.75rem 1.5rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+}
+.article-feedback .vote-card {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem;
+    margin: 0; padding: 0; background: none; border: 0; text-align: left;
+}
+.article-feedback .vote-card .vote-prompt { margin: 0; font-size: 1rem; }
+.article-feedback .vote-card .vote-buttons { gap: 0.5rem; }
+.article-feedback .vote-card .vote-btn { padding: 0.4rem 0.9rem; font-size: 0.95rem; }
+.article-feedback .vote-card .vote-status { min-height: 0; margin: 0; }
+.article-share { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; color: var(--text-muted); font-size: 0.9rem; }
+.article-share ul { display: flex; flex-wrap: wrap; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
+.article-share a, .article-share .share-copy {
+    display: inline-flex; align-items: center; min-height: 32px; padding: 0.2rem 0.75rem;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
+    color: var(--text); font: inherit; font-size: 0.85rem; cursor: pointer; text-decoration: none;
+}
+.article-share a:hover, .article-share .share-copy:hover { border-color: var(--accent); }
+.share-status:empty { display: none; }
+
+@media (max-width: 768px) {
+    .article-standfirst { font-size: 1.05rem; }
+    figure.article-hero, .article-detail .article-hero, .preview-body .article-hero {
+        height: 170px;
+        margin-bottom: 1.25rem;
+    }
+    .article-facts {
+        display: block;
+        margin: 0 0 1.25rem;
+        padding: 0.65rem 1rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+    }
+    .article-facts summary { font-weight: 600; cursor: pointer; padding: 0.15rem 0; }
+    .article-facts summary::marker { color: var(--text-muted); }
+    .article-facts .key-details li { font-size: 0.9rem; }
+    .article-layout > .article-sidebar { display: none; }
+    /* A wide table scrolls; let its columns take the width they need (up to
+       13rem) instead of squeezing every column, which wrapped short values
+       and made each row four lines tall. */
+    .article-content .table-scroll > table { width: max-content; min-width: 100%; }
+    .article-content .table-scroll th, .article-content .table-scroll td { max-width: 13rem; }
+    .related-list { grid-template-columns: 1fr; gap: 0; }
+    .related-list li { padding: 0.7rem 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+}
+@media (max-width: 600px) {
+    .card-embed { grid-template-columns: 64px minmax(0, 1fr); padding: 0.8rem; }
+    .card-embed-logo { width: 64px; height: 40px; }
+    .card-embed-actions { grid-column: 1 / -1; flex-direction: row; }
+    .card-embed-actions a { flex: 1; }
+}

@@ -649,7 +649,7 @@ func fillArticlesFTS(tx *sql.Tx) (int, error) {
 		`SELECT id, title, COALESCE(tldr, ''), COALESCE(content, '') FROM generated_articles WHERE id > ? ORDER BY id LIMIT ?`,
 		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
 		3, func(v []string) []any {
-			return []any{stripHTMLForFTS(v[0]), stripHTMLForFTS(v[1]), stripHTMLForFTS(v[2])}
+			return []any{stripHTMLForFTS(v[0]), stripHTMLForFTS(v[1]), articleFTSContent(v[2])}
 		})
 }
 

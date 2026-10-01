@@ -21,6 +21,9 @@ import (
 type templateKeyDetail struct {
 	Label string
 	Value string
+	// Ended marks the detail that gives the offer's end, once that has
+	// passed: the article page strikes it through and labels it "Ended".
+	Ended bool
 }
 
 // templateArticleLink holds a link for template rendering.
@@ -37,12 +40,16 @@ type linkedCardEmbed struct {
 	Title         string
 	Issuer        string
 	Category      string
-	AnnualFee     string // formatted: "$95" or "$0 (no annual fee)"
+	AnnualFee     string // formatted: "$95 annual fee" or "No annual fee"
 	WelcomeBonus  string
-	TopEarning    string // first 2 entries from earning_rates_json, joined
+	TopEarning    string // the 2 best earning lines, see formatTopEarning
 	ScoutsVerdict string
-	ImageURL      string
-	ApplyURL      string
+	// VerdictLead is the verdict's opening, short enough for the card's row
+	// on an article; the full verdict is on the card's page.
+	VerdictLead string
+	ImageURL    string
+	ApplyURL    string
+	ApplyLabel  string // "Apply at Chase"
 }
 
 // articleTagItem holds a tag slug and display name for article badge rendering.
@@ -121,12 +128,6 @@ func thumbSrcset(thumbnail, image string) string {
 		return ""
 	}
 	return fmt.Sprintf("%s %dw, %s %dw", thumbnail, tw, image, iw)
-}
-
-// sourceInfo holds source data for article detail pages.
-type sourceInfo struct {
-	Title string
-	URL   string
 }
 
 // absoluteURL turns a site-relative path such as "/static/img/cards/x.png" into
@@ -332,54 +333,31 @@ func (app *App) buildLinkedCardEmbeds(relatedCardsJSON string) []linkedCardEmbed
 		if page.Status != "published" {
 			continue
 		}
-		fee := fmt.Sprintf("$%d", page.AnnualFeeAmount)
-		if page.AnnualFeeAmount == 0 {
-			fee = "$0 (no annual fee)"
-		}
 		out = append(out, linkedCardEmbed{
 			Slug:          page.Slug,
 			Title:         page.Title,
 			Issuer:        page.Issuer,
 			Category:      page.Category,
-			AnnualFee:     fee,
+			AnnualFee:     annualFeeLabel(page.AnnualFeeAmount),
 			WelcomeBonus:  page.WelcomeBonusText,
 			TopEarning:    formatTopEarning(page.EarningRatesJSON, 2),
 			ScoutsVerdict: page.ScoutsVerdict,
+			VerdictLead:   verdictLead(page.ScoutsVerdict, verdictLeadMax),
 			ImageURL:      page.ImageURL,
 			ApplyURL:      page.ApplyURL,
+			ApplyLabel:    applyLabel(page.Issuer),
 		})
 	}
 	return out
 }
 
-// formatTopEarning returns up to n earning categories formatted as
-// "5x Dining · 4x Travel". Reuses the existing rateEntry type and
-// earningRateCategories slice defined elsewhere in this package.
+// formatTopEarning returns a card's n best earning lines, best first, as
+// "5x flights · 5x hotels via Amex Travel". See rankEarnRates for the order.
 func formatTopEarning(earningRatesJSON string, n int) string {
-	if earningRatesJSON == "" || earningRatesJSON == "{}" {
-		return ""
-	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(earningRatesJSON), &raw); err != nil {
-		return ""
-	}
-	parts := make([]string, 0, n)
-	for _, meta := range earningRateCategories {
-		if len(parts) >= n {
-			break
-		}
-		val, ok := raw[meta.Key]
-		if !ok {
-			continue
-		}
-		var entry rateEntry
-		if err := json.Unmarshal(val, &entry); err != nil {
-			continue
-		}
-		if entry.Rate == "" {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s %s", entry.Rate, meta.Label))
+	rates := topEarnRates(earningRatesJSON, n)
+	parts := make([]string, len(rates))
+	for i, r := range rates {
+		parts[i] = r.Detail()
 	}
 	return strings.Join(parts, " · ")
 }
@@ -410,20 +388,6 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		}
 		app.renderTemplate(w, "article.html", data)
 		return
-	}
-
-	// Load linked sources.
-	rawArticles, err := app.db.GetLinkedRawArticles(article.ID)
-	if err != nil {
-		rawArticles = nil // non-fatal
-	}
-
-	var sources []sourceInfo
-	for _, ra := range rawArticles {
-		sources = append(sources, sourceInfo{
-			Title: ra.Title,
-			URL:   ra.URL,
-		})
 	}
 
 	// Load vote counts.
@@ -458,12 +422,14 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var articleTags []articleTagItem
+	var tagSlugs []string
 	if article.TagsJSON != "" && article.TagsJSON != "[]" {
-		var slugs []string
-		if err := json.Unmarshal([]byte(article.TagsJSON), &slugs); err == nil {
-			for _, s := range slugs {
+		if err := json.Unmarshal([]byte(article.TagsJSON), &tagSlugs); err == nil {
+			for _, s := range tagSlugs {
 				articleTags = append(articleTags, articleTagItem{Slug: s, Name: tagName(s)})
 			}
+		} else {
+			tagSlugs = nil
 		}
 	}
 
@@ -482,14 +448,27 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		datePublished = article.PublishedAt.Format("2006-01-02")
 	}
 
-	// An ended offer keeps its page, indexable and intact; a banner says it
-	// has ended so nobody acts on it.
-	offerEnded := offer.Ended(article.ExpiresOn, app.offerToday())
+	// An ended offer keeps its page, indexable and intact; a banner under the
+	// headline says it has ended so nobody acts on it, and the Key Detail that
+	// gave the end date is marked.
+	today := app.offerToday()
+	offerEnded := offer.Ended(article.ExpiresOn, today)
+	if offerEnded {
+		for i := range keyDetails {
+			keyDetails[i].Ended = offer.IsEndLabel(keyDetails[i].Label)
+		}
+	}
+
+	// The topic the related stories and the "more in" link are about.
+	topicSlug := articleTopic(tagSlugs)
+	var topic *articleTagItem
+	if topicSlug != "" {
+		topic = &articleTagItem{Slug: topicSlug, Name: tagName(topicSlug)}
+	}
 
 	data := map[string]interface{}{
 		"Title":              article.Title,
 		"Article":            article,
-		"Sources":            sources,
 		"Upvotes":            upvotes,
 		"Downvotes":          downvotes,
 		"ShowVoteCounts":     upvotes+downvotes >= minVotesToShowCounts,
@@ -500,12 +479,21 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"Links":              articleLinks,
 		"RelatedCards":       relatedCards,
 		"ArticleTags":        articleTags,
-		"LinkedCards":        app.buildLinkedCardEmbeds(article.RelatedCardsJSON),
+		"LinkedCards":        storyCardsFirst(app.buildLinkedCardEmbeds(article.RelatedCardsJSON), article.Title),
 		"LinkedCardsHeading": article.LinkedCardsHeading,
 		"ScoutsTake":         article.ScoutsTake,
 		"OfferEnded":         offerEnded,
 		"OfferEndedNote":     endedNote(article.Type, article.ExpiresOn),
 		"PersonaName":        app.cfg.Site.PersonaName,
+		"PublishedISO":       datePublished,
+		"Content":            scrollTables("Table", externalLinksNewTab(article.Content, domain)),
+		"HeroSrcset":         heroSrcset(article.ImageThumbnail, article.ImageURL),
+		"HeroSizes":          heroSizes,
+		"HeroWidth":          heroWidth,
+		"HeroHeight":         heroHeight,
+		"Topic":              topic,
+		"Related":            app.relatedStories(article, tagSlugs, topicSlug, today),
+		"Share":              buildShareLinks(article.Title, canonicalURL),
 		"MetaDescription":    metaDesc,
 		"CanonicalURL":       canonicalURL,
 		"OGType":             "article",
@@ -667,22 +655,6 @@ func (app *App) handleFeed(w http.ResponseWriter, r *http.Request) {
 
 // --- Public Reference Card Handlers ---
 
-// publicCardRow holds data for a card in the public listing.
-type publicCardRow struct {
-	ID             int64
-	Title          string
-	Slug           string
-	Issuer         string
-	ImageURL       string
-	VerdictPreview string
-}
-
-// publicCardGroup groups cards by category for the public listing.
-type publicCardGroup struct {
-	Name  string
-	Cards []publicCardRow
-}
-
 // compareGroup groups cards by category for the "Compare with..." dropdown.
 type compareGroup struct {
 	Category string
@@ -701,74 +673,6 @@ var categoryDisplayNames = map[string]string{
 
 // categoryOrder defines the display order of categories.
 var categoryOrder = []string{"travel", "cash-back", "hotel", "airline", "business", "rewards"}
-
-func (app *App) handleCardsList(w http.ResponseWriter, r *http.Request) {
-	pages, err := app.db.ListPublishedReferencePages("")
-	if err != nil {
-		http.Error(w, "Failed to load cards", http.StatusInternalServerError)
-		return
-	}
-
-	personaName := app.cfg.Site.PersonaName
-
-	// Group by category.
-	catMap := make(map[string][]publicCardRow)
-	for _, p := range pages {
-		verdict := truncate(p.ScoutsVerdict, 120)
-		row := publicCardRow{
-			ID:             p.ID,
-			Title:          p.Title,
-			Slug:           p.Slug,
-			Issuer:         p.Issuer,
-			ImageURL:       p.ImageURL,
-			VerdictPreview: verdict,
-		}
-		catMap[p.Category] = append(catMap[p.Category], row)
-	}
-
-	var groups []publicCardGroup
-	for _, cat := range categoryOrder {
-		if cards, ok := catMap[cat]; ok {
-			name := categoryDisplayNames[cat]
-			if name == "" {
-				name = cat
-			}
-			groups = append(groups, publicCardGroup{Name: name, Cards: cards})
-		}
-	}
-	// Add any categories not in the predefined order.
-	for cat, cards := range catMap {
-		found := false
-		for _, c := range categoryOrder {
-			if c == cat {
-				found = true
-				break
-			}
-		}
-		if !found {
-			name := categoryDisplayNames[cat]
-			if name == "" {
-				name = cat
-			}
-			groups = append(groups, publicCardGroup{Name: name, Cards: cards})
-		}
-	}
-
-	domain := app.cfg.Server.Domain
-	if domain == "" {
-		domain = "localhost"
-	}
-
-	data := map[string]interface{}{
-		"Title":           "Cards",
-		"PersonaName":     personaName,
-		"Groups":          groups,
-		"MetaDescription": "Compare the best credit cards for travel, cash back, hotels, and more.",
-		"CanonicalURL":    "https://" + domain + "/cards/",
-		"OGType":          "website",
-	}
-	app.renderTemplate(w, "cards.html", data)
-}
 
 func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
@@ -805,29 +709,10 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 	canonicalURL := "https://" + domain + "/cards/" + page.Slug
 	metaDesc := truncate(page.ScoutsVerdict, 160)
 
-	// Build "Compare with..." groups: all published cards except the current one.
-	var compareGroups []compareGroup
+	// The other published cards, for the compare list and next steps.
 	allCards, err := app.db.ListPublishedReferencePages("")
-	if err == nil {
-		groupMap := map[string]*compareGroup{}
-		var groupOrder []string
-		for _, c := range allCards {
-			if c.Slug == page.Slug {
-				continue
-			}
-			cat := c.Category
-			if display, ok := categoryDisplayNames[cat]; ok {
-				cat = display
-			}
-			if _, exists := groupMap[cat]; !exists {
-				groupMap[cat] = &compareGroup{Category: cat}
-				groupOrder = append(groupOrder, cat)
-			}
-			groupMap[cat].Cards = append(groupMap[cat].Cards, struct{ Slug, Title string }{c.Slug, c.Title})
-		}
-		for _, cat := range groupOrder {
-			compareGroups = append(compareGroups, *groupMap[cat])
-		}
+	if err != nil {
+		slog.Warn("card page: listing other cards", "slug", page.Slug, "err", err)
 	}
 
 	data := map[string]interface{}{
@@ -841,7 +726,6 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 		"CanonicalURL":    canonicalURL,
 		"OGType":          "website",
 		"OGImage":         absoluteURL(domain, page.ImageURL),
-		"CompareGroups":   compareGroups,
 		"JSONLD": buildJSONLD(cardLDData{
 			Context:     "https://schema.org",
 			Type:        "Product",
@@ -850,6 +734,10 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 			Image:       absoluteURL(domain, page.ImageURL),
 			Brand:       jsonLDBrand{Type: "Brand", Name: page.Issuer},
 		}),
+	}
+
+	for k, v := range cardDetailData(page, sections, allCards) {
+		data[k] = v
 	}
 
 	// Video embed is beta-gated: it renders only with ?beta=1 so it can be
