@@ -524,3 +524,21 @@ func TestEndDate_TrailingWordsDoNotMakeAnEarlierDateWin(t *testing.T) {
 		t.Errorf("a promotion window opening after the registration deadline = %q, want no end", got)
 	}
 }
+
+// IsEndLabel applies EndDate's label rule to one label, for the article page.
+func TestIsEndLabel(t *testing.T) {
+	for label, want := range map[string]bool{
+		"Deadline":           true,
+		"Booking  Deadline:": true,
+		"book by":            true,
+		"Promotion Period":   true,
+		"Travel Dates":       false,
+		"Blackout Dates":     false,
+		"Extended Deadline":  false,
+		"Bonus":              false,
+	} {
+		if got := IsEndLabel(label); got != want {
+			t.Errorf("IsEndLabel(%q) = %v, want %v", label, got, want)
+		}
+	}
+}

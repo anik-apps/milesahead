@@ -258,11 +258,11 @@ func TestArticle_Returns200WithContent(t *testing.T) {
 	if !strings.Contains(body, "Content for Test Article Detail") {
 		t.Error("expected body to contain article content")
 	}
-	if !strings.Contains(body, "Original Source Article") {
-		t.Error("expected body to contain source citation")
-	}
-	if !strings.Contains(body, "https://source.example.com/article") {
-		t.Error("expected body to contain source URL")
+	// Public pages do not name or link the news sites an article was written
+	// from: the handler does not hand them to the template at all, so even
+	// this test template, which would list .Sources, shows none.
+	if strings.Contains(body, "Original Source Article") || strings.Contains(body, "https://source.example.com/article") {
+		t.Error("the public article page should not cite its source stories")
 	}
 }
 
