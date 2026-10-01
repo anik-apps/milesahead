@@ -109,6 +109,28 @@ func TestRenderNotification_ContainsContent(t *testing.T) {
 	}
 }
 
+// The admin's review email shows the article's editor notes, which the
+// public never sees; an article without notes gets no notes block.
+func TestRenderNotification_ShowsEditorNotes(t *testing.T) {
+	article := sampleArticle()
+	html, err := RenderNotification(article, sampleVerification(), "tok123", "milesahead.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "Editor notes") {
+		t.Error("notes block shown for an article without notes")
+	}
+
+	article.EditorNotes = "Could not find a link for: the terms page"
+	html, err = RenderNotification(article, sampleVerification(), "tok123", "milesahead.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "Editor notes (not published):") || !strings.Contains(html, "Could not find a link for: the terms page") {
+		t.Error("notification should show the editor notes")
+	}
+}
+
 func TestRenderNotification_ContainsVerificationScore(t *testing.T) {
 	article := sampleArticle()
 	ver := sampleVerification()

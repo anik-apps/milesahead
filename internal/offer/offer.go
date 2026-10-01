@@ -102,6 +102,13 @@ func isEndLabel(label string) bool {
 	return endLabels[spaceRE.ReplaceAllString(l, " ")]
 }
 
+// IsEndLabel reports whether a Key Details label names the offer's end, by
+// the rule EndDate reads them with. The article page marks those rows once
+// the offer has ended.
+func IsEndLabel(label string) bool {
+	return isEndLabel(normalize(label))
+}
+
 // isReplacementLabel reports whether label names a changed end ("Extended
 // Deadline", "New Deadline", "Deadline (Extended)", "Extension").
 func isReplacementLabel(label string) bool {

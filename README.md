@@ -10,7 +10,7 @@ A self-hosted content aggregation platform that scans miles and points websites,
 - **AI Pipeline** — Dual-model: Nemotron generates articles, Llama 70B verifies accuracy
 - **Duplicate Stories** — Each scan clusters the last 48h of scanned posts by title and generates one article per multi-source cluster, after two checks. The raw-ID check skips a cluster that reuses a source some article was written from, and records the cluster's other posts in `covered_raws` so that late coverage cannot come back as a second article once the original sources age out. The story check (`internal/storydedup`, `scanner.story_dedup`) compares the cluster with every article from the last 7 days: a TF-IDF prefilter, then one short AI call on the enrichment chain ("same story? materially new?"). It runs in `shadow` mode, logging `story dedup decision` and counting `milesahead_story_dedup_decisions_total` without blocking, until its decisions have been reviewed
 - **Image Pipeline** — 4-source search (Unsplash, Pexels, Openverse, Wikimedia) with vision model scoring
-- **Reference Pages** — 52 credit card guides across 6 categories with Scout persona verdicts
+- **Reference Pages** — 52 credit card guides across 6 categories with Scout persona verdicts. `/cards/` filters by category, annual-fee band and issuer (a plain GET form) and sorts by fee or name; each card page opens with a summary (fee, welcome offer, best earning rates ranked by `rankEarnRates`, the verdict's first sentence, Apply and a Compare form) and ends with "Next steps"
 - **Card Comparison** — Side-by-side comparison of 2-3 cards (earning rates, credits, benefits, protections, transfer partners)
 - **Card Infographics** — Designed infographics on card pages: a teaser in the card-art slot opens the full image in an in-page viewer
 - **Article Tags** — AI-generated tags from 8 categories; six of them are topic filters on the homepage, combinable with the article type
@@ -83,6 +83,12 @@ reachable critic is enough to publish. `critic_disable_thinking: true` sends
 thinking on, nemotron-super truncates or leaks its reasoning into the JSON. The
 `critic scored` log line names the model that scored.
 
+Any issue the critic returns triggers one auto-revision, so the critic prompts
+ask for fixes only — an empty `issues` list for a clean article — and
+`dropPassedChecks` removes items that merely confirm a check passed ("matches
+both sources", "no source leakage — good") before the pipeline decides. The
+`dropped critic issues that confirm a passed check` log line counts them.
+
 ### Enrichment
 
 Scout's Take, key details, tags and the article image are **not** produced during
@@ -124,6 +130,23 @@ dry run unless `-apply` is given; it takes no backup, so take one first):
 ```bash
 go run ./cmd/repair-source-refs -db ./data/milesahead.db          # dry run
 go run ./cmd/repair-source-refs -db ./data/milesahead.db -apply   # write
+```
+
+### Editor notes
+
+A remark for the admin rather than readers ("Could not find a link for: ...")
+is an editor note. If generated text contains one (`<div class="editor-note">`)
+it is split out before the article is stored, kept in the admin-only
+`editor_notes` column and shown in the dashboard preview and the review email.
+Content is never stored with notes, and anything that loads an article (pages,
+feed, newsletter, excerpts, search index, prompts) strips any still inline in
+older rows (`internal/editornote`). To move notes out of articles stored before
+this, run the one-off tool (a read-only dry run unless `-apply` is given; it
+takes no backup, so take one first):
+
+```bash
+go run ./cmd/repair-editor-notes -db ./data/milesahead.db          # dry run
+go run ./cmd/repair-editor-notes -db ./data/milesahead.db -apply   # write
 ```
 
 ## Documentation

@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/kumaranik/milesahead/internal/editornote"
 )
 
 // maxRevisionErrorLen bounds the stored error. It is shown on the dashboard, and
@@ -114,6 +116,10 @@ type AppliedRevision struct {
 	Title           string
 	PreviousContent string
 	NewContent      string
+	// EditorNotes are the rewrite's remarks for the admin. Notes still inside
+	// NewContent are split out and added to them; together they replace the
+	// article's notes, which described the content being replaced.
+	EditorNotes string
 	// Status is where the article goes: StatusPending if the rewrite passed
 	// the critic, otherwise StatusDraft. Empty means StatusDraft.
 	Status string
@@ -158,15 +164,20 @@ func (d *Database) ApplyRevision(r AppliedRevision) (bool, error) {
 		return false, fmt.Errorf("revision cannot move an article to %q", status)
 	}
 
+	// Neither the article nor its history stores editor notes in content.
+	newContent, notes := editornote.Split(r.NewContent)
+	notes = editornote.Join(r.EditorNotes, notes)
+	previousContent := editornote.Strip(r.PreviousContent)
+
 	newRevision := r.BaseRevision + 1
 	res, err := tx.Exec(
 		`UPDATE generated_articles
-		 SET status = ?, title = ?, content = ?, revision_number = ?,
+		 SET status = ?, title = ?, content = ?, editor_notes = ?, revision_number = ?,
 		     revision_failures = 0, revision_retry_after = 0, revision_last_error = '',
 		     updated_at = CURRENT_TIMESTAMP
 		 WHERE id = ? AND status = ? AND revision_number = ?
 		   AND COALESCE((SELECT MAX(id) FROM admin_feedback WHERE generated_article_id = ?), 0) = ?`,
-		status, r.Title, r.NewContent, newRevision,
+		status, r.Title, newContent, notes, newRevision,
 		r.ArticleID, StatusRevisionRequested, r.BaseRevision,
 		r.ArticleID, r.FeedbackID,
 	)
@@ -183,7 +194,7 @@ func (d *Database) ApplyRevision(r AppliedRevision) (bool, error) {
 
 	if _, err := tx.Exec(
 		`INSERT INTO article_revisions (generated_article_id, revision_number, previous_content, new_content, feedback_id) VALUES (?, ?, ?, ?, ?)`,
-		r.ArticleID, newRevision, r.PreviousContent, r.NewContent, r.FeedbackID,
+		r.ArticleID, newRevision, previousContent, newContent, r.FeedbackID,
 	); err != nil {
 		return false, fmt.Errorf("creating revision record: %w", err)
 	}

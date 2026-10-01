@@ -93,11 +93,30 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Open all article content links in new tabs
+// In the admin dashboard's article preview, links in the story open in a new
+// tab so following one does not leave the review. Public article pages are
+// left alone: the server already opens links to other sites in a new tab and
+// keeps links within the site (card pages, other articles) in the same tab.
 document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.article-content a').forEach(function(link) {
+    document.querySelectorAll('.preview-modal .article-content a').forEach(function(link) {
         link.setAttribute('target', '_blank');
         link.setAttribute('rel', 'noopener');
+    });
+});
+
+// Article share: "Copy link" is in the page hidden, and shown only where the
+// clipboard API exists. The status line confirms the copy.
+document.addEventListener('DOMContentLoaded', function() {
+    var btn = document.querySelector('.share-copy[data-share-url]');
+    if (!btn || !navigator.clipboard || !window.isSecureContext) return;
+    var status = document.querySelector('.article-share .share-status');
+    btn.hidden = false;
+    btn.addEventListener('click', function() {
+        navigator.clipboard.writeText(btn.getAttribute('data-share-url')).then(function() {
+            if (status) status.textContent = 'Link copied.';
+        }, function() {
+            if (status) status.textContent = "Couldn't copy the link.";
+        });
     });
 });
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/editornote"
 	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/offer"
 )
@@ -65,6 +66,9 @@ type adminArticleRow struct {
 	// ScoutsTake is shown in the admin preview so it can be reviewed before
 	// approval; empty until enrichment writes it.
 	ScoutsTake string
+	// EditorNotes are the article's remarks for the admin ("Could not find a
+	// link for: ..."), one per entry. Shown only here, never published.
+	EditorNotes []string
 	// RevisionFailures is how many rewrites of a revision_requested article
 	// have failed in a row, and RevisionLastError the latest reason. Without
 	// them "Revising..." looks the same whether a rewrite is running, retrying,
@@ -117,6 +121,7 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 			TLDR:           a.TLDR,
 			ImageURL:       a.ImageURL,
 			ScoutsTake:     a.ScoutsTake,
+			EditorNotes:    editornote.Lines(a.EditorNotes),
 			CreatedAt:      a.CreatedAt.Format(adminTimeFormat),
 			UpdatedAt:      a.UpdatedAt.Format(adminTimeFormat),
 			createdAtRaw:   a.CreatedAt,
