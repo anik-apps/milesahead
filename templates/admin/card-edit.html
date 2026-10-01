@@ -18,6 +18,8 @@
         <a href="/admin/cards" class="btn" style="font-size:0.85rem;">Back to Cards</a>
     </div>
 
+    {{if .Message}}<div class="message success" role="status">{{.Message}}</div>{{end}}
+    {{if .FormError}}<div class="message error" role="alert">{{.FormError}}</div>{{end}}
     <form method="POST" action="{{.FormAction}}">
         {{template "csrf_field" .}}
 
@@ -25,10 +27,12 @@
             <div class="form-group">
                 <label for="title">Title</label>
                 <input type="text" id="title" name="title" value="{{.Card.Title}}" required placeholder="American Express Platinum Card">
+                {{with index $.FieldErrors "title"}}<p class="field-error">{{.}}</p>{{end}}
             </div>
             <div class="form-group">
                 <label for="slug">Slug</label>
                 <input type="text" id="slug" name="slug" value="{{.Card.Slug}}" required placeholder="amex-platinum">
+                {{with index $.FieldErrors "slug"}}<p class="field-error">{{.}}</p>{{end}}
             </div>
             <div class="form-group">
                 <label for="category">Category</label>
@@ -64,6 +68,7 @@
             <div class="form-group">
                 <label for="annual_fee_amount">Annual Fee Amount</label>
                 <input type="number" id="annual_fee_amount" name="annual_fee_amount" value="{{.Card.AnnualFeeAmount}}" placeholder="0">
+                {{with index $.FieldErrors "annual_fee_amount"}}<p class="field-error">{{.}}</p>{{end}}
             </div>
             <div class="form-group">
                 <label for="annual_fee_note">Annual Fee Note</label>
@@ -78,18 +83,22 @@
             <div class="form-group" style="margin-bottom:1rem;">
                 <label for="earning_rates_json">Earning Rates JSON</label>
                 <textarea id="earning_rates_json" name="earning_rates_json" rows="8" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"dining": {"rate": "3x", "note": ""}, ...}'>{{.Card.EarningRatesJSON}}</textarea>
+                {{with index $.FieldErrors "earning_rates_json"}}<p class="field-error">{{.}}</p>{{end}}
             </div>
             <div class="form-group" style="margin-bottom:1rem;">
                 <label for="credits_json">Credits JSON</label>
                 <textarea id="credits_json" name="credits_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"airline": {"amount": "$200/yr", "note": ""}, ...}'>{{.Card.CreditsJSON}}</textarea>
+                {{with index $.FieldErrors "credits_json"}}<p class="field-error">{{.}}</p>{{end}}
             </div>
             <div class="form-group" style="margin-bottom:1rem;">
                 <label for="benefits_json">Benefits JSON</label>
                 <textarea id="benefits_json" name="benefits_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"lounge_access": {"value": "Priority Pass", "note": ""}, ...}'>{{.Card.BenefitsJSON}}</textarea>
+                {{with index $.FieldErrors "benefits_json"}}<p class="field-error">{{.}}</p>{{end}}
             </div>
             <div class="form-group" style="margin-bottom:1rem;">
                 <label for="protections_json">Protections JSON</label>
                 <textarea id="protections_json" name="protections_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"purchase_protection": {"amount": "$10,000", "note": "120 days"}, ...}'>{{.Card.ProtectionsJSON}}</textarea>
+                {{with index $.FieldErrors "protections_json"}}<p class="field-error">{{.}}</p>{{end}}
             </div>
         </div>
 
@@ -148,7 +157,7 @@
                 <tr>
                     <td><code style="font-size:0.85rem;">{{.Field}}</code></td>
                     <td>{{.Note}}</td>
-                    <td style="font-size:0.8rem;color:var(--text-muted);">{{.FlaggedAt}}</td>
+                    <td style="font-size:0.8rem;color:var(--text-muted);">{{adminTime .FlaggedAt}}</td>
                     <td>
                         <form method="POST" action="/admin/cards/{{$.Card.ID}}/resolve-flag" class="inline-form">
                             {{template "csrf_field" $}}

@@ -28,11 +28,12 @@
     {{if .Updates}}
     {{range .Updates}}
     <div style="border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1.25rem;background:var(--card-bg);">
+        {{if eq .ID $.MissingUID}}<div class="message error" role="alert">Not applied: this card no longer has a section with the key "{{.SectionKey}}", so approving would lose the proposed text. Add or rename the section in <a href="/admin/cards/{{$.Card.ID}}/edit">the editor</a>, or reject this update.</div>{{end}}
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
             <div>
                 <strong>Section:</strong> {{.SectionKey}}<br>
                 <strong>Source article:</strong> {{.ArticleTitle}}<br>
-                <span class="dim">{{.CreatedAt}}</span>
+                <span class="dim">{{adminTime .CreatedAt}}</span>
             </div>
         </div>
         <p style="margin-bottom:0.75rem;"><strong>Summary:</strong> {{.Summary}}</p>

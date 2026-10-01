@@ -732,6 +732,16 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
     border-color: #14532d;
 }
 
+/* A form field's own error, under the field. */
+.field-error {
+    color: #dc2626;
+    font-size: 0.85rem;
+    margin: 0.3rem 0 0;
+}
+[data-theme="dark"] .field-error {
+    color: #f87171;
+}
+
 /* Empty State */
 .empty-state {
     text-align: center;

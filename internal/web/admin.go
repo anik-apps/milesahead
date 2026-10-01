@@ -436,43 +436,58 @@ func (app *App) handleAdminSources(w http.ResponseWriter, r *http.Request) {
 		"Title":     "Sources",
 		"Sources":   sources,
 		"CSRFToken": getCSRFToken(w, r),
+		"Message":   sourceMessages[r.URL.Query().Get("msg")],
+		"Error":     sourceErrors[r.URL.Query().Get("error")],
 	}
 	app.renderTemplate(w, "sources.html", data)
 }
 
-func (app *App) handleAddSource(w http.ResponseWriter, r *http.Request) {
-	name := r.FormValue("name")
-	url := r.FormValue("url")
-	rssURL := r.FormValue("rss_url")
+var sourceMessages = map[string]string{
+	"added": "Source added.", "saved": "Source saved.", "toggled": "Source updated.",
+}
 
-	if strings.TrimSpace(name) == "" || strings.TrimSpace(url) == "" {
-		http.Error(w, "Name and URL are required", http.StatusBadRequest)
-		return
-	}
+var sourceErrors = map[string]string{
+	"required": "Not saved: a source needs a name and a URL.",
+	"interval": "Not saved: the scan interval must be a whole number of minutes, 1 or more. Leave it empty for the default.",
+	"store":    "Not saved: the source could not be stored.",
+}
 
-	source := &dbSource{
-		Name:   name,
-		URL:    url,
-		Active: true,
+// sourceForm reads the add and edit forms. An empty RSS URL or interval is
+// stored as unset, so clearing a field clears it; errCode is a key of
+// sourceErrors, or "" when the form is valid.
+func sourceForm(r *http.Request) (name, siteURL string, rssURL *string, interval *int, errCode string) {
+	name = strings.TrimSpace(r.FormValue("name"))
+	siteURL = strings.TrimSpace(r.FormValue("url"))
+	if name == "" || siteURL == "" {
+		return "", "", nil, nil, "required"
 	}
-	if rssURL != "" {
-		source.RSSURL = &rssURL
+	if v := strings.TrimSpace(r.FormValue("rss_url")); v != "" {
+		rssURL = &v
 	}
-
-	intervalStr := r.FormValue("scan_interval")
-	if intervalStr != "" {
-		interval, err := strconv.Atoi(intervalStr)
-		if err == nil {
-			source.ScanInterval = &interval
+	if v := strings.TrimSpace(r.FormValue("scan_interval")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return "", "", nil, nil, "interval"
 		}
+		interval = &n
 	}
+	return name, siteURL, rssURL, interval, ""
+}
 
+func (app *App) handleAddSource(w http.ResponseWriter, r *http.Request) {
+	name, siteURL, rssURL, interval, errCode := sourceForm(r)
+	if errCode != "" {
+		http.Redirect(w, r, "/admin/sources?error="+errCode, http.StatusSeeOther)
+		return
+	}
+	source := &dbSource{Name: name, URL: siteURL, RSSURL: rssURL, ScanInterval: interval, Active: true}
 	if _, err := app.db.CreateSource(source); err != nil {
-		http.Error(w, "Failed to create source", http.StatusInternalServerError)
+		slog.Error("add source", "error", err)
+		http.Redirect(w, r, "/admin/sources?error=store", http.StatusSeeOther)
 		return
 	}
 
-	http.Redirect(w, r, "/admin/sources", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/sources?msg=added", http.StatusSeeOther)
 }
 
 func (app *App) handleEditSource(w http.ResponseWriter, r *http.Request) {
@@ -488,29 +503,20 @@ func (app *App) handleEditSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	source.Name = r.FormValue("name")
-	source.URL = r.FormValue("url")
-	rssURL := r.FormValue("rss_url")
-	if rssURL != "" {
-		source.RSSURL = &rssURL
-	} else {
-		source.RSSURL = nil
+	name, siteURL, rssURL, interval, errCode := sourceForm(r)
+	if errCode != "" {
+		http.Redirect(w, r, "/admin/sources?error="+errCode, http.StatusSeeOther)
+		return
 	}
-
-	intervalStr := r.FormValue("scan_interval")
-	if intervalStr != "" {
-		interval, err := strconv.Atoi(intervalStr)
-		if err == nil {
-			source.ScanInterval = &interval
-		}
-	}
+	source.Name, source.URL, source.RSSURL, source.ScanInterval = name, siteURL, rssURL, interval
 
 	if err := app.db.UpdateSource(source); err != nil {
-		http.Error(w, "Failed to update source", http.StatusInternalServerError)
+		slog.Error("edit source", "id", id, "error", err)
+		http.Redirect(w, r, "/admin/sources?error=store", http.StatusSeeOther)
 		return
 	}
 
-	http.Redirect(w, r, "/admin/sources", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/sources?msg=saved", http.StatusSeeOther)
 }
 
 func (app *App) handleToggleSource(w http.ResponseWriter, r *http.Request) {
@@ -525,7 +531,7 @@ func (app *App) handleToggleSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/admin/sources", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/sources?msg=toggled", http.StatusSeeOther)
 }
 
 func (app *App) handleAdminSubscribers(w http.ResponseWriter, r *http.Request) {
@@ -969,105 +975,188 @@ func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) handleAdminCardNew(w http.ResponseWriter, r *http.Request) {
-	personaName := app.cfg.Site.PersonaName
+	app.renderCardForm(w, r, http.StatusOK, cardForm{
+		Card:     &db.ReferencePage{Status: "draft"},
+		Sections: []db.ReferenceSection{},
+		IsNew:    true,
+	})
+}
 
+// cardForm is what the card editor renders: the card as stored, or as the
+// admin submitted it when saving failed, with the reason.
+type cardForm struct {
+	Card     *db.ReferencePage
+	Sections []db.ReferenceSection
+	Keywords string
+	IsNew    bool
+	// FormError says why the save failed; FieldErrors holds the message for
+	// each failing form field, keyed by the field's name.
+	FormError   string
+	FieldErrors map[string]string
+	Message     string
+}
+
+// renderCardForm renders the card editor with status.
+func (app *App) renderCardForm(w http.ResponseWriter, r *http.Request, status int, f cardForm) {
+	formAction := "/admin/cards"
+	title := "New Card"
+	if !f.IsNew {
+		formAction = fmt.Sprintf("/admin/cards/%d/edit", f.Card.ID)
+		title = "Edit: " + f.Card.Title
+	}
+	var flagged []db.FlaggedField
+	if f.Card.FlaggedFieldsJSON != "" && f.Card.FlaggedFieldsJSON != "[]" {
+		json.Unmarshal([]byte(f.Card.FlaggedFieldsJSON), &flagged)
+	}
+	if flagged == nil {
+		flagged = []db.FlaggedField{}
+	}
+	var pending []db.PendingUpdate
+	if f.Card.PendingUpdatesJSON != "" && f.Card.PendingUpdatesJSON != "[]" {
+		json.Unmarshal([]byte(f.Card.PendingUpdatesJSON), &pending)
+	}
 	data := map[string]interface{}{
-		"Title":       "New Card",
-		"IsNew":       true,
-		"Card":        &db.ReferencePage{Status: "draft"},
-		"Sections":    []db.ReferenceSection{},
-		"Keywords":    "",
-		"FormAction":  "/admin/cards",
-		"PersonaName": personaName,
-		"CSRFToken":   getCSRFToken(w, r),
+		"Title":         title,
+		"IsNew":         f.IsNew,
+		"Card":          f.Card,
+		"Sections":      f.Sections,
+		"Keywords":      f.Keywords,
+		"FormAction":    formAction,
+		"PersonaName":   app.cfg.Site.PersonaName,
+		"CSRFToken":     getCSRFToken(w, r),
+		"FlaggedFields": flagged,
+		"PendingCount":  len(pending),
+		"FormError":     f.FormError,
+		"FieldErrors":   f.FieldErrors,
+		"Message":       f.Message,
+	}
+	if status != http.StatusOK {
+		w.WriteHeader(status)
 	}
 	app.renderTemplate(w, "card-edit.html", data)
 }
 
-func (app *App) handleAdminCardCreate(w http.ResponseWriter, r *http.Request) {
-	page := &db.ReferencePage{
-		Title:         strings.TrimSpace(r.FormValue("title")),
-		Slug:          strings.TrimSpace(r.FormValue("slug")),
-		Category:      strings.TrimSpace(r.FormValue("category")),
-		Issuer:        strings.TrimSpace(r.FormValue("issuer")),
-		ImageURL:      strings.TrimSpace(r.FormValue("image_url")),
-		ApplyURL:      strings.TrimSpace(r.FormValue("apply_url")),
-		Status:        r.FormValue("status"),
-		ScoutsVerdict: r.FormValue("scouts_verdict"),
-	}
+// cardJSONFields are the card's structured-data fields, edited as JSON.
+var cardJSONFields = []struct{ name, label string }{
+	{"earning_rates_json", "Earning rates"},
+	{"credits_json", "Credits"},
+	{"benefits_json", "Benefits"},
+	{"protections_json", "Protections"},
+}
 
-	if page.Title == "" || page.Slug == "" {
-		http.Error(w, "Title and slug are required", http.StatusBadRequest)
-		return
+// applyCardForm copies the submitted form onto page and reports what is
+// wrong with it, keyed by form field. page always ends up holding exactly
+// what was submitted, valid or not, so a failed save can show it again.
+// An emptied JSON field is stored as {} -- it clears the data rather than
+// keeping the old value.
+func applyCardForm(r *http.Request, page *db.ReferencePage) (keywords string, sections []db.ReferenceSection, errs map[string]string) {
+	errs = map[string]string{}
+	page.Title = strings.TrimSpace(r.FormValue("title"))
+	page.Slug = strings.TrimSpace(r.FormValue("slug"))
+	page.Category = strings.TrimSpace(r.FormValue("category"))
+	page.Issuer = strings.TrimSpace(r.FormValue("issuer"))
+	page.ImageURL = strings.TrimSpace(r.FormValue("image_url"))
+	page.ApplyURL = strings.TrimSpace(r.FormValue("apply_url"))
+	page.Status = r.FormValue("status")
+	page.ScoutsVerdict = r.FormValue("scouts_verdict")
+	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
+	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
+
+	if page.Title == "" {
+		errs["title"] = "Title is required."
+	}
+	if page.Slug == "" {
+		errs["slug"] = "Slug is required."
 	}
 	if page.Category == "" {
 		page.Category = "credit-card"
 	}
-	if page.Status == "" {
+	if page.Status != "published" {
 		page.Status = "draft"
 	}
 
-	// Parse keywords.
-	keywords := parseKeywords(r.FormValue("keywords"))
-	keywordsJSON, _ := json.Marshal(keywords)
-	page.KeywordsJSON = string(keywordsJSON)
-
-	// Parse sections.
-	sections := parseSectionsFromForm(r)
-	sectionsJSON, _ := json.Marshal(sections)
-	page.SectionsJSON = string(sectionsJSON)
-
-	// Parse structured data fields.
-	if feeStr := strings.TrimSpace(r.FormValue("annual_fee_amount")); feeStr != "" {
-		fmt.Sscanf(feeStr, "%d", &page.AnnualFeeAmount)
-	}
-	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
-	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
-	earningRatesJSON := strings.TrimSpace(r.FormValue("earning_rates_json"))
-	creditsJSON := strings.TrimSpace(r.FormValue("credits_json"))
-	benefitsJSON := strings.TrimSpace(r.FormValue("benefits_json"))
-	protectionsJSON := strings.TrimSpace(r.FormValue("protections_json"))
-
-	for _, field := range []struct{ name, value string }{
-		{"earning_rates_json", earningRatesJSON},
-		{"credits_json", creditsJSON},
-		{"benefits_json", benefitsJSON},
-		{"protections_json", protectionsJSON},
-	} {
-		if field.value != "" && !json.Valid([]byte(field.value)) {
-			http.Error(w, fmt.Sprintf("Invalid JSON in %s", field.name), http.StatusBadRequest)
-			return
+	page.AnnualFeeAmount = 0
+	if fee := strings.TrimSpace(r.FormValue("annual_fee_amount")); fee != "" {
+		n, err := strconv.Atoi(fee)
+		if err != nil || n < 0 {
+			errs["annual_fee_amount"] = "Annual fee must be a whole number of dollars, like 895."
+		} else {
+			page.AnnualFeeAmount = n
 		}
 	}
 
-	page.EarningRatesJSON = earningRatesJSON
-	page.CreditsJSON = creditsJSON
-	page.BenefitsJSON = benefitsJSON
-	page.ProtectionsJSON = protectionsJSON
+	values := map[string]string{}
+	for _, f := range cardJSONFields {
+		v := strings.TrimSpace(r.FormValue(f.name))
+		if v == "" {
+			v = "{}"
+		} else if err := checkJSON(v); err != "" {
+			errs[f.name] = f.label + " is not valid JSON: " + err
+		}
+		values[f.name] = v
+	}
+	page.EarningRatesJSON = values["earning_rates_json"]
+	page.CreditsJSON = values["credits_json"]
+	page.BenefitsJSON = values["benefits_json"]
+	page.ProtectionsJSON = values["protections_json"]
 
-	// Initialize empty JSON arrays.
-	page.RecentChangesJSON = "[]"
-	page.PendingUpdatesJSON = "[]"
-	if page.EarningRatesJSON == "" {
-		page.EarningRatesJSON = "{}"
-	}
-	if page.CreditsJSON == "" {
-		page.CreditsJSON = "{}"
-	}
-	if page.BenefitsJSON == "" {
-		page.BenefitsJSON = "{}"
-	}
-	if page.ProtectionsJSON == "" {
-		page.ProtectionsJSON = "{}"
-	}
-	page.FlaggedFieldsJSON = "[]"
+	keywords = r.FormValue("keywords")
+	kwJSON, _ := json.Marshal(parseKeywords(keywords))
+	page.KeywordsJSON = string(kwJSON)
 
-	if _, err := app.db.CreateReferencePage(page); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create card: %v", err), http.StatusInternalServerError)
+	sections = parseSectionsFromForm(r)
+	secJSON, _ := json.Marshal(sections)
+	page.SectionsJSON = string(secJSON)
+	if sections == nil {
+		sections = []db.ReferenceSection{}
+	}
+	return keywords, sections, errs
+}
+
+// checkJSON returns "" for valid JSON, or where and why it is not.
+func checkJSON(s string) string {
+	var v interface{}
+	err := json.Unmarshal([]byte(s), &v)
+	if err == nil {
+		return ""
+	}
+	var syn *json.SyntaxError
+	if errors.As(err, &syn) {
+		line := 1 + strings.Count(s[:min(int(syn.Offset), len(s))], "\n")
+		return fmt.Sprintf("%s (line %d)", syn.Error(), line)
+	}
+	return err.Error()
+}
+
+// cardFormSummary is the banner above a card form that failed to save.
+func cardFormSummary(errs map[string]string) string {
+	if len(errs) == 1 {
+		for _, e := range errs {
+			return "Not saved: " + e + " Your other changes are kept below."
+		}
+	}
+	return fmt.Sprintf("Not saved: %d fields need fixing. Your changes are kept below.", len(errs))
+}
+
+func (app *App) handleAdminCardCreate(w http.ResponseWriter, r *http.Request) {
+	page := &db.ReferencePage{RecentChangesJSON: "[]", PendingUpdatesJSON: "[]", FlaggedFieldsJSON: "[]"}
+	keywords, sections, errs := applyCardForm(r, page)
+	form := cardForm{Card: page, Sections: sections, Keywords: keywords, IsNew: true, FieldErrors: errs}
+	if len(errs) > 0 {
+		form.FormError = cardFormSummary(errs)
+		app.renderCardForm(w, r, http.StatusBadRequest, form)
 		return
 	}
 
-	http.Redirect(w, r, "/admin/cards?msg=Card+created", http.StatusSeeOther)
+	id, err := app.db.CreateReferencePage(page)
+	if err != nil {
+		slog.Error("create card", "slug", page.Slug, "error", err)
+		form.FormError = "Not saved: the card could not be stored (" + err.Error() + "). Is the slug already used by another card?"
+		app.renderCardForm(w, r, http.StatusBadRequest, form)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit?msg=created", id), http.StatusSeeOther)
 }
 
 func (app *App) handleAdminCardEdit(w http.ResponseWriter, r *http.Request) {
@@ -1093,28 +1182,20 @@ func (app *App) handleAdminCardEdit(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(page.KeywordsJSON), &keywords)
 	}
 
-	var flaggedFields []db.FlaggedField
-	if page.FlaggedFieldsJSON != "" && page.FlaggedFieldsJSON != "[]" {
-		json.Unmarshal([]byte(page.FlaggedFieldsJSON), &flaggedFields)
+	msg := ""
+	switch r.URL.Query().Get("msg") {
+	case "saved":
+		msg = "Saved."
+	case "created":
+		msg = "Card created."
+	case "flagged":
+		msg = "Flag added."
+	case "resolved":
+		msg = "Flag resolved."
 	}
-	if flaggedFields == nil {
-		flaggedFields = []db.FlaggedField{}
-	}
-
-	personaName := app.cfg.Site.PersonaName
-
-	data := map[string]interface{}{
-		"Title":         "Edit: " + page.Title,
-		"IsNew":         false,
-		"Card":          page,
-		"Sections":      sections,
-		"Keywords":      strings.Join(keywords, ", "),
-		"FormAction":    fmt.Sprintf("/admin/cards/%d/edit", page.ID),
-		"PersonaName":   personaName,
-		"CSRFToken":     getCSRFToken(w, r),
-		"FlaggedFields": flaggedFields,
-	}
-	app.renderTemplate(w, "card-edit.html", data)
+	app.renderCardForm(w, r, http.StatusOK, cardForm{
+		Card: page, Sections: sections, Keywords: strings.Join(keywords, ", "), Message: msg,
+	})
 }
 
 func (app *App) handleAdminCardUpdate(w http.ResponseWriter, r *http.Request) {
@@ -1130,77 +1211,22 @@ func (app *App) handleAdminCardUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page.Title = strings.TrimSpace(r.FormValue("title"))
-	page.Slug = strings.TrimSpace(r.FormValue("slug"))
-	page.Category = strings.TrimSpace(r.FormValue("category"))
-	page.Issuer = strings.TrimSpace(r.FormValue("issuer"))
-	page.ImageURL = strings.TrimSpace(r.FormValue("image_url"))
-	page.ApplyURL = strings.TrimSpace(r.FormValue("apply_url"))
-	page.Status = r.FormValue("status")
-	page.ScoutsVerdict = r.FormValue("scouts_verdict")
-
-	// Parse structured data fields.
-	if feeStr := strings.TrimSpace(r.FormValue("annual_fee_amount")); feeStr != "" {
-		fmt.Sscanf(feeStr, "%d", &page.AnnualFeeAmount)
-	} else {
-		page.AnnualFeeAmount = 0
-	}
-	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
-	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
-	updateEarningRatesJSON := strings.TrimSpace(r.FormValue("earning_rates_json"))
-	updateCreditsJSON := strings.TrimSpace(r.FormValue("credits_json"))
-	updateBenefitsJSON := strings.TrimSpace(r.FormValue("benefits_json"))
-	updateProtectionsJSON := strings.TrimSpace(r.FormValue("protections_json"))
-
-	for _, field := range []struct{ name, value string }{
-		{"earning_rates_json", updateEarningRatesJSON},
-		{"credits_json", updateCreditsJSON},
-		{"benefits_json", updateBenefitsJSON},
-		{"protections_json", updateProtectionsJSON},
-	} {
-		if field.value != "" && !json.Valid([]byte(field.value)) {
-			http.Error(w, fmt.Sprintf("Invalid JSON in %s", field.name), http.StatusBadRequest)
-			return
-		}
-	}
-
-	if updateEarningRatesJSON != "" {
-		page.EarningRatesJSON = updateEarningRatesJSON
-	}
-	if updateCreditsJSON != "" {
-		page.CreditsJSON = updateCreditsJSON
-	}
-	if updateBenefitsJSON != "" {
-		page.BenefitsJSON = updateBenefitsJSON
-	}
-	if updateProtectionsJSON != "" {
-		page.ProtectionsJSON = updateProtectionsJSON
-	}
-
-	if page.Title == "" || page.Slug == "" {
-		http.Error(w, "Title and slug are required", http.StatusBadRequest)
+	keywords, sections, errs := applyCardForm(r, page)
+	form := cardForm{Card: page, Sections: sections, Keywords: keywords, FieldErrors: errs}
+	if len(errs) > 0 {
+		form.FormError = cardFormSummary(errs)
+		app.renderCardForm(w, r, http.StatusBadRequest, form)
 		return
 	}
-	if page.Category == "" {
-		page.Category = "credit-card"
-	}
-
-	// Parse keywords.
-	keywords := parseKeywords(r.FormValue("keywords"))
-	keywordsJSON, _ := json.Marshal(keywords)
-	page.KeywordsJSON = string(keywordsJSON)
-
-	// Parse sections.
-	sections := parseSectionsFromForm(r)
-	sectionsJSON, _ := json.Marshal(sections)
-	page.SectionsJSON = string(sectionsJSON)
 
 	if err := app.db.UpdateReferencePage(page); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update card: %v", err), http.StatusInternalServerError)
+		slog.Error("update card", "id", id, "error", err)
+		form.FormError = "Not saved: the card could not be stored (" + err.Error() + "). Is the slug already used by another card?"
+		app.renderCardForm(w, r, http.StatusBadRequest, form)
 		return
 	}
 
-	http.Redirect(w, r, "/admin/cards?msg=Card+updated", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit?msg=saved", id), http.StatusSeeOther)
 }
 
 func (app *App) handleAdminCardDelete(w http.ResponseWriter, r *http.Request) {
@@ -1237,7 +1263,7 @@ func (app *App) handleFlagField(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit?msg=flagged", id), http.StatusSeeOther)
 }
 
 func (app *App) handleResolveFlag(w http.ResponseWriter, r *http.Request) {
@@ -1258,7 +1284,7 @@ func (app *App) handleResolveFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit?msg=resolved", id), http.StatusSeeOther)
 }
 
 func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
@@ -1279,12 +1305,26 @@ func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(page.PendingUpdatesJSON), &updates)
 	}
 
+	msg := ""
+	switch r.URL.Query().Get("msg") {
+	case "approved":
+		msg = "Update approved: the section now has the proposed text."
+	case "rejected":
+		msg = "Update rejected."
+	}
+	// MissingUID is the update whose section no longer exists, after an
+	// approve that could not apply it.
+	var missingUID int64
+	if r.URL.Query().Get("error") == "missing_section" {
+		missingUID = queryInt(r, "uid")
+	}
 	data := map[string]interface{}{
-		"Title":     "Pending Updates: " + page.Title,
-		"Card":      page,
-		"Updates":   updates,
-		"CSRFToken": getCSRFToken(w, r),
-		"Message":   r.URL.Query().Get("msg"),
+		"Title":      "Pending Updates: " + page.Title,
+		"Card":       page,
+		"Updates":    updates,
+		"CSRFToken":  getCSRFToken(w, r),
+		"Message":    msg,
+		"MissingUID": int(missingUID),
 	}
 	app.renderTemplate(w, "card-updates.html", data)
 }
@@ -1328,16 +1368,25 @@ func (app *App) handleApproveCardUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Apply the proposed content to the matching section.
+	// Apply the proposed content to the matching section. If the card no
+	// longer has that section (renamed or removed since the update was
+	// drafted), approving would throw the text away: keep the update and say
+	// so instead.
 	var sections []db.ReferenceSection
 	if page.SectionsJSON != "" && page.SectionsJSON != "[]" {
 		json.Unmarshal([]byte(page.SectionsJSON), &sections)
 	}
+	applied := false
 	for i, s := range sections {
 		if s.Key == approved.SectionKey {
 			sections[i].Content = approved.ProposedContent
+			applied = true
 			break
 		}
+	}
+	if !applied {
+		http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?error=missing_section&uid=%d", id, uid), http.StatusSeeOther)
+		return
 	}
 
 	sectionsJSON, _ := json.Marshal(sections)
@@ -1354,7 +1403,7 @@ func (app *App) handleApproveCardUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=Update+approved", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=approved", id), http.StatusSeeOther)
 }
 
 func (app *App) handleRejectCardUpdate(w http.ResponseWriter, r *http.Request) {
@@ -1399,7 +1448,7 @@ func (app *App) handleRejectCardUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=Update+rejected", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=rejected", id), http.StatusSeeOther)
 }
 
 // adminLinkedCard is the per-row data for the curation page (combines reference

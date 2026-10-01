@@ -14,6 +14,8 @@
 </div>
 <div class="admin-sources">
     <h1>Sources</h1>
+    {{if .Message}}<div class="message success" role="status">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="message error" role="alert">{{.Error}}</div>{{end}}
 
     <h2>Add Source</h2>
     <form method="POST" action="/admin/sources/add" class="source-form">
@@ -33,7 +35,7 @@
             </div>
             <div class="form-group">
                 <label for="add-interval">Scan Interval (min)</label>
-                <input type="number" id="add-interval" name="scan_interval" placeholder="60">
+                <input type="number" id="add-interval" name="scan_interval" min="1" placeholder="Default">
             </div>
         </div>
         <button type="submit" class="btn btn-primary">Add Source</button>
