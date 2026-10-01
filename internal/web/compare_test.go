@@ -222,6 +222,22 @@ func TestCompare_PickerWithoutJavaScript(t *testing.T) {
 	}
 }
 
+// The card page's compare form submits one "cards" field holding both
+// slugs (the comma encoded); it renders the comparison directly.
+func TestCompare_CardPageFormFormat(t *testing.T) {
+	app := compareApp(t)
+	req := httptest.NewRequest(http.MethodGet, "/compare?cards=amex-gold%2Cchase-sapphire-preferred", nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if n := strings.Count(body, `<th scope="col" role="columnheader"`); n != 2 || strings.Contains(body, `class="compare-notice"`) {
+		t.Errorf("want a clean two-card comparison, got %d cards", n)
+	}
+}
+
 // A choice that can't be compared says why and keeps what was picked.
 func TestCompare_InvalidChoices(t *testing.T) {
 	app := compareApp(t)

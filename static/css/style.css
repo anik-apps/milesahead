@@ -2787,8 +2787,9 @@ nav.card-toc {
     max-width: 1100px;
     margin: 0 auto;
     padding: 1rem;
-    /* Below the sticky site header (measured 84px; 62px on phones). */
-    --compare-sticky-top: 84px;
+    /* Below the sticky site header; compare.js refines it to the header's
+       measured height. */
+    --compare-sticky-top: var(--sticky-offset, 84px);
 }
 .compare-page h1 {
     font-size: 1.75rem;
@@ -3121,7 +3122,6 @@ nav.card-toc {
 @media (max-width: 768px) {
     .compare-page {
         padding: 0.5rem;
-        --compare-sticky-top: 62px;
     }
     .compare-table,
     .compare-table thead,
