@@ -3,6 +3,7 @@ package web
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"html/template"
@@ -400,7 +401,7 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 
 	article, err := app.db.GetGeneratedArticleBySlug(slug)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			app.notFound(w, http.StatusNotFound, errKindArticle, slug)
 			return
 		}
@@ -699,7 +700,13 @@ func (app *App) handleCardDetail(w http.ResponseWriter, r *http.Request) {
 
 	page, err := app.db.GetReferencePageBySlug(slug)
 	if err != nil {
-		app.notFound(w, http.StatusNotFound, errKindCard, slug)
+		// Only a missing card is a 404; a failing database is a 500, not a
+		// page telling the reader the card does not exist.
+		if errors.Is(err, sql.ErrNoRows) {
+			app.notFound(w, http.StatusNotFound, errKindCard, slug)
+			return
+		}
+		app.serverError(w, r, "card: loading", err)
 		return
 	}
 

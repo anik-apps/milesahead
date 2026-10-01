@@ -823,10 +823,11 @@ func (d *Database) Resubscribe(token string) error {
 
 // ReopenSubscriber turns an unsubscribed address back into a pending one,
 // for someone who signs up again through the form: they must confirm again
-// before anything is sent.
+// before anything is sent. The old confirmed_at goes too, so the stored row
+// reads as pending everywhere (the subscriber list, the CSV export).
 func (d *Database) ReopenSubscriber(id int64) error {
 	_, err := d.db.Exec(
-		`UPDATE subscribers SET confirmed = 0, unsubscribed_at = NULL WHERE id = ? AND unsubscribed_at IS NOT NULL`, id,
+		`UPDATE subscribers SET confirmed = 0, confirmed_at = NULL, unsubscribed_at = NULL WHERE id = ? AND unsubscribed_at IS NOT NULL`, id,
 	)
 	return err
 }

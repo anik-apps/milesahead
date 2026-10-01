@@ -457,3 +457,25 @@ func TestSubscribe_AfterUnsubscribeNeedsConfirmation(t *testing.T) {
 		t.Errorf("state %q, %d emails; want pending and one confirmation", s.State(), mailer.count())
 	}
 }
+
+// A failing database is a 500, not a "not found" page: only a missing row
+// means the card or story does not exist.
+func TestServerError_LookupFailureIsNot404(t *testing.T) {
+	app := setupRealTemplateCardApp(t)
+	createPublishedCard(t, app, "amex-gold", "American Express Gold Card")
+	_, slug := createApprovedArticle(t, app.db, "A Story That Exists", "deal", false)
+	app.db.Close()
+	for _, path := range []string{"/cards/amex-gold", "/article/" + slug} {
+		rec := do(t, app, http.MethodGet, path, "")
+		if rec.Code != http.StatusInternalServerError {
+			t.Errorf("%s with the database down: status %d, want 500", path, rec.Code)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "Something went wrong") || !strings.Contains(body, `<nav class="site-nav"`) {
+			t.Errorf("%s: expected the branded 500 page", path)
+		}
+		if strings.Contains(body, "sql:") || strings.Contains(body, "not found") {
+			t.Errorf("%s: the page should neither show the error nor claim the page is missing", path)
+		}
+	}
+}

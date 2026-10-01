@@ -931,3 +931,42 @@ func TestClaimConfirmationSend_Cooldown(t *testing.T) {
 		t.Error("a released claim should allow an immediate retry")
 	}
 }
+
+// Reopening an unsubscribed address leaves a row that reads as pending
+// everywhere: not confirmed, and no confirmation date left from before.
+func TestReopenSubscriber_ClearsConfirmation(t *testing.T) {
+	d := openTestDB(t)
+	id, err := d.CreateSubscriber(&Subscriber{Email: "r@example.com", Token: "tok-r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ConfirmSubscriber("tok-r"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Unsubscribe("tok-r"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ReopenSubscriber(id); err != nil {
+		t.Fatal(err)
+	}
+	all, err := d.ListAllSubscribers()
+	if err != nil || len(all) != 1 {
+		t.Fatalf("ListAllSubscribers: %v, %d rows", err, len(all))
+	}
+	s := all[0]
+	if s.State() != SubscriberPending || s.Confirmed || s.ConfirmedAt != nil || s.UnsubscribedAt != nil {
+		t.Errorf("after reopening: state %q confirmed=%v confirmed_at=%v unsubscribed_at=%v; want pending with both dates cleared",
+			s.State(), s.Confirmed, s.ConfirmedAt, s.UnsubscribedAt)
+	}
+
+	// An address that has not unsubscribed is left alone.
+	if err := d.ConfirmSubscriber("tok-r"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ReopenSubscriber(id); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := d.GetSubscriberByToken("tok-r"); s.State() != SubscriberActive || s.ConfirmedAt == nil {
+		t.Errorf("reopening an active subscriber changed it: state %q confirmed_at=%v", s.State(), s.ConfirmedAt)
+	}
+}
