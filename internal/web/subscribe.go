@@ -54,9 +54,10 @@ const (
 // None of these pages belongs in a search index.
 func (app *App) renderSubscribePage(w http.ResponseWriter, status int, state, title string, extra map[string]interface{}) {
 	data := map[string]interface{}{
-		"Title":   title,
-		"State":   state,
-		"Noindex": true,
+		"Title":      title,
+		"State":      state,
+		"Noindex":    true,
+		"NavSection": "newsletter",
 	}
 	for k, v := range extra {
 		data[k] = v

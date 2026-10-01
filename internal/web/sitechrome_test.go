@@ -28,7 +28,7 @@ func TestLayout_SkipLinkComesFirst(t *testing.T) {
 }
 
 // The header has flat links (the two-item Cards menu is gone), a search
-// toggle that reports its state, and no Subscribe button yet.
+// toggle that reports its state, and the Newsletter link (newsletter_placements_test.go).
 func TestLayout_HeaderLinks(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
 	body := getPage(t, app, "/")
@@ -43,7 +43,7 @@ func TestLayout_HeaderLinks(t *testing.T) {
 			t.Errorf("header should contain %s", want)
 		}
 	}
-	for _, gone := range []string{"nav-dropdown", "nav-subscribe"} {
+	for _, gone := range []string{"nav-dropdown"} {
 		if strings.Contains(body, gone) {
 			t.Errorf("header should not contain %q", gone)
 		}

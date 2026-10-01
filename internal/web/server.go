@@ -16,6 +16,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/newsletter"
 	"github.com/kumaranik/milesahead/internal/offer"
 	"github.com/kumaranik/milesahead/internal/vote"
 )
@@ -33,8 +34,12 @@ var templateFuncs = template.FuncMap{
 		return template.HTML(s)
 	},
 	"scrollTables": scrollTables,
-	"endedLabel":   endedLabel,
-	"typeBadge":    typeBadge,
+	// newsletterWhen and newsletterDay tell readers when the newsletter
+	// comes: "every Saturday at 8:00 AM ET", "Saturday".
+	"newsletterWhen": func() string { return newsletter.WeeklySendWhen },
+	"newsletterDay":  func() string { return newsletter.WeeklySendDay },
+	"endedLabel":     endedLabel,
+	"typeBadge":      typeBadge,
 	"deref": func(v interface{}) string {
 		if v == nil {
 			return ""

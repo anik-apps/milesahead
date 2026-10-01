@@ -29,9 +29,9 @@
 </head>
 <body>
     <a class="skip-link" href="#main">Skip to content</a>
-    {{/* The header Subscribe button stays off until the newsletter's delivery
-         works (ROADMAP: newsletter sign-up). Set this to true to show it. */}}
-    {{$showSubscribe := false}}
+    {{/* The header Newsletter link. Set this to false to take it out of the
+         header; the footer link and the sign-up box on articles stay. */}}
+    {{$showSubscribe := true}}
     <nav class="site-nav" aria-label="Main">
         <a href="/" class="logo brand-logo" aria-label="MilesAhead home">
             {{template "brand-mark"}}
@@ -53,7 +53,10 @@
                 <svg class="i-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                 <svg class="i-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
             </button>
-            {{if $showSubscribe}}<a href="/subscribe" class="nav-subscribe">Subscribe</a>{{end}}
+            {{if $showSubscribe}}<a href="/subscribe" class="nav-subscribe"{{if eq (print .NavSection) "newsletter"}} aria-current="page"{{end}}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+                <span class="nav-subscribe-label">Newsletter</span>
+            </a>{{end}}
         </div>
     </nav>
     <main id="main" tabindex="-1">
@@ -72,6 +75,7 @@
                     <a href="/cards/">Cards</a>
                     <a href="/compare">Compare</a>
                     <a href="/search">Search</a>
+                    <a href="/subscribe">Newsletter</a>
                     <a href="/feed.xml">RSS feed</a>
                 </nav>
                 {{/* On phones the header has no room for the theme switch; it lives here. */}}
