@@ -56,6 +56,7 @@ func (app *App) setupRoutes() {
 	// Admin routes (behind auth + CSRF middleware).
 	adminMux := http.NewServeMux()
 	adminMux.HandleFunc("GET /admin/dashboard", app.handleAdminDashboard)
+	adminMux.HandleFunc("GET /admin/dashboard/state", app.handleDashboardState)
 	adminMux.HandleFunc("GET /admin/published", app.handleAdminPublished)
 	adminMux.HandleFunc("GET /admin/sources", app.handleAdminSources)
 	adminMux.HandleFunc("GET /admin/subscribers", app.handleAdminSubscribers)
@@ -67,6 +68,7 @@ func (app *App) setupRoutes() {
 	adminMux.HandleFunc("GET /admin/articles/{id}/cards", app.handleAdminArticleCardsGET)
 	adminMux.HandleFunc("POST /admin/articles/{id}/cards", app.handleAdminArticleCardsPOST)
 	adminMux.HandleFunc("POST /admin/articles/{id}/approve", app.handleApproveArticle)
+	adminMux.HandleFunc("POST /admin/articles/{id}/undo-approve", app.handleUndoApprove)
 	adminMux.HandleFunc("POST /admin/articles/{id}/reject", app.handleRejectArticle)
 	adminMux.HandleFunc("POST /admin/articles/{id}/revise", app.handleRequestRevision)
 	adminMux.HandleFunc("POST /admin/articles/{id}/unpublish", app.handleUnpublishArticle)

@@ -108,7 +108,7 @@ func TestAdminPreview_ArticleOrderMatchesPublicPage(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("dashboard status %d", rec.Code)
 	}
-	modal := regexp.MustCompile(`(?s)<div id="preview-` + strconv.FormatInt(id, 10) + `" class="preview-overlay".*?<div class="preview-actions">`).FindString(rec.Body.String())
+	modal := regexp.MustCompile(`(?s)<div id="preview-` + strconv.FormatInt(id, 10) + `" class="preview-overlay".*?<div class="preview-actionbar">`).FindString(rec.Body.String())
 	inOrder(t, modal,
 		`<h1>Preview Order Article</h1>`,
 		`<p class="article-standfirst">Preview summary sentence.</p>`,

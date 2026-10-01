@@ -294,7 +294,7 @@ func main() {
 
 	// Saturday 08:00 ET — send newsletter
 	sched.AddWeeklyJob("newsletter-send",
-		"CRON_TZ=America/New_York 0 0 8 * * 6",
+		newsletter.WeeklySendSchedule,
 		func() {
 			if err := newsletterSvc.SendWeekly(); err != nil {
 				slog.Error("newsletter send failed", "error", err)

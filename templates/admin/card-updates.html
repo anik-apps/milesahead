@@ -1,73 +1,60 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
 {{define "content"}}
-<div class="admin-nav">
-    <a href="/admin/dashboard">Pending</a>
-    <a href="/admin/published">Published</a>
-    <a href="/admin/sources">Sources</a>
-    <a href="/admin/subscribers">Subscribers</a>
-    <a href="/admin/cards" class="active">Cards</a>
-    <a href="/admin/newsletter">Newsletter</a>
-    <a href="/admin/settings">Settings</a>
-    <form method="POST" action="/admin/logout" class="logout-btn">
-        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
-    </form>
-</div>
 <div class="admin-card-updates">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
-        <h1>Pending Updates: {{.Card.Title}}</h1>
-        <div>
-            <a href="/admin/cards/{{.Card.ID}}/edit" class="btn" style="font-size:0.85rem;">Edit Card</a>
-            <a href="/admin/cards" class="btn" style="font-size:0.85rem;">Back to Cards</a>
+    <div class="page-head">
+        <h1>Pending updates <span class="page-count">{{len .Updates}}</span></h1>
+        <div class="row-actions">
+            <a href="/admin/cards/{{.Card.ID}}/edit" class="btn">Edit card</a>
+            <a href="/admin/cards" class="btn">All cards</a>
         </div>
     </div>
+    <p class="dim">For <strong>{{.Card.Title}}</strong>. Each update was drafted from a published article; approving replaces that section's text with the proposed text.</p>
 
-    {{if .Message}}
-    <div class="message success">{{.Message}}</div>
-    {{end}}
+    {{if .Message}}<div class="message success" role="status">{{.Message}}</div>{{end}}
 
     {{if .Updates}}
     {{range .Updates}}
-    <div style="border:1px solid var(--border);border-radius:8px;padding:1.25rem;margin-bottom:1.25rem;background:var(--card-bg);">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem;">
+    <article class="update-card" id="update-{{.ID}}">
+        {{if eq .ID $.MissingUID}}<div class="message error" role="alert">Not applied: this card no longer has a section with the key "{{.SectionKey}}", so approving would lose the proposed text. Add or rename the section in <a href="/admin/cards/{{$.Card.ID}}/edit">the editor</a>, or reject this update.</div>{{end}}
+        <div class="update-head">
             <div>
-                <strong>Section:</strong> {{.SectionKey}}<br>
-                <strong>Source article:</strong> {{.ArticleTitle}}<br>
-                <span class="dim">{{.CreatedAt}}</span>
+                <h2>{{if .SectionTitle}}{{.SectionTitle}}{{else}}Section{{end}} <code class="section-key">{{.SectionKey}}</code>
+                {{if not .SectionExists}}<span class="chip chip-bad">No such section on this card</span>{{end}}</h2>
+                <p class="update-meta">From {{if .ArticleSlug}}<a href="/article/{{.ArticleSlug}}" target="_blank" rel="noopener">{{.ArticleTitle}} &#8599;</a>{{else}}&ldquo;{{.ArticleTitle}}&rdquo;{{end}} &middot; {{adminTime .CreatedAt}}</p>
             </div>
+            {{if not .Diff.TooLong}}<span class="update-meta">{{if .Diff.Same}}No change to the text{{else}}+{{.Diff.Added}} / &minus;{{.Diff.Removed}} words{{end}}</span>{{end}}
         </div>
-        <p style="margin-bottom:0.75rem;"><strong>Summary:</strong> {{.Summary}}</p>
+        <p class="update-summary">{{.Summary}}</p>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
-            <div>
-                <h4 style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.5rem;">Current Content</h4>
-                <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.75rem;font-size:0.85rem;max-height:200px;overflow-y:auto;">
-                    {{.CurrentContent | safeHTML}}
-                </div>
-            </div>
-            <div>
-                <h4 style="font-size:0.85rem;color:var(--text-muted);margin-bottom:0.5rem;">Proposed Content</h4>
-                <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:0.75rem;font-size:0.85rem;max-height:200px;overflow-y:auto;">
-                    {{.ProposedContent | safeHTML}}
-                </div>
-            </div>
-        </div>
+        {{if .Diff.TooLong}}
+        <p class="dim">This section is too long to compare word by word; compare the two versions below.</p>
+        {{else}}
+        <div class="word-diff" aria-label="Changes">{{.Diff.HTML}}</div>
+        <p class="diff-legend"><ins>added</ins> <del>removed</del> &middot; formatting is not shown here</p>
+        {{end}}
 
-        <div style="display:flex;gap:0.5rem;">
+        <details class="update-both"{{if .Diff.TooLong}} open{{end}}>
+            <summary>Current and proposed, as they will look</summary>
+            <div class="update-cols">
+                <div><h3>Current</h3><div class="rendered">{{.CurrentContent | safeHTML}}</div></div>
+                <div><h3>Proposed</h3><div class="rendered">{{.ProposedContent | safeHTML}}</div></div>
+            </div>
+        </details>
+
+        <div class="update-actions">
             <form method="POST" action="/admin/cards/{{$.Card.ID}}/updates/{{.ID}}/approve" class="inline-form">
                 {{template "csrf_field" $}}
-                <button type="submit" class="btn btn-approve" onclick="return confirm('Approve this update? The section content will be replaced.')">Approve</button>
+                <button type="submit" class="btn btn-approve"{{if not .SectionExists}} disabled title="The card has no section with this key"{{end}}>Approve</button>
             </form>
-            <form method="POST" action="/admin/cards/{{$.Card.ID}}/updates/{{.ID}}/reject" class="inline-form">
+            <form method="POST" action="/admin/cards/{{$.Card.ID}}/updates/{{.ID}}/reject" class="inline-form" data-confirm="Reject this update? The proposed text is discarded.">
                 {{template "csrf_field" $}}
-                <button type="submit" class="btn btn-reject" onclick="return confirm('Reject this update?')">Reject</button>
+                <button type="submit" class="btn btn-outline-danger">Reject</button>
             </form>
         </div>
-    </div>
+    </article>
     {{end}}
     {{else}}
-    <div class="empty-state">
-        <p>No pending updates for this card.</p>
-    </div>
+    <p class="q-empty">No pending updates for this card.</p>
     {{end}}
 </div>
 {{end}}

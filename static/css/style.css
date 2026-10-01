@@ -678,6 +678,16 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
     border-color: #14532d;
 }
 
+/* A form field's own error, under the field. */
+.field-error {
+    color: #dc2626;
+    font-size: 0.85rem;
+    margin: 0.3rem 0 0;
+}
+[data-theme="dark"] .field-error {
+    color: #f87171;
+}
+
 /* Empty State */
 .empty-state {
     text-align: center;
@@ -755,6 +765,20 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
     font-size: 0.9rem;
 }
 
+.login-form .login-note {
+    background: var(--accent-subtle);
+    color: var(--text);
+    padding: 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.draft-restored {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
 [data-theme="dark"] .login-form .error {
     background: #3b1114;
     color: #f87171;
@@ -808,20 +832,32 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
     display: inline;
 }
 
+/* A plain .btn is a neutral, bordered button readable in both themes; the
+   coloured variants below fill it. Without the default, buttons with only
+   .btn (or an unstyled modifier like .btn-edit) were white text on white. */
 .btn {
+    display: inline-block;
     padding: 0.4rem 0.8rem;
-    border: none;
+    border: 1px solid var(--border);
     border-radius: 6px;
     font-size: 0.85rem;
     font-weight: 600;
+    line-height: 1.3;
     cursor: pointer;
-    color: #ffffff;
+    background: var(--card-bg);
+    color: var(--text);
+    text-decoration: none;
     transition: opacity 0.2s;
 }
 
-.btn:hover { opacity: 0.85; }
+.btn:hover { opacity: 0.85; text-decoration: none; }
 
+.btn-primary, .btn-approve, .btn-reject, .btn-revise, .btn-unpublish, .btn-warn, .btn-danger {
+    color: #ffffff;
+    border-color: transparent;
+}
 .btn-primary { background: var(--accent); }
+[data-theme="dark"] .btn-primary { color: #0d1117; }
 .btn-approve { background: #16a34a; }
 .btn-reject { background: #dc2626; }
 .btn-revise { background: #f59e0b; }
@@ -850,12 +886,37 @@ nav.home-filters { /* a <nav>, so undo the sticky header styles */
     font-weight: 600;
     text-transform: uppercase;
     color: #ffffff;
+    background: #64748b;
 }
 
 .badge-deal { background: #c81e3a; } /* white text 5.7:1 */
 .badge-roundup { background: #4ecdc4; }
 .badge-alert { background: #f9a826; color: #1a1a2e; }
 .badge-summary { background: #2563eb; }
+
+/* .badge defaults to slate, so one with no colour of its own (a card's
+   category, a type the site does not style) is never white text on nothing.
+   Newsletter statuses get their own. */
+.badge-draft, .badge-hold, .badge-skipped {
+    background: var(--border);
+    color: var(--text);
+}
+.badge-auto_approved, .badge-approved {
+    background: #dcfce7;
+    color: #166534;
+}
+.badge-sent {
+    background: #dbeafe;
+    color: #1e40af;
+}
+[data-theme="dark"] .badge-auto_approved, [data-theme="dark"] .badge-approved {
+    background: #0f2e1a;
+    color: #7ee2a8;
+}
+[data-theme="dark"] .badge-sent {
+    background: #172a45;
+    color: #a5cdff;
+}
 
 /* Admin Tables */
 table {
@@ -1366,34 +1427,67 @@ tr:hover {
     font-size: 1rem;
 }
 
-/* Admin Navigation */
-.admin-nav {
-    display: flex;
-    gap: 1rem;
-    padding: 0.75rem 0;
-    margin-bottom: 1.5rem;
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
+/* Admin newsletter page: theme colours only, so it reads in both themes. */
+.nl-section { margin-bottom: 2rem; }
+.nl-section h2 { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
+.nl-when { font-weight: 600; margin-bottom: 0.25rem; }
+.nl-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.9rem; }
+.nl-help { margin-top: 0.5rem; }
+.nl-candidates { display: flex; flex-direction: column; gap: 0.6rem; }
+.nl-candidate {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 1rem;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
 }
-.admin-nav a {
-    color: var(--text-muted);
+.nl-candidate.featured { border-color: var(--accent); background: var(--accent-subtle); }
+.nl-candidate .dim, .nl-candidate .badge { margin-left: 0.4rem; }
+.nl-submit { margin-top: 0.9rem; }
+.nl-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+.nl-current { padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
+.admin-select {
+    padding: 0.45rem 0.6rem; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 0.9rem;
+}
+.admin-newsletter .preview-note {
+    margin: 0 0 0.75rem; padding: 0.6rem 0.9rem; border-left: 4px solid #b45309;
+    background: #fef3c7; color: #78350f; border-radius: 4px;
+}
+[data-theme="dark"] .admin-newsletter .preview-note { background: #2a2110; color: #fde68a; }
+/* The email is designed on white, so its preview stays on white. */
+.nl-preview { width: 100%; min-height: 600px; border: 1px solid var(--border); border-radius: 8px; background: #ffffff; }
+.nl-manual summary { cursor: pointer; font-weight: 600; color: var(--text-muted); }
+.nl-manual p { margin: 0.5rem 0 0.75rem; }
+
+/* Sources: a source's edit form is a row under it, shown when targeted
+   (#edit-N), so it needs no script. */
+.source-edit-row:not(:target) { display: none; }
+.source-edit-row > td { background: var(--card-bg); }
+.source-edit-row .source-form { margin: 0; }
+.row-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
+.health-cell { white-space: nowrap; }
+.add-source { margin-top: 2rem; }
+.add-source > summary { cursor: pointer; font-weight: 650; font-size: 1.05rem; margin-bottom: 0.75rem; }
+.source-stale > td { background: #fef2f2; }
+[data-theme="dark"] .source-stale > td { background: #3b1114; }
+.health-flag { color: #b91c1c; font-weight: 600; }
+[data-theme="dark"] .health-flag { color: #f87171; }
+
+/* An admin page's title with its main action on the right. */
+.page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+}
+
+.logout-link {
+    background: none;
+    border: none;
+    color: #dc2626;
+    cursor: pointer;
     font-weight: 500;
     font-size: 0.9rem;
-    padding: 0.3rem 0.6rem;
-    border-radius: 4px;
-}
-.admin-nav a:hover {
-    color: var(--accent);
-    background: var(--card-bg);
-    text-decoration: none;
-}
-.admin-nav a.active {
-    color: var(--accent);
-    font-weight: 600;
-}
-.admin-nav .logout-btn {
-    margin-left: auto;
-    color: #dc2626;
 }
 
 /* Back Link */
@@ -1682,8 +1776,9 @@ tr:hover {
     color: #fbbf24;
 }
 
-/* Issue 12: Sources URLs truncation */
-.admin-table td a[href] {
+/* Issue 12: Sources URLs truncation. Only the URL cells: matching every
+   link in an admin table also cut article titles to ~35 characters. */
+.admin-table .url-cell a[href] {
     display: inline-block;
     max-width: 300px;
     overflow: hidden;
@@ -1699,7 +1794,7 @@ tr:hover {
     overflow-wrap: break-word;
 }
 
-.admin-table td:first-child a {
+.admin-table td:first-child a:not(.btn) {
     display: block;
     line-height: 1.4;
 }
@@ -1708,7 +1803,7 @@ tr:hover {
     .admin-table td:first-child {
         max-width: 250px;
     }
-    .admin-table td a[href] {
+    .admin-table .url-cell a[href] {
         max-width: 180px;
     }
 }
@@ -1733,7 +1828,7 @@ tr:hover {
     }
 
     /* Issue 12: Sources table URL cells - mobile override */
-    .admin-table td a[href] {
+    .admin-table .url-cell a[href] {
         max-width: 120px;
     }
 
@@ -1759,18 +1854,6 @@ tr:hover {
         padding: 0.25rem 0;
     }
 
-    /* Issue 9 + 14: Admin nav horizontal scroll with fade hint */
-    .admin-nav {
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        white-space: nowrap;
-        -webkit-overflow-scrolling: touch;
-        padding-bottom: 8px;
-        position: relative;
-        mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        padding-right: 2rem;
-    }
 }
 
 /* Issue 4: Dashboard table at tablet */

@@ -1,135 +1,113 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
 {{define "content"}}
-<div class="admin-nav">
-    <a href="/admin/dashboard">Pending</a>
-    <a href="/admin/published">Published</a>
-    <a href="/admin/sources">Sources</a>
-    <a href="/admin/subscribers">Subscribers</a>
-    <a href="/admin/cards">Cards</a>
-    <a href="/admin/newsletter" class="active">Newsletter</a>
-    <a href="/admin/settings">Settings</a>
-    <form method="POST" action="/admin/logout" class="logout-btn">
-        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
-    </form>
-</div>
 <div class="admin-newsletter">
     <h1>Newsletter</h1>
 
     {{if .Success}}
-    <div class="alert alert-success">{{.Success}}</div>
+    <div class="message success" role="status">{{.Success}}</div>
     {{end}}
     {{if .Error}}
-    <div class="alert alert-error">{{.Error}}</div>
+    <div class="message error" role="alert">{{.Error}}</div>
     {{end}}
 
-    <!-- Current Week Status -->
-    {{if .CurrentNewsletter}}
-    <section class="newsletter-status-section" style="margin-bottom:2rem;">
-        <h2>Current Week
-            <span class="badge badge-{{.CurrentNewsletter.Status}}" style="margin-left:0.5rem;font-size:0.8rem;">{{.CurrentNewsletter.Status}}</span>
-        </h2>
-        <p style="color:#999;font-size:0.9rem;">
-            Date: {{.CurrentNewsletter.Date}} &middot;
-            Articles: {{.CurrentNewsletter.ArticleCount}}
-        </p>
+    {{with .CurrentNewsletter}}
+    <section class="nl-section">
+        <h2>This week's issue <span class="badge badge-{{.Status}}">{{statusLabel .Status}}</span></h2>
+        <p class="nl-when">{{$.StatusNote}}</p>
+        <p class="dim">Issue date {{.Date}} &middot; {{.ArticleCount}} articles</p>
 
-        <!-- Status Actions -->
-        <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap;">
-            {{if ne .CurrentNewsletter.Status "sent"}}
-            <form method="POST" action="/admin/newsletter/status" style="display:inline;">
+        {{if and (ne .Status "sent") (not $.IssuePassed)}}
+        <div class="nl-actions">
+            {{if or (eq .Status "draft") (eq .Status "hold") (eq .Status "skipped")}}
+            <form method="POST" action="/admin/newsletter/status" class="inline-form">
                 {{template "csrf_field" $}}
-                <input type="hidden" name="newsletter_id" value="{{.CurrentNewsletter.ID}}">
+                <input type="hidden" name="newsletter_id" value="{{.ID}}">
                 <input type="hidden" name="status" value="approved">
-                <button type="submit" class="btn btn-primary" style="background-color:#22c55e;border-color:#22c55e;">Approve</button>
+                <button type="submit" class="btn btn-approve">Approve</button>
             </form>
-            <form method="POST" action="/admin/newsletter/status" style="display:inline;">
+            {{end}}
+            {{if ne .Status "hold"}}
+            <form method="POST" action="/admin/newsletter/status" class="inline-form">
                 {{template "csrf_field" $}}
-                <input type="hidden" name="newsletter_id" value="{{.CurrentNewsletter.ID}}">
+                <input type="hidden" name="newsletter_id" value="{{.ID}}">
                 <input type="hidden" name="status" value="hold">
-                <button type="submit" class="btn" style="background-color:#eab308;border-color:#eab308;color:#1a1a2e;">Hold</button>
+                <button type="submit" class="btn">Hold</button>
             </form>
-            <form method="POST" action="/admin/newsletter/status" style="display:inline;">
+            {{end}}
+            {{if ne .Status "skipped"}}
+            <form method="POST" action="/admin/newsletter/status" class="inline-form" onsubmit="return confirm('Skip this week\'s issue? It will not be sent.')">
                 {{template "csrf_field" $}}
-                <input type="hidden" name="newsletter_id" value="{{.CurrentNewsletter.ID}}">
+                <input type="hidden" name="newsletter_id" value="{{.ID}}">
                 <input type="hidden" name="status" value="skipped">
-                <button type="submit" class="btn" style="background-color:#6b7280;border-color:#6b7280;">Skip</button>
+                <button type="submit" class="btn">Skip this week</button>
             </form>
             {{end}}
         </div>
+        <p class="dim nl-help">{{if or (eq .Status "draft") (eq .Status "hold") (eq .Status "skipped")}}Approve: it goes out on schedule. {{end}}{{if ne .Status "hold"}}Hold: kept, but not sent until approved. {{end}}{{if ne .Status "skipped"}}Skip: not sent this week.{{end}}</p>
+        {{end}}
     </section>
     {{end}}
 
-    <!-- Scout's Pick Candidates -->
     {{if .Candidates}}
-    <section class="newsletter-candidates" style="margin-bottom:2rem;">
-        <h2>Scout's Pick Candidates</h2>
+    <section class="nl-section">
+        <h2>{{if .PersonaName}}{{.PersonaName}}{{else}}Scout{{end}}'s Pick</h2>
         <form method="POST" action="/admin/newsletter/feature">
             {{template "csrf_field" $}}
             <input type="hidden" name="newsletter_id" value="{{.CurrentNewsletter.ID}}">
-            <div style="display:flex;flex-direction:column;gap:0.75rem;">
+            <div class="nl-candidates">
                 {{range .Candidates}}
-                <label style="display:flex;align-items:center;gap:0.75rem;padding:0.75rem 1rem;background:{{if .Featured}}#22223a;border:1px solid #c9a84c{{else}}#1a1a2e;border:1px solid #2a2a4a{{end}};border-radius:6px;cursor:pointer;">
+                <label class="nl-candidate{{if .Featured}} featured{{end}}">
                     <input type="radio" name="article_id" value="{{.ArticleID}}" {{if .Featured}}checked{{end}}>
                     <div>
-                        <strong style="color:#e0e0e0;">{{.ArticleTitle}}</strong>
-                        <span style="color:#8b8ba0;font-size:0.85rem;margin-left:0.5rem;">Rank #{{.Rank}}</span>
-                        {{if .Featured}}<span class="badge badge-approved" style="margin-left:0.5rem;font-size:0.75rem;">Current Pick</span>{{end}}
-                        {{if .Ended}}<span class="badge" style="margin-left:0.5rem;font-size:0.75rem;background:#c9d1d9;color:#0d1117;">Ended &mdash; left out when sent</span>{{end}}
+                        <strong>{{.ArticleTitle}}</strong>
+                        <span class="dim">Rank #{{.Rank}}</span>
+                        {{if .Featured}}<span class="badge badge-approved">Current pick</span>{{end}}
+                        {{if .Ended}}<span class="badge badge-hold">Ended &mdash; left out when sent</span>{{end}}
                     </div>
                 </label>
                 {{end}}
             </div>
-            <button type="submit" class="btn btn-primary" style="margin-top:1rem;">Update Scout's Pick</button>
+            <button type="submit" class="btn btn-primary nl-submit">Update pick</button>
         </form>
     </section>
     {{end}}
 
-    <!-- Card of the Week -->
     {{if .CurrentNewsletter}}
-    <section class="newsletter-card-of-week" style="margin-bottom:2rem;">
+    <section class="nl-section">
         <h2>Card of the Week</h2>
-        <form method="POST" action="/admin/newsletter/card-override">
+        <form method="POST" action="/admin/newsletter/card-override" class="nl-row">
             {{template "csrf_field" $}}
             <input type="hidden" name="newsletter_id" value="{{.CurrentNewsletter.ID}}">
-            <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
-                {{if .CurrentCard}}
-                <div style="padding:0.5rem 1rem;background:#22223a;border:1px solid #c9a84c;border-radius:6px;">
-                    <span style="color:#c9a84c;font-size:0.85rem;">Current:</span>
-                    <strong style="color:#e0e0e0;">{{.CurrentCard.Title}}</strong>
-                </div>
-                {{else}}
-                <span style="color:#8b8ba0;">No card selected</span>
+            {{if .CurrentCard}}
+            <span class="nl-current">Current: <strong>{{.CurrentCard.Title}}</strong></span>
+            {{else}}
+            <span class="dim">No card selected</span>
+            {{end}}
+            <select name="card_id" class="admin-select" aria-label="Card of the Week">
+                <option value="">Choose a card&hellip;</option>
+                {{range .AllCards}}
+                <option value="{{.ID}}" {{if and $.CurrentCard (eq .ID $.CurrentCard.ID)}}selected{{end}}>{{.Title}}</option>
                 {{end}}
-                <select name="card_id" style="padding:0.5rem;background:#1a1a2e;color:#e0e0e0;border:1px solid #2a2a4a;border-radius:4px;">
-                    <option value="">-- Select Override --</option>
-                    {{range .AllCards}}
-                    <option value="{{.ID}}" {{if and $.CurrentCard (eq .ID $.CurrentCard.ID)}}selected{{end}}>{{.Title}}</option>
-                    {{end}}
-                </select>
-                <button type="submit" class="btn btn-primary">Override Card</button>
-            </div>
+            </select>
+            <button type="submit" class="btn btn-primary">Use this card</button>
         </form>
     </section>
     {{end}}
 
-    <!-- Preview -->
-    <section class="newsletter-preview" style="margin-bottom:2rem;">
+    <section class="nl-section">
         <h2>Preview</h2>
         {{if .NoContent}}
         <p>No articles to include</p>
         {{else}}
         {{if .EndedNote}}
-        <p class="preview-note" role="note" style="margin:0 0 0.75rem;padding:0.6rem 0.9rem;border-left:4px solid #b45309;background:#2a2110;color:#fde68a;border-radius:4px;">{{.EndedNote}}</p>
+        <p class="preview-note" role="note">{{.EndedNote}}</p>
         {{end}}
-        <div class="preview-panel">
-            <iframe srcdoc="{{.PreviewHTML}}" sandbox="" style="width:100%;min-height:600px;border:1px solid #2a2a4a;border-radius:6px;background:#0f0f1a;"></iframe>
-        </div>
+        <iframe class="nl-preview" title="Newsletter preview" srcdoc="{{.PreviewHTML}}" sandbox=""></iframe>
         {{end}}
     </section>
 
-    <!-- Past Newsletters -->
-    <section class="newsletter-history">
-        <h2>Past Newsletters</h2>
+    <section class="nl-section" id="history">
+        <h2>Past newsletters</h2>
         {{if .History}}
         <table class="admin-table">
             <thead>
@@ -137,16 +115,16 @@
                     <th>Date</th>
                     <th>Status</th>
                     <th>Articles</th>
-                    <th>Sent At</th>
+                    <th>Sent at</th>
                 </tr>
             </thead>
             <tbody>
                 {{range .History}}
                 <tr>
                     <td>{{.Date}}</td>
-                    <td><span class="badge badge-{{.Status}}">{{.Status}}</span></td>
+                    <td><span class="badge badge-{{.Status}}">{{statusLabel .Status}}</span></td>
                     <td>{{.ArticleCount}}</td>
-                    <td>{{if .SentAt}}{{.SentAt.Format "2006-01-02 15:04"}}{{else}}&mdash;{{end}}</td>
+                    <td>{{if .SentAt}}{{.SentAt.Format "Jan 2, 2006 3:04 PM"}}{{else}}&mdash;{{end}}</td>
                 </tr>
                 {{end}}
             </tbody>
@@ -155,5 +133,14 @@
         <p>No newsletters yet.</p>
         {{end}}
     </section>
+
+    <details class="nl-section nl-manual">
+        <summary>Manual send</summary>
+        <p class="dim">Sends today's daily issue to {{.Confirmed}} confirmed subscribers right away. It never sends the weekly issue, which goes out on its schedule.</p>
+        <form method="POST" action="/admin/newsletter/send" onsubmit="return confirm('Send today\'s daily issue to every confirmed subscriber now?')">
+            {{template "csrf_field" $}}
+            <button type="submit" class="btn btn-danger">Send today's daily issue now</button>
+        </form>
+    </details>
 </div>
 {{end}}

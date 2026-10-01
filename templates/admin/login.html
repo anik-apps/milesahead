@@ -1,14 +1,18 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
 {{define "content"}}
 <div class="login-form">
     <h1>Admin Login</h1>
+    {{if .Expired}}
+    <p class="login-note" role="status">Your session expired, so that last action was not saved. Log in to go back to the page; text you were typing is kept in this browser and filled back in.</p>
+    {{end}}
     {{if .Error}}
     <p class="error">{{.Error}}</p>
     {{end}}
     <form method="POST" action="/admin/login">
         {{template "csrf_field" .}}
+        {{if .Next}}<input type="hidden" name="next" value="{{.Next}}">{{end}}
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" required autofocus>
+        <input type="password" id="password" name="password" autocomplete="current-password" required autofocus>
         <button type="submit">Login</button>
     </form>
 </div>

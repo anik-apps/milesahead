@@ -94,6 +94,10 @@ type App struct {
 	infographicHeights map[string]int
 	// now is the clock offers are judged against; tests replace it.
 	now func() time.Time
+	// cardDetectDelay is how long after an approval card update detection
+	// starts: the approval's undo window, so an approval undone in time
+	// drafts no card updates. Tests shorten it.
+	cardDetectDelay time.Duration
 	// mailer sends subscription confirmations; nil means none are sent.
 	mailer ConfirmationMailer
 	// subscribeLimiter caps sign-up attempts per IP address.
@@ -135,6 +139,7 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 		startedAt:      time.Now(),
 		now:            time.Now,
 
+		cardDetectDelay:  undoWindow,
 		subscribeLimiter: newRateLimiter(subscribeMaxAttempts, subscribeWindow),
 	}
 
@@ -162,6 +167,7 @@ func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *artic
 		startedAt:      time.Now(),
 		now:            time.Now,
 
+		cardDetectDelay:  undoWindow,
 		subscribeLimiter: newRateLimiter(subscribeMaxAttempts, subscribeWindow),
 	}
 
@@ -186,7 +192,9 @@ func (app *App) loadTemplates(dir string) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && filepath.Ext(path) == ".html" && filepath.Base(path) != "layout.html" {
+		// Files named _*.html are partials shared by the pages beside them
+		// (see adminPartials), not pages.
+		if !info.IsDir() && filepath.Ext(path) == ".html" && filepath.Base(path) != "layout.html" && !strings.HasPrefix(filepath.Base(path), "_") {
 			// Skip email templates — they are rendered by the newsletter service, not the web server.
 			if strings.Contains(path, string(filepath.Separator)+"email"+string(filepath.Separator)) {
 				return nil
@@ -209,16 +217,28 @@ func (app *App) loadTemplates(dir string) error {
 	staticDir := filepath.Join(filepath.Dir(dir), "static")
 	css := versionedAsset(staticDir, stylesheetPath)
 	js := versionedAsset(staticDir, scriptPath)
+	adminCSS := versionedAsset(staticDir, adminStylesheetPath)
+	adminJS := versionedAsset(staticDir, adminScriptPath)
 	appFuncs := template.FuncMap{
-		"stylesheetURL": func() string { return css },
-		"scriptURL":     func() string { return js },
+		"stylesheetURL":      func() string { return css },
+		"scriptURL":          func() string { return js },
+		"adminStylesheetURL": func() string { return adminCSS },
+		"adminScriptURL":     func() string { return adminJS },
 	}
 
 	// Parse each page template separately with the layout so that each gets
 	// its own "content" block definition without conflicts.
+	// Admin pages also get the admin partials (navigation, shell).
+	adminDir := filepath.Join(dir, "admin")
+	adminPartials, _ := filepath.Glob(filepath.Join(adminDir, "_*.html"))
 	for _, pf := range pageFiles {
 		name := filepath.Base(pf)
-		t, err := template.New(name).Funcs(templateFuncs).Funcs(appFuncs).ParseFiles(layoutFile, pf)
+		files := []string{layoutFile}
+		if filepath.Dir(pf) == adminDir {
+			files = append(files, adminPartials...)
+		}
+		files = append(files, pf)
+		t, err := template.New(name).Funcs(templateFuncs).Funcs(appFuncs).ParseFiles(files...)
 		if err != nil {
 			return fmt.Errorf("parsing template %s: %w", name, err)
 		}
@@ -232,6 +252,12 @@ func (app *App) loadTemplates(dir string) error {
 const (
 	stylesheetPath = "/static/css/style.css"
 	scriptPath     = "/static/js/main.js"
+)
+
+// The admin pages' own stylesheet and script, versioned like the site's.
+const (
+	adminStylesheetPath = "/static/css/admin.css"
+	adminScriptPath     = "/static/js/admin.js"
 )
 
 // versionedAsset returns the URL of a file under /static/ with a short hash

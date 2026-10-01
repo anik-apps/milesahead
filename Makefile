@@ -1,4 +1,4 @@
-.PHONY: build test run clean lint
+.PHONY: build test test-js run clean lint
 
 build:
 	go build -o milesahead ./cmd/milesahead
@@ -14,3 +14,7 @@ clean:
 
 lint:
 	go vet ./...
+
+# The admin pages' browser-side logic (static/js/admin.js); needs Node 18+.
+test-js:
+	node --test tests/js/*.test.mjs

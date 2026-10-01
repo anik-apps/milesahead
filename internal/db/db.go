@@ -285,6 +285,24 @@ func (d *Database) UpdateArticleStatus(id int64, newStatus string) error {
 // already moved the article to pending, publishing a rewrite nobody reviewed.
 // Returns ErrStatusChanged if the status moved in the meantime.
 func (d *Database) TransitionArticleStatus(id int64, from, newStatus string) error {
+	return d.transitionArticleStatus(id, from, newStatus, 0)
+}
+
+// TransitionArticleStatusAtRevision is TransitionArticleStatus that also
+// requires the article to still be at revision: the one the admin read
+// before deciding. A rewrite that lands between the admin opening the article
+// and clicking Approve bumps the revision, so the decision cannot apply to
+// text nobody reviewed. Returns ErrStatusChanged if either moved.
+func (d *Database) TransitionArticleStatusAtRevision(id int64, from, newStatus string, revision int) error {
+	if revision <= 0 {
+		return fmt.Errorf("invalid revision %d", revision)
+	}
+	return d.transitionArticleStatus(id, from, newStatus, revision)
+}
+
+// transitionArticleStatus is the conditional write behind both; revision 0
+// leaves the revision unchecked.
+func (d *Database) transitionArticleStatus(id int64, from, newStatus string, revision int) error {
 	valid := false
 	for _, s := range validTransitions[from] {
 		if s == newStatus {
@@ -298,11 +316,21 @@ func (d *Database) TransitionArticleStatus(id int64, from, newStatus string) err
 
 	query := `UPDATE generated_articles SET status = ?, updated_at = CURRENT_TIMESTAMP`
 	args := []interface{}{newStatus}
-	if newStatus == StatusApproved {
+	switch {
+	case newStatus == StatusApproved && from == StatusUnpublished:
+		// Republishing an article that was taken down puts the same text
+		// back: it keeps its original publish date rather than jumping to
+		// the top of the feed (and into this week's newsletter) as new.
+		query += `, published_at = COALESCE(published_at, CURRENT_TIMESTAMP)`
+	case newStatus == StatusApproved:
 		query += `, published_at = CURRENT_TIMESTAMP`
 	}
 	query += ` WHERE id = ? AND status = ?`
 	args = append(args, id, from)
+	if revision > 0 {
+		query += ` AND revision_number = ?`
+		args = append(args, revision)
+	}
 
 	res, err := d.db.Exec(query, args...)
 	if err != nil {
@@ -313,10 +341,18 @@ func (d *Database) TransitionArticleStatus(id int64, from, newStatus string) err
 		return err
 	}
 	if n == 0 {
+		if revision > 0 {
+			return fmt.Errorf("%w: expected %q at revision %d", ErrStatusChanged, from, revision)
+		}
 		return fmt.Errorf("%w: expected %q", ErrStatusChanged, from)
 	}
 	return nil
 }
+
+// ErrUndoExpired means an approval can no longer be undone: there is no
+// recorded approval, its window has passed, or the article has changed since
+// (no longer approved, or at another revision).
+var ErrUndoExpired = errors.New("approval can no longer be undone")
 
 func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(

@@ -20,6 +20,10 @@ func (app *App) renderStatus(w http.ResponseWriter, status int, name string, dat
 		return
 	}
 	if m, ok := data.(map[string]interface{}); ok {
+		// Signed-in admin pages get the admin bar's tab and counts.
+		if t.Lookup("admin_layout") != nil && name != "login.html" {
+			m["Nav"] = app.adminNavFor(name, m)
+		}
 		// Pages without their own image (home, compare, search) still get a
 		// branded preview when shared. Crawlers need an absolute URL.
 		if img, _ := m["OGImage"].(string); img == "" {

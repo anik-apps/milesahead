@@ -56,6 +56,14 @@ var templateDir = "templates/email"
 // weeklySubject opens every weekly issue's subject.
 const weeklySubject = "MilesAhead Weekly"
 
+// WeeklySendSchedule is when the scheduler runs SendWeekly: Saturdays at
+// 08:00 New York time. WeeklySendLabel says the same for the admin page, which
+// tells the admin when the current issue goes out.
+const (
+	WeeklySendSchedule = "CRON_TZ=America/New_York 0 0 8 * * 6"
+	WeeklySendLabel    = "8:00 AM ET"
+)
+
 // Service handles newsletter generation and delivery.
 type Service struct {
 	db       *db.Database
