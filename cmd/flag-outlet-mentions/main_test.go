@@ -34,7 +34,8 @@ func seed(t *testing.T) string {
 			ScoutsTake: "Some Travel Blog runs the math slightly differently, but book it.",
 			Links:      `[{"Text":"DoC post","URL":"https://www.doctorofcredit.com/x"}]`},
 		{Title: "Capital One BA Bonus", Slug: "d", Status: db.StatusRejected,
-			Content: `<p>Source 1 notes this offer is rare.</p>`},
+			Content: `<p>Source 1 notes this offer is rare. Terms: <a href="https://www.capitalone.com/x">https://www.capitalone.com/x</a>.</p>` +
+				`<p>More at https://milestomemories.com/c1-ba and <a href="https://milestomemories.com/x">https://milestomemories.com/x</a>.</p>`},
 		{Title: "Chase Raises the Sapphire Bonus", Slug: "c", Status: db.StatusDraft,
 			Content: `<p>Chase, American and Hyatt all said so. Sources say more is coming.</p>`},
 	}
@@ -76,11 +77,15 @@ func TestRun_ListsEveryMention(t *testing.T) {
 		"links [Doctor of Credit]: DoC post",
 		`id=3 status=rejected title="Capital One BA Bonus"`,
 		"content [numbered reference]: Source 1",
+		"content [Miles to Memories]: More at https://milestomemories.com/c1-ba and https://milestomemories.com/x.",
 		"3 article(s) name, link to or number a news site: 1 approved, 1 pending, 1 rejected.",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("output missing %q:\n%s", want, got)
 		}
+	}
+	if strings.Contains(got, "capitalone.com") {
+		t.Errorf("an official URL was listed:\n%s", got)
 	}
 	if strings.Contains(got, "id=4 ") {
 		t.Errorf("the clean article was listed:\n%s", got)

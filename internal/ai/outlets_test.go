@@ -110,6 +110,59 @@ func TestOutletMatcher_TheIsOptional(t *testing.T) {
 	}
 }
 
+// TestOutletMatcher_FindsOutletURLsInVisibleText: an outlet that appears only
+// as a written-out URL is a mention, in the body and as a link's own text.
+func TestOutletMatcher_FindsOutletURLsInVisibleText(t *testing.T) {
+	m := NewOutletMatcher(tableOutlets())
+	cases := map[string]string{
+		"<p>Details at https://milestomemories.com/southwest-companion-pass/.</p>":                   "Miles to Memories",
+		"<p>See www.doctorofcredit.com for the terms.</p>":                                           "Doctor of Credit",
+		"<li>Source: http://blog.sometravelblog.net/a?b=1</li>":                                      "Some Travel Blog",
+		`<p>Read <a href="https://onemileatatime.com/x">https://onemileatatime.com/x</a> first.</p>`: "One Mile at a Time",
+		`<p>Read <a href="https://www.hilton.com/x">www.loyaltylobby.com/2026/x</a> first.</p>`:      "Loyalty Lobby",
+	}
+	for in, outlet := range cases {
+		got := m.Find(in)
+		if len(got) != 1 || got[0].Outlet != outlet || !strings.Contains(got[0].Text, ".") {
+			t.Errorf("Find(%q) = %+v; want one URL mention of %q", in, got, outlet)
+		}
+	}
+	got := m.Find("<p>Details at https://milestomemories.com/x. Book soon.</p>")
+	if len(got) != 1 || got[0].Text != "https://milestomemories.com/x" || got[0].Sentence != "Details at https://milestomemories.com/x." {
+		t.Errorf("got %+v; want the URL without its full stop, in its sentence", got)
+	}
+	// A URL on an official site is not a mention, and a name inside a URL
+	// is not matched as a name.
+	for _, in := range []string{
+		"<p>Book at https://www.united.com/en/us/fly/travel/the-points-guy-promo today.</p>",
+		"<p>See https://www.hyatt.com/promo/tpg-offer</p>",
+	} {
+		if got := m.Find(in); len(got) != 0 {
+			t.Errorf("Find(%q) = %+v, want none", in, got)
+		}
+	}
+}
+
+// TestPipeline_Process_OutletURLTriggersRevision: an outlet's address written
+// out in the body is raised like its name.
+func TestPipeline_Process_OutletURLTriggersRevision(t *testing.T) {
+	reply := strings.Replace(cleanOutletReply, "<p>American confirmed that the bonus is rare.</p>",
+		"<p>American confirmed it (https://milestomemories.com/aa-bonus).</p>", 1)
+	gen := &recordingClient{reply: reply}
+	critic := &recordingClient{reply: cleanVerdict}
+	p := NewPipeline(NewGenerator(gen, "gen", "", nil), NewCritic(critic, "critic"), 80)
+	res, err := p.Process("deal", numberedRefSources())
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if len(gen.prompts) != 2 || !strings.Contains(gen.prompts[1], `Names the news site "Miles to Memories"`) {
+		t.Errorf("the URL was not sent to the auto-revision (%d generator calls)", len(gen.prompts))
+	}
+	if res.Verification.AttributionCheck {
+		t.Error("attribution check passed with an outlet URL in the body")
+	}
+}
+
 func TestOutletMatcher_NoFalsePositives(t *testing.T) {
 	m := NewOutletMatcher(tableOutlets())
 	legit := []string{
@@ -124,7 +177,8 @@ func TestOutletMatcher_NoFalsePositives(t *testing.T) {
 		"Upload the doc to the fm portal: in lower case both are ordinary words.",
 		"The credit card doctor is in.",
 		`<a href="https://thepointsguy.com/news/x">Hilton's sale page</a>`,
-		"Book at https://www.onemileatatime.com/deal today.",
+		"Book at https://www.hilton.com/en/offers/ or www.united.com today.",
+		`<a href="https://www.chase.com/sapphire">https://www.chase.com/sapphire</a>`,
 		"Loyalty programs lobby for changes.",
 		// Outlet names that are also ordinary phrases, in ordinary lower case.
 		"You build a balance one mile at a time.",

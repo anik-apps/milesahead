@@ -22,8 +22,9 @@ import (
 //
 // Names match as whole words, ignoring case, except that a multi-word name
 // written all in lower case is taken to be the ordinary phrase ("one mile at a
-// time"). Text inside link targets and written-out URLs is not prose and is
-// not checked; links to an outlet's site are handled separately.
+// time"). A written-out URL on an outlet's site is a mention too; names are
+// not matched inside URLs, and link targets, which readers do not see, are
+// handled separately (StripOutletLinks).
 //
 // Two narrow exceptions exist (the outlet is itself the subject of the story,
 // or an unconfirmed report only that outlet carries). They cannot be judged
@@ -270,29 +271,50 @@ var (
 
 // VisibleText is what a reader sees of an HTML fragment: tags removed (block
 // tags become line breaks), entities decoded, and written-out URLs dropped,
-// since a link target is not prose. The text of a link is kept.
+// since an address is not prose. The text of a link is kept.
 func VisibleText(s string) string {
+	return spacesRE.ReplaceAllString(bareURLRE.ReplaceAllString(visibleWithURLs(s), " "), " ")
+}
+
+// visibleWithURLs is VisibleText with written-out URLs kept.
+func visibleWithURLs(s string) string {
 	s = blockTagRE.ReplaceAllString(s, "\n")
 	s = anyTagRE.ReplaceAllString(s, "")
 	s = html.UnescapeString(s)
-	s = bareURLRE.ReplaceAllString(s, " ")
 	return spacesRE.ReplaceAllString(s, " ")
 }
 
-// Find returns every outlet mention in the visible text of s, in order.
+// Find returns every outlet mention in the visible text of s, in order: an
+// outlet's name, abbreviation or domain, and a written-out URL on its site
+// ("https://milestomemories.com/...", "www.doctorofcredit.com", or a link
+// whose text is its own address). Link targets are not visible and are not
+// checked here; see StripOutletLinks.
 func (m *OutletMatcher) Find(s string) []OutletMention {
 	if m == nil || strings.TrimSpace(s) == "" {
 		return nil
 	}
-	text := VisibleText(s)
+	full := visibleWithURLs(s)
 	type hit struct {
 		start, end int
 		outlet     string
 	}
 	var hits []hit
+	// URLs first, then blanked out to the same length, so names are not
+	// matched inside them and positions still line up with full.
+	text := []byte(full)
+	for _, loc := range bareURLRE.FindAllStringIndex(full, -1) {
+		raw := strings.TrimRight(full[loc[0]:loc[1]], ".,;:!?")
+		if name, ok := m.OutletForURL(raw); ok {
+			hits = append(hits, hit{loc[0], loc[0] + len(raw), name})
+		}
+		for i := loc[0]; i < loc[1]; i++ {
+			text[i] = ' '
+		}
+	}
+	prose := string(text)
 	for _, t := range m.terms {
-		for _, loc := range t.re.FindAllStringIndex(text, -1) {
-			if t.needsCapital && strings.ToLower(text[loc[0]:loc[1]]) == text[loc[0]:loc[1]] {
+		for _, loc := range t.re.FindAllStringIndex(prose, -1) {
+			if t.needsCapital && strings.ToLower(prose[loc[0]:loc[1]]) == prose[loc[0]:loc[1]] {
 				continue
 			}
 			hits = append(hits, hit{loc[0], loc[1], t.outlet})
@@ -311,8 +333,8 @@ func (m *OutletMatcher) Find(s string) []OutletMention {
 			continue // inside a longer mention already reported
 		}
 		lastEnd = h.end
-		out = append(out, OutletMention{Outlet: h.outlet, Text: text[h.start:h.end],
-			Sentence: sentenceAround(text, h.start, h.end)})
+		out = append(out, OutletMention{Outlet: h.outlet, Text: full[h.start:h.end],
+			Sentence: sentenceAround(full, h.start, h.end)})
 	}
 	return out
 }

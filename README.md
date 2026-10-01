@@ -129,7 +129,8 @@ hotel chains are not news sites.
 Every writing, revision, enrichment and critic prompt carries the rule, and
 generated text is also checked deterministically (`internal/ai/outlets.go`):
 
-- A mention of an outlet in the title, TLDR, key details or body fails the
+- A mention of an outlet (its name, an abbreviation, its domain, or a written-out
+  URL on its site) in the title, TLDR, key details or body fails the
   attribution check with an issue naming it, which triggers the one
   auto-revision. A mention that survives it (perhaps an exception) is kept and
   the article stays marked failed for the admin to judge.
