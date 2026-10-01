@@ -108,6 +108,21 @@ deploy is retried rather than left "Revising" forever. Retries back off and stop
 after 5 failures, at which point the dashboard shows "Revision failed N times"
 and `milesahead_revisions_waiting{state="exhausted"}` counts it.
 
+### Source references
+
+Generator prompts label each source by its outlet ("=== From Doctor of Credit
+==="), never by number, and tell the model to name the outlet if it attributes
+anything. Generated text is still checked: a numbered reference ("Source 1
+notes...") that maps to a source is rewritten to the outlet's name, and one
+that does not fails the critic's attribution check so the auto-revision fixes
+it. To repair articles stored before this, run the one-off tool (a read-only
+dry run unless `-apply` is given; it takes no backup, so take one first):
+
+```bash
+go run ./cmd/repair-source-refs -db ./data/milesahead.db          # dry run
+go run ./cmd/repair-source-refs -db ./data/milesahead.db -apply   # write
+```
+
 ### Editor notes
 
 A remark for the admin rather than readers ("Could not find a link for: ...")

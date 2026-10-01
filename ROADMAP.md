@@ -249,6 +249,16 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       show SVG. The name is one word everywhere, as on the infographics. The phone header
       was 101px and wrapped the logo and "Toggle Theme" into "Cards"; it is now one line,
       with a sun/moon toggle that follows the OS dark-mode setting before first paint.
+- [x] **Articles said "Source 1 notes..."** — the prompts labelled their inputs
+      `--- Source 1: [Outlet] ---` and the generator copied the label into published copy;
+      the featured article on 2026-10-01 read "Source 1 notes this offer 'doesn't come around
+      often'". Four articles were affected (2 approved, 2 pending). Sources are now labelled
+      by outlet only, every writing prompt forbids positional references, and the critic
+      fails attribution on them. Generated text is also checked deterministically: a
+      reference that maps to a source is rewritten to the outlet's name, and one that does
+      not fails the attribution check and goes to the auto-revision. Scout's Take and key
+      details refuse such text. `cmd/repair-source-refs` fixes stored articles (dry run by
+      default).
 - [x] **Editor notes were published, hidden only by CSS** — in March 2026 the revision
       prompt asked the model to append `<div class="editor-note">Could not find a link
       for: ...</div>` when it could not do what the admin asked. The note was stored in the
@@ -261,6 +271,11 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       rows. `cmd/repair-editor-notes` moves them out of stored content (dry run by default).
 
 ## Up Next
+
+- [ ] **Run `repair-source-refs -apply` on production** — dry run on 2026-10-01 found
+      articles 57, 336, 1078 and 1136, all mappable. Take a backup first. Article 336 also
+      ends in a leaked revision changelog ("Ensured all claims align with provided
+      sources") that the tool does not touch; it needs a revision request.
 
 - [ ] **Run `repair-editor-notes -apply` on production** — dry run on 2026-10-01 lists
       articles 53, 57, 60 and 66, all approved. Take a backup first. Readers see no

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
@@ -329,6 +330,20 @@ func (m *Manager) loadSourceArticles(articleID int64) ([]ai.SourceArticle, error
 	if err != nil {
 		return nil, fmt.Errorf("getting raw articles: %w", err)
 	}
+	// Present the sources in the order the scan wrote the article from: by
+	// source (ListActiveSources order), then by raw article. The IN query
+	// returns them by raw id, so the order changed between generation and
+	// revision, and a "Source 2" the old prompts let into the article named a
+	// different outlet to the reviser than to the generator. The prompts no
+	// longer number sources, but the pipeline still maps any "Source N" the
+	// model writes by position, and that mapping should agree with the
+	// article's own history.
+	sort.SliceStable(rawArticles, func(i, j int) bool {
+		if rawArticles[i].SourceID != rawArticles[j].SourceID {
+			return rawArticles[i].SourceID < rawArticles[j].SourceID
+		}
+		return rawArticles[i].ID < rawArticles[j].ID
+	})
 
 	sources := make([]ai.SourceArticle, len(rawArticles))
 	for i, ra := range rawArticles {

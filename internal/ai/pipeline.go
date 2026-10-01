@@ -116,12 +116,14 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	}
 
 	content = cleanMarkdown(content)
+	content, unresolved := cleanSourceRefs("generation", content, sources)
 
 	// Critic reviews the article
 	verification, err := p.critic.Verify(content, sources)
 	if err != nil {
 		return nil, err
 	}
+	flagSourceRefs(verification, unresolved, sources)
 	verification.Score = adjustScore(verification)
 	metrics.CriticScore.Observe(float64(verification.Score))
 
@@ -137,8 +139,10 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 			issuesStr)
 		if err == nil && revised != "" {
 			revised = cleanMarkdown(revised)
+			revised, revisedUnresolved := cleanSourceRefs("auto-revision", revised, sources)
 			v2, err := p.critic.Verify(revised, sources)
 			if err == nil {
+				flagSourceRefs(v2, revisedUnresolved, sources)
 				v2.Score = adjustScore(v2)
 				slog.Info("critic scored revision", "model", v2.Model, "score", v2.Score,
 					"previous", verification.Score)
@@ -156,6 +160,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	// If structured parsing didn't extract key details, use a separate AI call
 	if len(keyDetails) == 0 {
 		kd, lk := p.extractDetails(parsedTitle, content)
+		kd = cleanDetailSourceRefs(kd, sources)
 		if len(kd) > 0 {
 			keyDetails = kd
 		}
@@ -225,11 +230,13 @@ func (p *Pipeline) ProcessWithFeedback(sources []SourceArticle, previousOutput, 
 
 func (p *Pipeline) buildResult(content, articleType string, sources []SourceArticle) (*PipelineResult, error) {
 	content = cleanMarkdown(content)
+	content, unresolved := cleanSourceRefs("revision", content, sources)
 
 	verification, err := p.critic.Verify(content, sources)
 	if err != nil {
 		return nil, err
 	}
+	flagSourceRefs(verification, unresolved, sources)
 	verification.Score = adjustScore(verification)
 	metrics.CriticScore.Observe(float64(verification.Score))
 	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
@@ -249,6 +256,57 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 		PassedThreshold: verification.Score >= p.threshold,
 		EditorNotes:     notes,
 	}, nil
+}
+
+// cleanSourceRefs rewrites numbered source references ("Source 1 notes...")
+// in a raw generator reply to the outlet's name, using the order the sources
+// were presented in. It runs on the whole reply, so the title, TLDR and
+// structured key details are covered along with the body. References it
+// cannot map are returned for flagSourceRefs.
+//
+// Both halves exist because neither is enough alone. The rewrite is
+// deterministic, so a mappable reference never reaches the site even when the
+// critic misses it or the revision pass does not run. The flag handles the
+// rest: the critic's attribution check fails, the issue feeds the auto-revision
+// that Process already performs, and an article that still carries one is
+// scored down rather than published looking clean.
+func cleanSourceRefs(stage, content string, sources []SourceArticle) (string, []string) {
+	out, rep := FixSourceRefs(content, sources)
+	if rep.Changed() {
+		slog.Warn("rewrote numbered source references", "stage", stage, "changes", rep.Rewritten)
+	}
+	if len(rep.Unresolved) > 0 {
+		slog.Warn("numbered source references left for revision", "stage", stage, "refs", rep.Unresolved)
+	}
+	return out, rep.Unresolved
+}
+
+// flagSourceRefs records unmappable numbered references on a critic verdict,
+// before adjustScore, so they cost the score the same way a failed attribution
+// check reported by the critic does.
+func flagSourceRefs(v *VerificationResult, unresolved []string, sources []SourceArticle) {
+	if len(unresolved) == 0 {
+		return
+	}
+	v.AttributionCheck = false
+	v.Issues = append(v.Issues, SourceRefIssue(unresolved, sources))
+}
+
+// cleanDetailSourceRefs applies the same rewrite to key details extracted by a
+// separate call, dropping any detail with a reference it cannot map: a bullet
+// is public copy and there is no revision pass after this point.
+func cleanDetailSourceRefs(details []KeyDetail, sources []SourceArticle) []KeyDetail {
+	var kept []KeyDetail
+	for _, d := range details {
+		label, lrep := FixSourceRefs(d.Label, sources)
+		value, vrep := FixSourceRefs(d.Value, sources)
+		if len(lrep.Unresolved)+len(vrep.Unresolved) > 0 {
+			slog.Warn("dropped key detail with a numbered source reference", "label", d.Label)
+			continue
+		}
+		kept = append(kept, KeyDetail{Label: label, Value: value})
+	}
+	return kept
 }
 
 // finalizeContent processes raw generated content through the structured parsing pipeline.
