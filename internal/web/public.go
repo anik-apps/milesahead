@@ -74,12 +74,6 @@ type publicArticleRow struct {
 	Ended bool
 }
 
-// searchArticleRow is an article search result plus whether its offer ended.
-type searchArticleRow struct {
-	db.SearchResult
-	Ended bool
-}
-
 // recentChangeRow is a card's recent change plus whether the offer in the
 // article it links to has ended, and that article's type for the badge.
 type recentChangeRow struct {
@@ -952,87 +946,6 @@ func (app *App) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(resp)
-}
-
-func (app *App) handleSearch(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	if len(query) > 200 {
-		query = query[:200]
-	}
-	pageArticles := 1
-	pageCards := 1
-	if p := r.URL.Query().Get("pa"); p != "" {
-		if v, err := fmt.Sscanf(p, "%d", &pageArticles); err != nil || v < 1 {
-			pageArticles = 1
-		}
-	}
-	if p := r.URL.Query().Get("pc"); p != "" {
-		if v, err := fmt.Sscanf(p, "%d", &pageCards); err != nil || v < 1 {
-			pageCards = 1
-		}
-	}
-
-	const perPage = 10
-
-	domain := app.cfg.Server.Domain
-	if domain == "" {
-		domain = "localhost"
-	}
-
-	data := map[string]interface{}{
-		"Title":           "Search",
-		"Query":           query,
-		"MetaDescription": "Search MilesAhead for credit card deals, travel rewards, and points strategies.",
-		"CanonicalURL":    "https://" + domain + "/search",
-		"OGType":          "website",
-	}
-
-	if query != "" {
-		// Sanitize for FTS5: wrap in double quotes to treat as phrase.
-		safeQuery := `"` + strings.ReplaceAll(query, `"`, `""`) + `"`
-
-		articleOffset := (pageArticles - 1) * perPage
-		articles, err := app.db.SearchArticles(safeQuery, perPage+1, articleOffset)
-		if err != nil {
-			articles = nil
-		}
-		hasMoreArticles := len(articles) > perPage
-		if hasMoreArticles {
-			articles = articles[:perPage]
-		}
-
-		cardOffset := (pageCards - 1) * perPage
-		cards, err := app.db.SearchCards(safeQuery, perPage+1, cardOffset)
-		if err != nil {
-			cards = nil
-		}
-		hasMoreCards := len(cards) > perPage
-		if hasMoreCards {
-			cards = cards[:perPage]
-		}
-
-		today := app.offerToday()
-		articleRows := make([]searchArticleRow, len(articles))
-		for i, a := range articles {
-			articleRows[i] = searchArticleRow{SearchResult: a, Ended: offer.Ended(a.ExpiresOn, today)}
-		}
-
-		data["Articles"] = articleRows
-		data["Cards"] = cards
-		data["PageArticles"] = pageArticles
-		data["PageCards"] = pageCards
-		data["HasMoreArticles"] = hasMoreArticles
-		data["HasMoreCards"] = hasMoreCards
-		data["HasPrevArticles"] = pageArticles > 1
-		data["HasPrevCards"] = pageCards > 1
-		data["PrevPageArticles"] = pageArticles - 1
-		data["NextPageArticles"] = pageArticles + 1
-		data["PrevPageCards"] = pageCards - 1
-		data["NextPageCards"] = pageCards + 1
-		data["TotalResults"] = len(articles) + len(cards)
-	}
-
-	app.renderTemplate(w, "search.html", data)
 }
 
 // --- Compare Handler ---

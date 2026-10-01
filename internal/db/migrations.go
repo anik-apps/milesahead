@@ -245,15 +245,10 @@ func migrate(db *sql.DB) error {
 		}
 	}
 
-	// Create FTS5 virtual tables for full-text search.
-	ftsStatements := []string{
-		`CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(title, tldr, content)`,
-		`CREATE VIRTUAL TABLE IF NOT EXISTS cards_fts USING fts5(title, sections_text, scouts_verdict)`,
-	}
-	for _, stmt := range ftsStatements {
-		if _, err := db.Exec(stmt); err != nil {
-			return fmt.Errorf("creating FTS table: %w", err)
-		}
+	// Create the full-text search indexes, rebuilding any made with an
+	// older tokenizer.
+	if err := ensureFTS(db); err != nil {
+		return err
 	}
 
 	if err := populateFTS(db); err != nil {
@@ -412,73 +407,6 @@ func repairRottedImages(conn *sql.DB) error {
 	if n, _ := res.RowsAffected(); n > 0 {
 		slog.Info("cleared expired pixabay images for re-enrichment", "rows", n)
 	}
-	return nil
-}
-
-// populateFTS backfills FTS tables from existing data. It only populates
-// tables that are empty, so it is safe to call on every startup.
-func populateFTS(conn *sql.DB) error {
-	var articleCount, cardCount int
-	conn.QueryRow(`SELECT COUNT(*) FROM articles_fts`).Scan(&articleCount)
-	conn.QueryRow(`SELECT COUNT(*) FROM cards_fts`).Scan(&cardCount)
-	if articleCount > 0 && cardCount > 0 {
-		return nil
-	}
-
-	// Populate articles_fts if empty.
-	if articleCount == 0 {
-		rows, err := conn.Query(`SELECT rowid, title, tldr, content FROM generated_articles`)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var id int64
-			var title, tldr, content string
-			if err := rows.Scan(&id, &title, &tldr, &content); err != nil {
-				return err
-			}
-			_, err := conn.Exec(
-				`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
-				id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), stripHTMLForFTS(content),
-			)
-			if err != nil {
-				return err
-			}
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
-	}
-
-	// Populate cards_fts if empty.
-	if cardCount == 0 {
-		cardRows, err := conn.Query(`SELECT rowid, title, sections_json, scouts_verdict FROM reference_pages`)
-		if err != nil {
-			return err
-		}
-		defer cardRows.Close()
-
-		for cardRows.Next() {
-			var id int64
-			var title, sectionsJSON, verdict string
-			if err := cardRows.Scan(&id, &title, &sectionsJSON, &verdict); err != nil {
-				return err
-			}
-			_, err := conn.Exec(
-				`INSERT INTO cards_fts(rowid, title, sections_text, scouts_verdict) VALUES (?, ?, ?, ?)`,
-				id, stripHTMLForFTS(title), extractSectionsText(sectionsJSON), stripHTMLForFTS(verdict),
-			)
-			if err != nil {
-				return err
-			}
-		}
-		if err := cardRows.Err(); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 

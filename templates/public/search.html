@@ -2,58 +2,94 @@
 {{define "content"}}
 <div class="search-page">
     <h1>Search</h1>
-    <form action="/search" method="GET" class="search-form">
-        <input type="text" name="q" value="{{.Query}}" placeholder="Search articles and cards..." autofocus>
+    <form action="/search" method="GET" class="search-form" role="search">
+        <label for="search-q" class="visually-hidden">Search articles and cards</label>
+        <input type="search" id="search-q" name="q" value="{{.Query}}" placeholder="Search articles and cards..." enterkeyhint="search">
         <button type="submit">Search</button>
     </form>
 
-    {{if .Query}}
+    {{if .Searched}}
     <div class="search-results">
-        {{if and (not .Articles) (not .Cards)}}
-        <p class="search-empty">No results found for "{{.Query}}".</p>
+        {{if or .Articles .TopCards .OtherCards}}
+        <p class="search-summary" role="status">
+            {{if .AnyWord}}No results have every word, so these have <strong>any of them</strong>: {{end}}
+            <strong>{{.ArticleTotal}} {{if eq .ArticleTotal 1}}article{{else}}articles{{end}}</strong>
+            and <strong>{{.CardTotal}} {{if eq .CardTotal 1}}card{{else}}cards{{end}}</strong>{{if and .MultiWord (not .AnyWord)}} match every word{{end}}{{if gt .Pages 1}} &middot; page {{.Page}} of {{.Pages}}{{end}}
+        </p>
+        {{else}}
+        <div class="search-empty" role="status">
+            <h2>No results for &ldquo;{{.Query}}&rdquo;</h2>
+            <p>Check the spelling or try fewer words. Card names and nicknames work too: <a href="/search?q=sapphire">sapphire</a>, <a href="/search?q=amex+gold">amex gold</a>, <a href="/search?q=csr">csr</a>.</p>
+            <ul class="search-empty-links">
+                <li><a href="/cards/">Browse all cards</a></li>
+                <li><a href="/compare">Compare cards</a></li>
+                <li><a href="/?type=deal">Latest deals</a></li>
+            </ul>
+        </div>
+        {{end}}
+
+        {{if .TopCards}}
+        <section class="search-section search-top-cards" aria-labelledby="search-top-cards-h">
+            <h2 id="search-top-cards-h">Cards</h2>
+            <ul class="search-card-tiles">
+                {{range .TopCards}}
+                <li>
+                    <a href="/cards/{{.Slug}}" class="search-card-tile">
+                        {{if .ImageURL}}<img src="{{.ImageURL}}" alt="" width="64" height="40" loading="lazy" decoding="async">{{end}}
+                        <span><span class="search-card-name">{{.Title}}</span><span class="search-card-meta">{{.Fee}}</span></span>
+                    </a>
+                </li>
+                {{end}}
+            </ul>
+        </section>
         {{end}}
 
         {{if .Articles}}
-        <section class="search-section">
-            <h2>Articles</h2>
+        <section class="search-section" aria-labelledby="search-articles-h">
+            <h2 id="search-articles-h">Articles</h2>
             <ul class="search-list">
                 {{range .Articles}}
                 <li class="search-item{{if .Ended}} is-ended{{end}}">
                     <a href="/article/{{.Slug}}" class="search-item-title">{{if .Ended}}<span class="ended-badge">{{endedLabel .ArticleType}}</span> <span class="ended-title">{{.Title}}</span>{{else}}{{.Title}}{{end}}</a>
-                    <p class="search-item-excerpt">{{.Excerpt | safeHTML}}</p>
+                    <div class="search-item-meta"><span class="type-badge badge-{{.ArticleType}}">{{typeBadge .ArticleType}}</span> <time datetime="{{.PublishedAt.Format "2006-01-02"}}">{{.Date}}</time></div>
+                    {{if .Excerpt}}<p class="search-item-excerpt">{{.Excerpt | safeHTML}}</p>{{end}}
                 </li>
                 {{end}}
             </ul>
-            <div class="search-pagination">
-                {{if .HasPrevArticles}}
-                <a href="/search?q={{.Query}}&pa={{.PrevPageArticles}}&pc={{.PageCards}}" class="btn-page">Previous</a>
-                {{end}}
-                {{if .HasMoreArticles}}
-                <a href="/search?q={{.Query}}&pa={{.NextPageArticles}}&pc={{.PageCards}}" class="btn-page">Next</a>
-                {{end}}
-            </div>
+            {{if .PageLinks}}
+            <nav class="search-pagination" aria-label="Result pages">
+                {{if .PrevURL}}<a href="{{.PrevURL}}" class="btn-page" rel="prev">&larr; Previous</a>{{end}}
+                {{range .PageLinks}}{{if not .N}}<span class="page-gap">&hellip;</span>{{else if .Current}}<span class="btn-page is-current" aria-current="page">{{.N}}</span>{{else}}<a href="{{.URL}}" class="btn-page">{{.N}}</a>{{end}}{{end}}
+                {{if .NextURL}}<a href="{{.NextURL}}" class="btn-page" rel="next">Next &rarr;</a>{{end}}
+            </nav>
+            {{end}}
         </section>
         {{end}}
 
-        {{if .Cards}}
-        <section class="search-section">
-            <h2>Cards</h2>
+        {{if .OtherCards}}
+        <section class="search-section" aria-labelledby="search-other-cards-h">
+            <h2 id="search-other-cards-h">{{if .TopCards}}Other cards that mention it{{else}}Cards{{end}}</h2>
             <ul class="search-list">
-                {{range .Cards}}
+                {{range .OtherCards}}
                 <li class="search-item">
                     <a href="/cards/{{.Slug}}" class="search-item-title">{{.Title}}</a>
-                    <p class="search-item-excerpt">{{.Excerpt | safeHTML}}</p>
+                    {{if .Excerpt}}<p class="search-item-excerpt">{{.Excerpt | safeHTML}}</p>{{end}}
                 </li>
                 {{end}}
             </ul>
-            <div class="search-pagination">
-                {{if .HasPrevCards}}
-                <a href="/search?q={{.Query}}&pa={{.PageArticles}}&pc={{.PrevPageCards}}" class="btn-page">Previous</a>
-                {{end}}
-                {{if .HasMoreCards}}
-                <a href="/search?q={{.Query}}&pa={{.PageArticles}}&pc={{.NextPageCards}}" class="btn-page">Next</a>
-                {{end}}
-            </div>
+            {{if .MoreCards}}
+            <details class="search-more-cards">
+                <summary>Show {{len .MoreCards}} more {{if eq (len .MoreCards) 1}}card{{else}}cards{{end}}</summary>
+                <ul class="search-list">
+                    {{range .MoreCards}}
+                    <li class="search-item">
+                        <a href="/cards/{{.Slug}}" class="search-item-title">{{.Title}}</a>
+                        {{if .Excerpt}}<p class="search-item-excerpt">{{.Excerpt | safeHTML}}</p>{{end}}
+                    </li>
+                    {{end}}
+                </ul>
+            </details>
+            {{end}}
         </section>
         {{end}}
     </div>

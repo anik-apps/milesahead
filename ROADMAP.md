@@ -378,10 +378,13 @@ image shipped in #73. Everything else is here, most severe first.
       use only the portal rate in "D | P" rows and "1 year" beats "Yes"; phones see 1.3 of 3
       cards; no links to card pages. *Fix:* visible notes, `<button aria-expanded>` toggles,
       split D/P rows, a legend, a mobile layout, links per column.
-- [ ] **Search** — the whole query is one exact FTS phrase, so "sapph", "reserve sapphire"
-      and "csr" find nothing, and card matches sit below ten articles. *Fix:* per-word
-      matching with a prefix on the last word, title weighting, a small synonym map
-      (csr, csp, amex), cards first when a title matches.
+- [x] **Search** — the whole query was one exact FTS phrase, so "sapph", "reserve sapphire"
+      and "csr" found nothing, and card matches sat below ten articles. Now every word
+      must match, in any order, as a prefix and stemmed ("lounges" finds "lounge"), with
+      nicknames (csr, csp, amex, vx, ...) and a fallback to any word that says so. Cards
+      whose title holds every word come first, titles outweigh body text, ended offers
+      follow live ones, and results show type, date and counts on one numbered pager. No
+      results now offers tips and links instead of one grey line.
 - [ ] **/cards/ index** — 52 cards with no filter, sort or fee; 22 screens on a phone.
       *Fix:* category, fee band and issuer filters with a live count; fee, offer and top
       earn rates on each tile; lazy-loaded art with fixed dimensions.

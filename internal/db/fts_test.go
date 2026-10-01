@@ -79,7 +79,7 @@ func TestSearchArticles_StatusFilter(t *testing.T) {
 	}
 
 	// Search for "Chase" — should only return the approved article.
-	results, err := d.SearchArticles(`"Chase"`, 10, 0)
+	results, err := d.SearchArticles(`"Chase"`, "", "2026-01-01", 10, 0)
 	if err != nil {
 		t.Fatalf("SearchArticles: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestSyncCardFTS(t *testing.T) {
 	}
 
 	// Search should find it.
-	results, err := d.SearchCards(`"dining"`, 10, 0)
+	results, err := d.SearchCards(`"dining"`, "", 10, 0)
 	if err != nil {
 		t.Fatalf("SearchCards: %v", err)
 	}
