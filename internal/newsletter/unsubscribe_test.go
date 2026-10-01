@@ -2,6 +2,7 @@ package newsletter
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"mime"
 	"mime/quotedprintable"
@@ -12,6 +13,8 @@ import (
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/mail"
+	"github.com/kumaranik/milesahead/internal/metrics"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // captureSMTP stands in for the SMTP connection and keeps every message as
@@ -159,4 +162,45 @@ func TestSendWeekly_PassesEachReadersUnsubscribeLink(t *testing.T) {
 	if len(got) != 2 || got["a@example.com"] != want["a@example.com"] || got["b@example.com"] != want["b@example.com"] {
 		t.Errorf("recipients = %v, want %v", got, want)
 	}
+}
+
+// failingSender reaches reach recipients, then fails.
+type failingSender struct{ reach int }
+
+func (f failingSender) SendNewsletter(_, _ string, _ []mail.Recipient) (int, error) {
+	return f.reach, errors.New("421 try later")
+}
+
+// Every send outcome is counted: one "sent" per reader reached, one "failed"
+// per send that stops.
+func TestSendOnce_CountsOutcomes(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	seed(t, database)
+	subscribeTwo(t, database)
+
+	sent0, failed0 := emailCount(t, metrics.EmailSent), emailCount(t, metrics.EmailFailed)
+
+	svc := NewService(database, failingSender{reach: 1}, config.NewsletterConfig{Timezone: "UTC"})
+	var partial *PartialSendError
+	if err := svc.SendDaily(); !errors.As(err, &partial) {
+		t.Fatalf("SendDaily() = %v, want a partial send", err)
+	}
+	if d := emailCount(t, metrics.EmailSent) - sent0; d != 1 {
+		t.Errorf("sent counted %v, want 1", d)
+	}
+	if d := emailCount(t, metrics.EmailFailed) - failed0; d != 1 {
+		t.Errorf("failed counted %v, want 1", d)
+	}
+}
+
+// emailCount reads milesahead_emails_sent_total{kind="newsletter",outcome}.
+func emailCount(t *testing.T, outcome string) float64 {
+	t.Helper()
+	var m dto.Metric
+	if err := metrics.EmailsSentTotal.WithLabelValues(metrics.EmailNewsletter, outcome).Write(&m); err != nil {
+		t.Fatal(err)
+	}
+	return m.GetCounter().GetValue()
 }

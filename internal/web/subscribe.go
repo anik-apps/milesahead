@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // ConfirmationMailer sends the email that confirms a new subscription.
@@ -151,11 +152,14 @@ func (app *App) sendConfirmation(sub *db.Subscriber) {
 	go func() {
 		defer app.bg.Done()
 		if err := app.mailer.SendConfirmation(sub.Email, sub.Token, domain); err != nil {
+			metrics.EmailsSentTotal.WithLabelValues(metrics.EmailConfirmation, metrics.EmailFailed).Inc()
 			slog.Error("subscribe: sending the confirmation email failed", "subscriber_id", sub.ID, "error", err)
 			if rerr := app.db.ReleaseConfirmationSend(sub.ID); rerr != nil {
 				slog.Error("subscribe: releasing the confirmation claim", "subscriber_id", sub.ID, "error", rerr)
 			}
+			return
 		}
+		metrics.EmailsSentTotal.WithLabelValues(metrics.EmailConfirmation, metrics.EmailSent).Inc()
 	}()
 }
 

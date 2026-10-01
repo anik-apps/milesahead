@@ -20,6 +20,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/mail"
+	"github.com/kumaranik/milesahead/internal/metrics"
 	"github.com/kumaranik/milesahead/internal/offer"
 )
 
@@ -1020,7 +1021,9 @@ func (s *Service) sendOnce(nl *db.Newsletter, html string, recipients []mail.Rec
 		return ErrAlreadySent
 	}
 	sent, err := s.sender.SendNewsletter(nl.Subject, html, recipients)
+	metrics.EmailsSentTotal.WithLabelValues(metrics.EmailNewsletter, metrics.EmailSent).Add(float64(sent))
 	if err != nil {
+		metrics.EmailsSentTotal.WithLabelValues(metrics.EmailNewsletter, metrics.EmailFailed).Inc()
 		if sent > 0 {
 			failedAt := "the end of the list"
 			if sent < len(recipients) {
