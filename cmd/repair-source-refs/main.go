@@ -103,7 +103,7 @@ func run(args []string, w io.Writer) error {
 		return err
 	}
 	report(w, plans, true)
-	applied, skipped := applyPlans(w, database.DB(), plans, database.SyncArticleFTS)
+	applied, skipped := applyPlans(w, database.DB(), plans, db.SyncArticleFTSTx)
 	fmt.Fprintf(w, "\nApplied %d article(s); %d left unchanged (listed above).\n", applied, skipped)
 	return nil
 }
@@ -314,44 +314,69 @@ func report(w io.Writer, plans []plan, applying bool) {
 	}
 }
 
-// applyPlans writes the rewritable plans. Each UPDATE is a compare-and-set on
-// every column it reads, so an article edited since buildPlans read it is left
-// alone rather than overwritten with a stale copy.
-func applyPlans(w io.Writer, conn *sql.DB, plans []plan, syncFTS func(int64) error) (applied, skipped int) {
+// applyPlans writes the rewritable plans. Each article is one transaction:
+// the UPDATE is a compare-and-set on every column it reads, so an article
+// edited since buildPlans read it is left alone rather than overwritten with a
+// stale copy, and the search index is updated in the same transaction. If the
+// index update fails the rewrite is rolled back too; otherwise the row would
+// be fixed with a stale index entry, and a re-run, finding no references left,
+// would never repair the index.
+func applyPlans(w io.Writer, conn *sql.DB, plans []plan, syncFTS func(*sql.Tx, int64) error) (applied, skipped int) {
 	for _, p := range plans {
 		if !p.rewritable() {
 			skipped++
 			continue
 		}
-		val := func(f string) string {
-			if v, ok := p.new[f]; ok {
-				return v
-			}
-			return p.old[f]
-		}
-		res, err := conn.Exec(`UPDATE generated_articles
-			SET title = ?, content = ?, tldr = ?, key_details = ?, scouts_take = ?, updated_at = CURRENT_TIMESTAMP
-			WHERE id = ? AND COALESCE(title,'') = ? AND COALESCE(content,'') = ? AND COALESCE(tldr,'') = ?
-			  AND COALESCE(key_details,'') = ? AND COALESCE(scouts_take,'') = ?`,
-			val("title"), val("content"), val("tldr"), val("key_details"), val("scouts_take"),
-			p.ID, p.old["title"], p.old["content"], p.old["tldr"], p.old["key_details"], p.old["scouts_take"])
-		if err != nil {
-			fmt.Fprintf(w, "  id=%d: update failed: %v\n", p.ID, err)
+		ok, err := applyOne(conn, p, syncFTS)
+		switch {
+		case err != nil:
+			fmt.Fprintf(w, "  id=%d: not rewritten, rolled back: %v\n", p.ID, err)
 			skipped++
-			continue
-		}
-		if n, _ := res.RowsAffected(); n != 1 {
+		case !ok:
 			fmt.Fprintf(w, "  id=%d: changed since it was read, left alone; re-run to pick it up\n", p.ID)
 			skipped++
-			continue
+		default:
+			fmt.Fprintf(w, "  id=%d: rewritten (%d change(s))\n", p.ID, len(p.Changes))
+			applied++
 		}
-		if err := syncFTS(p.ID); err != nil {
-			fmt.Fprintf(w, "  id=%d: rewritten, but the search index update failed: %v\n", p.ID, err)
-		}
-		fmt.Fprintf(w, "  id=%d: rewritten (%d change(s))\n", p.ID, len(p.Changes))
-		applied++
 	}
 	return applied, skipped
+}
+
+// applyOne rewrites one article and its index entry atomically. It reports
+// false, with nothing written, when the row no longer matches what was read.
+func applyOne(conn *sql.DB, p plan, syncFTS func(*sql.Tx, int64) error) (bool, error) {
+	val := func(f string) string {
+		if v, ok := p.new[f]; ok {
+			return v
+		}
+		return p.old[f]
+	}
+	tx, err := conn.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback() // no-op once committed
+
+	res, err := tx.Exec(`UPDATE generated_articles
+		SET title = ?, content = ?, tldr = ?, key_details = ?, scouts_take = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ? AND COALESCE(title,'') = ? AND COALESCE(content,'') = ? AND COALESCE(tldr,'') = ?
+		  AND COALESCE(key_details,'') = ? AND COALESCE(scouts_take,'') = ?`,
+		val("title"), val("content"), val("tldr"), val("key_details"), val("scouts_take"),
+		p.ID, p.old["title"], p.old["content"], p.old["tldr"], p.old["key_details"], p.old["scouts_take"])
+	if err != nil {
+		return false, fmt.Errorf("update: %w", err)
+	}
+	if n, err := res.RowsAffected(); err != nil || n != 1 {
+		return false, err
+	}
+	if err := syncFTS(tx, p.ID); err != nil {
+		return false, fmt.Errorf("search index update: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit: %w", err)
+	}
+	return true, nil
 }
 
 func parseIDs(s string) (map[int64]bool, error) {

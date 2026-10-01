@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -207,9 +209,64 @@ func TestApplyLeavesConcurrentlyEditedRowAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	applied, _ := applyPlans(&out, conn, plans, f.database.SyncArticleFTS)
+	applied, _ := applyPlans(&out, conn, plans, db.SyncArticleFTSTx)
 	if applied != 0 || f.get(t, "unrevised").Content != "edited" {
 		t.Errorf("stale plan overwrote an edit (applied=%d):\n%s", applied, out.String())
+	}
+}
+
+// TestApplyRollsBackWhenTheIndexUpdateFails: a rewrite whose search index
+// update fails is not committed, so the row keeps its references and a re-run
+// picks it up, instead of the row being fixed behind a stale index entry.
+func TestApplyRollsBackWhenTheIndexUpdateFails(t *testing.T) {
+	f := newFixture(t)
+	conn := f.database.DB()
+	id := f.ids["unrevised"]
+	before := f.get(t, "unrevised")
+	var indexedBefore string
+	if err := conn.QueryRow(`SELECT content FROM articles_fts WHERE rowid = ?`, id).Scan(&indexedBefore); err != nil {
+		t.Fatal(err)
+	}
+
+	plans, err := buildPlans(conn, map[int64]bool{id: true})
+	if err != nil || len(plans) != 1 {
+		t.Fatalf("plans = %v, %v", plans, err)
+	}
+	// The real sync runs, then the step fails: both writes must roll back.
+	failing := func(tx *sql.Tx, id int64) error {
+		if err := db.SyncArticleFTSTx(tx, id); err != nil {
+			return err
+		}
+		return errors.New("disk I/O error")
+	}
+	var out bytes.Buffer
+	applied, skipped := applyPlans(&out, conn, plans, failing)
+	if applied != 0 || skipped != 1 {
+		t.Errorf("applied=%d skipped=%d, want 0/1", applied, skipped)
+	}
+	if !strings.Contains(out.String(), "not rewritten, rolled back") {
+		t.Errorf("output:\n%s", out.String())
+	}
+	after := f.get(t, "unrevised")
+	if after.Title != before.Title || after.Content != before.Content || after.TLDR != before.TLDR ||
+		after.KeyDetails != before.KeyDetails || after.UpdatedAt != before.UpdatedAt {
+		t.Errorf("article changed despite the failed index update:\nbefore %+v\nafter  %+v", before, after)
+	}
+	var indexedAfter string
+	if err := conn.QueryRow(`SELECT content FROM articles_fts WHERE rowid = ?`, id).Scan(&indexedAfter); err != nil {
+		t.Fatal(err)
+	}
+	if indexedAfter != indexedBefore {
+		t.Errorf("index changed: %q -> %q", indexedBefore, indexedAfter)
+	}
+
+	// The row is still found and repaired on the next run.
+	plans, err = buildPlans(conn, map[int64]bool{id: true})
+	if err != nil || len(plans) != 1 || !plans[0].rewritable() {
+		t.Fatalf("re-run plans = %+v, %v", plans, err)
+	}
+	if applied, _ := applyPlans(&out, conn, plans, db.SyncArticleFTSTx); applied != 1 {
+		t.Errorf("re-run applied %d, want 1", applied)
 	}
 }
 

@@ -1231,6 +1231,26 @@ func (d *Database) SyncArticleFTS(id int64) error {
 	return err
 }
 
+// SyncArticleFTSTx is SyncArticleFTS inside the caller's transaction, so an
+// article rewrite and its index entry commit or roll back together. Unlike
+// SyncArticleFTS it reports a failed delete too: a stale entry left behind
+// next to the new one is exactly what the transaction is there to prevent.
+func SyncArticleFTSTx(tx *sql.Tx, id int64) error {
+	var title, tldr, content string
+	err := tx.QueryRow(`SELECT title, COALESCE(tldr,''), content FROM generated_articles WHERE id = ?`, id).Scan(&title, &tldr, &content)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id); err != nil {
+		return err
+	}
+	_, err = tx.Exec(
+		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
+		id, stripHTMLForDB(title), stripHTMLForDB(tldr), stripHTMLForDB(content),
+	)
+	return err
+}
+
 // SyncCardFTS updates the FTS index for a single reference page.
 func (d *Database) SyncCardFTS(id int64) error {
 	var title, sectionsJSON, verdict string
