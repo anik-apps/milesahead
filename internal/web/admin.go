@@ -433,15 +433,48 @@ func (app *App) handleAdminSources(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now()
+	health, err := app.db.ListSourceHealth(now.Add(-sourceRecentWindow))
+	if err != nil {
+		slog.Warn("sources: could not load health", "error", err)
+	}
+	rows := make([]adminSourceRow, 0, len(sources))
+	for _, src := range sources {
+		h := health[src.ID]
+		rows = append(rows, adminSourceRow{
+			Source:      src,
+			LastArticle: ago(h.LastArticleAt, now),
+			Recent:      h.Recent,
+			Total:       h.Total,
+			Stale:       src.Active && (h.LastArticleAt.IsZero() || now.Sub(h.LastArticleAt) > sourceStaleAfter),
+		})
+	}
+
 	data := map[string]interface{}{
 		"Title":     "Sources",
-		"Sources":   sources,
+		"Sources":   rows,
 		"CSRFToken": getCSRFToken(w, r),
 		"Message":   sourceMessages[r.URL.Query().Get("msg")],
 		"Error":     sourceErrors[r.URL.Query().Get("error")],
 	}
 	app.renderTemplate(w, "sources.html", data)
 }
+
+// adminSourceRow is a source with what the scanner has collected from it.
+type adminSourceRow struct {
+	db.Source
+	LastArticle string // "3 h ago", or "never"
+	Recent      int    // articles stored in the last sourceRecentWindow
+	Total       int
+	// Stale: active, but nothing new for longer than sourceStaleAfter --
+	// the feed has probably moved or broken.
+	Stale bool
+}
+
+const (
+	sourceRecentWindow = 7 * 24 * time.Hour
+	sourceStaleAfter   = 3 * 24 * time.Hour
+)
 
 var sourceMessages = map[string]string{
 	"added": "Source added.", "saved": "Source saved.", "toggled": "Source updated.",
@@ -542,9 +575,17 @@ func (app *App) handleAdminSubscribers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	confirmed := 0
+	for _, s := range subscribers {
+		if s.Confirmed {
+			confirmed++
+		}
+	}
 	data := map[string]interface{}{
 		"Title":       "Subscribers",
 		"Subscribers": subscribers,
+		"Confirmed":   confirmed,
+		"Unconfirmed": len(subscribers) - confirmed,
 		"CSRFToken":   getCSRFToken(w, r),
 	}
 	app.renderTemplate(w, "subscribers.html", data)
@@ -610,21 +651,19 @@ func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 			"MaxRetries":            app.cfg.AI.MaxRetries,
 			"CacheTTL":              app.cfg.AI.CacheTTL,
 		},
+		// Flat, so each value is its own row: nested maps printed as
+		// "map[Host:... Password:...]".
 		"Mail": map[string]interface{}{
-			"SMTP": map[string]interface{}{
-				"Host":     app.cfg.Mail.SMTP.Host,
-				"Port":     app.cfg.Mail.SMTP.Port,
-				"User":     app.cfg.Mail.SMTP.User,
-				"Password": maskString(app.cfg.Mail.SMTP.Password),
-				"From":     app.cfg.Mail.SMTP.From,
-			},
-			"IMAP": map[string]interface{}{
-				"Host":         app.cfg.Mail.IMAP.Host,
-				"Port":         app.cfg.Mail.IMAP.Port,
-				"User":         app.cfg.Mail.IMAP.User,
-				"Password":     maskString(app.cfg.Mail.IMAP.Password),
-				"PollInterval": app.cfg.Mail.IMAP.PollInterval,
-			},
+			"SMTP host":          app.cfg.Mail.SMTP.Host,
+			"SMTP port":          app.cfg.Mail.SMTP.Port,
+			"SMTP user":          app.cfg.Mail.SMTP.User,
+			"SMTP password":      maskString(app.cfg.Mail.SMTP.Password),
+			"SMTP from":          app.cfg.Mail.SMTP.From,
+			"IMAP host":          app.cfg.Mail.IMAP.Host,
+			"IMAP port":          app.cfg.Mail.IMAP.Port,
+			"IMAP user":          app.cfg.Mail.IMAP.User,
+			"IMAP password":      maskString(app.cfg.Mail.IMAP.Password),
+			"IMAP poll interval": app.cfg.Mail.IMAP.PollInterval,
 		},
 		"Newsletter": map[string]interface{}{
 			"SendTime": app.cfg.Newsletter.SendTime,
@@ -1559,11 +1598,21 @@ func (app *App) handleAdminArticleCardsGET(w http.ResponseWriter, r *http.Reques
 		})
 	}
 
+	// Back goes to the list the article is on.
+	backURL, backLabel, navTab := "/admin/dashboard", "Pending", "pending"
+	if article.Status == db.StatusApproved {
+		backURL, backLabel, navTab = "/admin/published", "Published", "published"
+	}
 	data := map[string]any{
+		"Title":     "Linked cards",
 		"Article":   article,
 		"Linked":    linked,
 		"Suggested": suggested,
 		"CSRFToken": getCSRFToken(w, r),
+		"Saved":     r.URL.Query().Get("msg") == "saved",
+		"BackURL":   backURL,
+		"BackLabel": backLabel,
+		"NavTab":    navTab,
 	}
 	app.renderTemplate(w, "article-cards.html", data)
 }

@@ -1,8 +1,9 @@
 {{template "layout" .}}
 {{define "content"}}
+{{template "admin_nav" .NavTab}}
 <div class="admin-shell">
     <div class="crumbs">
-        <a href="/admin/dashboard">Admin</a> · <a href="/admin/dashboard">Articles</a> ·
+        <a href="{{.BackURL}}">{{.BackLabel}}</a> ·
         <span>{{.Article.Title}}</span> · <strong>Linked cards</strong>
     </div>
 </div>
@@ -13,10 +14,11 @@
         Cards selected here appear at the bottom of the article. Auto-detected cards from the body are listed below as suggestions.
     </p>
 
+    {{if .Saved}}<div class="message success" role="status">Saved.</div>{{end}}
     <form method="POST" action="/admin/articles/{{.Article.ID}}/cards">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
-        <h3 class="admin-section-title">Linked cards <small>{{len .Linked}} of {{len .Linked}} selected</small></h3>
+        <h3 class="admin-section-title">Linked cards <small>{{len .Linked}} linked</small></h3>
         {{if .Linked}}
             {{range .Linked}}
             <div class="admin-row linked">
@@ -59,7 +61,7 @@
 
         <div class="admin-actions">
             <button type="submit" name="action" value="save" class="btn-primary">Save</button>
-            <a href="/admin/dashboard" class="btn-secondary">Cancel</a>
+            <a href="{{.BackURL}}" class="btn-secondary">Back</a>
         </div>
     </form>
 </div>

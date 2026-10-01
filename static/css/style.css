@@ -1540,6 +1540,35 @@ tr:hover {
     margin-left: auto;
     color: #dc2626;
 }
+/* Sources: a source's edit form is a row under it, shown when targeted
+   (#edit-N), so it needs no script. */
+.source-edit-row:not(:target) { display: none; }
+.source-edit-row > td { background: var(--card-bg); }
+.source-edit-row .source-form { margin: 0; }
+.sources-table .actions { flex-direction: row; min-width: 0; }
+.source-stale > td { background: #fef2f2; }
+[data-theme="dark"] .source-stale > td { background: #3b1114; }
+.health-flag { color: #b91c1c; font-weight: 600; }
+[data-theme="dark"] .health-flag { color: #f87171; }
+
+/* An admin page's title with its main action on the right. */
+.page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+}
+
+.logout-link {
+    background: none;
+    border: none;
+    color: #dc2626;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
 
 /* Back Link */
 .back-link {
@@ -1833,7 +1862,7 @@ tr:hover {
 
 /* Issue 12: Sources URLs truncation. Only the URL cells: matching every
    link in an admin table also cut article titles to ~35 characters. */
-.admin-table td.url-cell a[href] {
+.admin-table .url-cell a[href] {
     display: inline-block;
     max-width: 300px;
     overflow: hidden;
@@ -1858,7 +1887,7 @@ tr:hover {
     .admin-table td:first-child {
         max-width: 250px;
     }
-    .admin-table td.url-cell a[href] {
+    .admin-table .url-cell a[href] {
         max-width: 180px;
     }
 }
@@ -1883,7 +1912,7 @@ tr:hover {
     }
 
     /* Issue 12: Sources table URL cells - mobile override */
-    .admin-table td.url-cell a[href] {
+    .admin-table .url-cell a[href] {
         max-width: 120px;
     }
 

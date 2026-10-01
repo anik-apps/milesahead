@@ -175,7 +175,9 @@ func (app *App) loadTemplates(dir string) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && filepath.Ext(path) == ".html" && filepath.Base(path) != "layout.html" {
+		// Files named _*.html are partials shared by the pages beside them
+		// (see adminPartials), not pages.
+		if !info.IsDir() && filepath.Ext(path) == ".html" && filepath.Base(path) != "layout.html" && !strings.HasPrefix(filepath.Base(path), "_") {
 			// Skip email templates — they are rendered by the newsletter service, not the web server.
 			if strings.Contains(path, string(filepath.Separator)+"email"+string(filepath.Separator)) {
 				return nil
@@ -200,9 +202,17 @@ func (app *App) loadTemplates(dir string) error {
 
 	// Parse each page template separately with the layout so that each gets
 	// its own "content" block definition without conflicts.
+	// Admin pages also get the admin partials (navigation, shell).
+	adminDir := filepath.Join(dir, "admin")
+	adminPartials, _ := filepath.Glob(filepath.Join(adminDir, "_*.html"))
 	for _, pf := range pageFiles {
 		name := filepath.Base(pf)
-		t, err := template.New(name).Funcs(templateFuncs).Funcs(appFuncs).ParseFiles(layoutFile, pf)
+		files := []string{layoutFile}
+		if filepath.Dir(pf) == adminDir {
+			files = append(files, adminPartials...)
+		}
+		files = append(files, pf)
+		t, err := template.New(name).Funcs(templateFuncs).Funcs(appFuncs).ParseFiles(files...)
 		if err != nil {
 			return fmt.Errorf("parsing template %s: %w", name, err)
 		}
