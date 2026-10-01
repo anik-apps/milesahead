@@ -417,14 +417,6 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The stories the article was written from, listed under Sources.
-	var sources []articleSource
-	if links, err := app.db.ListArticleSourceLinks(article.ID); err == nil {
-		sources = articleSources(links)
-	} else {
-		slog.Warn("article: loading sources", "article_id", article.ID, "error", err)
-	}
-
 	// Load vote counts.
 	var upvotes, downvotes int
 	if vc, err := app.db.GetVoteCounts(article.ID); err == nil {
@@ -504,7 +496,6 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":              article.Title,
 		"Article":            article,
-		"Sources":            sources,
 		"Upvotes":            upvotes,
 		"Downvotes":          downvotes,
 		"ShowVoteCounts":     upvotes+downvotes >= minVotesToShowCounts,

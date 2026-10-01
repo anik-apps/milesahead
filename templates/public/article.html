@@ -8,8 +8,9 @@
 {{else}}
 {{/* Order: what the story is (headline, whether the offer is still on, a
      one-paragraph summary), then the photo, then the story with its key
-     details beside it, then Scout's Take, the cards it names, its sources
-     and where to go next. */}}
+     details beside it, then Scout's Take, the cards it names and where to
+     go next. Source outlets are not named or linked on public pages; the
+     admin preview lists them. */}}
 <article class="article-detail">
     <a href="/" class="back-link">&larr; Back to all articles</a>
 
@@ -23,7 +24,6 @@
             <p class="article-meta">
                 {{- if .PublishedAt}}<time class="published-date" datetime="{{.PublishedISO}}">{{.PublishedAt}}</time>{{end -}}
                 {{- if .PersonaName}}<span class="article-byline">By {{.PersonaName}}</span>{{end -}}
-                {{- if .Sources}}<a class="article-source-count" href="#sources">{{len .Sources}} {{if eq (len .Sources) 1}}source{{else}}sources{{end}}</a>{{end -}}
             </p>
             {{if .ArticleTags}}
             <div class="article-tags">
@@ -106,17 +106,6 @@
                     </div>
                 </div>
                 {{end}}
-            </section>
-            {{end}}
-
-            {{if .Sources}}
-            <section class="article-sources" id="sources" aria-labelledby="sources-title">
-                <h2 class="article-section-title" id="sources-title">Sources</h2>
-                <ol>
-                    {{range .Sources}}
-                    <li><span class="article-source-outlet">{{.Outlet}}:</span> <a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}<span aria-hidden="true">&nbsp;&#8599;</span><span class="article-sr-only"> (opens in a new tab)</span></a></li>
-                    {{end}}
-                </ol>
             </section>
             {{end}}
 

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
 )
@@ -120,4 +121,54 @@ func TestAdminPreview_ArticleOrderMatchesPublicPage(t *testing.T) {
 		`<section class="scouts-take"`,
 		`Preview take.`,
 	)
+}
+
+// Integration, real templates: an article's sources are listed in the admin
+// preview's admin-only area, and nowhere on the published page.
+func TestAdminPreview_ListsSourcesOnlyInAdmin(t *testing.T) {
+	base, database := setupAdminTestApp(t)
+	app, err := NewAppWithTemplateDir(base.cfg, database, base.articleManager, nil, nil, nil,
+		context.Background(), filepath.Join("..", "..", "templates"))
+	if err != nil {
+		t.Fatalf("app with real templates: %v", err)
+	}
+	t.Cleanup(app.WaitBackground)
+
+	id := createPendingArticle(t, database, "Sourced Preview Article")
+	src, err := database.CreateSource(&db.Source{Name: "Doctor of Credit", URL: "https://www.doctorofcredit.com", Active: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := database.CreateRawArticle(&db.RawArticle{SourceID: src, Title: "Citi bonus is back",
+		URL: "https://www.doctorofcredit.com/citi-bonus/", Content: "c", PublishedAt: time.Now(), Hash: "sourced-preview"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.LinkArticleSources(id, []int64{raw}); err != nil {
+		t.Fatal(err)
+	}
+
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	rec := doAdminGET(t, app, "/admin/dashboard", session)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("dashboard status %d", rec.Code)
+	}
+	admin := regexp.MustCompile(`(?s)<div class="preview-admin-info">.*?<div class="admin-sources-section">.*?</ul>`).FindString(rec.Body.String())
+	if !strings.Contains(admin, `<li><strong>Doctor of Credit</strong>: <a href="https://www.doctorofcredit.com/citi-bonus/" target="_blank" rel="noopener">Citi bonus is back</a></li>`) {
+		t.Errorf("the admin preview should list the article's sources:\n%s", admin)
+	}
+
+	if err := database.UpdateArticleStatus(id, db.StatusApproved); err != nil {
+		t.Fatal(err)
+	}
+	var slug string
+	if err := database.DB().QueryRow(`SELECT slug FROM generated_articles WHERE id = ?`, id).Scan(&slug); err != nil {
+		t.Fatal(err)
+	}
+	page := getPage(t, app, "/article/"+slug)
+	for _, leak := range []string{"Doctor of Credit", "doctorofcredit.com", "Citi bonus is back"} {
+		if strings.Contains(page, leak) {
+			t.Errorf("the published page names its source: %q", leak)
+		}
+	}
 }

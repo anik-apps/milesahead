@@ -946,43 +946,6 @@ func (d *Database) GetLinkedRawArticles(generatedArticleID int64) ([]RawArticle,
 	return articles, rows.Err()
 }
 
-// ArticleSourceLink is one story an article was written from, for the
-// article page's Sources list: the outlet's name, and the story's headline
-// and URL.
-type ArticleSourceLink struct {
-	Outlet string
-	Title  string
-	URL    string
-}
-
-// ListArticleSourceLinks returns the stories linked to a generated article as
-// sources, in the order the scan wrote it from: by source, then by raw
-// article, as the revision prompt presents them. Outlet is "" when the source
-// row no longer exists.
-func (d *Database) ListArticleSourceLinks(generatedArticleID int64) ([]ArticleSourceLink, error) {
-	rows, err := d.db.Query(
-		`SELECT COALESCE(s.name, ''), r.title, r.url
-		FROM article_sources a
-		JOIN raw_articles r ON r.id = a.raw_article_id
-		LEFT JOIN sources s ON s.id = r.source_id
-		WHERE a.generated_article_id = ?
-		ORDER BY r.source_id, r.id`, generatedArticleID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []ArticleSourceLink
-	for rows.Next() {
-		var l ArticleSourceLink
-		if err := rows.Scan(&l.Outlet, &l.Title, &l.URL); err != nil {
-			return nil, err
-		}
-		out = append(out, l)
-	}
-	return out, rows.Err()
-}
-
 // ListRelatedArticles returns up to limit approved articles, other than
 // excludeID, that carry at least one of tags: the related stories at the end
 // of an article page. Offers still live on today (as ListLivePublishedArticles

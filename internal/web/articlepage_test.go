@@ -300,13 +300,11 @@ func TestArticlePage_SectionOrder(t *testing.T) {
 		`<div class="article-content">`,
 		`<section class="scouts-take"`,
 		`<section class="card-embeds"`,
-		`<section class="article-sources" id="sources"`,
 		`<div class="article-feedback">`,
 	)
 	for _, want := range []string{
 		`<time class="published-date" datetime="`,
 		`<span class="article-byline">By Scout</span>`,
-		`<a class="article-source-count" href="#sources">2 sources</a>`,
 		`<h2 class="scout-label" id="scouts-take-title">Scout's Take</h2>`,
 		`<summary>Key details (2)</summary>`,
 	} {
@@ -378,26 +376,25 @@ func TestArticlePage_CardRows(t *testing.T) {
 	}
 }
 
-// Sources: outlet and linked headline, in the order the article was written
-// from, opening in a new tab with a visible and a spoken cue.
-func TestArticlePage_Sources(t *testing.T) {
+// Public pages do not name or link the news sites an article was written
+// from: no Sources section, no source count, no outlet names or URLs, even
+// when the article has linked sources. (The admin preview lists them; see
+// TestAdminPreview_ListsSourcesOnlyInAdmin.)
+func TestArticlePage_NoSourceOutlets(t *testing.T) {
 	app := articlePageApp(t)
-	seedFlexStory(t, app)
+	seedFlexStory(t, app) // links Doctor of Credit and One Mile at a Time
 	body := getPage(t, app, "/article/flex-250")
-
-	section := regexp.MustCompile(`(?s)<section class="article-sources".*?</section>`).FindString(body)
-	inOrder(t, section,
-		`<h2 class="article-section-title" id="sources-title">Sources</h2>`,
-		`<li><span class="article-source-outlet">Doctor of Credit:</span> <a href="https://www.doctorofcredit.com/flex-250/" target="_blank" rel="noopener">Chase Freedom Flex $250 bonus is back<span aria-hidden="true">&nbsp;&#8599;</span><span class="article-sr-only"> (opens in a new tab)</span></a></li>`,
-		`<span class="article-source-outlet">One Mile at a Time:</span> <a href="https://onemileatatime.com/news/flex-ftf/"`,
-	)
-
-	// No sources: no section and no count in the header.
-	publishStory(t, app, db.GeneratedArticle{Title: "Sourceless", Slug: "sourceless", Content: "<p>x</p>", Type: "deal"}, 2)
-	page := getPage(t, app, "/article/sourceless")
-	if strings.Contains(page, `id="sources"`) || strings.Contains(page, "article-source-count") {
-		t.Error("an article with no sources should not show a Sources section or count")
+	for _, leak := range []string{
+		"Doctor of Credit", "One Mile at a Time", "doctorofcredit.com", "onemileatatime.com",
+		"Chase Freedom Flex $250 bonus is back", ">Sources<", `id="sources"`, "article-source",
+	} {
+		if strings.Contains(body, leak) {
+			t.Errorf("public article page contains %q", leak)
+		}
 	}
+	// The meta line keeps the date, byline and tags.
+	meta := regexp.MustCompile(`(?s)<div class="article-meta-row">.*?</div>\s*</div>`).FindString(body)
+	inOrder(t, meta, `<time class="published-date"`, `<span class="article-byline">By Scout</span>`, `<a href="/?tag=points-deals" class="tag-badge">`)
 }
 
 // Links in the story to our own pages stay in the reader's tab; links to

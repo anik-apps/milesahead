@@ -44,13 +44,6 @@ const heroSizes = "(max-width: 768px) calc(100vw - 2rem), 1100px"
 // reason). They are used only when an article has no other tag.
 var broadTags = []string{"loyalty-programs", "points-deals"}
 
-// articleSource is one entry in an article's Sources list.
-type articleSource struct {
-	Outlet string
-	Title  string
-	URL    string
-}
-
 // relatedStory is one entry in an article's related stories.
 type relatedStory struct {
 	Title       string
@@ -66,29 +59,6 @@ type shareLinks struct {
 	URL   string // the article's canonical URL, for "Copy link"
 	Email string // mailto: with the title as subject and the URL as body
 	X     string // X's post intent
-}
-
-// articleSources turns stored source links into the Sources list, naming a
-// story's outlet by its host when the source row has no name.
-func articleSources(links []db.ArticleSourceLink) []articleSource {
-	out := make([]articleSource, 0, len(links))
-	for _, l := range links {
-		if l.URL == "" {
-			continue
-		}
-		outlet := strings.TrimSpace(l.Outlet)
-		if outlet == "" {
-			if u, err := url.Parse(l.URL); err == nil {
-				outlet = strings.TrimPrefix(u.Hostname(), "www.")
-			}
-		}
-		title := strings.TrimSpace(l.Title)
-		if title == "" {
-			title = l.URL
-		}
-		out = append(out, articleSource{Outlet: outlet, Title: title, URL: l.URL})
-	}
-	return out
 }
 
 // storyCardsFirst moves the cards the headline names ahead of the others,

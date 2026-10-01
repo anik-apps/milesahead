@@ -3014,11 +3014,11 @@ footer .footer-links a, .footer-pillars a { color: #15307a; }
 
 /* ===== Article page =====
    Headline and summary first: badges, headline, the ended-offer note, date,
-   byline, sources and tags, then the TL;DR as a standfirst. The photo follows
+   byline and tags, then the TL;DR as a standfirst. The photo follows
    as a fixed-height band. The story keeps a sticky Key Details sidebar on
    desktop; on phones the details fold into a disclosure under the
    standfirst. After the story: Scout's Take, the cards it names (one compact
-   row each), its sources, related stories, and a one-line vote with share
+   row each), related stories, and a one-line vote with share
    links. The admin dashboard's preview uses the same classes and order. */
 :root { --article-tag-fg: #1d4ed8; }            /* 5.9:1 on the chip */
 [data-theme="dark"] { --article-tag-fg: #79b8ff; } /* 7.5:1 on the chip */
@@ -3040,7 +3040,7 @@ footer .footer-links a, .footer-pillars a { color: #15307a; }
 }
 .article-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; }
 .article-meta { display: flex; flex-wrap: wrap; align-items: center; margin: 0; color: var(--text-muted); font-size: 0.9rem; }
-/* inline-block, so the dot is not underlined with the "sources" link. */
+/* inline-block, so the dot is never underlined with a link beside it. */
 .article-meta > * + *::before { content: "\00B7"; content: "\00B7" / ""; display: inline-block; margin: 0 0.5rem; }
 .article-meta a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .article-meta a:hover { color: var(--accent); }
@@ -3148,12 +3148,6 @@ figure.article-hero, .article-detail .article-hero, .preview-body .article-hero 
 .card-embed-cta { background: var(--accent); color: var(--bg); border: 1px solid var(--accent); }
 .card-embed-cta:hover { filter: brightness(0.92); }
 .card-embed-cta.is-muted:hover { filter: none; }
-
-/* Sources */
-.article-sources { border-top: 0; padding-top: 0; margin-bottom: 0; }
-.article-sources ol { margin: 0; padding-left: 1.4rem; font-size: 0.95rem; }
-.article-sources li { padding: 0.25rem 0; border-bottom: 0; }
-.article-source-outlet { font-weight: 600; }
 
 /* Related stories */
 .related-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
