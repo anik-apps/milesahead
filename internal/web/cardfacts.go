@@ -280,7 +280,8 @@ func applyHost(raw string) string {
 	return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 }
 
-// feeBand is a range of annual fees offered as an index filter.
+// feeBand is a range of annual fees the index filters by. Only "none" has a
+// control (the "No annual fee" toggle); the others serve older links.
 type feeBand struct {
 	Key      string
 	Label    string

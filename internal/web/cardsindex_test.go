@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -86,8 +88,11 @@ func chip(t *testing.T, chips []indexChip, label string) indexChip {
 
 func TestCardsIndex_Unfiltered(t *testing.T) {
 	ix := buildCardsIndex(indexFixture(), q(""))
-	if !ix.Grouped || ix.Count != 10 || ix.CountText != "10 cards" || len(ix.Active) != 0 {
-		t.Fatalf("unfiltered: grouped=%v count=%d active=%v", ix.Grouped, ix.Count, ix.Active)
+	if !ix.Grouped || ix.Count != 10 || ix.CountText != "10 cards" || ix.Filtered || ix.ClearURL != "/cards/" {
+		t.Fatalf("unfiltered: grouped=%v count=%d filtered=%v", ix.Grouped, ix.Count, ix.Filtered)
+	}
+	if !ix.Sorts[0].Selected || ix.Sorts[0].Label != "By category" || ix.Sorts[0].URL != "/cards/" {
+		t.Errorf("default sort: %+v", ix.Sorts[0])
 	}
 	var names []string
 	for _, g := range ix.Groups {
@@ -108,36 +113,94 @@ func TestCardsIndex_Unfiltered(t *testing.T) {
 	}
 }
 
-// Category, fee band and issuer apply together, and every link keeps the others.
-func TestCardsIndex_FiltersCombine(t *testing.T) {
-	ix := buildCardsIndex(indexFixture(), q("cat=travel&fee=under-100&issuer=chase"))
-	if ix.Grouped {
-		t.Error("a category filter shows a flat list")
+// The "No annual fee" toggle is fee=none: only cards whose fee is recorded
+// as $0. Every chip keeps the toggle and the sort, and the toggle keeps the
+// category and the sort.
+func TestCardsIndex_NoFeeToggle(t *testing.T) {
+	off := buildCardsIndex(indexFixture(), q("sort=name"))
+	if off.NoFee.Active || off.NoFee.Count != 2 || off.NoFee.URL != "/cards/?fee=none&sort=name" {
+		t.Errorf("toggle off: %+v", off.NoFee)
 	}
+	if off.Filtered || len(off.Applied) != 0 || len(off.Legacy) != 0 {
+		t.Errorf("a sort alone is not a filter: filtered=%v applied=%v legacy=%v", off.Filtered, off.Applied, off.Legacy)
+	}
+
+	on := buildCardsIndex(indexFixture(), q("fee=none&sort=name"))
+	// Recorded $0 fees only: "blank" has $0 in the column but no fee record.
+	if got := strings.Join(shownSlugs(on), ","); got != "ac,dc" {
+		t.Errorf("no annual fee: got %s", got)
+	}
+	if !on.NoFee.Active || on.NoFee.URL != "/cards/?sort=name" {
+		t.Errorf("toggle on removes just itself: %+v", on.NoFee)
+	}
+	if c := chip(t, on.Categories, "Cash Back"); c.Count != 2 || c.URL != "/cards/?cat=cash-back&fee=none&sort=name" {
+		t.Errorf("category chip keeps the toggle and the sort: %+v", c)
+	}
+	if c := chip(t, on.Categories, "Hotel"); c.Count != 0 {
+		t.Errorf("no hotel card is free: %+v", c)
+	}
+
+	both := buildCardsIndex(indexFixture(), q("cat=cash-back&fee=none&sort=fee-desc"))
+	if got := strings.Join(shownSlugs(both), ","); got != "ac,dc" {
+		t.Errorf("cash back + no annual fee: got %s", got)
+	}
+	if both.NoFee.URL != "/cards/?cat=cash-back&sort=fee-desc" {
+		t.Errorf("toggling off keeps the category and sort: %s", both.NoFee.URL)
+	}
+	if c := chip(t, both.Categories, "Cash Back"); !c.Active || c.URL != "/cards/?fee=none&sort=fee-desc" {
+		t.Errorf("active category chip removes just the category: %+v", c)
+	}
+	if got := strings.Join(both.Applied, ","); got != "Cash Back,No annual fee" || len(both.Legacy) != 0 {
+		t.Errorf("results line: applied %v, legacy %v", both.Applied, both.Legacy)
+	}
+	if !both.Filtered || both.ClearURL != "/cards/?sort=fee-desc" {
+		t.Errorf("Clear removes the filters and keeps the sort: filtered=%v %s", both.Filtered, both.ClearURL)
+	}
+
+	// The toggle is greyed out where it would show nothing.
+	if hotel := buildCardsIndex(indexFixture(), q("cat=hotel")); hotel.NoFee.Count != 0 {
+		t.Errorf("no free hotel card, toggle count %d", hotel.NoFee.Count)
+	}
+}
+
+// Older links with a fee band or an issuer still filter. They have no control
+// on the page, so the results line offers a link that removes each one.
+func TestCardsIndex_LegacyFilters(t *testing.T) {
+	ix := buildCardsIndex(indexFixture(), q("cat=travel&fee=under-100&issuer=chase&sort=name"))
 	if got := strings.Join(shownSlugs(ix), ","); got != "csp" {
 		t.Errorf("travel + under $100 + Chase: got %s", got)
 	}
-	// Chip counts are what each click would show with the other filters kept.
-	if c := chip(t, ix.Categories, "Hotel"); c.Count != 0 {
-		t.Errorf("Hotel with under-100 + Chase should count 0, got %d", c.Count)
+	if c := chip(t, ix.Categories, "Hotel"); c.Count != 0 || c.URL != "/cards/?cat=hotel&fee=under-100&issuer=chase&sort=name" {
+		t.Errorf("chips keep the old filters too: %+v", c)
 	}
-	if c := chip(t, ix.FeeBands, "$100–$400"); c.Count != 1 || c.URL != "/cards/?cat=travel&fee=100-400&issuer=chase" {
-		t.Errorf("fee band keeps category and issuer: %+v", c)
-	}
-	// The active chip removes just its own filter.
-	if c := chip(t, ix.Categories, "Travel & Premium"); !c.Active || c.URL != "/cards/?fee=under-100&issuer=chase" {
-		t.Errorf("active category chip: %+v", c)
+	if got := strings.Join(ix.Applied, ","); got != "Travel & Premium" {
+		t.Errorf("applied: %s", got)
 	}
 	var labels, removes []string
-	for _, a := range ix.Active {
+	for _, a := range ix.Legacy {
 		labels = append(labels, a.Label)
 		removes = append(removes, a.RemoveURL)
 	}
-	if got := strings.Join(labels, ","); got != "Travel & Premium,Under $100,Chase" {
-		t.Errorf("applied filters: %s", got)
+	if got := strings.Join(labels, ","); got != "Under $100,Chase" {
+		t.Errorf("old filters on the results line: %s", got)
 	}
-	if removes[2] != "/cards/?cat=travel&fee=under-100" {
-		t.Errorf("removing the issuer keeps the rest: %s", removes[2])
+	if got := strings.Join(removes, " "); got != "/cards/?cat=travel&issuer=chase&sort=name /cards/?cat=travel&fee=under-100&sort=name" {
+		t.Errorf("removing one keeps the rest: %s", got)
+	}
+	// Turning the toggle on replaces the band, which it could only contradict.
+	if ix.NoFee.Active || ix.NoFee.URL != "/cards/?cat=travel&fee=none&issuer=chase&sort=name" {
+		t.Errorf("toggle with a fee band: %+v", ix.NoFee)
+	}
+	if !ix.Filtered || ix.ClearURL != "/cards/?sort=name" {
+		t.Errorf("Clear: %v %s", ix.Filtered, ix.ClearURL)
+	}
+
+	issuer := buildCardsIndex(indexFixture(), q("issuer=chase"))
+	if got := strings.Join(shownSlugs(issuer), ","); got != "edge-100,csp,edge-400" {
+		t.Errorf("issuer=chase: got %s", got)
+	}
+	if !issuer.Grouped || len(issuer.Legacy) != 1 || issuer.Legacy[0].Label != "Chase" || issuer.Legacy[0].RemoveURL != "/cards/" {
+		t.Errorf("issuer alone: grouped=%v legacy=%+v", issuer.Grouped, issuer.Legacy)
 	}
 }
 
@@ -181,6 +244,35 @@ func TestCardsIndex_Sort(t *testing.T) {
 	name := shownSlugs(buildCardsIndex(indexFixture(), q("sort=name")))
 	if name[0] != "ac" || name[1] != "blank" {
 		t.Errorf("by name: %v", name)
+	}
+	// Every sort but the default is one list without category headings.
+	for _, s := range []string{"name", "fee-asc", "fee-desc"} {
+		if ix := buildCardsIndex(indexFixture(), q("sort="+s)); ix.Grouped || ix.Count != 10 {
+			t.Errorf("sort=%s: grouped=%v count=%d", s, ix.Grouped, ix.Count)
+		}
+	}
+	// A sort never changes which cards show.
+	if got := buildCardsIndex(indexFixture(), q("fee=none&sort=fee-desc")).Count; got != 2 {
+		t.Errorf("sorted no-fee view: %d cards", got)
+	}
+	// The menu: the default first, each option a URL that keeps the filters.
+	ix := buildCardsIndex(indexFixture(), q("cat=cash-back&sort=fee-asc"))
+	var opts []string
+	for _, o := range ix.Sorts {
+		sel := ""
+		if o.Selected {
+			sel = "*"
+		}
+		opts = append(opts, sel+o.Label+"="+o.URL)
+	}
+	want := "By category=/cards/?cat=cash-back,Name (A–Z)=/cards/?cat=cash-back&sort=name," +
+		"*Lowest fee=/cards/?cat=cash-back&sort=fee-asc,Highest fee=/cards/?cat=cash-back&sort=fee-desc"
+	if got := strings.Join(opts, ","); got != want {
+		t.Errorf("sort menu:\n got %s\nwant %s", got, want)
+	}
+	// An unknown sort is the default.
+	if bad := buildCardsIndex(indexFixture(), q("sort=random")); !bad.Grouped || bad.Query.Sort != "" || !bad.Sorts[0].Selected {
+		t.Errorf("unknown sort: %+v", bad.Query)
 	}
 }
 
@@ -306,16 +398,22 @@ func TestHandleCardsList_SeedCards(t *testing.T) {
 		t.Fatalf("expected 52 tiles, got %d", got)
 	}
 	for _, want := range []string{
-		// The filter bar is a GET form whose controls are labelled.
-		`<form class="cards-filters" method="get" action="/cards/"`,
-		`<span class="cards-filter-label">Issuer</span>`,
-		`<select name="issuer">`,
-		`<select name="sort">`,
-		`<button type="submit" class="cards-filter-apply">Apply</button>`,
-		// Fee bands as they fall in the seed data: 12 / 15 / 13 / 12.
-		`<a href="/cards/?fee=none" class="filter-switch-item">No fee</a>`,
+		// One row of filters: category chips with counts, then the toggle.
+		`<div class="filter-bar cards-cat-bar" role="group" aria-label="Category">`,
+		`<a href="/cards/" class="filter-chip active" aria-current="true">All <span class="filter-count">52</span></a>`,
 		`href="/cards/?cat=cash-back" class="filter-chip">Cash Back <span class="filter-count">9</span>`,
-		`Showing 52 cards`,
+		`<a href="/cards/?fee=none" class="filter-chip filter-toggle" role="button" aria-pressed="false">No annual fee</a>`,
+		// The results line: the count, then a labelled sort menu that
+		// defaults to the grouped view, with Go for browsers without JS.
+		`<span class="cards-results-count">52 cards</span>`,
+		`<label for="cards-sort-select">Sort</label>`,
+		`<select id="cards-sort-select" name="sort" data-sort-menu>`,
+		`<option value="" data-url="/cards/" selected>By category</option>`,
+		`<option value="name" data-url="/cards/?sort=name">Name (A–Z)</option>`,
+		`<option value="fee-asc" data-url="/cards/?sort=fee-asc">Lowest fee</option>`,
+		`<option value="fee-desc" data-url="/cards/?sort=fee-desc">Highest fee</option>`,
+		`<button type="submit" class="cards-sort-go">Go</button>`,
+		`<h2 class="category-heading">Travel &amp; Premium</h2>`,
 		// Facts on the tiles.
 		`<b>$895</b> annual fee`,
 		`<b>5x</b> flights`,
@@ -327,6 +425,18 @@ func TestHandleCardsList_SeedCards(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("/cards/ should contain %q", want)
 		}
+	}
+	// The fee bands, issuer menu and Apply button are gone, and with nothing
+	// filtered there is nothing to clear.
+	for _, gone := range []string{
+		"filter-switch", `name="issuer"`, ">Apply<", `class="filter-clear"`, `class="filter-remove"`, "Under $100",
+	} {
+		if strings.Contains(body, gone) {
+			t.Errorf("/cards/ should no longer contain %q", gone)
+		}
+	}
+	if got := strings.Count(body, `class="category-heading"`); got != 6 {
+		t.Errorf("the default sort groups by category: %d headings", got)
 	}
 	// The cut-off quote is gone; the facts replace it.
 	if strings.Contains(body, "card-grid-excerpt") {
@@ -366,13 +476,21 @@ func TestHandleCardsList_FilteredView(t *testing.T) {
 		t.Fatalf("cash back with no fee should be some but not all of the 9 cash back cards, got %d", n)
 	}
 	for _, want := range []string{
-		// The selects submit with the chips' filters kept.
+		// The toggle is pressed, and pressing it again keeps the category
+		// and the sort.
+		`<a href="/cards/?cat=cash-back&amp;sort=fee-asc" class="filter-chip filter-toggle active" role="button" aria-pressed="true">No annual fee</a>`,
+		// Chips keep the toggle and the sort; the active one removes itself.
+		`<a href="/cards/?cat=hotel&amp;fee=none&amp;sort=fee-asc" class="filter-chip`,
+		`<a href="/cards/?fee=none&amp;sort=fee-asc" class="filter-chip active" aria-current="true">Cash Back`,
+		// The results line names the filters and clears them, keeping the sort.
+		`<span class="cards-results-applied">Cash Back</span>`,
+		`<span class="cards-results-applied">No annual fee</span>`,
+		`<a href="/cards/?sort=fee-asc" class="filter-clear">Clear</a>`,
+		// The sort menu keeps the filters, with and without JavaScript.
 		`<input type="hidden" name="cat" value="cash-back">`,
 		`<input type="hidden" name="fee" value="none">`,
-		`<option value="fee-asc" selected>`,
-		`aria-label="Remove filter: Cash Back"`,
-		`aria-label="Remove filter: No annual fee"`,
-		`<a href="/cards/" class="filter-clear">Clear all</a>`,
+		`<option value="fee-asc" data-url="/cards/?cat=cash-back&amp;fee=none&amp;sort=fee-asc" selected>Lowest fee</option>`,
+		`<option value="" data-url="/cards/?cat=cash-back&amp;fee=none">By category</option>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("filtered /cards/ should contain %q", want)
@@ -384,16 +502,116 @@ func TestHandleCardsList_FilteredView(t *testing.T) {
 	if strings.Contains(body, `$95</b>`) || strings.Contains(body, `$39</b>`) {
 		t.Error("a no-fee filter must not show cards with a fee")
 	}
+	if strings.Contains(body, `class="filter-remove"`) {
+		t.Error("filters with a chip are not repeated as removable items")
+	}
 
-	none := getPath(t, app, "/cards/?cat=hotel&fee=none&issuer=discover")
-	if !strings.Contains(none, "No cards match these filters.") {
+	none := getPath(t, app, "/cards/?cat=hotel&fee=none&issuer=discover&sort=name")
+	if !strings.Contains(none, "No cards match these filters.") || !strings.Contains(none, `<a href="/cards/?sort=name">Show all cards</a>`) {
 		t.Error("an empty result should say so and offer to clear")
 	}
 }
 
+// The sorts reorder the same cards as one list; the default groups them.
+func TestHandleCardsList_Sorts(t *testing.T) {
+	app := setupRealTemplateCardApp(t)
+	seedAllCards(t, app)
+	titles := func(body string) []string {
+		var out []string
+		for _, m := range regexp.MustCompile(`<h3 class="card-tile-title">([^<]*)</h3>`).FindAllStringSubmatch(body, -1) {
+			out = append(out, m[1])
+		}
+		return out
+	}
+	fees := func(body string) []int {
+		var out []int
+		for _, m := range regexp.MustCompile(`(?s)class="card-tile-facts">\s*<span class="card-tile-fact">(?:<b>\$([\d,]+)</b>|<b>No</b>) annual fee`).FindAllStringSubmatch(body, -1) {
+			n, _ := strconv.Atoi(strings.ReplaceAll(m[1], ",", ""))
+			out = append(out, n)
+		}
+		return out
+	}
+	for _, sortBy := range []string{"name", "fee-asc", "fee-desc"} {
+		body := getPath(t, app, "/cards/?sort="+sortBy)
+		if strings.Count(body, `class="card-tile"`) != 52 || strings.Contains(body, `class="category-heading"`) {
+			t.Errorf("sort=%s: every card, one list without headings", sortBy)
+		}
+		if !strings.Contains(body, `<option value="`+sortBy+`" data-url="/cards/?sort=`+sortBy+`" selected>`) {
+			t.Errorf("sort=%s is selected in the menu", sortBy)
+		}
+		if !strings.Contains(body, `<a href="/cards/?cat=hotel&amp;sort=`+sortBy+`" class="filter-chip">`) ||
+			!strings.Contains(body, `<a href="/cards/?fee=none&amp;sort=`+sortBy+`" class="filter-chip filter-toggle"`) {
+			t.Errorf("sort=%s: the chips and the toggle keep the sort", sortBy)
+		}
+		if strings.Contains(body, `class="filter-clear"`) {
+			t.Errorf("sort=%s: a sort is not a filter, nothing to clear", sortBy)
+		}
+	}
+	names := titles(getPath(t, app, "/cards/?sort=name"))
+	if !sort.SliceIsSorted(names, func(i, j int) bool { return strings.ToLower(names[i]) < strings.ToLower(names[j]) }) {
+		t.Errorf("by name: %v", names)
+	}
+	asc := fees(getPath(t, app, "/cards/?sort=fee-asc"))
+	if len(asc) != 52 || !sort.IntsAreSorted(asc) {
+		t.Errorf("lowest fee first: %v", asc)
+	}
+	desc := fees(getPath(t, app, "/cards/?sort=fee-desc"))
+	if len(desc) != 52 || !sort.SliceIsSorted(desc, func(i, j int) bool { return desc[i] > desc[j] }) {
+		t.Errorf("highest fee first: %v", desc)
+	}
+	// An unknown sort is the default grouped view.
+	bad := getPath(t, app, "/cards/?sort=random")
+	if strings.Count(bad, `class="category-heading"`) != 6 || !strings.Contains(bad, `<option value="" data-url="/cards/" selected>By category</option>`) {
+		t.Error("an unknown sort falls back to By category")
+	}
+}
+
+// Links from before the simpler filters keep working: a fee band or an issuer
+// still filters and shows on the results line with a link that removes it.
+func TestHandleCardsList_LegacyLinks(t *testing.T) {
+	app := setupRealTemplateCardApp(t)
+	seedAllCards(t, app)
+
+	band := getPath(t, app, "/cards/?cat=travel&fee=under-100&sort=name")
+	if n := strings.Count(band, `class="card-tile"`); n == 0 || n >= 10 {
+		t.Errorf("travel under $100: %d of the 10 travel cards", n)
+	}
+	for _, want := range []string{
+		`<a href="/cards/?cat=travel&amp;sort=name" class="filter-remove" aria-label="Remove filter: Under $100">Under $100<span class="filter-remove-x" aria-hidden="true">✕</span></a>`,
+		`<input type="hidden" name="fee" value="under-100">`,
+		// The toggle replaces the band and is not pressed by it.
+		`<a href="/cards/?cat=travel&amp;fee=none&amp;sort=name" class="filter-chip filter-toggle" role="button" aria-pressed="false">`,
+		`<a href="/cards/?sort=name" class="filter-clear">Clear</a>`,
+	} {
+		if !strings.Contains(band, want) {
+			t.Errorf("?fee=under-100 should contain %q", want)
+		}
+	}
+
+	issuer := getPath(t, app, "/cards/?issuer=chase&fee=none")
+	n := strings.Count(issuer, `class="card-tile"`)
+	if n == 0 || n != strings.Count(issuer, `<span class="issuer-badge">Chase</span>`) {
+		t.Errorf("issuer=chase&fee=none: %d tiles, not all Chase", n)
+	}
+	for _, want := range []string{
+		`<a href="/cards/?fee=none" class="filter-remove" aria-label="Remove filter: Chase">Chase`,
+		`<span class="cards-results-applied">No annual fee</span>`,
+		`<input type="hidden" name="issuer" value="chase">`,
+		`<a href="/cards/?cat=cash-back&amp;fee=none&amp;issuer=chase" class="filter-chip">`,
+	} {
+		if !strings.Contains(issuer, want) {
+			t.Errorf("?issuer=chase should contain %q", want)
+		}
+	}
+	// Removing the issuer keeps the toggle.
+	if after := getPath(t, app, "/cards/?fee=none"); strings.Count(after, `class="card-tile"`) != 12 {
+		t.Error("no annual fee without the issuer: the 12 free cards")
+	}
+}
+
 // A $0 fee that was recorded is "No annual fee"; a fee that was never
-// recorded (the column's default 0) shows nothing and stays out of the fee
-// bands, though the card is still listed.
+// recorded (the column's default 0) shows nothing and stays out of the "No
+// annual fee" toggle and the fee bands, though the card is still listed.
 func TestCardsIndex_UnknownFeeIsNotNoFee(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
 	known := indexPage("zero-fee", "Zero Fee Card", "cash-back", "Citi", 0, `{"base":{"rate":"2%"}}`, "$200 bonus after $500 spend")
@@ -427,14 +645,16 @@ func TestCardsIndex_UnknownFeeIsNotNoFee(t *testing.T) {
 
 	noFee := getPath(t, app, "/cards/?fee=none")
 	if !strings.Contains(noFee, `href="/cards/zero-fee"`) || strings.Contains(noFee, `href="/cards/unknown-fee"`) {
-		t.Error("the No fee band holds the recorded $0 fee only")
+		t.Error("No annual fee holds the recorded $0 fee only")
 	}
 	if !strings.Contains(getPath(t, app, "/cards/?fee=any"), `href="/cards/unknown-fee"`) {
 		t.Error("Any still lists the card with an unknown fee")
 	}
-	asc := getPath(t, app, "/cards/?sort=fee-asc")
-	if strings.Index(asc, `href="/cards/unknown-fee"`) < strings.Index(asc, `href="/cards/zero-fee"`) {
-		t.Error("an unknown fee sorts last, after $0")
+	for _, by := range []string{"fee-asc", "fee-desc"} {
+		b := getPath(t, app, "/cards/?sort="+by)
+		if strings.Index(b, `href="/cards/unknown-fee"`) < strings.Index(b, `href="/cards/zero-fee"`) {
+			t.Errorf("sort=%s: an unknown fee sorts last, after $0", by)
+		}
 	}
 
 	// The card page's summary: no fee cell for the unknown fee.

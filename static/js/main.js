@@ -155,3 +155,28 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// Cards index: the sort menu opens the chosen order as soon as it changes,
+// so its Go button (there for browsers without JavaScript) is hidden. Each
+// option carries its page's URL, which keeps the filters and drops a default
+// sort from the URL. The "No annual fee" toggle is a link announced as a
+// toggle button, so Space presses it as it would a button.
+(function() {
+    var menu = document.querySelector('[data-sort-menu]');
+    if (menu) {
+        var go = menu.form && menu.form.querySelector('.cards-sort-go');
+        if (go) go.hidden = true;
+        menu.addEventListener('change', function() {
+            var url = menu.options[menu.selectedIndex].getAttribute('data-url');
+            if (url) window.location.assign(url);
+        });
+    }
+    document.querySelectorAll('a.filter-toggle[role="button"]').forEach(function(a) {
+        a.addEventListener('keydown', function(e) {
+            if (e.key === ' ') {
+                e.preventDefault();
+                a.click();
+            }
+        });
+    });
+})();
