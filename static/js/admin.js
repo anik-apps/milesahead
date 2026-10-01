@@ -240,3 +240,135 @@ window.adminShortcuts = (function () {
     }, 20000);
   }
 })();
+
+// The card editor: unsaved-change warning, JSON checks, and sections that
+// collapse, reorder and can be removed with an undo until the card is saved.
+(function () {
+  'use strict';
+  var form = document.getElementById('card-form');
+  if (!form) return;
+
+  var dirty = false;
+  var saving = false;
+  var note = document.querySelector('.editor-dirty');
+  function markDirty() {
+    if (dirty) return;
+    dirty = true;
+    if (note) note.hidden = false;
+  }
+  form.addEventListener('input', markDirty);
+  form.addEventListener('change', markDirty);
+  form.addEventListener('submit', function (e) {
+    var resolving = e.submitter && e.submitter.hasAttribute('data-resolve');
+    if (resolving && dirty && !window.confirm('Resolving reloads the editor and drops your unsaved changes. Resolve anyway?')) {
+      e.preventDefault();
+      return;
+    }
+    saving = true;
+  });
+  window.addEventListener('beforeunload', function (e) {
+    if (dirty && !saving) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  // JSON boxes: say whether the text parses, and pretty-print on request.
+  function checkJSON(t) {
+    var status = t.closest('.json-field').querySelector('.json-status');
+    if (!status) return;
+    var v = t.value.trim();
+    if (!v) { status.textContent = 'empty'; status.className = 'json-status chip chip-mute'; return; }
+    try {
+      JSON.parse(v);
+      status.textContent = 'valid JSON';
+      status.className = 'json-status chip chip-ok';
+    } catch (err) {
+      status.textContent = 'not valid JSON: ' + err.message;
+      status.className = 'json-status chip chip-bad';
+    }
+  }
+  form.querySelectorAll('textarea[data-json]').forEach(function (t) {
+    t.addEventListener('input', function () { checkJSON(t); });
+    checkJSON(t);
+  });
+  form.querySelectorAll('.json-format').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var t = document.getElementById(b.getAttribute('data-for'));
+      try {
+        t.value = JSON.stringify(JSON.parse(t.value), null, 2);
+        markDirty();
+      } catch (err) { /* checkJSON already says why */ }
+      checkJSON(t);
+    });
+  });
+
+  // Sections.
+  var container = document.getElementById('sections-container');
+  function syncSummary(item) {
+    var title = item.querySelector('input[name="section_title[]"]');
+    var key = item.querySelector('input[name="section_key[]"]');
+    var name = item.querySelector('.section-name');
+    var code = item.querySelector('.section-key');
+    if (name && title) name.textContent = title.value || 'Untitled section';
+    if (code && key) code.textContent = key.value;
+  }
+  function setRemoved(item, removed) {
+    item.classList.toggle('is-removed', removed);
+    item.querySelectorAll('input, textarea').forEach(function (el) { el.disabled = removed; });
+    item.querySelector('.section-removed').hidden = !removed;
+    item.querySelector('.section-body').hidden = removed;
+    if (removed) item.open = true;
+    markDirty();
+  }
+  if (container) {
+    container.addEventListener('input', function (e) {
+      var item = e.target.closest('.section-item');
+      if (item) syncSummary(item);
+    });
+    container.addEventListener('click', function (e) {
+      var item = e.target.closest('.section-item');
+      if (!item) return;
+      var move = e.target.closest('[data-move]');
+      if (move) {
+        e.preventDefault();
+        var dir = parseInt(move.getAttribute('data-move'), 10);
+        var sib = dir < 0 ? item.previousElementSibling : item.nextElementSibling;
+        if (sib) {
+          if (dir < 0) container.insertBefore(item, sib); else container.insertBefore(sib, item);
+          markDirty();
+          move.focus();
+        }
+        return;
+      }
+      if (e.target.closest('[data-remove]')) { e.preventDefault(); setRemoved(item, true); return; }
+      if (e.target.closest('[data-restore]')) { e.preventDefault(); setRemoved(item, false); }
+    });
+    var add = document.getElementById('add-section');
+    var tpl = document.getElementById('section-template');
+    if (add && tpl) {
+      add.addEventListener('click', function () {
+        var node = tpl.content.firstElementChild.cloneNode(true);
+        container.appendChild(node);
+        markDirty();
+        var key = node.querySelector('input[name="section_key[]"]');
+        if (key) key.focus();
+      });
+    }
+  }
+})();
+
+// A search box with data-filter="selector" hides the matching rows whose
+// data-card-search text does not contain what was typed.
+(function () {
+  'use strict';
+  document.querySelectorAll('input[data-filter]').forEach(function (input) {
+    var sel = input.getAttribute('data-filter');
+    input.addEventListener('input', function () {
+      var q = input.value.trim().toLowerCase();
+      document.querySelectorAll(sel).forEach(function (row) {
+        row.hidden = q !== '' && row.getAttribute('data-card-search').toLowerCase().indexOf(q) < 0;
+      });
+      document.querySelectorAll('.cards-group').forEach(function (g) {
+        g.hidden = q !== '' && !g.querySelector(sel + ':not([hidden])');
+      });
+    });
+  });
+})();

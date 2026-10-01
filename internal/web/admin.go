@@ -944,14 +944,21 @@ func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var issuers []adminIssuerGroup
+	var attention []adminCardRow
 	for _, name := range issuerOrder {
 		issuers = append(issuers, adminIssuerGroup{Name: name, Cards: issuerMap[name]})
+		for _, c := range issuerMap[name] {
+			if c.PendingCount > 0 || c.FlaggedCount > 0 {
+				attention = append(attention, c)
+			}
+		}
 	}
 
 	data := map[string]interface{}{
 		"Title":     "Cards",
 		"Cards":     pages,
 		"Issuers":   issuers,
+		"Attention": attention,
 		"CSRFToken": getCSRFToken(w, r),
 		"Message":   r.URL.Query().Get("msg"),
 	}
@@ -999,25 +1006,59 @@ func (app *App) renderCardForm(w http.ResponseWriter, r *http.Request, status in
 	if f.Card.PendingUpdatesJSON != "" && f.Card.PendingUpdatesJSON != "[]" {
 		json.Unmarshal([]byte(f.Card.PendingUpdatesJSON), &pending)
 	}
+	// Flags are shown on the field they are about; flags on a name the
+	// editor has no field for are listed together above the form.
+	flagMap := map[string][]db.FlaggedField{}
+	var otherFlags []db.FlaggedField
+	known := map[string]bool{}
+	for _, cf := range cardFlagFields {
+		known[cf.Name] = true
+	}
+	for _, fl := range flagged {
+		if known[fl.Field] {
+			flagMap[fl.Field] = append(flagMap[fl.Field], fl)
+		} else {
+			otherFlags = append(otherFlags, fl)
+		}
+	}
+	sectionUpdates := map[string]int{}
+	for _, u := range pending {
+		sectionUpdates[u.SectionKey]++
+	}
 	data := map[string]interface{}{
-		"Title":         title,
-		"IsNew":         f.IsNew,
-		"Card":          f.Card,
-		"Sections":      f.Sections,
-		"Keywords":      f.Keywords,
-		"FormAction":    formAction,
-		"PersonaName":   app.cfg.Site.PersonaName,
-		"CSRFToken":     getCSRFToken(w, r),
-		"FlaggedFields": flagged,
-		"PendingCount":  len(pending),
-		"FormError":     f.FormError,
-		"FieldErrors":   f.FieldErrors,
-		"Message":       f.Message,
+		"Title":          title,
+		"IsNew":          f.IsNew,
+		"Card":           f.Card,
+		"Sections":       f.Sections,
+		"Keywords":       f.Keywords,
+		"FormAction":     formAction,
+		"PersonaName":    app.cfg.Site.PersonaName,
+		"CSRFToken":      getCSRFToken(w, r),
+		"FlaggedFields":  flagged,
+		"FlagMap":        flagMap,
+		"OtherFlags":     otherFlags,
+		"FlagFields":     cardFlagFields,
+		"JSONFields":     cardJSONFieldValues(f.Card),
+		"SectionUpdates": sectionUpdates,
+		"PendingCount":   len(pending),
+		"FormError":      f.FormError,
+		"FieldErrors":    f.FieldErrors,
+		"Message":        f.Message,
 	}
 	if status != http.StatusOK {
 		w.WriteHeader(status)
 	}
 	app.renderTemplate(w, "card-edit.html", data)
+}
+
+// cardFlagFields are the editor's fields an admin can flag, in form order.
+var cardFlagFields = []struct{ Name, Label string }{
+	{"title", "Title"}, {"slug", "Slug"}, {"category", "Category"}, {"issuer", "Issuer"},
+	{"keywords", "Keywords"}, {"image_url", "Image URL"}, {"apply_url", "Card details URL"},
+	{"annual_fee_amount", "Annual fee"}, {"annual_fee_note", "Annual fee note"},
+	{"welcome_bonus_text", "Welcome bonus"}, {"earning_rates_json", "Earning rates"},
+	{"credits_json", "Credits"}, {"benefits_json", "Benefits"}, {"protections_json", "Protections"},
+	{"sections", "Sections"}, {"scouts_verdict", "Verdict"},
 }
 
 // cardJSONFields are the card's structured-data fields, edited as JSON.
@@ -1095,6 +1136,37 @@ func applyCardForm(r *http.Request, page *db.ReferencePage) (keywords string, se
 		sections = []db.ReferenceSection{}
 	}
 	return keywords, sections, errs
+}
+
+// cardJSONField is one JSON box in the card editor.
+type cardJSONField struct {
+	Name, Label, Placeholder, Value string
+}
+
+// cardJSONFieldValues are the editor's JSON boxes, holding card's values. A
+// stored "{}" shows as an empty box.
+func cardJSONFieldValues(card *db.ReferencePage) []cardJSONField {
+	placeholders := map[string]string{
+		"earning_rates_json": `{"dining": {"rate": "3x", "note": ""}}`,
+		"credits_json":       `{"airline": {"amount": "$200/yr", "note": ""}}`,
+		"benefits_json":      `{"lounge_access": {"value": "Priority Pass", "note": ""}}`,
+		"protections_json":   `{"purchase_protection": {"amount": "$10,000", "note": "120 days"}}`,
+	}
+	values := map[string]string{
+		"earning_rates_json": card.EarningRatesJSON,
+		"credits_json":       card.CreditsJSON,
+		"benefits_json":      card.BenefitsJSON,
+		"protections_json":   card.ProtectionsJSON,
+	}
+	out := make([]cardJSONField, 0, len(cardJSONFields))
+	for _, f := range cardJSONFields {
+		v := values[f.name]
+		if v == "{}" {
+			v = ""
+		}
+		out = append(out, cardJSONField{Name: f.name, Label: f.label, Placeholder: placeholders[f.name], Value: v})
+	}
+	return out
 }
 
 // checkJSON returns "" for valid JSON, or where and why it is not.
@@ -1271,6 +1343,15 @@ func (app *App) handleResolveFlag(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit?msg=resolved", id), http.StatusSeeOther)
 }
 
+// cardUpdateView is a pending card update as the updates page shows it.
+type cardUpdateView struct {
+	db.PendingUpdate
+	Diff          wordDiff
+	SectionTitle  string
+	SectionExists bool   // the card still has a section with the update's key
+	ArticleSlug   string // the source article's slug, if it is published
+}
+
 func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -1302,10 +1383,28 @@ func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("error") == "missing_section" {
 		missingUID = queryInt(r, "uid")
 	}
+	var sections []db.ReferenceSection
+	if page.SectionsJSON != "" && page.SectionsJSON != "[]" {
+		json.Unmarshal([]byte(page.SectionsJSON), &sections)
+	}
+	titles := map[string]string{}
+	for _, sec := range sections {
+		titles[sec.Key] = sec.Title
+	}
+	views := make([]cardUpdateView, 0, len(updates))
+	for _, u := range updates {
+		v := cardUpdateView{PendingUpdate: u, Diff: diffWords(u.CurrentContent, u.ProposedContent)}
+		v.SectionTitle, v.SectionExists = titles[u.SectionKey]
+		if a, err := app.db.GetGeneratedArticle(u.ArticleID); err == nil && a.Status == db.StatusApproved {
+			v.ArticleSlug = a.Slug
+		}
+		views = append(views, v)
+	}
+
 	data := map[string]interface{}{
 		"Title":      "Pending Updates: " + page.Title,
 		"Card":       page,
-		"Updates":    updates,
+		"Updates":    views,
 		"CSRFToken":  getCSRFToken(w, r),
 		"Message":    msg,
 		"MissingUID": int(missingUID),

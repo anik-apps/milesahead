@@ -1,67 +1,61 @@
 {{template "admin_layout" .}}
+{{define "card_row"}}
+<tr data-card-search="{{.Title}} {{.Issuer}} {{.Category}} {{.Slug}}">
+    <td>
+        <a href="/admin/cards/{{.ID}}/edit" class="card-row-title">{{if .ImageURL}}<img src="{{.ImageURL}}" alt="" class="card-thumb">{{end}}{{.Title}}</a>
+    </td>
+    <td><span class="chip chip-mute">{{.Category}}</span></td>
+    <td>{{if eq .Status "published"}}<span class="chip chip-ok">Published</span>{{else}}<span class="chip chip-mute">Draft</span>{{end}}</td>
+    <td>{{.SectionCount}}</td>
+    <td>{{if gt .PendingCount 0}}<a href="/admin/cards/{{.ID}}/updates" class="chip chip-info">{{.PendingCount}} to review</a>{{else}}<span class="dim">&mdash;</span>{{end}}</td>
+    <td>{{if gt .FlaggedCount 0}}<a href="/admin/cards/{{.ID}}/edit#flags" class="chip chip-bad">{{.FlaggedCount}} {{if eq .FlaggedCount 1}}flag{{else}}flags{{end}}</a>{{else}}<span class="dim">&mdash;</span>{{end}}</td>
+    <td>
+        <div class="row-actions">
+            <a href="/admin/cards/{{.ID}}/edit" class="btn btn-sm">Edit</a>
+            <form method="POST" action="/admin/cards/{{.ID}}/delete" class="inline-form" data-confirm="Delete {{.Title}} permanently? Its page, sections and flags are removed and this cannot be undone.">
+                {{template "csrf_field" .CSRF}}
+                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+            </form>
+        </div>
+    </td>
+</tr>
+{{end}}
+{{define "card_head"}}<thead><tr><th>Card</th><th>Category</th><th>Status</th><th>Sections</th><th>Updates</th><th>Flags</th><th>Actions</th></tr></thead>{{end}}
 {{define "content"}}
 <div class="admin-cards">
-    {{if .Message}}
-    <div class="message success">{{.Message}}</div>
-    {{end}}
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
-        <h1>Reference Cards</h1>
-        <a href="/admin/cards/new" class="btn btn-primary">Add New Card</a>
+    <div class="page-head">
+        <h1>Cards <span class="page-count">{{len .Cards}}</span></h1>
+        <div class="row-actions">
+            <input type="search" class="admin-search" placeholder="Filter cards" aria-label="Filter cards" data-filter="[data-card-search]">
+            <a href="/admin/cards/new" class="btn btn-primary">Add card</a>
+        </div>
     </div>
+    {{if .Message}}<div class="message success" role="status">{{.Message}}</div>{{end}}
 
     {{if .Cards}}
+    {{if .Attention}}
+    <section class="cards-group">
+        <h2 class="q-head">Needs attention <span class="tab-n">{{len .Attention}}</span></h2>
+        <p class="q-note">Cards with updates drafted from new articles, or fields flagged as possibly wrong.</p>
+        <table class="admin-table cards-table">
+            {{template "card_head"}}
+            <tbody>{{range .Attention}}{{template "card_row" (cardRowData . $)}}{{end}}</tbody>
+        </table>
+    </section>
+    {{end}}
     {{range .Issuers}}
-    <h2 style="margin:1.5rem 0 0.75rem;font-size:1.1rem;color:var(--text-muted);">{{.Name}}</h2>
-    <table class="admin-table">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Category</th>
-                <th>Status</th>
-                <th>Sections</th>
-                <th>Pending</th>
-                <th>Flags</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Cards}}
-            <tr>
-                <td>
-                    {{if .ImageURL}}<img src="{{.ImageURL}}" alt="" style="width:24px;height:16px;object-fit:cover;border-radius:2px;vertical-align:middle;margin-right:6px;">{{end}}
-                    <a href="/admin/cards/{{.ID}}/edit">{{.Title}}</a>
-                </td>
-                <td><span class="badge">{{.Category}}</span></td>
-                <td>
-                    {{if eq .Status "published"}}<span class="status-badge" style="background:#dcfce7;color:#166534;">Published</span>
-                    {{else}}<span class="status-badge draft">Draft</span>{{end}}
-                </td>
-                <td>{{.SectionCount}}</td>
-                <td>
-                    {{if gt .PendingCount 0}}<a href="/admin/cards/{{.ID}}/updates" style="color:#dc2626;font-weight:600;">{{.PendingCount}} pending</a>
-                    {{else}}<span class="dim">0</span>{{end}}
-                </td>
-                <td>
-                    {{if gt .FlaggedCount 0}}<span style="display:inline-block;background:#dc2626;color:#fff;font-size:0.75rem;font-weight:700;padding:1px 7px;border-radius:10px;">{{.FlaggedCount}}</span>
-                    {{else}}<span class="dim">—</span>{{end}}
-                </td>
-                <td class="actions">
-                    <a href="/admin/cards/{{.ID}}/edit" class="btn btn-edit" style="font-size:0.8rem;">Edit</a>
-                    {{if gt .PendingCount 0}}<a href="/admin/cards/{{.ID}}/updates" class="btn btn-primary" style="font-size:0.8rem;">Updates</a>{{end}}
-                    <form method="POST" action="/admin/cards/{{.ID}}/delete" class="inline-form">
-                        {{template "csrf_field" $}}
-                        <button type="submit" class="btn btn-reject" style="font-size:0.8rem;" onclick="return confirm('Delete this card permanently?')">Delete</button>
-                    </form>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+    <section class="cards-group">
+        <h2 class="q-head">{{.Name}}</h2>
+        <table class="admin-table cards-table">
+            {{template "card_head"}}
+            <tbody>{{range .Cards}}{{template "card_row" (cardRowData . $)}}{{end}}</tbody>
+        </table>
+    </section>
     {{end}}
     {{else}}
     <div class="empty-state">
         <p>No reference cards yet.</p>
-        <p style="margin-top:0.5rem;"><a href="/admin/cards/new">Create your first card</a></p>
+        <p><a href="/admin/cards/new">Create your first card</a></p>
     </div>
     {{end}}
 </div>

@@ -4,12 +4,16 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/kumaranik/milesahead/internal/db"
 )
 
 // Template helpers for the admin pages.
 func init() {
 	templateFuncs["statusLabel"] = statusLabel
 	templateFuncs["adminTime"] = adminTime
+	templateFuncs["flagRef"] = flagRef
+	templateFuncs["cardRowData"] = cardRowData
 	// Replaced per App by loadTemplates with versioned URLs.
 	templateFuncs["adminStylesheetURL"] = func() string { return adminStylesheetPath }
 	templateFuncs["adminScriptURL"] = func() string { return adminScriptPath }
@@ -53,4 +57,27 @@ func ago(t, now time.Time) string {
 	default:
 		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
 	}
+}
+
+// flagRef is what a flag's Resolve button needs: the card and the field.
+func flagRef(cardID int64, f db.FlaggedField) struct {
+	ID    int64
+	Field string
+} {
+	return struct {
+		ID    int64
+		Field string
+	}{cardID, f.Field}
+}
+
+// cardRowData is a cards-list row with the page's data alongside, for the
+// row's CSRF field.
+func cardRowData(c adminCardRow, root interface{}) struct {
+	adminCardRow
+	CSRF interface{}
+} {
+	return struct {
+		adminCardRow
+		CSRF interface{}
+	}{c, root}
 }
