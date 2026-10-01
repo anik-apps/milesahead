@@ -373,11 +373,18 @@ image shipped in #73. Everything else is here, most severe first.
       to remove each. On phones the row scrolls sideways instead of wrapping.
 - [ ] **Home reaches only 20 of 87 stories** — no pagination (`?page=2` is ignored).
       *Fix:* "Older stories" paging that keeps filters.
-- [ ] **Compare** — 40 caveats per comparison are hover-only `title` tooltips; Benefits and
-      Protections toggles are click-only `<tr>`s keyboard users cannot open; winner stars
-      use only the portal rate in "D | P" rows and "1 year" beats "Yes"; phones see 1.3 of 3
-      cards; no links to card pages. *Fix:* visible notes, `<button aria-expanded>` toggles,
-      split D/P rows, a legend, a mobile layout, links per column.
+- [x] **Compare** — 40+ caveats per comparison were hover-only `title` tooltips; Benefits
+      and Protections were click-only `<tr>`s keyboard users could not open; winner stars
+      used only the portal rate in "D | P" rows and "1 year" beat "Yes"; phones saw 1.4 of 3
+      cards; no links to card pages. Now every note is printed under its value; sections
+      are open `<button aria-expanded>` toggles; direct and travel-portal rates are separate
+      rows; a star needs comparable numbers in one unit and skips top/rotating-category
+      rates; the fee is a row (lowest wins); a legend explains the marks. On phones each
+      row's label sits above the values, so all three cards fit with the names pinned.
+      Cards link to their pages, rows no card has are hidden and counted, catch-all rows
+      are named per section, extra rows keep a fixed order, and an "Only differences"
+      switch hides identical rows. The picker is a GET form grouped by issuer that works
+      without JavaScript, offers popular pairs, and explains a duplicate or unknown card.
 - [x] **Search** — the whole query was one exact FTS phrase, so "sapph", "reserve sapphire"
       and "csr" found nothing, and card matches sat below ten articles. Now every word
       must match, in any order, as a prefix and stemmed ("lounges" finds "lounge"), with

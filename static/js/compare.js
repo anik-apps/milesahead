@@ -1,67 +1,23 @@
-// Compare Page — dropdown navigation and section collapse
+// Compare page: section toggles and the "Only differences" switch. Without
+// JavaScript every section is open and the switch stays hidden.
 (function() {
     document.addEventListener('DOMContentLoaded', function() {
-        // Selector form submit: build /compare?cards=slug1,slug2,slug3
-        var form = document.getElementById('compare-selector-form');
-        if (form) {
-            form.addEventListener('submit', function(e) {
-                e.preventDefault();
-                var selects = form.querySelectorAll('select');
-                var slugs = [];
-                selects.forEach(function(sel) {
-                    if (sel.value) slugs.push(sel.value);
-                });
-                if (slugs.length >= 2) {
-                    window.location.href = '/compare?cards=' + slugs.join(',');
-                }
-            });
-        }
-
-        // Header dropdown change: rebuild URL and navigate
-        var headerSelects = document.querySelectorAll('.compare-header-select');
-        if (headerSelects.length) {
-            headerSelects.forEach(function(sel) {
-                sel.addEventListener('change', function() {
-                    var allSelects = document.querySelectorAll('.compare-header-select');
-                    var slugs = [];
-                    allSelects.forEach(function(s) {
-                        if (s.value) slugs.push(s.value);
-                    });
-                    if (slugs.length >= 2) {
-                        window.location.href = '/compare?cards=' + slugs.join(',');
-                    }
-                });
-            });
-
-            // Set the correct selected option for each header select
-            headerSelects.forEach(function(sel) {
-                var currentSlug = sel.getAttribute('data-slot');
-                var options = sel.querySelectorAll('option');
-                options.forEach(function(opt) {
-                    opt.selected = (opt.value === currentSlug);
-                });
-            });
-        }
-
-        // Section collapse toggle
-        var sectionHeaders = document.querySelectorAll('.compare-section-header');
-        sectionHeaders.forEach(function(header) {
-            header.style.cursor = 'pointer';
-            header.addEventListener('click', function() {
-                var section = header.getAttribute('data-section');
-                var rows = document.querySelectorAll('.section-' + section);
-                var isCollapsed = header.classList.contains('collapsed');
-
-                if (isCollapsed) {
-                    header.classList.remove('collapsed');
-                    header.querySelector('.compare-toggle-icon').innerHTML = '&#9660;';
-                    rows.forEach(function(r) { r.style.display = ''; });
-                } else {
-                    header.classList.add('collapsed');
-                    header.querySelector('.compare-toggle-icon').innerHTML = '&#9654;';
-                    rows.forEach(function(r) { r.style.display = 'none'; });
-                }
+        document.querySelectorAll('.compare-section-toggle').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var rows = document.getElementById(btn.getAttribute('aria-controls'));
+                var open = btn.getAttribute('aria-expanded') === 'true';
+                btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+                if (rows) rows.hidden = open;
             });
         });
+
+        var table = document.querySelector('.compare-table');
+        var diff = document.getElementById('compare-only-diff');
+        if (table && diff) {
+            diff.closest('label').hidden = false;
+            diff.addEventListener('change', function() {
+                table.classList.toggle('only-differences', diff.checked);
+            });
+        }
     });
 })();
