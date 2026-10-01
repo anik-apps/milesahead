@@ -317,7 +317,7 @@ func TestApproveArticle_TransitionsToApproved(t *testing.T) {
 	cookies := loginAndGetSession(t, app)
 	session, csrf := getSessionAndCSRF(cookies)
 
-	rec := doAdminPOST(t, app, "/admin/articles/1/approve", session, csrf, nil)
+	rec := doAdminPOST(t, app, "/admin/articles/1/approve", session, csrf, url.Values{"revision": {"1"}})
 
 	if rec.Code != http.StatusSeeOther {
 		t.Errorf("expected status 303, got %d", rec.Code)
@@ -339,7 +339,7 @@ func TestRejectArticle_TransitionsToRejected(t *testing.T) {
 	cookies := loginAndGetSession(t, app)
 	session, csrf := getSessionAndCSRF(cookies)
 
-	rec := doAdminPOST(t, app, "/admin/articles/1/reject", session, csrf, nil)
+	rec := doAdminPOST(t, app, "/admin/articles/1/reject", session, csrf, url.Values{"revision": {"1"}})
 
 	if rec.Code != http.StatusSeeOther {
 		t.Errorf("expected status 303, got %d", rec.Code)

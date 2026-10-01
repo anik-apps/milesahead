@@ -282,6 +282,24 @@ func (d *Database) UpdateArticleStatus(id int64, newStatus string) error {
 // already moved the article to pending, publishing a rewrite nobody reviewed.
 // Returns ErrStatusChanged if the status moved in the meantime.
 func (d *Database) TransitionArticleStatus(id int64, from, newStatus string) error {
+	return d.transitionArticleStatus(id, from, newStatus, 0)
+}
+
+// TransitionArticleStatusAtRevision is TransitionArticleStatus that also
+// requires the article to still be at revision: the one the admin read
+// before deciding. A rewrite that lands between the admin opening the article
+// and clicking Approve bumps the revision, so the decision cannot apply to
+// text nobody reviewed. Returns ErrStatusChanged if either moved.
+func (d *Database) TransitionArticleStatusAtRevision(id int64, from, newStatus string, revision int) error {
+	if revision <= 0 {
+		return fmt.Errorf("invalid revision %d", revision)
+	}
+	return d.transitionArticleStatus(id, from, newStatus, revision)
+}
+
+// transitionArticleStatus is the conditional write behind both; revision 0
+// leaves the revision unchecked.
+func (d *Database) transitionArticleStatus(id int64, from, newStatus string, revision int) error {
 	valid := false
 	for _, s := range validTransitions[from] {
 		if s == newStatus {
@@ -300,6 +318,10 @@ func (d *Database) TransitionArticleStatus(id int64, from, newStatus string) err
 	}
 	query += ` WHERE id = ? AND status = ?`
 	args = append(args, id, from)
+	if revision > 0 {
+		query += ` AND revision_number = ?`
+		args = append(args, revision)
+	}
 
 	res, err := d.db.Exec(query, args...)
 	if err != nil {
@@ -310,10 +332,49 @@ func (d *Database) TransitionArticleStatus(id int64, from, newStatus string) err
 		return err
 	}
 	if n == 0 {
+		if revision > 0 {
+			return fmt.Errorf("%w: expected %q at revision %d", ErrStatusChanged, from, revision)
+		}
 		return fmt.Errorf("%w: expected %q", ErrStatusChanged, from)
 	}
 	return nil
 }
+
+// UndoApproval puts an article approved at or after since back to status
+// prev, the status it was approved from, for the admin's "Undo" right after
+// approving. It only succeeds while the article is still approved and its
+// approval is that recent, so an old publication cannot be pulled back by a
+// stale form. An article that was unpublished before keeps its published_at;
+// one that was never published loses the one the approval set.
+func (d *Database) UndoApproval(id int64, prev string, since time.Time) error {
+	switch prev {
+	case StatusPending, StatusDraft, StatusUnpublished, StatusRevisionRequested:
+	default:
+		return fmt.Errorf("cannot undo an approval back to %q", prev)
+	}
+	res, err := d.db.Exec(
+		`UPDATE generated_articles
+		 SET status = ?, updated_at = CURRENT_TIMESTAMP,
+		     published_at = CASE WHEN ? = ? THEN published_at ELSE NULL END
+		 WHERE id = ? AND status = ? AND published_at >= ?`,
+		prev, prev, StatusUnpublished, id, StatusApproved, since.UTC().Format("2006-01-02 15:04:05"),
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrUndoExpired
+	}
+	return nil
+}
+
+// ErrUndoExpired means an approval can no longer be undone: the article is
+// not approved any more, or was approved too long ago.
+var ErrUndoExpired = errors.New("approval can no longer be undone")
 
 func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(

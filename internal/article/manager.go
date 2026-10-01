@@ -130,41 +130,90 @@ func (m *Manager) CreateFromPipeline(result *ai.PipelineResult, rawArticleIDs []
 
 // Approve transitions an article from pending to approved and sets published_at.
 func (m *Manager) Approve(articleID int64) error {
-	article, err := m.db.GetGeneratedArticle(articleID)
-	if err != nil {
-		return fmt.Errorf("getting article: %w", err)
-	}
-	allowed := map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true, db.StatusDraft: true}
-	if !allowed[article.Status] {
-		return fmt.Errorf("cannot approve article with status %q", article.Status)
-	}
-	// Conditional on the status just checked: if a rewrite landed in between,
-	// this must not approve content nobody has reviewed.
-	if err := m.db.TransitionArticleStatus(articleID, article.Status, db.StatusApproved); err != nil {
-		return err
-	}
-	slog.Info("article approved", "article_id", articleID)
-	metrics.ArticlesApprovedTotal.Inc()
-	return nil
+	return m.decide(articleID, db.StatusApproved, 0)
 }
 
 // Reject transitions an article from pending to rejected.
 func (m *Manager) Reject(articleID int64) error {
+	return m.decide(articleID, db.StatusRejected, 0)
+}
+
+// ApproveRevision approves the article only if it is still at revision, the
+// one the admin reviewed. See ErrArticleChanged.
+func (m *Manager) ApproveRevision(articleID int64, revision int) error {
+	return m.decide(articleID, db.StatusApproved, revision)
+}
+
+// RejectRevision rejects the article only if it is still at revision.
+func (m *Manager) RejectRevision(articleID int64, revision int) error {
+	return m.decide(articleID, db.StatusRejected, revision)
+}
+
+// ErrArticleChanged means the article is no longer the revision the admin
+// decided on: a rewrite landed after the page was loaded. Revision is the
+// article's revision now.
+type ErrArticleChanged struct {
+	Revision int
+}
+
+func (e *ErrArticleChanged) Error() string {
+	return fmt.Sprintf("article changed: it is now revision %d", e.Revision)
+}
+
+// decidable are the statuses an admin can approve or reject from.
+var decidable = map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true, db.StatusDraft: true}
+
+// decide moves the article to approved or rejected. revision > 0 makes the
+// move conditional on the article still being at that revision, in the same
+// write as the status check, so a rewrite landing in between cannot be
+// approved unseen; 0 (the email path, which acts on the latest text) skips it.
+func (m *Manager) decide(articleID int64, to string, revision int) error {
 	article, err := m.db.GetGeneratedArticle(articleID)
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
 	}
-	allowed := map[string]bool{db.StatusPending: true, db.StatusUnpublished: true, db.StatusRevisionRequested: true, db.StatusDraft: true}
-	if !allowed[article.Status] {
-		return fmt.Errorf("cannot reject article with status %q", article.Status)
+	verb := "approve"
+	if to == db.StatusRejected {
+		verb = "reject"
 	}
-	// Conditional on the status just checked: if a rewrite landed in between,
-	// this must not reject content nobody has reviewed.
-	if err := m.db.TransitionArticleStatus(articleID, article.Status, db.StatusRejected); err != nil {
+	if revision > 0 && article.RevisionNumber != revision {
+		return &ErrArticleChanged{Revision: article.RevisionNumber}
+	}
+	if !decidable[article.Status] {
+		return fmt.Errorf("cannot %s article with status %q", verb, article.Status)
+	}
+	// Conditional on the status (and revision) just checked: if a rewrite
+	// landed in between, this must not decide on content nobody has reviewed.
+	if revision > 0 {
+		err = m.db.TransitionArticleStatusAtRevision(articleID, article.Status, to, revision)
+		if errors.Is(err, db.ErrStatusChanged) {
+			if now, gerr := m.db.GetGeneratedArticle(articleID); gerr == nil && now.RevisionNumber != revision {
+				return &ErrArticleChanged{Revision: now.RevisionNumber}
+			}
+		}
+	} else {
+		err = m.db.TransitionArticleStatus(articleID, article.Status, to)
+	}
+	if err != nil {
 		return err
 	}
-	slog.Info("article rejected", "article_id", articleID)
-	metrics.ArticlesRejectedTotal.Inc()
+	if to == db.StatusApproved {
+		slog.Info("article approved", "article_id", articleID, "revision", article.RevisionNumber)
+		metrics.ArticlesApprovedTotal.Inc()
+	} else {
+		slog.Info("article rejected", "article_id", articleID, "revision", article.RevisionNumber)
+		metrics.ArticlesRejectedTotal.Inc()
+	}
+	return nil
+}
+
+// UndoApprove puts an article the admin approved within the last window back
+// to prev, the status it was approved from. It is the dashboard's "Undo".
+func (m *Manager) UndoApprove(articleID int64, prev string, window time.Duration) error {
+	if err := m.db.UndoApproval(articleID, prev, time.Now().Add(-window)); err != nil {
+		return err
+	}
+	slog.Info("article approval undone", "article_id", articleID, "status", prev)
 	return nil
 }
 

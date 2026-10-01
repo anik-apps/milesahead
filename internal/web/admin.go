@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
+	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/offer"
@@ -199,6 +201,8 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"Articles":    rows,
 		"CSRFToken":   getCSRFToken(w, r),
 		"Message":     r.URL.Query().Get("msg"),
+		"MessageID":   queryInt(r, "id"),
+		"MessageRev":  queryInt(r, "rev"),
 		"PersonaName": app.cfg.Site.PersonaName,
 	}
 	app.renderTemplate(w, "dashboard.html", data)
@@ -250,14 +254,13 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+	id, revision, ok := articleDecisionForm(w, r)
+	if !ok {
 		return
 	}
 
-	if err := app.articleManager.Approve(id); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to approve: %v", err), http.StatusBadRequest)
+	if err := app.articleManager.ApproveRevision(id, revision); err != nil {
+		app.decisionFailed(w, r, id, "approve", err)
 		return
 	}
 
@@ -283,18 +286,60 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) handleRejectArticle(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+	id, revision, ok := articleDecisionForm(w, r)
+	if !ok {
 		return
 	}
 
-	if err := app.articleManager.Reject(id); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to reject: %v", err), http.StatusBadRequest)
+	if err := app.articleManager.RejectRevision(id, revision); err != nil {
+		app.decisionFailed(w, r, id, "reject", err)
 		return
 	}
 
 	http.Redirect(w, r, "/admin/dashboard?msg=rejected", http.StatusSeeOther)
+}
+
+// queryInt is the query parameter name as a positive integer, or 0. Banner
+// text built from the URL only ever shows numbers.
+func queryInt(r *http.Request, name string) int64 {
+	n, err := strconv.ParseInt(r.URL.Query().Get(name), 10, 64)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// articleDecisionForm reads an approve or reject request: the article id from
+// the path and the revision the admin was looking at from the form. The
+// revision is required, so a decision always names the text it is about.
+func articleDecisionForm(w http.ResponseWriter, r *http.Request) (id int64, revision int, ok bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		return 0, 0, false
+	}
+	revision, err = strconv.Atoi(r.FormValue("revision"))
+	if err != nil || revision <= 0 {
+		http.Error(w, "Missing the revision you reviewed; reload the dashboard and try again", http.StatusBadRequest)
+		return 0, 0, false
+	}
+	return id, revision, true
+}
+
+// decisionFailed answers an approve or reject that did not go through. When a
+// rewrite landed after the admin loaded the page, it says so on the dashboard
+// rather than as an error page, so the admin can review the new text.
+func (app *App) decisionFailed(w http.ResponseWriter, r *http.Request, id int64, verb string, err error) {
+	var changed *article.ErrArticleChanged
+	if errors.As(err, &changed) {
+		http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=changed&id=%d&rev=%d", id, changed.Revision), http.StatusSeeOther)
+		return
+	}
+	if errors.Is(err, db.ErrStatusChanged) {
+		http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=status_changed&id=%d", id), http.StatusSeeOther)
+		return
+	}
+	http.Error(w, fmt.Sprintf("Failed to %s: %v", verb, err), http.StatusBadRequest)
 }
 
 func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {

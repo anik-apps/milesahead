@@ -22,6 +22,12 @@
     {{if eq .Message "rejected"}}
     <div class="message success">Article rejected.</div>
     {{end}}
+    {{if eq .Message "changed"}}
+    <div class="message error">Article #{{.MessageID}} changed after you opened it: it is now revision {{.MessageRev}}. Nothing was approved or rejected. Review the new version first.</div>
+    {{end}}
+    {{if eq .Message "status_changed"}}
+    <div class="message error">Article #{{.MessageID}} changed status after you opened it, so nothing was done. Check its current state below.</div>
+    {{end}}
     <h1>Pending Articles</h1>
     {{if .Articles}}
     <table class="admin-table">
@@ -57,10 +63,12 @@
                     <a href="/admin/articles/{{.ID}}/cards" class="btn btn-primary">Linked cards</a>
                     <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
                         {{template "csrf_field" $}}
+                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
                         <button type="submit" class="btn btn-approve" onclick="return confirm('Are you sure you want to approve this article for publishing?')">Approve</button>
                     </form>
                     <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form">
                         {{template "csrf_field" $}}
+                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
                         <button type="submit" class="btn btn-reject" onclick="return confirm('Are you sure you want to reject this article?')">Reject</button>
                     </form>
                     <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form revision-form">
@@ -145,10 +153,12 @@
                 <div class="preview-actions">
                     <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
                         {{template "csrf_field" $}}
+                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
                         <button type="submit" class="btn btn-approve" onclick="return confirm('Approve this article for publishing?')">Approve</button>
                     </form>
                     <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form">
                         {{template "csrf_field" $}}
+                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
                         <button type="submit" class="btn btn-reject" onclick="return confirm('Reject this article?')">Reject</button>
                     </form>
                     <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form" style="flex:1">
