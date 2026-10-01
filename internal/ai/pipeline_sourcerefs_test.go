@@ -76,11 +76,13 @@ func TestPipeline_Process_RewritesNumberedSourceRefs(t *testing.T) {
 		t.Errorf("verification = %+v; want a clean attribution check", res.Verification)
 	}
 	// The structured key details are part of the same reply, so they are
-	// rewritten with it. (They are checked in the critic's copy: cleanMarkdown
-	// turns their "- " bullets into <li> before they are parsed.)
+	// rewritten with it, both in the critic's copy and in the parsed details.
 	if strings.Contains(critic.prompts[0], "Source 1 notes this offer") ||
 		!strings.Contains(critic.prompts[0], "20% (per Upgraded Points)") {
 		t.Error("the critic was shown the unrewritten article")
+	}
+	if len(res.KeyDetails) != 2 || res.KeyDetails[0].Value != "20% (per Upgraded Points)" || res.KeyDetails[1].Label != "Deadline" {
+		t.Errorf("key details = %+v; want the generator's, with Source 2 rewritten", res.KeyDetails)
 	}
 }
 
