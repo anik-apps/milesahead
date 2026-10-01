@@ -64,6 +64,8 @@ func cardDetailData(page *db.ReferencePage, sections []db.ReferenceSection, all 
 	var sameCat []*db.ReferencePage
 	for i := range all {
 		c := &all[i]
+		// The handler passes published cards only; the status check keeps
+		// this safe for any other caller.
 		if c.Slug == page.Slug || c.Status != "published" {
 			continue
 		}
@@ -124,14 +126,14 @@ func cardDetailData(page *db.ReferencePage, sections []db.ReferenceSection, all 
 		groups = append(groups, g)
 	}
 	byCat := map[string][]*db.ReferencePage{}
-	var tiles []cardTile
+	present := map[string]bool{}
 	for _, c := range others {
 		if !inNamed[c.Slug] {
 			byCat[c.Category] = append(byCat[c.Category], c)
+			present[c.Category] = true
 		}
-		tiles = append(tiles, cardTile{Category: c.Category})
 	}
-	for _, cat := range categoriesInOrder(tiles) {
+	for _, cat := range categoriesInOrder(present) {
 		cs := byCat[cat]
 		if len(cs) == 0 {
 			continue

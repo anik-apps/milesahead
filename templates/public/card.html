@@ -72,7 +72,9 @@
     </div>
     {{end}}
 
-    <div class="card-layout">
+    {{/* Without sections there is no table of contents, and the text takes
+         the whole width rather than the contents column. */}}
+    <div class="card-layout{{if not .Sections}} no-toc{{end}}">
         {{if .Sections}}
         <aside class="card-sidebar">
             <nav class="card-toc" aria-label="On this page">

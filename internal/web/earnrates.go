@@ -56,18 +56,33 @@ type earnCategory struct {
 	Travel bool
 }
 
-// earnCategories lists the summarised categories in tie-break order. "base"
-// is handled separately: it is the floor every bonus is measured against.
-var earnCategories = []earnCategory{
-	{Key: "dining", Label: "dining"},
-	{Key: "groceries", Label: "groceries"},
-	{Key: "gas", Label: "gas"},
-	{Key: "airlines", Label: "flights", Pair: true, Travel: true},
-	{Key: "hotels", Label: "hotels", Pair: true, Travel: true},
-	{Key: "car_rental", Label: "car rentals", Pair: true, Travel: true},
-	{Key: "other_travel", Label: "other travel", Pair: true, Travel: true},
-	{Key: "streaming", Label: "streaming"},
+// earnSummaryLabels is how each earning category reads in a sentence ("5x
+// flights"), where the compare table says "Airlines".
+var earnSummaryLabels = map[string]string{
+	"airlines":     "flights",
+	"car_rental":   "car rentals",
+	"other_travel": "other travel",
 }
+
+// earnCategories lists the summarised categories in tie-break order. The keys,
+// their order and the direct/portal split come from the compare table's
+// earningRateCategories and directPortalPairs, so the two can't drift apart.
+// "base" is handled separately: it is the floor every bonus is measured
+// against.
+var earnCategories = func() []earnCategory {
+	var out []earnCategory
+	for _, c := range earningRateCategories {
+		if c.Key == "base" {
+			continue
+		}
+		label := earnSummaryLabels[c.Key]
+		if label == "" {
+			label = strings.ToLower(c.Label)
+		}
+		out = append(out, earnCategory{Key: c.Key, Label: label, Pair: directPortalPairs[c.Key], Travel: directPortalPairs[c.Key]})
+	}
+	return out
+}()
 
 // A rate is a number followed by "x" or "%" at the start of the stored value:
 // "5x", "1.5%", "3x United miles (car rentals count as travel)".

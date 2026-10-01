@@ -37,10 +37,16 @@
     });
     dialog.addEventListener('close', function () { setZoom(false); });
   }
+  // Offered when the image is drawn well under its real width (phones,
+  // narrow windows), not for the few pixels a scrollbar takes on desktop.
+  // Rechecked when the window changes size, e.g. a phone turned sideways.
   function offerZoom() {
-    if (!zoom || !frame || !img) return;
-    zoom.hidden = frame.clientWidth >= (parseInt(img.getAttribute('width'), 10) || 1024);
+    if (!zoom || !frame || !img || !dialog.open) return;
+    var real = parseInt(img.getAttribute('width'), 10) || 1024;
+    var shown = frame.classList.contains('is-zoomed') ? 0 : img.getBoundingClientRect().width;
+    if (shown) zoom.hidden = shown >= real * 0.85;
   }
+  window.addEventListener('resize', offerZoom);
 
   var close = dialog.querySelector('[data-ig-close]');
   if (close) close.addEventListener('click', function () { dialog.close(); });

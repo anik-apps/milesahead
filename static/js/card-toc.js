@@ -3,7 +3,6 @@
 // sideways-scrolling row. Without JavaScript the links still work; only the
 // highlight is missing.
 (function () {
-  if (!('IntersectionObserver' in window)) return;
   var links = Array.prototype.slice.call(document.querySelectorAll('.card-toc a[href^="#"], .card-mobile-pills a[href^="#"]'));
   if (!links.length) return;
   var pills = document.querySelector('.card-mobile-pills');
@@ -14,13 +13,14 @@
     var el = document.getElementById(a.getAttribute('href').slice(1));
     if (el && targets.indexOf(el) < 0) targets.push(el);
   });
+  if (!targets.length) return;
 
   var current = null;
   function mark(id) {
     if (id === current) return;
     current = id;
     links.forEach(function (a) {
-      if (a.getAttribute('href') === '#' + id) {
+      if (id && a.getAttribute('href') === '#' + id) {
         a.setAttribute('aria-current', 'location');
         if (pills && pills.contains(a) && pills.offsetParent !== null) {
           var left = a.offsetLeft - pills.offsetLeft;
@@ -34,22 +34,31 @@
     });
   }
 
-  // The current section is the last one whose top has passed the upper third
-  // of the screen.
-  var visible = {};
-  var observer = new IntersectionObserver(function (entries) {
-    entries.forEach(function (e) { visible[e.target.id] = e.isIntersecting; });
-    for (var i = 0; i < targets.length; i++) {
-      if (visible[targets[i].id]) { mark(targets[i].id); return; }
-    }
-  }, { rootMargin: '-15% 0px -70% 0px' });
-  targets.forEach(function (t) { observer.observe(t); });
-
-  // The last sections may be too short to reach the upper third; at the very
-  // bottom of the page, the last one is current.
-  window.addEventListener('scroll', function () {
-    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) {
+  // The current section is the last one whose top has passed a line a third
+  // of the way down the screen; at the very bottom of the page, the last one
+  // (it may be too short to reach that line). Worked out afresh on every
+  // scroll, so scrolling back up always moves the mark back.
+  function update() {
+    var doc = document.documentElement;
+    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 4) {
       mark(targets[targets.length - 1].id);
+      return;
     }
-  }, { passive: true });
+    var line = window.innerHeight / 3;
+    var id = null;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].getBoundingClientRect().top <= line) id = targets[i].id;
+    }
+    mark(id);
+  }
+
+  var queued = false;
+  function onScroll() {
+    if (queued) return;
+    queued = true;
+    window.requestAnimationFrame(function () { queued = false; update(); });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  update();
 })();

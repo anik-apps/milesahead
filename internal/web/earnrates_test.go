@@ -147,3 +147,15 @@ func TestFormatTopEarning(t *testing.T) {
 		t.Errorf("no rates: got %q", got)
 	}
 }
+
+// The summary reads the same category keys as the compare table.
+func TestEarnCategories_MatchCompareTable(t *testing.T) {
+	if len(earnCategories) != len(earningRateCategories)-1 {
+		t.Fatalf("earnCategories has %d entries, the compare table %d (less base)", len(earnCategories), len(earningRateCategories))
+	}
+	for i, c := range earnCategories {
+		if c.Key != earningRateCategories[i].Key || c.Pair != directPortalPairs[c.Key] || c.Label == "" {
+			t.Errorf("category %d: %+v", i, c)
+		}
+	}
+}

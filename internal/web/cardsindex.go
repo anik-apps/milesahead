@@ -1,6 +1,7 @@
 package web
 
 import (
+	"maps"
 	"net/http"
 	"net/url"
 	"sort"
@@ -166,13 +167,10 @@ func categoryName(cat string) string {
 	return cat
 }
 
-// categoriesInOrder lists the categories the tiles use: the known ones in
+// categoriesInOrder lists the given categories: the known ones in
 // categoryOrder, then any others alphabetically.
-func categoriesInOrder(tiles []cardTile) []string {
-	present := map[string]bool{}
-	for _, t := range tiles {
-		present[t.Category] = true
-	}
+func categoriesInOrder(present map[string]bool) []string {
+	present = maps.Clone(present)
 	var out []string
 	for _, c := range categoryOrder {
 		if present[c] {
@@ -216,7 +214,11 @@ func buildCardsIndex(pages []db.ReferencePage, v url.Values) cardsIndex {
 	all := q
 	all.Cat = ""
 	ix.Categories = append(ix.Categories, indexChip{Label: "All", URL: all.url(), Count: countMatching(tiles, all), Active: q.Cat == ""})
-	cats := categoriesInOrder(tiles)
+	present := map[string]bool{}
+	for _, t := range tiles {
+		present[t.Category] = true
+	}
+	cats := categoriesInOrder(present)
 	for _, c := range cats {
 		cq := q
 		cq.Cat = c

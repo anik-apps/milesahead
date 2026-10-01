@@ -2131,6 +2131,7 @@ tr.flagged { background: #fef2f2; }
     gap: 3rem;
     align-items: start;
 }
+.card-layout.no-toc { grid-template-columns: minmax(0, 760px); }
 .card-sidebar {
     position: sticky;
     top: calc(var(--sticky-offset) + 1rem);

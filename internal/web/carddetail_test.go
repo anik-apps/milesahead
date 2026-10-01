@@ -125,6 +125,8 @@ func TestApplyLabel(t *testing.T) {
 		"https://www.americanexpress.com/us/credit-cards/card/platinum/": "americanexpress.com",
 		"https://citi.com/credit-cards?x=1":                              "citi.com",
 		"":                                                               "",
+		"https://www.example.com:443/apply":                              "example.com",
+		"https://user@www.example.com/apply":                             "example.com",
 	} {
 		if got := applyHost(in); got != want {
 			t.Errorf("applyHost(%q) = %q, want %q", in, got, want)
@@ -399,6 +401,13 @@ func TestLeadSentence(t *testing.T) {
 		"Earn 1.5x everywhere. Simple.":                                        "Earn 1.5x everywhere.",
 		"<p>Has been the default \"just give me a good card\" pick. More.</p>": "Has been the default \"just give me a good card\" pick.",
 		"No full stop at all": "No full stop at all",
+		// Paragraphs stay apart, so the first one is the first sentence.
+		"<p>Great for dining.</p><p>Another thing here.</p>": "Great for dining.",
+		// Entities are decoded; the template escapes the result once.
+		"<p>Best for AT&amp;T fans &mdash; really. More.</p>": "Best for AT&T fans — really.",
+		// Abbreviations don't end the sentence.
+		"A strong pick vs. the U.S. Bank Altitude Go for most diners. Next.": "A strong pick vs. the U.S. Bank Altitude Go for most diners.",
+		"Pair it with e.g. Chase Freedom. Then more.":                        "Pair it with e.g. Chase Freedom.",
 	} {
 		if got := leadSentence(in, verdictLeadMax); got != want {
 			t.Errorf("leadSentence(%q) = %q, want %q", in, got, want)
@@ -421,7 +430,10 @@ func TestParseOffer(t *testing.T) {
 		"Cashback Match: Discover matches 100% of all cash back earned in first year (unlimited, no cap).": {Headline: "Cashback Match: Discover matches 100% of all cash back earned in first year", Short: "Cashback Match", Available: true},
 		"No longer available (closed to new applicants July 23, 2026). Previously: 40,000 MR points":       {Headline: "No longer available", Short: "No current offer", Closed: true},
 		"No welcome bonus": {Headline: "No welcome bonus", Short: "No current offer"},
-		"":                 {},
+		// An ended offer is not a closed card: the card can still be applied for.
+		"No longer available. Previously: 60,000 AAdvantage miles after one purchase":       {Headline: "No longer available", Short: "No current offer"},
+		"No longer available (card discontinued July 2025); successor offers 20,000 points": {Headline: "No longer available", Short: "No current offer", Closed: true},
+		"": {},
 	} {
 		if got := parseOffer(in); got != want {
 			t.Errorf("parseOffer(%q)\n got  %+v\n want %+v", in, got, want)
@@ -451,5 +463,36 @@ func TestParseOffer_SeedCards(t *testing.T) {
 				t.Errorf("%s: %q is not in the stored text", p.Slug, n)
 			}
 		}
+	}
+}
+
+// A card with no sections has no table of contents; its text takes the
+// whole column instead of the contents' 220px track.
+func TestCardPage_NoSectionsLayout(t *testing.T) {
+	data := cardWithFacts()
+	data["Sections"] = []db.ReferenceSection(nil)
+	out := renderRealCardTemplate(t, data)
+	if !strings.Contains(out, `<div class="card-layout no-toc">`) {
+		t.Error("a card without sections should use the no-toc layout")
+	}
+	if strings.Contains(out, `class="card-sidebar"`) || strings.Contains(out, `class="card-pills-wrap"`) {
+		t.Error("no sections: no table of contents or pills")
+	}
+	if !strings.Contains(out, `id="section-next-steps"`) {
+		t.Error("next steps still render")
+	}
+	css, err := os.ReadFile(filepath.Join("..", "..", "static", "css", "style.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), ".card-layout.no-toc { grid-template-columns: minmax(0, 760px); }") {
+		t.Error("the no-toc layout needs its one-column grid")
+	}
+}
+
+func TestCategoriesInOrder(t *testing.T) {
+	got := categoriesInOrder(map[string]bool{"zeta": true, "hotel": true, "alpha": true, "travel": true})
+	if strings.Join(got, ",") != "travel,hotel,alpha,zeta" {
+		t.Errorf("got %v", got)
 	}
 }

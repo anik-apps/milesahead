@@ -2,9 +2,12 @@ package web
 
 import (
 	"fmt"
+	"html"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/kumaranik/milesahead/internal/db"
@@ -39,7 +42,9 @@ var (
 	offerDollar = regexp.MustCompile(`^\$(\d[\d,]*)\s+(cash back|cash bonus|cash rewards bonus|bonus|in ([A-Z][A-Za-z]*) Cash)\b`)
 	offerUpTo   = regexp.MustCompile(`(?i)^(up to|as high as)\s`)
 	offerNone   = regexp.MustCompile(`(?i)^(no longer available|none\b|no welcome bonus|no bonus)`)
-	offerClosed = regexp.MustCompile(`(?i)closed to new applicants|no longer available|discontinued`)
+	// The card itself can't be applied for. "No longer available" alone means
+	// the offer ended, not the card.
+	offerClosed = regexp.MustCompile(`(?i)closed to new applicants|card discontinued|no longer offered to new`)
 )
 
 // parseOffer reads welcome_bonus_text. An empty text gives a zero cardOffer,
@@ -197,35 +202,70 @@ func (f *cardFacts) EarnRest() string {
 
 // leadSentence is the first sentence of a verdict, for the summary panel. A
 // sentence ends at ".", "!" or "?" followed by a space and a capital letter or
-// quote, so "$1.5" and "2.5x" don't end one. Long first sentences are cut at a
-// word boundary.
-var sentenceEnd = regexp.MustCompile(`[.!?]["”']?\s+["“'A-Z]`)
+// quote, so "$1.5" and "2.5x" don't end one, nor do abbreviations such as
+// "vs." or "U.S.". Tags become spaces, so paragraphs don't run together, and
+// entities are decoded (the template escapes the result). Long first
+// sentences are cut at a word boundary.
+var (
+	sentenceEnd = regexp.MustCompile(`[.!?]["”']?\s+["“'A-Z]`)
+	htmlTag     = regexp.MustCompile(`<[^>]*>`)
+	// lastWord is the word before a full stop.
+	lastWord = regexp.MustCompile(`(\S+)$`)
+)
+
+// abbreviations end in a full stop without ending the sentence.
+var abbreviations = map[string]bool{
+	"vs": true, "e.g": true, "i.e": true, "etc": true, "approx": true, "incl": true,
+	"mr": true, "mrs": true, "ms": true, "dr": true, "st": true, "no": true, "jan": true, "feb": true,
+	"mar": true, "apr": true, "aug": true, "sept": true, "sep": true, "oct": true, "nov": true, "dec": true,
+}
 
 func leadSentence(verdict string, max int) string {
-	s := strings.Join(strings.Fields(stripHTML(verdict)), " ")
-	if loc := sentenceEnd.FindStringIndex(s); loc != nil {
-		end := loc[0] + 1
+	s := strings.Join(strings.Fields(html.UnescapeString(htmlTag.ReplaceAllString(verdict, " "))), " ")
+	for from := 0; from < len(s); {
+		loc := sentenceEnd.FindStringIndex(s[from:])
+		if loc == nil {
+			break
+		}
+		end := from + loc[0] + 1
+		if s[end-1] == '.' && isAbbreviation(s[:end-1]) {
+			from = end
+			continue
+		}
 		if s[end] == '"' || s[end] == '\'' {
 			end++
 		} else if strings.HasPrefix(s[end:], "”") {
 			end += len("”")
 		}
 		s = s[:end]
+		break
 	}
 	return shorten(s, max)
 }
 
+// isAbbreviation reports whether the text before a full stop ends in an
+// abbreviation: a known one, a single letter ("U.S" ends in "S"), or a word
+// with stops inside it.
+func isAbbreviation(before string) bool {
+	w := lastWord.FindString(before)
+	w = strings.TrimLeft(w, "(\"'“")
+	if w == "" {
+		return false
+	}
+	if abbreviations[strings.ToLower(w)] || strings.Contains(w, ".") {
+		return true
+	}
+	return utf8.RuneCountInString(w) == 1 && unicode.IsUpper([]rune(w)[0])
+}
+
 // applyHost is the bare host of an apply URL, for "Opens americanexpress.com
-// in a new tab".
+// in a new tab". Empty for a URL it can't read.
 func applyHost(raw string) string {
-	s := raw
-	if i := strings.Index(s, "://"); i >= 0 {
-		s = s[i+3:]
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ""
 	}
-	if i := strings.IndexAny(s, "/?#"); i >= 0 {
-		s = s[:i]
-	}
-	return strings.TrimPrefix(strings.ToLower(s), "www.")
+	return strings.TrimPrefix(strings.ToLower(u.Hostname()), "www.")
 }
 
 // feeBand is a range of annual fees offered as an index filter.
