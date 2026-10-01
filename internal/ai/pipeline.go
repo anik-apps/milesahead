@@ -85,8 +85,8 @@ func (p *Pipeline) SetDetailModels(models []string) {
 // ErrNotEnoughSources is returned when a cluster has fewer than 2 unique sources.
 var ErrNotEnoughSources = fmt.Errorf("need at least 2 different sources to generate an article")
 
-// Process generates an article, verifies it, and if the critic finds issues
-// but the score is above threshold, auto-revises once before finalizing.
+// Process generates an article, verifies it, and if the critic left anything
+// to fix (see needsRevision), auto-revises once before finalizing.
 // Requires at least 2 sources from different sites to reduce hallucination risk.
 func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*PipelineResult, error) {
 	// Require multiple sources from different sites
@@ -125,8 +125,8 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
 		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
-	// If issues found, generator revises, then critic reviews again
-	if len(verification.Issues) > 0 {
+	// If there is something to fix, generator revises, then critic reviews again
+	if needsRevision(verification) {
 		slog.Info("auto-revision triggered", "issues_count", len(verification.Issues))
 		issuesStr := strings.Join(verification.Issues, "\n- ")
 		revised, err := p.generator.GenerateWithFeedback(sources, content,
@@ -173,6 +173,20 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
 	}, nil
+}
+
+// needsRevision reports whether a verdict leaves anything for the
+// auto-revision to fix: an issue that survived dropPassedChecks, which
+// includes the unmappable source-reference issue flagSourceRefs adds.
+//
+// The score and the checks are deliberately not part of the decision. In
+// production (2026-09-21 to 10-01) verdicts with all four checks passing and
+// scores of 85-95 still carried real errors -- a miscalculated per-point
+// price, a wrong joint-venture member, a "202026" typo -- so gating on them
+// would publish fixable mistakes. What wasted revisions was issues that were
+// not problems at all, which the critic prompt and dropPassedChecks remove.
+func needsRevision(v *VerificationResult) bool {
+	return len(v.Issues) > 0
 }
 
 // extractDetails makes a separate AI call to extract key details and links from the article.

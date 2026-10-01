@@ -211,6 +211,18 @@ Sources (for your reference only — do NOT cite these in the article):
 Write the summary post now.`, writingStyle, htmlFormat, sourceReferenceRule, formatSources(sources))
 }
 
+// criticIssuesRules defines what belongs in a critic's "issues" array. Process
+// auto-revises whenever issues remain, and the generator is told to fix every
+// one, so an issue that confirms a passed check ("matches the source",
+// "no source leakage -- good") costs a rewrite and a second critic call and
+// asks the generator to change something that is right. dropPassedChecks
+// removes the plainest of these after parsing; this rule is the main fix.
+const criticIssuesRules = `ISSUES — "issues" is the list of fixes the writer will be asked to make, nothing else:
+- Include ONLY problems that require changing the article. Each issue is one plain string (not an object) that says what is wrong, where (quote the phrase or name the section), and what it should say or do instead.
+- Do NOT list checks that passed, confirmations ("matches the source", "verified", "correct", "no source leakage"), praise ("reads well", "good"), or observations that need no change ("acceptable", "not a hallucination", "a reasonable inference"). The true/false checks already record what passed.
+- If nothing needs to change, return "issues": [] — an empty list is the expected answer for a clean article.
+- Every check you set to false must have at least one issue explaining what to fix.`
+
 // CriticPrompt builds a comprehensive verification prompt. The critic checks
 // factual accuracy, content quality, readability, and HTML validity.
 func CriticPrompt(generatedArticle string, sources []SourceArticle) string {
@@ -246,7 +258,9 @@ Original Sources:
 %s
 
 Return ONLY a JSON object (no other text):
-{"score": <0-100>, "issues": [<array of specific issue strings>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
+{"score": <0-100>, "issues": [<problems that need a change in the article; [] if none>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
+
+`+criticIssuesRules+`
 
 Scoring guide:
 - 90-100: Publish-ready. ALL four checks must be true. Every claim verified against sources. No extra content.
@@ -301,7 +315,9 @@ Original sources for reference:
 %s
 
 Return ONLY a JSON object (no other text):
-{"score": <0-100>, "issues": [<array of specific issue strings>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
+{"score": <0-100>, "issues": [<problems that need a change in the article; [] if none>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
+
+`+criticIssuesRules+`
 
 Scoring:
 - 90-100: Logically sound, no inconsistencies.
