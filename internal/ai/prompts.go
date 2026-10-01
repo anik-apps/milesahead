@@ -42,14 +42,25 @@ func formatSources(sources []SourceArticle) string {
 	return b.String()
 }
 
+// noOutletsRule is the site owner's rule on the news sites and blogs articles
+// are written from: never name or refer to them, with exactly two exceptions,
+// quoted verbatim. Every prompt that writes or checks article text carries it.
+const noOutletsRule = `NEVER name or refer to the news sites and blogs you were given (the outlets the sources are labelled with) or any other points/travel news site or blog - for example The Points Guy (TPG), One Mile at a Time (OMAAT), Doctor of Credit (DoC), View from the Wing (VFTW), Upgraded Points, Loyalty Lobby, Frequent Miler (FM), AwardWallet, Thrifty Traveler, Miles to Memories. State facts plainly, as facts, without attributing them. This covers every form: "according to X", "X reports/notes/confirmed", "X's valuation", "X runs the math differently", "X readers", "(per X)", and abbreviations.
+Issuers, airlines, hotel chains and their official pages are NOT news sites: name them freely ("Chase says", "American confirmed").
+The only exceptions:
+` + outletExceptions + `
+Even then, never link to the news site.`
+
 // sourceReferenceRule tells the writer how to refer to the source material.
 // Every prompt that hands the model source articles includes it.
 const sourceReferenceRule = `
 REFERRING TO SOURCES:
 - The source articles below are your private research notes. Readers never see them, and they are labelled only by the outlet that published them.
-- Usually you should not refer to them at all: state the facts directly (see FACTUAL INTEGRITY).
-- When you do need to attribute something (the unconfirmed-report EXCEPTION under FACTUAL INTEGRITY), name the outlet: "Doctor of Credit is reporting...", "One Mile at a Time notes...".
-- NEVER refer to a source by number or position. These are all WRONG: "Source 1", "Source 2 notes", "sources 1 and 2", "the first source", "the second article", "Article 1", "[1]", "[Source 2]".
+- ` + noOutletsRule + `
+  WRONG: "American confirmed to The Points Guy that the change is permanent." RIGHT: "American has confirmed the change is permanent."
+  WRONG: "That's about 1.4 cents per point (One Mile at a Time's valuation)." RIGHT: "That's about 1.4 cents per point."
+  WRONG: "One Mile at a Time runs the math slightly differently..." RIGHT: give the math itself, as your own analysis.
+- NEVER refer to a source by number or position either. These are all WRONG: "Source 1", "Source 2 notes", "sources 1 and 2", "the first source", "the second article", "Article 1", "[1]", "[Source 2]".
 `
 
 const writingStyle = `
@@ -95,13 +106,13 @@ FACTUAL INTEGRITY:
     - frequentmiler.com
     - liveandletsfly.com
     - milesfromblighty.com
-  Do not mention source site names UNLESS reporting an unconfirmed claim from a specific site.
+  Do not name or refer to news sites or blogs at all (see REFERRING TO SOURCES for the only two exceptions).
   WRONG: "American Express is offering a 40% bonus [TPG]."
   WRONG: "According to The Points Guy, there is a 40% bonus."
   WRONG: <a href="https://thepointsguy.com/...">link</a>
   RIGHT: "American Express is offering a 40% transfer bonus to ANA through March 31."
-  EXCEPTION (unconfirmed report): When a claim can only be attributed to one source and is not officially confirmed, link the source name to their article:
-  RIGHT: <a href="https://thepointsguy.com/article-url" target="_blank" rel="noopener">The Points Guy is reporting</a> that Chase may change Sapphire Reserve benefits in April — take this with a grain of salt until there's official confirmation.
+  EXCEPTION (unconfirmed report only one news site carries): mention it once, phrased as a report, with no link:
+  RIGHT: Chase may reportedly change Sapphire Reserve benefits in April, according to The Points Guy - take this with a grain of salt until there's official confirmation.
 
 FORMATTING:
 - The article body is HTML. NEVER output Markdown.
@@ -246,10 +257,11 @@ VERIFICATION CHECKLIST:
 3. COMPLETENESS — Are the most important details from the sources included?
 4. READABILITY — Does the article read naturally? Does it flow well? Is it engaging and not robotic? Does the tone feel like a real person wrote it?
 5. HTML VALIDITY — Is the output clean HTML? No Markdown artifacts (**, ##, []() links)? Are tags properly opened and closed?
-6. SOURCE LEAKAGE — Does the article link to or mention source news sites (TPG, OMAAT, Doctor of Credit, View from the Wing, FlyerTalk, Frequent Miler) in the body? It should NOT, unless reporting an unconfirmed claim. Links to thepointsguy.com, onemileatatime.com, doctorofcredit.com, viewfromthewing.com are ALWAYS wrong.
+6. NEWS-SITE MENTIONS — The site's rule for articles: `+noOutletsRule+`
+   Check the title, TLDR, key details and body. Any mention of a news site or blog outside those two exceptions ("American confirmed to The Points Guy", "(One Mile at a Time's valuation)", "according to Doctor of Credit", "TPG", "OMAAT") is an ATTRIBUTION FAILURE: set attribution_check to false and add an issue that quotes the phrase and says to remove the mention and state the fact without attribution. Links to thepointsguy.com, onemileatatime.com, doctorofcredit.com, viewfromthewing.com or any other news site are ALWAYS wrong, even under an exception.
 7. LINK CHECK — The article should NOT link to source news articles. It MAY link to actual deals, products, or official pages (amazon.com, chase.com, united.com, etc.). Check every <a href> tag: if it points to a source news site, that's a FAILURE.
 8. COHERENCE — Does the article make logical sense from start to finish? Are there any contradictions, non-sequiturs, or confusing passages?
-9. SOURCE NUMBERING — The original sources below are private research notes labelled by outlet; readers never see them, numbered or otherwise. Any reference to a source by number or position in the title, TLDR, key details or body ("Source 1 notes", "Source 2", "sources 1 and 2", "the first source", "the second article", "Article 1", "[1]") is an ATTRIBUTION FAILURE: set attribution_check to false and add an issue that quotes the phrase and names the outlet to use instead, or says to drop the attribution. In your own issues, likewise refer to sources by outlet name, never by number or position.
+9. SOURCE NUMBERING — The original sources below are private research notes labelled by outlet; readers never see them, numbered or otherwise. Any reference to a source by number or position in the title, TLDR, key details or body ("Source 1 notes", "Source 2", "sources 1 and 2", "the first source", "the second article", "Article 1", "[1]") is an ATTRIBUTION FAILURE: set attribution_check to false and add an issue that quotes the phrase and says to state the fact without attribution (never to put the outlet's name in its place). In your own issues, refer to sources by outlet name, never by number or position.
 
 Generated Article:
 %s
@@ -307,6 +319,9 @@ Read the article carefully and check:
 5. TONE AND CLAIMS — Does the article make promises or claims beyond what's reasonable?
    - Does it overstate the value of a deal?
    - Does it recommend specific actions without enough information?
+
+6. NEWS-SITE MENTIONS — The site's rule for articles: `+noOutletsRule+`
+   A mention of a news site or blog outside those two exceptions, anywhere in the article, fails attribution: set attribution_check to false and add an issue that quotes the phrase and says to remove the mention and state the fact without attribution.
 
 Article to review:
 %s
@@ -380,7 +395,8 @@ Rules:
 - If the offer has an end date, include exactly one key detail with the label "Deadline" whose value is the last day to act, written as Month D, YYYY (e.g. "May 1, 2026"). The site uses it to mark the offer as ended, so never label an effective date, travel window or points-expiry date "Deadline", and leave it out when the article gives no end date.
 - links: 2-4 links to actual deal pages, booking sites, or official program pages found in the article content. Extract real URLs from the HTML <a href> tags. Do NOT invent URLs.
 - If the article has no links, return an empty links array.
-- Never refer to sources by number or position ("Source 1", "the second source") in a label or value.`, title, truncated)
+- Never refer to sources by number or position ("Source 1", "the second source") in a label or value.
+- In a label or value, `+noOutletsRule+``, title, truncated)
 }
 
 // ArticleTagsPrompt builds a prompt that asks the AI to pick 1-3 topic tags
@@ -434,7 +450,8 @@ Given this article, write a 1-2 sentence take that captures your honest opinion.
 
 Do NOT start with "Look," or "Listen," or any attention-grabbing opener. Just state your take directly.
 
-Never refer to sources by number or position ("Source 1", "the second source"). If the article does, ignore that wording; name the outlet only if it is essential.
+`+noOutletsRule+`
+If the article itself names a news site or blog outside those exceptions, do not repeat it. Never refer to sources by number or position ("Source 1", "the second source") either.
 
 Article Title: %s
 Summary: %s
@@ -513,7 +530,7 @@ Also fix any critic issues if present.
 %s
 %s
 %s
-If the previous article refers to a source by number or position ("Source 1 notes...", "the second source"), rewrite it to name the outlet or drop the attribution, even if no one asked.
+If the previous article names or refers to a news site or blog ("according to The Points Guy", "One Mile at a Time's valuation", "TPG"), or refers to a source by number or position ("Source 1 notes...", "the second source"), remove the reference and state the fact without attribution, even if no one asked - unless one of the two exceptions under REFERRING TO SOURCES applies.
 
 Previous Article:
 %s

@@ -125,17 +125,35 @@ and `milesahead_revisions_waiting{state="exhausted"}` counts it.
 
 ### Source references
 
-Generator prompts label each source by its outlet ("=== From Doctor of Credit
-==="), never by number, and tell the model to name the outlet if it attributes
-anything. Generated text is still checked: a numbered reference ("Source 1
-notes...") that maps to a source is rewritten to the outlet's name, and one
-that does not fails the critic's attribution check so the auto-revision fixes
-it. To repair articles stored before this, run the one-off tool (a read-only
-dry run unless `-apply` is given; it takes no backup, so take one first):
+Articles never name or refer to the news sites and blogs they are written from
+(the `sources` table: The Points Guy, One Mile at a Time, Doctor of Credit and
+so on, plus abbreviations such as TPG and OMAAT). There are two exceptions: the
+outlet is itself the subject of the story, or an unconfirmed report only that
+outlet carries, which is mentioned once, as a report. Issuers, airlines and
+hotel chains are not news sites.
+
+Every writing, revision, enrichment and critic prompt carries the rule, and
+generated text is also checked deterministically (`internal/ai/outlets.go`):
+
+- A mention of an outlet (its name, an abbreviation, its domain, or a written-out
+  URL on its site) in the title, TLDR, key details or body fails the
+  attribution check with an issue naming it, which triggers the one
+  auto-revision. A mention that survives it (perhaps an exception) is kept and
+  the article stays marked failed for the admin to judge.
+- A numbered reference ("Source 1 notes...") is treated the same way; it is
+  never rewritten to the outlet's name. Citation markers ("[1]") are removed.
+- Links to an outlet's site are unwrapped, keeping their text, and dropped from
+  the link list: articles link to official pages only.
+- Scout's Take and key details from enrichment have no revision after them, so
+  a take that names an outlet is refused (and retried) and such a detail is
+  dropped, unless the title names the outlet.
+
+To list stored articles that name or link to an outlet (read-only; it has no
+write mode, since prose needs a person to fix it):
 
 ```bash
-go run ./cmd/repair-source-refs -db ./data/milesahead.db          # dry run
-go run ./cmd/repair-source-refs -db ./data/milesahead.db -apply   # write
+go run ./cmd/flag-outlet-mentions -db ./data/milesahead.db
+go run ./cmd/flag-outlet-mentions -db ./data/milesahead.db -status approved,pending
 ```
 
 ### Editor notes

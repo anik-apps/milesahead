@@ -3,33 +3,34 @@ package ai
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Numbered source references.
 //
 // The prompts used to label each source "--- Source 1: [The Points Guy] ---",
 // and the generator echoed the label into published copy: "Source 1 notes this
-// offer doesn't come around often". Readers never see the source list in that
-// order (or at all, in the body), so the phrase is meaningless to them. The
-// prompts now label sources by outlet only and forbid positional references,
-// but a prompt is a request, not a guarantee, so generated text is also checked
-// here: a reference that can be mapped to an outlet is rewritten to the
-// outlet's name, and one that cannot is reported so the caller can fail the
-// critic's attribution check and let the revision pass fix it.
+// offer doesn't come around often". Readers never see the source list, so the
+// phrase is meaningless to them. The prompts now label sources by outlet only
+// and forbid positional references, but a prompt is a request, not a
+// guarantee, so generated text is also checked here.
+//
+// A reference is never rewritten to the outlet's name: articles must not name
+// the sites they were written from at all (see outlets.go). Citation markers
+// ("[1]") carry no wording and are removed; any other reference is reported, so
+// the caller fails the attribution check and lets the revision pass restate the
+// fact without attribution.
 //
 // "Article N" is deliberately NOT treated as a source reference: in this domain
 // it is far more likely to be "Article 7 of EU261" than a leaked label.
 var (
-	// "[1]", "[2, 3]", "[Source 2]" used as citation markers. They are banned
-	// outright, so they are removed rather than mapped. The trailing group keeps
-	// whatever followed the marker and requires it to be a word boundary of the
-	// prose kind, so "?a[1]=x" inside a URL is not touched.
+	// "[1]", "[2, 3]", "[Source 2]" used as citation markers. The trailing
+	// group keeps whatever followed the marker and requires it to be a word
+	// boundary of the prose kind, so "?a[1]=x" inside a URL is not touched.
 	bracketCiteRE = regexp.MustCompile(`[ \t]*\[(?i:sources?\s*#?\s*)?\d{1,2}(?:\s*[,-]\s*\d{1,2})*\]([\s.,;:!?)<]|$)`)
-
-	// "Source 2 (LoyaltyLobby)": the model named the outlet itself.
-	explicitSourceRE = regexp.MustCompile(`(?i)\bsources?\s*#?\s*(\d{1,2})\s*\(([^()<>\n]{2,40})\)`)
 
 	// "Sources 1 and 2", "sources 1, 2 and 3".
 	sourceListRE = regexp.MustCompile(`(?i)\bsources?\s*#?\s*\d{1,2}(?:\s*(?:,\s*and|,|and|&)\s*#?\s*\d{1,2})+\b`)
@@ -40,200 +41,83 @@ var (
 
 	// "the first source", "the 2nd source". Not "the first source of income".
 	ordinalSourceRE = regexp.MustCompile(`(?i)\bthe\s+(first|second|third|fourth|fifth|sixth|1st|2nd|3rd|4th|5th|6th)\s+source\b`)
-
-	digitsRE = regexp.MustCompile(`\d{1,2}`)
 )
 
-var ordinals = map[string]int{
-	"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6,
-	"1st": 1, "2nd": 2, "3rd": 3, "4th": 4, "5th": 5, "6th": 6,
-}
-
-// SourceRefReport describes what RewriteSourceRefs did.
-type SourceRefReport struct {
-	// Rewritten lists each change as "old -> new" (citation markers that were
-	// removed show an empty new side).
-	Rewritten []string
-	// Unresolved lists references left in place because they could not be
-	// mapped to an outlet safely.
-	Unresolved []string
-}
-
-// Changed reports whether any reference was rewritten or removed.
-func (r SourceRefReport) Changed() bool { return len(r.Rewritten) > 0 }
-
-// RewriteSourceRefs rewrites numbered references to source material.
-//
-// known is every outlet the text was written from; an outlet the text names
-// itself in parentheses ("Source 2 (LoyaltyLobby)") is matched against it,
-// ignoring case, spaces and punctuation, and wins over the number. byNumber
-// maps a 1-based source number to an outlet name, or reports false when the
-// number cannot be mapped unambiguously; such references are left in place and
-// listed in Unresolved.
-func RewriteSourceRefs(text string, known []string, byNumber func(n int) (string, bool)) (string, SourceRefReport) {
-	var rep SourceRefReport
-	if !mayContainSourceRef(text) {
-		return text, rep
+// StripCitationMarkers removes bracketed citation markers ("[1]", "[Source
+// 2]"), returning the markers it removed. They are banned outright and carry
+// no wording, so removing them never changes what a sentence says.
+func StripCitationMarkers(text string) (string, []string) {
+	if !strings.Contains(text, "[") {
+		return text, nil
 	}
-
-	text = replaceEach(bracketCiteRE, text, func(g []string, _, _ string) string {
-		rep.Rewritten = append(rep.Rewritten, strings.TrimSpace(strings.TrimSuffix(g[0], g[1]))+" -> ")
+	var removed []string
+	out := replaceEach(bracketCiteRE, text, func(g []string, _, _ string) string {
+		removed = append(removed, strings.TrimSpace(strings.TrimSuffix(g[0], g[1])))
 		return g[1]
 	})
-
-	// An explicit form whose outlet is not one of the sources is left alone
-	// and reported: the text names an outlet the article was not written
-	// from, so mapping the number by position would print a clean-looking
-	// but possibly wrong name ("Loyalty Lobby (Some Blog)"). The span is
-	// swapped for a placeholder so the passes below cannot rewrite its
-	// "Source N", and restored at the end.
-	var held []string
-	text = replaceEach(explicitSourceRE, text, func(g []string, _, _ string) string {
-		name, ok := matchOutlet(g[2], known)
-		if !ok {
-			rep.Unresolved = append(rep.Unresolved, g[0])
-			held = append(held, g[0])
-			return heldPlaceholder(len(held) - 1)
-		}
-		rep.Rewritten = append(rep.Rewritten, g[0]+" -> "+name)
-		return name
-	})
-
-	text = replaceEach(sourceListRE, text, func(g []string, _, _ string) string {
-		var names []string
-		seen := map[string]bool{}
-		for _, d := range digitsRE.FindAllString(g[0], -1) {
-			n, _ := strconv.Atoi(d)
-			name, ok := byNumber(n)
-			if !ok {
-				rep.Unresolved = append(rep.Unresolved, g[0])
-				return g[0]
-			}
-			if !seen[name] {
-				seen[name] = true
-				names = append(names, name)
-			}
-		}
-		joined := joinNames(names)
-		rep.Rewritten = append(rep.Rewritten, g[0]+" -> "+joined)
-		return joined
-	})
-
-	text = replaceEach(numberedSourceRE, text, func(g []string, before, after string) string {
-		if notASourceRef(before, after) {
-			return g[0]
-		}
-		n, _ := strconv.Atoi(g[1])
-		name, ok := byNumber(n)
-		if !ok || rangeFollows(after) {
-			rep.Unresolved = append(rep.Unresolved, g[0])
-			return g[0]
-		}
-		rep.Rewritten = append(rep.Rewritten, g[0]+" -> "+name)
-		return name
-	})
-
-	text = replaceEach(ordinalSourceRE, text, func(g []string, _, after string) string {
-		if rest := strings.TrimLeft(after, " \t"); len(rest) >= 3 && strings.EqualFold(rest[:2], "of") && !isWordByte(rest[2]) {
-			return g[0] // "the first source of points"
-		}
-		name, ok := byNumber(ordinals[strings.ToLower(g[1])])
-		if !ok {
-			rep.Unresolved = append(rep.Unresolved, g[0])
-			return g[0]
-		}
-		rep.Rewritten = append(rep.Rewritten, g[0]+" -> "+name)
-		return name
-	})
-
-	for i, h := range held {
-		text = strings.Replace(text, heldPlaceholder(i), h, 1)
-	}
-	return text, rep
+	return out, removed
 }
 
-// heldPlaceholder marks a span the rewrite passes must not touch. It is built
-// from private-use code points, which never occur in generated prose and
-// contain nothing the patterns match.
-func heldPlaceholder(i int) string {
-	return "\uE000" + strconv.Itoa(i) + "\uE001"
-}
-
-// FixSourceRefs rewrites numbered references using the order the sources were
-// presented in: "Source N" is the Nth source.
-func FixSourceRefs(text string, sources []SourceArticle) (string, SourceRefReport) {
-	names := SourceNames(sources)
-	return RewriteSourceRefs(text, names, ByPosition(names))
-}
-
-// FindSourceRefs returns the numbered source references in text, without
-// changing anything. Citation markers count.
+// FindSourceRefs returns the numbered source references in text, in order,
+// without changing anything. Citation markers count.
 func FindSourceRefs(text string) []string {
 	if !mayContainSourceRef(text) {
 		return nil
 	}
-	var found []string
+	type span struct{ start, end int }
+	var spans []span
 	for _, re := range []*regexp.Regexp{bracketCiteRE, sourceListRE, numberedSourceRE} {
 		for _, m := range re.FindAllStringSubmatchIndex(text, -1) {
 			end := m[1]
 			if re == bracketCiteRE {
 				end = m[2] // not the character after the marker
 			}
-			s := text[m[0]:end]
 			if re == numberedSourceRE && notASourceRef(text[:m[0]], text[m[1]:]) {
 				continue
 			}
-			found = append(found, strings.TrimSpace(s))
+			spans = append(spans, span{m[0], end})
 		}
 	}
 	for _, m := range ordinalSourceRE.FindAllStringIndex(text, -1) {
 		rest := strings.TrimLeft(text[m[1]:], " \t")
 		if len(rest) >= 3 && strings.EqualFold(rest[:2], "of") && !isWordByte(rest[2]) {
+			continue // "the first source of points"
+		}
+		spans = append(spans, span{m[0], m[1]})
+	}
+	// "Sources 1 and 2" also matches as "Sources 1": report the longest
+	// match at each place once.
+	sort.Slice(spans, func(i, j int) bool {
+		if spans[i].start != spans[j].start {
+			return spans[i].start < spans[j].start
+		}
+		return spans[i].end > spans[j].end
+	})
+	var found []string
+	lastEnd := -1
+	for _, s := range spans {
+		if s.start < lastEnd {
 			continue
 		}
-		found = append(found, text[m[0]:m[1]])
+		lastEnd = s.end
+		found = append(found, strings.TrimSpace(text[s.start:s.end]))
 	}
 	return found
 }
 
-// SourceNames returns the outlet name of each source, in order.
-func SourceNames(sources []SourceArticle) []string {
-	names := make([]string, len(sources))
-	for i, s := range sources {
-		names[i] = s.Name
-	}
-	return names
-}
-
-// ByPosition maps "Source N" to names[N-1]. A number out of range, or a source
-// with no usable outlet name, cannot be mapped.
-func ByPosition(names []string) func(int) (string, bool) {
-	return func(n int) (string, bool) {
-		if n < 1 || n > len(names) || !usableOutlet(names[n-1]) {
-			return "", false
-		}
-		return names[n-1], true
-	}
-}
-
-// SourceRefIssue is the critic issue recorded for references that could not be
-// rewritten, worded so the revision pass knows what to do with it.
-func SourceRefIssue(unresolved []string, sources []SourceArticle) string {
-	var outlets []string
+// SourceRefIssue is the critic issue recorded for numbered references, worded
+// so the revision pass knows what to do with it.
+func SourceRefIssue(refs []string) string {
+	var quoted []string
 	seen := map[string]bool{}
-	for _, n := range SourceNames(sources) {
-		if usableOutlet(n) && !seen[n] {
-			seen[n] = true
-			outlets = append(outlets, n)
+	for _, r := range refs {
+		if !seen[r] {
+			seen[r] = true
+			quoted = append(quoted, strconv.Quote(r))
 		}
 	}
-	quoted := make([]string, len(unresolved))
-	for i, u := range unresolved {
-		quoted[i] = strconv.Quote(u)
-	}
-	return fmt.Sprintf("Refers to source material by number or position (%s). Readers never see numbered sources: "+
-		"name the outlet instead (%s), or state the fact without attributing it.",
-		strings.Join(quoted, ", "), strings.Join(outlets, ", "))
+	return fmt.Sprintf("Refers to source material by number or position (%s). Readers never see the sources: "+
+		"remove the reference and state the fact without attribution.", strings.Join(quoted, ", "))
 }
 
 // mayContainSourceRef is a cheap prefilter: every pattern needs "source" or
@@ -251,57 +135,16 @@ func notASourceRef(before, after string) bool {
 	return len(after) >= 2 && (after[0] == '.' || after[0] == ',') && after[1] >= '0' && after[1] <= '9'
 }
 
-// moreNumbersRE matches the rest of a "Sources 1-3" range, or of a
-// "Sources 1 and 7" list the list pass declined to rewrite.
-var moreNumbersRE = regexp.MustCompile(`^\s*(?:,\s*and|,|and|&|to|-|–|—)\s*#?\s*\d`)
-
-// rangeFollows reports that the number is the start of a range or list, which
-// is left for the critic rather than half-rewritten ("Doctor of Credit-3").
-func rangeFollows(after string) bool {
-	return moreNumbersRE.MatchString(after)
-}
-
-func usableOutlet(name string) bool {
-	n := strings.TrimSpace(name)
-	return n != "" && !strings.EqualFold(n, "unknown") && !strings.ContainsAny(n, "\"\\<>")
-}
-
-// matchOutlet finds the known outlet a free-text mention refers to, comparing
-// letters and digits only ("LoyaltyLobby" is "Loyalty Lobby").
-func matchOutlet(mention string, known []string) (string, bool) {
-	want := normalizeOutlet(mention)
-	if want == "" {
-		return "", false
-	}
-	for _, k := range known {
-		if usableOutlet(k) && normalizeOutlet(k) == want {
-			return k, true
-		}
-	}
-	return "", false
-}
-
+// normalizeOutlet keeps only letters and digits, lower-cased, so
+// "LoyaltyLobby" and "Loyalty Lobby" compare equal.
 func normalizeOutlet(s string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(s) {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			b.WriteRune(r)
 		}
 	}
 	return b.String()
-}
-
-func joinNames(names []string) string {
-	switch len(names) {
-	case 0:
-		return ""
-	case 1:
-		return names[0]
-	case 2:
-		return names[0] + " and " + names[1]
-	default:
-		return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
-	}
 }
 
 func isWordByte(c byte) bool {

@@ -17,6 +17,7 @@ package enrich
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync/atomic"
 	"time"
@@ -64,6 +65,15 @@ type Service struct {
 	// Generate, which it does not take yet, and warming thumbnails for image
 	// scoring can add up to 15 s.
 	MaxDuration time.Duration
+
+	// Outlets lists the news sites and blogs articles are written from (the
+	// sources table); it is read once per pass. Scout's Take and key details
+	// must not name them (see ai.OutletMatcher), and nothing revises them
+	// after this point, so a take that does is refused and retried, and such a
+	// detail is dropped. The built-in outlets are checked even when it is nil.
+	Outlets func() []ai.Outlet
+	// outlets is this pass's check, built from Outlets in Run.
+	outlets *ai.OutletMatcher
 
 	// startedAt records when the in-flight pass began, so a skip can report how
 	// long the pass it is yielding to has been running.
@@ -170,6 +180,11 @@ func (s *Service) Run() {
 
 	slog.Info("enrichment pass starting", "articles", len(articles),
 		"deadline", s.maxDuration())
+	var table []ai.Outlet
+	if s.Outlets != nil {
+		table = s.Outlets()
+	}
+	s.outlets = ai.NewOutletMatcher(table)
 	var filled, failed, done int
 	hitDeadline := func() {
 		metrics.EnrichmentPassesTotal.WithLabelValues("deadline").Inc()
@@ -242,6 +257,9 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 
 	if a.MissingScoutsTake {
 		take, err := ai.GenerateScoutsTake(s.client, s.models, s.persona, a.Title, a.TLDR, a.Content)
+		if err == nil {
+			err = s.checkOutlets(take, a.Title)
+		}
 		if err != nil {
 			s.recordFailure("scouts_take", a.ID, err)
 			failed++
@@ -253,6 +271,9 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 
 	if a.MissingKeyDetails {
 		details, _, err := ai.ExtractDetails(s.client, s.models, a.Title, a.Content)
+		if err == nil {
+			details, err = s.dropOutletDetails(details, a.Title)
+		}
 		if err != nil {
 			s.recordFailure("key_details", a.ID, err)
 			failed++
@@ -406,6 +427,42 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 	slog.Info("enrichment: every relevant image candidate was unfetchable",
 		"article_id", a.ID, "candidates", len(scored))
 	return imageFailed
+}
+
+// outletMatcher is this pass's outlet check, or the built-in outlets alone
+// when enrichOne runs outside Run.
+func (s *Service) outletMatcher() *ai.OutletMatcher {
+	if s.outlets == nil {
+		s.outlets = ai.NewOutletMatcher(nil)
+	}
+	return s.outlets
+}
+
+// checkOutlets refuses a Scout's Take that names a news site, so the field is
+// retried on a later pass.
+func (s *Service) checkOutlets(take, title string) error {
+	if ms := s.outletMatcher().DerivedTextMentions(take, title); len(ms) > 0 {
+		return fmt.Errorf("scouts take names a news site (%s): %q", ms[0].Outlet, ms[0].Text)
+	}
+	return nil
+}
+
+// dropOutletDetails drops key details that name a news site. If none are
+// left the field fails, as when every detail had a numbered source reference,
+// so it is retried rather than stored empty.
+func (s *Service) dropOutletDetails(details []ai.KeyDetail, title string) ([]ai.KeyDetail, error) {
+	var kept []ai.KeyDetail
+	for _, d := range details {
+		if ms := s.outletMatcher().DerivedTextMentions(d.Label+": "+d.Value, title); len(ms) > 0 {
+			slog.Warn("dropped key detail that names a news site", "label", d.Label, "outlet", ms[0].Outlet)
+			continue
+		}
+		kept = append(kept, d)
+	}
+	if len(kept) == 0 {
+		return nil, fmt.Errorf("every key detail named a news site")
+	}
+	return kept, nil
 }
 
 func (s *Service) recordFailure(step string, articleID int64, err error) {
