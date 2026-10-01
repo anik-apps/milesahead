@@ -99,6 +99,11 @@ type MailConfig struct {
 type NewsletterConfig struct {
 	SendTime string `yaml:"send_time"`
 	Timezone string `yaml:"timezone"`
+	// SignupEnabled opens newsletter sign-up: the header, footer, home and
+	// article placements, the /subscribe form and the confirmation email.
+	// Off by default, and treated as off at startup when the SMTP settings
+	// look unset, so readers never sign up for email that cannot be sent.
+	SignupEnabled bool `yaml:"signup_enabled"`
 }
 
 type VotesConfig struct {

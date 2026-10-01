@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -151,18 +153,59 @@ func warnIfSMTPUnset(c config.SMTPConfig) {
 }
 
 // smtpLooksUnset reports whether c cannot be a working SMTP setup: no host
-// or From, a localhost host (nothing listens there in production), or
-// credentials still holding a placeholder.
+// or From, credentials still holding a placeholder ("placeholder", or an
+// unexpanded "${...}"), or a relay on this machine that nothing answers.
+// Empty credentials are allowed, for a relay that needs none.
 func smtpLooksUnset(c config.SMTPConfig) bool {
-	if c.Host == "" || c.From == "" || c.Host == "localhost" || c.Host == "127.0.0.1" {
+	if c.Host == "" || c.From == "" {
 		return true
 	}
 	for _, v := range []string{c.User, c.Password} {
-		if v == "" || v == "placeholder" || strings.HasPrefix(v, "${") {
+		if v == "placeholder" || strings.HasPrefix(v, "${") {
 			return true
 		}
 	}
+	switch c.Host {
+	case "localhost", "127.0.0.1", "::1":
+		return !smtpReachable(net.JoinHostPort(c.Host, strconv.Itoa(c.Port)))
+	}
 	return false
+}
+
+// smtpReachable reports whether something accepts connections at addr.
+// Tests replace it.
+var smtpReachable = func(addr string) bool {
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// signupMailerSetter is the part of web.App wireSignup uses.
+type signupMailerSetter interface {
+	SetConfirmationMailer(web.ConfirmationMailer)
+}
+
+// wireSignup opens newsletter sign-up (placements, the /subscribe form and
+// confirmation emails, all sent by m) when newsletter.signup_enabled is on
+// and SMTP looks configured, and reports whether it did. On with SMTP unset
+// is an ERROR, and sign-up stays closed: readers would sign up and never get
+// the email.
+func wireSignup(app signupMailerSetter, cfg *config.Config, m web.ConfirmationMailer) bool {
+	if !cfg.Newsletter.SignupEnabled {
+		slog.Info("newsletter sign-up is closed (newsletter.signup_enabled is off)")
+		return false
+	}
+	if smtpLooksUnset(cfg.Mail.SMTP) {
+		slog.Error("newsletter sign-up stays closed: newsletter.signup_enabled is on but SMTP is not configured",
+			"host", cfg.Mail.SMTP.Host, "port", cfg.Mail.SMTP.Port, "from_set", cfg.Mail.SMTP.From != "")
+		return false
+	}
+	app.SetConfirmationMailer(m)
+	slog.Info("newsletter sign-up is open", "smtp_host", cfg.Mail.SMTP.Host)
+	return true
 }
 
 func main() {
@@ -373,9 +416,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Sign-ups get their confirmation email from the same SMTP sender as
-	// the newsletter, which carries each reader's own unsubscribe link.
-	app.SetConfirmationMailer(mailSender)
+	// Newsletter sign-up, with confirmation emails from the same SMTP sender
+	// as the newsletter, only when newsletter.signup_enabled is on and SMTP
+	// is configured.
+	wireSignup(app, cfg, mailSender)
 
 	// Web server with explicit Server struct for graceful shutdown
 	httpServer := &http.Server{

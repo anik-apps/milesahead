@@ -162,6 +162,14 @@ newsletter:
   # 29 is over in Hawaii, the westernmost US zone, on the site and in the
   # newsletter alike.
   timezone: "America/New_York"
+  # Opens newsletter sign-up: the Newsletter link in the header and footer,
+  # the line in the home hero, the box at the end of every article, the
+  # /subscribe form and the confirmation email. Off, /subscribe says sign-up
+  # opens soon and stores nothing. Turn it on only once mail.smtp points at a
+  # working relay: with it on and SMTP looking unset (no host or From,
+  # localhost, or placeholder credentials) the app logs an ERROR at startup
+  # and keeps sign-up closed. Checklist in ROADMAP.md (Newsletter).
+  signup_enabled: false
 
 votes:
   alert_threshold: 10

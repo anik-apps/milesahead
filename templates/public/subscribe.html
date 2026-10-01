@@ -60,6 +60,11 @@
     <h1>We don&rsquo;t recognise this link</h1>
     <p class="status-lead">It may have been copied incompletely. Try the link in your most recent MilesAhead email.</p>
     <p class="status-actions"><a class="status-btn secondary" href="/">Go to the site</a></p>
+{{else if eq .State "closed"}}
+    <div class="status-icon info" aria-hidden="true">&#9993;</div>
+    <h1>Newsletter sign-up opens soon</h1>
+    <p class="status-lead">The MilesAhead weekly email isn&rsquo;t taking sign-ups yet. Until it does, every story is on the site as it&rsquo;s published.</p>
+    <p class="status-actions"><a class="status-btn" href="/">Read the latest stories</a><a class="status-btn secondary" href="/feed.xml">RSS feed</a></p>
 {{else if eq .State "too-many"}}
     <h1>Too many attempts</h1>
     <p class="status-lead">Please wait a while before trying again.</p>

@@ -201,6 +201,7 @@ func subscribe(t *testing.T, app *App, email string) *httptest.ResponseRecorder 
 
 func TestSubscribePage_Form(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
+	openSignup(app)
 	rec := do(t, app, http.MethodGet, "/subscribe", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /subscribe: status %d, want 200 (it used to be 405)", rec.Code)
@@ -353,6 +354,7 @@ func TestSubscribe_ConfirmationOutcomesCounted(t *testing.T) {
 
 func TestSubscribe_InvalidAddressIs400(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
+	openSignup(app)
 	rec := do(t, app, http.MethodPost, "/subscribe", "email=not-an-address")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, want 400", rec.Code)
@@ -377,6 +379,7 @@ func TestSubscribe_HoneypotIsIgnored(t *testing.T) {
 
 func TestSubscribe_RateLimited(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
+	openSignup(app)
 	var last int
 	for i := 0; i <= subscribeMaxAttempts; i++ {
 		last = do(t, app, http.MethodPost, "/subscribe", "email=a"+strconv.Itoa(i)+"@example.com").Code

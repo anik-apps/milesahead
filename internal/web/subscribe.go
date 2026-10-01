@@ -19,10 +19,19 @@ type ConfirmationMailer interface {
 	SendConfirmation(toEmail, token, domain string) error
 }
 
-// SetConfirmationMailer sets what sends confirmation emails. Without one,
-// sign-ups are stored but no email goes out (and a warning is logged).
+// SetConfirmationMailer sets what sends confirmation emails, and so opens
+// newsletter sign-up: the header, footer, home and article placements and
+// the /subscribe form. Without one (newsletter.signup_enabled off, or SMTP
+// unset; see cmd/milesahead) sign-up is closed: there are no placements,
+// /subscribe says it opens soon, and no address is stored. Confirming and
+// unsubscribing work either way. Call it before serving.
 func (app *App) SetConfirmationMailer(m ConfirmationMailer) {
 	app.mailer = m
+}
+
+// signupOpen reports whether readers can sign up for the newsletter.
+func (app *App) signupOpen() bool {
+	return app.mailer != nil
 }
 
 const (
@@ -48,6 +57,7 @@ const (
 	subStateBadLink      = "bad-link" // unknown or missing token
 	subStateNoToken      = "no-token" // /unsubscribe with no token at all
 	subStateTooMany      = "too-many"
+	subStateClosed       = "closed" // sign-up is not open yet
 )
 
 // renderSubscribePage renders subscribe.html in one of the states above.
@@ -65,13 +75,27 @@ func (app *App) renderSubscribePage(w http.ResponseWriter, status int, state, ti
 	app.renderStatus(w, status, "subscribe.html", data)
 }
 
+// renderSignupClosed is every sign-up step while sign-up is closed: it
+// opens soon, and nothing was stored.
+func (app *App) renderSignupClosed(w http.ResponseWriter) {
+	app.renderSubscribePage(w, http.StatusOK, subStateClosed, "Newsletter sign-up opens soon", nil)
+}
+
 // handleSubscribePage is the sign-up page.
 func (app *App) handleSubscribePage(w http.ResponseWriter, r *http.Request) {
+	if !app.signupOpen() {
+		app.renderSignupClosed(w)
+		return
+	}
 	app.renderSubscribePage(w, http.StatusOK, subStateForm, "Subscribe", nil)
 }
 
 // handleCheckEmail is where a sign-up lands after the redirect.
 func (app *App) handleCheckEmail(w http.ResponseWriter, r *http.Request) {
+	if !app.signupOpen() {
+		app.renderSignupClosed(w)
+		return
+	}
 	app.renderSubscribePage(w, http.StatusOK, subStateCheckEmail, "Check your inbox", nil)
 }
 
@@ -81,6 +105,11 @@ func (app *App) handleCheckEmail(w http.ResponseWriter, r *http.Request) {
 // confirmation email (at most one per confirmationCooldown); an address that
 // had unsubscribed becomes pending again and must confirm.
 func (app *App) handleSubscribe(w http.ResponseWriter, r *http.Request) {
+	// A form from a page cached before sign-up closed stores nothing.
+	if !app.signupOpen() {
+		app.renderSignupClosed(w)
+		return
+	}
 	if !app.subscribeLimiter.allow(extractIP(r)) {
 		app.renderSubscribePage(w, http.StatusTooManyRequests, subStateTooMany, "Try again later", nil)
 		return
