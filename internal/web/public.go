@@ -39,7 +39,7 @@ type linkedCardEmbed struct {
 	Category      string
 	AnnualFee     string // formatted: "$95" or "$0 (no annual fee)"
 	WelcomeBonus  string
-	TopEarning    string // first 2 entries from earning_rates_json, joined
+	TopEarning    string // the 2 best earning lines, see formatTopEarning
 	ScoutsVerdict string
 	ImageURL      string
 	ApplyURL      string
@@ -358,34 +358,13 @@ func (app *App) buildLinkedCardEmbeds(relatedCardsJSON string) []linkedCardEmbed
 	return out
 }
 
-// formatTopEarning returns up to n earning categories formatted as
-// "5x Dining · 4x Travel". Reuses the existing rateEntry type and
-// earningRateCategories slice defined elsewhere in this package.
+// formatTopEarning returns a card's n best earning lines, best first, as
+// "5x flights · 5x hotels via Amex Travel". See rankEarnRates for the order.
 func formatTopEarning(earningRatesJSON string, n int) string {
-	if earningRatesJSON == "" || earningRatesJSON == "{}" {
-		return ""
-	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(earningRatesJSON), &raw); err != nil {
-		return ""
-	}
-	parts := make([]string, 0, n)
-	for _, meta := range earningRateCategories {
-		if len(parts) >= n {
-			break
-		}
-		val, ok := raw[meta.Key]
-		if !ok {
-			continue
-		}
-		var entry rateEntry
-		if err := json.Unmarshal(val, &entry); err != nil {
-			continue
-		}
-		if entry.Rate == "" {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s %s", entry.Rate, meta.Label))
+	rates := topEarnRates(earningRatesJSON, n)
+	parts := make([]string, len(rates))
+	for i, r := range rates {
+		parts[i] = r.Detail()
 	}
 	return strings.Join(parts, " · ")
 }
