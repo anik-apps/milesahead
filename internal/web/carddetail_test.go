@@ -355,8 +355,16 @@ func TestCardPageStyles_TOCAndStickyOffset(t *testing.T) {
 	if !strings.Contains(rule(".card-sidebar"), "top: calc(var(--sticky-offset) + 1rem)") {
 		t.Error("the sidebar should stick at --sticky-offset")
 	}
-	if !strings.Contains(rule(".card-section"), "scroll-margin-top: calc(var(--sticky-offset) + 1rem)") {
-		t.Error("section anchors should clear --sticky-offset")
+	// Anchors clear the header through the page's scroll-padding; a
+	// scroll-margin that also added the offset would count it twice.
+	if !strings.Contains(rule("html"), "scroll-padding-top: calc(var(--sticky-offset) + 1rem)") {
+		t.Error("section anchors should clear --sticky-offset (html scroll-padding-top)")
+	}
+	if strings.Contains(css, "scroll-margin-top: calc(var(--sticky-offset)") {
+		t.Error("a scroll-margin-top that adds --sticky-offset doubles the page's scroll-padding")
+	}
+	if !strings.Contains(css, "@media (max-width: 768px) { :root { --sticky-offset: 68px; } }") {
+		t.Error("--sticky-offset should follow the header's 68px height on phones")
 	}
 	if strings.Contains(css, "top: 5rem") {
 		t.Error("no sticky element should hard-code the old 5rem offset")

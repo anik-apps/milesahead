@@ -1,0 +1,44 @@
+{{template "layout" .}}
+{{define "content"}}
+{{with .Error}}
+<div class="status-page error-page">
+    {{if eq .Kind "server"}}
+    <p class="status-kicker">Error {{.Status}}</p>
+    <h1>Something went wrong on our side</h1>
+    <p class="status-lead">Sorry about that. Try again in a moment, or head back to the latest stories.</p>
+    {{else if eq .Kind "article"}}
+    <p class="status-kicker">Story not found</p>
+    <h1>That story isn&rsquo;t available</h1>
+    <p class="status-lead">{{if eq .Status 410}}It has been taken down.{{else}}The link may be mistyped, or the story may have moved.{{end}}{{if .Query}} Here&rsquo;s what we have on <strong>{{.Query}}</strong>:{{end}}</p>
+    {{else if eq .Kind "card"}}
+    <p class="status-kicker">Card not found</p>
+    <h1>We don&rsquo;t have a page for that card</h1>
+    <p class="status-lead">The link may be mistyped, or we may not cover this card yet.{{if .Query}} Closest matches for <strong>{{.Query}}</strong>:{{end}}</p>
+    {{else}}
+    <p class="status-kicker">Error {{.Status}}</p>
+    <h1>We can&rsquo;t find that page</h1>
+    <p class="status-lead">It may have moved, or the link may be mistyped.</p>
+    {{end}}
+
+    {{if or .Articles .Cards}}
+    <ul class="suggestions" aria-label="Suggestions">
+        {{range .Cards}}<li><a href="/cards/{{.Slug}}"><span class="suggestion-kind">Card</span>{{.Title}}</a></li>{{end}}
+        {{range .Articles}}<li><a href="/article/{{.Slug}}"><span class="suggestion-kind">Story</span>{{.Title}}</a></li>{{end}}
+    </ul>
+    {{end}}
+
+    {{if ne .Kind "server"}}
+    <form class="status-search" action="/search" method="GET" role="search">
+        <label for="error-search" class="visually-hidden">Search MilesAhead</label>
+        <input type="search" id="error-search" name="q" value="{{.Query}}" placeholder="Search deals and cards">
+        <button type="submit">Search</button>
+    </form>
+    {{end}}
+    <p class="status-links">
+        <a href="/">Latest stories</a>
+        <a href="/cards/">All cards</a>
+        <a href="/compare">Compare cards</a>
+    </p>
+</div>
+{{end}}
+{{end}}

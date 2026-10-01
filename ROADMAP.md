@@ -291,42 +291,51 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       articles 53, 57, 60 and 66, all approved. Take a backup first. Readers see no
       change; the notes move to the admin-only column.
 
-- [ ] **Newsletter signup and delivery are broken end to end** — found in the
-      2026-09-23 UX review, and confirmed in the code. Nobody who signs up on the site
-      ever receives the newsletter, and nobody who receives it can unsubscribe.
-      1. **No confirmation email is sent.** `handleSubscribe` stores the address and a
-         token, then says "check your email", but `mail.Sender.SendConfirmation` has no
-         caller and the web `App` has no mail sender. The weekly send goes only to
-         confirmed subscribers, so web signups are silently dropped. *Fix:* pass the
-         sender into `web.App` and send the confirmation from `handleSubscribe` in a
-         tracked background goroutine; log and alert on failure; test that it is sent.
-      2. **Every Unsubscribe link fails.** The newsletter is rendered once for all
-         recipients with `UnsubscribeURL: domain + "/unsubscribe"`, no token, so each
-         click shows "Invalid unsubscribe link". There is no `List-Unsubscribe` header
-         either, which Gmail and Yahoo require of bulk senders and CAN-SPAM expects to
-         work. *Fix:* a per-recipient `/unsubscribe?token=...`, plus `List-Unsubscribe`
-         and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058) handled by
-         a POST endpoint. `GET /unsubscribe` should show a confirm button that POSTs,
-         so link scanners cannot unsubscribe people.
-      3. **There is no way to sign up.** No page has a form, and `GET /subscribe`
-         returns 405 (`routes.go` registers only POST). The one link to it is in the
-         home page's empty state. *Fix:* a `GET /subscribe` page, and a labelled email
-         form (`type=email`, `autocomplete=email`) in the footer band, after Scout's
-         Take on every article, and on the home page, with a one-line promise and a
-         privacy link. Add Subscribe to the footer links only once 1 and 2 work.
-      4. **Harden the form before it goes on every page.** Rate-limit `POST /subscribe`
-         (the existing `rateLimitMiddleware`), add a honeypot field, and answer new and
-         existing addresses with the same "check your inbox" message: today "This email
-         is already subscribed" tells anyone whether an address is on the list. Make
-         confirmation idempotent, so a second click (or a mail scanner opening the link
-         first) shows success rather than "Invalid or expired".
+- [ ] **Newsletter signup and delivery** — found in the 2026-09-23 UX review. Items 1,
+      3 and 4 are done on the site side; the newsletter itself still cannot be
+      unsubscribed from (2), so sign-up is not promoted yet.
+      1. **No confirmation email is sent.** The site side is ready: `web.App` takes an
+         SMTP sender (`SetConfirmationMailer`) and `handleSubscribe` sends the
+         confirmation in a tracked background goroutine, at most once per 10 minutes per
+         address; a failed send is logged and releases the claim so the reader can retry.
+         *Not yet wired in `cmd/milesahead/main.go`* (one call): turn it on together with
+         #2, so newly confirmed readers never get a newsletter whose Unsubscribe link
+         cannot work. Also add an alert on repeated send failures.
+      2. **Every Unsubscribe link in the newsletter fails.** It is rendered once for all
+         recipients with `UnsubscribeURL: domain + "/unsubscribe"`, no token. There is
+         no `List-Unsubscribe` header either, which Gmail and Yahoo require of bulk
+         senders and CAN-SPAM expects to work. The site side is ready:
+         `GET /unsubscribe?token=` shows a confirm button, `POST /unsubscribe` (token in
+         the query or form) unsubscribes and accepts the RFC 8058 one-click body
+         `List-Unsubscribe=One-Click`, and a bare `/unsubscribe` (the link in emails
+         already sent) explains and offers a mailto to the sending address. *Fix:* a
+         per-recipient `/unsubscribe?token=...` in the newsletter, plus
+         `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
+         headers pointing at `POST /unsubscribe?token=...`. Until then, removals asked
+         for by email are done by hand.
+      3. ~~**There is no way to sign up.**~~ `GET /subscribe` is a labelled form
+         (`type=email`, `autocomplete=email`). *Deferred until 2 ships:* the sign-up
+         placements designed in the 2026-10-01 site-chrome review — one component after
+         Scout's Take on every article, in the home hero strip, and in the footer band
+         on other pages, each with a one-line promise and a privacy link — and the header
+         Subscribe button, which is already in `layout.html` behind `$showSubscribe`.
+      4. ~~**Harden the form.**~~ Done: per-IP rate limit, a honeypot field, the same
+         redirect to "check your inbox" for new, pending and subscribed addresses, and
+         idempotent confirmation (a second click says "already subscribed").
+         Unsubscribing keeps the row (`unsubscribed_at`) so the page can offer
+         Resubscribe.
       5. **Email readability.** Most newsletter text is 9-12px, and the gold section
          labels are 2.29:1 on white. *Fix:* body text at least 14px, labels at least
          12px, contrast at least 4.5:1.
 
-      Order: 1 and 2 first (they break mail already going out), then 3 and 4 together.
       Already fixed alongside the branding change: the daily digest and admin preview
       rendered relative links, and the lead story linked to `/articles/`, a 404.
+
+- [ ] **About and Privacy pages** — designed in the 2026-10-01 site-chrome review (footer
+      links, a privacy link beside every email field) but blocked on copy only the owner
+      can write: how stories are researched and reviewed, and what is done with
+      subscriber addresses. The sign-up placements in Newsletter 3 need the Privacy
+      page first.
 
 - [ ] Card explainer videos — YouTube-hosted, embedded per card page (Amex Platinum, Sapphire Reserve, Strata Elite so far)
 - [ ] **More card infographics** — each is `scripts/infographic-images.sh <slug> <png>` plus an entry in `internal/web/cardinfographics.go`. Verify the card's prose against the image before adding one: the drift test only confirms the image's figures appear somewhere in the text, so it cannot see a *second, older* figure. Sapphire Reserve's prose once claimed the retired 1.5 cents per point and a $100 Global Entry credit beside an image that correctly said 1 cent plus Points Boost and $120; the test passed anyway.
@@ -417,33 +426,40 @@ image shipped in #73. Everything else is here, most severe first.
       links keep each other's filters, compact tiles with fee, best earning rate and offer
       in place of the cut-off quote, and art in a fixed box, lazy after the first six. The
       phone page is about 10 screens unfiltered, 2-3 filtered.
-- [ ] **Trust signals** — article sources are loaded but never rendered; no byline, About,
-      corrections or privacy page, though the site collects emails. *Fix:* a Sources list
-      per article, a byline linking to an About page on how stories are researched, and a
-      privacy page linked next to every email field.
+- [ ] **Trust signals** — articles now carry a byline (#90), but there is no About,
+      corrections or privacy page, though the site collects emails. *Fix:* an About page
+      on how stories are researched for the byline to link to, and a privacy page linked
+      next to every email field. The two pages are designed and wait on owner-written copy
+      (Up Next: About and Privacy pages).
 
 ### P2: polish and accessibility
 
-- [ ] **Contrast** — in dark mode, white on the `#58a6ff` accent is 2.53:1 (search
-      button; the home filter chips now use dark text on it); the DEAL badge is 3.83:1 in
-      both themes; dark-mode links in paragraphs are distinguished by colour alone
-      (2.14:1). *Fix:* an `--on-accent` token, a darker deal red, underlined in-text links.
-- [ ] **404 page** — unknown URLs get Go's bare text "404 page not found"; unpublished
-      articles return 200 "Under Review". *Fix:* a branded 404 through the layout with
-      search and links; 404 or 410 for unpublished articles.
-- [ ] **Compression and caching** — HTML, CSS and JS go out uncompressed (CSS 56 KB, 10 KB
-      gzipped) and nothing sends Cache-Control. *Fix:* `encode zstd gzip` in the Caddy site,
-      then content-hashed static URLs with long cache lifetimes.
-- [ ] **Home on phones** — the featured story's white title sits on a nearly unshaded photo
-      (3.2-4.0:1), and its overlay stops partway, leaving ~475px of unlinked photo on
-      desktop; each feed card is ~400px tall. *Fix:* a guaranteed scrim, a fixed-ratio
-      featured card, clamped excerpts.
+- [x] **Contrast** — dark-mode white on the `#58a6ff` accent was 2.53:1; the DEAL badge
+      3.83:1; in-text links were told apart by colour alone. Now an `--on-accent` token
+      (near-black on the dark accent, 7.5:1), deal red `#c81e3a` (5.7:1), success and
+      error messages at 4.8 and 5.9:1, header links 9:1, and underlined links in article
+      and card prose.
+- [x] **404 page** — unknown URLs got Go's bare text; unpublished articles returned 200
+      "Under Review" with the headline in `<title>`. Now a branded 404 with search and
+      links; an unknown article or card slug is searched and its best matches offered;
+      unpublished articles are 404 (410 once published) with nothing of the article on
+      the page; 500s are branded and the error is only logged.
+- [x] **Compression and caching** — HTML, CSS and JS went out uncompressed (CSS 76 KB,
+      15 KB gzipped) and nothing sent Cache-Control. Now `encode zstd gzip` in the Caddy
+      site; `?v=`-hashed static URLs (stylesheet, script, infographics) are cached for a
+      year, other static files for an hour, and HTML is `no-cache`.
+- [ ] **Home on phones** — done: the hero is a 150px strip with a descriptive h1 instead
+      of a 370px logo, and the featured title sits on a guaranteed scrim (at least 72%
+      black behind any text; it measured 2.7:1 before). Still open: the overlay stops
+      partway on desktop, leaving ~400px of unlinked photo, and each feed card is ~400px
+      tall on phones. *Fix:* a fixed-ratio featured card, clamped excerpts.
 - [ ] **Excerpts** cut mid-word and run headings into sentences, in cards, meta
       descriptions and RSS. *Fix:* use the TL;DR, or cut at a sentence boundary.
-- [ ] **Smaller accessibility fixes** — skip link; `aria-expanded` and Escape on the Cards
-      and search toggles; Scout's Verdict as a heading; `scroll-padding-top` so anchors
-      clear the sticky header; internal article links no longer forced into new tabs;
-      labels on the search field; a visible `:focus-visible` ring site-wide.
+- [x] **Smaller accessibility fixes** — a skip link, `scroll-padding-top`, a
+      `:focus-visible` ring site-wide, 44px header and footer targets, a labelled
+      `type=search` field whose toggle has `aria-expanded` and closes on Escape, and the
+      two-item Cards menu replaced by flat Cards and Compare links. Scout's Verdict is a
+      heading (#91) and only links to other sites open in a new tab (#90).
 
 ## Future
 

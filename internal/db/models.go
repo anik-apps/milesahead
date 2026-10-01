@@ -152,6 +152,30 @@ type Subscriber struct {
 	Token        string     `json:"token"`
 	SubscribedAt time.Time  `json:"subscribed_at"`
 	ConfirmedAt  *time.Time `json:"confirmed_at"`
+	// UnsubscribedAt is when the subscriber unsubscribed, or nil. An
+	// unsubscribed row is kept (with Confirmed false) so its token still
+	// resolves and the reader can resubscribe.
+	UnsubscribedAt *time.Time `json:"unsubscribed_at"`
+}
+
+// Subscriber states, as returned by Subscriber.State.
+const (
+	SubscriberPending      = "pending"
+	SubscriberActive       = "active"
+	SubscriberUnsubscribed = "unsubscribed"
+)
+
+// State is "active" (confirmed), "pending" (waiting for the confirmation
+// click) or "unsubscribed".
+func (s Subscriber) State() string {
+	switch {
+	case s.UnsubscribedAt != nil:
+		return SubscriberUnsubscribed
+	case s.Confirmed:
+		return SubscriberActive
+	default:
+		return SubscriberPending
+	}
 }
 
 type AdminSession struct {
