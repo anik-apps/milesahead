@@ -304,34 +304,30 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       articles 53, 57, 60 and 66, all approved. Take a backup first. Readers see no
       change; the notes move to the admin-only column.
 
-- [ ] **Newsletter signup and delivery** — found in the 2026-09-23 UX review. Items 1,
-      3 and 4 are done on the site side; the newsletter itself still cannot be
-      unsubscribed from (2), so sign-up is not promoted yet.
-      1. **No confirmation email is sent.** The site side is ready: `web.App` takes an
-         SMTP sender (`SetConfirmationMailer`) and `handleSubscribe` sends the
-         confirmation in a tracked background goroutine, at most once per 10 minutes per
-         address; a failed send is logged and releases the claim so the reader can retry.
-         *Not yet wired in `cmd/milesahead/main.go`* (one call): turn it on together with
-         #2, so newly confirmed readers never get a newsletter whose Unsubscribe link
-         cannot work. Also add an alert on repeated send failures.
-      2. **Every Unsubscribe link in the newsletter fails.** It is rendered once for all
-         recipients with `UnsubscribeURL: domain + "/unsubscribe"`, no token. There is
-         no `List-Unsubscribe` header either, which Gmail and Yahoo require of bulk
-         senders and CAN-SPAM expects to work. The site side is ready:
-         `GET /unsubscribe?token=` shows a confirm button, `POST /unsubscribe` (token in
-         the query or form) unsubscribes and accepts the RFC 8058 one-click body
-         `List-Unsubscribe=One-Click`, and a bare `/unsubscribe` (the link in emails
-         already sent) explains and offers a mailto to the sending address. *Fix:* a
-         per-recipient `/unsubscribe?token=...` in the newsletter, plus
-         `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
-         headers pointing at `POST /unsubscribe?token=...`. Until then, removals asked
-         for by email are done by hand.
-      3. ~~**There is no way to sign up.**~~ `GET /subscribe` is a labelled form
-         (`type=email`, `autocomplete=email`). *Deferred until 2 ships:* the sign-up
-         placements designed in the 2026-10-01 site-chrome review — one component after
-         Scout's Take on every article, in the home hero strip, and in the footer band
-         on other pages, each with a one-line promise and a privacy link — and the header
-         Subscribe button, which is already in `layout.html` behind `$showSubscribe`.
+- [ ] **Newsletter signup and delivery** — found in the 2026-09-23 UX review. Items 1-4
+      are done; the newsletter launched on `feat/newsletter-launch`. Left: readability
+      (5) and two follow-ups below.
+      1. ~~**No confirmation email is sent.**~~ `cmd/milesahead/main.go` hands the SMTP
+         sender to the web app (`SetConfirmationMailer`). The email is plain text plus
+         HTML, links absolutely to `https://DOMAIN`, says what the newsletter is and when
+         it comes (`newsletter.WeeklySendWhen`, held to the cron line by a test) and that
+         the address is only used to send it. Failures are logged, counted in
+         `milesahead_emails_sent_total{kind="confirmation",outcome="failed"}` and release
+         the 10-minute claim; startup warns when the SMTP settings look unset.
+      2. ~~**Every Unsubscribe link in the newsletter fails.**~~ Each copy now carries its
+         reader's own `https://DOMAIN/unsubscribe?token=...`, in the body and in
+         `List-Unsubscribe` (with a mailto to the sending address) and
+         `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, which `POST /unsubscribe`
+         accepts. The issue is rendered once with a placeholder that the sender replaces
+         per reader, and the sender refuses to send if any copy could not carry a link.
+         Emails sent before this still have the bare `/unsubscribe`, which explains
+         itself and offers a mailto.
+      3. ~~**There is no way to sign up.**~~ `GET /subscribe` is a labelled form, now
+         linked from the header (Newsletter; the envelope alone on phones), the footer,
+         the home hero's subline and a compact box after Scout's Take on every article,
+         each with the line "One email a week. Unsubscribe anytime. We only use your
+         address to send the newsletter." A Privacy page link joins them once that page
+         exists (below).
       4. ~~**Harden the form.**~~ Done: per-IP rate limit, a honeypot field, the same
          redirect to "check your inbox" for new, pending and subscribed addresses, and
          idempotent confirmation (a second click says "already subscribed").
@@ -341,14 +337,34 @@ Found during the 2026-08-31 card-video review, ordered by severity.
          labels are 2.29:1 on white. *Fix:* body text at least 14px, labels at least
          12px, contrast at least 4.5:1.
 
+      Alerting: `milesahead_emails_sent_total{kind,outcome}` counts confirmation emails
+      and newsletter sends (one "sent" per reader reached, one "failed" per send that
+      stops); `deploy/grafana-alerts.json` has two rules, two or more failed
+      confirmations in 6 hours and any failed newsletter send in 6 hours. Import them
+      into Grafana with the others.
+
+      *Before deploying:* production's `mail.smtp` (checked read-only on 2026-10-01)
+      points at `localhost:587` with placeholder credentials, and nothing listens on a
+      mail port there, so every confirmation email will fail (and the alert will fire)
+      until a real SMTP relay is configured (the example config uses OCI Email
+      Delivery, `smtp.email.oci.oraclecloud.com:587`). The sending domain also needs SPF
+      and DKIM for Gmail and Yahoo to accept bulk mail. The `List-Unsubscribe` mailto
+      goes to the From address (`noreply@...`): someone has to read that mailbox, or
+      the mailto should be dropped.
+
+      Also found: the daily digest (admin "Send", not the weekly) shows its excerpts as
+      raw HTML (`<p>...`), because `buildTemplateData` cuts `Content`, which is HTML,
+      rather than the summary. The weekly uses the TL;DR and is not affected.
+
       Already fixed alongside the branding change: the daily digest and admin preview
       rendered relative links, and the lead story linked to `/articles/`, a 404.
 
 - [ ] **About and Privacy pages** — designed in the 2026-10-01 site-chrome review (footer
       links, a privacy link beside every email field) but blocked on copy only the owner
       can write: how stories are researched and reviewed, and what is done with
-      subscriber addresses. The sign-up placements in Newsletter 3 need the Privacy
-      page first.
+      subscriber addresses. The sign-up placements (Newsletter 3) shipped with a
+      one-line privacy promise in place of the link; add the Privacy link beside each
+      email field once the page exists.
 
 - [ ] Card explainer videos — YouTube-hosted, embedded per card page (Amex Platinum, Sapphire Reserve, Strata Elite so far)
 - [ ] **More card infographics** — each is `scripts/infographic-images.sh <slug> <png>` plus an entry in `internal/web/cardinfographics.go`. Verify the card's prose against the image before adding one: the drift test only confirms the image's figures appear somewhere in the text, so it cannot see a *second, older* figure. Sapphire Reserve's prose once claimed the retired 1.5 cents per point and a $100 Global Entry credit beside an image that correctly said 1 cent plus Points Boost and $120; the test passed anyway.
