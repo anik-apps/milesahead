@@ -1,37 +1,11 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
 {{define "content"}}
-{{template "admin_nav" "sources"}}
 <div class="admin-sources">
     <h1>Sources</h1>
     {{if .Message}}<div class="message success" role="status">{{.Message}}</div>{{end}}
     {{if .Error}}<div class="message error" role="alert">{{.Error}}</div>{{end}}
 
-    <h2>Add a source</h2>
-    <form method="POST" action="/admin/sources/add" class="source-form">
-        {{template "csrf_field" .}}
-        <div class="source-form-grid">
-            <div class="form-group">
-                <label for="add-name">Name</label>
-                <input type="text" id="add-name" name="name" required placeholder="Source name">
-            </div>
-            <div class="form-group">
-                <label for="add-url">URL</label>
-                <input type="url" id="add-url" name="url" required placeholder="https://example.com">
-            </div>
-            <div class="form-group">
-                <label for="add-rss">RSS URL</label>
-                <input type="url" id="add-rss" name="rss_url" placeholder="https://example.com/feed.xml">
-            </div>
-            <div class="form-group">
-                <label for="add-interval">Scan Interval (min)</label>
-                <input type="number" id="add-interval" name="scan_interval" min="1" placeholder="Default">
-            </div>
-        </div>
-        <button type="submit" class="btn btn-primary">Add Source</button>
-    </form>
-
     {{if .Sources}}
-    <h2>Sources</h2>
     <p class="dim">Health shows when the scanner last stored an article from each source. A source that is on but has stored nothing for 3 days is marked: its feed has probably moved or broken.</p>
     <table class="admin-table sources-table">
         <thead>
@@ -50,17 +24,19 @@
                 <td><strong>{{.Name}}</strong><br><span class="url-cell"><a href="{{.URL}}" target="_blank" rel="noopener">{{.URL}}</a></span></td>
                 <td class="url-cell">{{if .RSSURL}}<a href="{{deref .RSSURL}}" target="_blank" rel="noopener">{{deref .RSSURL}}</a>{{else}}<span class="dim">No RSS: scrapes the page</span>{{end}}</td>
                 <td>{{if .ScanInterval}}{{deref .ScanInterval}} min{{else}}<span class="dim">Default</span>{{end}}</td>
-                <td>
-                    {{if .Stale}}<span class="health-flag">Nothing new {{if eq .LastArticle "never"}}yet{{else}}since {{.LastArticle}}{{end}}</span>{{else}}Last article {{.LastArticle}}{{end}}
-                    <br><span class="dim">{{.Recent}} in 7 days &middot; {{.Total}} total</span>
+                <td class="health-cell">
+                    {{if .Stale}}<span class="health-flag">Nothing new {{if eq .LastArticle "never"}}yet{{else}}since {{.LastArticle}}{{end}}</span>{{else}}{{if eq .LastArticle "never"}}No articles yet{{else}}Last article {{.LastArticle}}{{end}}{{end}}
+                    <br><span class="dim">{{.Recent}} this week &middot; {{.Total}} total</span>
                 </td>
                 <td>{{if .Active}}<span class="badge badge-approved">On</span>{{else}}<span class="badge badge-hold">Paused</span>{{end}}</td>
-                <td class="actions">
-                    <form method="POST" action="/admin/sources/{{.ID}}/toggle" class="inline-form">
-                        {{template "csrf_field" $}}
-                        <button type="submit" class="btn">{{if .Active}}Pause{{else}}Resume{{end}}</button>
-                    </form>
-                    <a href="#edit-{{.ID}}" class="btn">Edit</a>
+                <td>
+                    <div class="row-actions">
+                        <form method="POST" action="/admin/sources/{{.ID}}/toggle" class="inline-form">
+                            {{template "csrf_field" $}}
+                            <button type="submit" class="btn">{{if .Active}}Pause{{else}}Resume{{end}}</button>
+                        </form>
+                        <a href="#edit-{{.ID}}" class="btn">Edit</a>
+                    </div>
                 </td>
             </tr>
             <tr class="source-edit-row" id="edit-{{.ID}}">
@@ -84,5 +60,32 @@
     {{else}}
     <p>No sources configured.</p>
     {{end}}
+
+    <details class="add-source"{{if not .Sources}} open{{end}}>
+        <summary>Add a source</summary>
+    <form method="POST" action="/admin/sources/add" class="source-form">
+        {{template "csrf_field" .}}
+        <div class="source-form-grid">
+            <div class="form-group">
+                <label for="add-name">Name</label>
+                <input type="text" id="add-name" name="name" required placeholder="Source name">
+            </div>
+            <div class="form-group">
+                <label for="add-url">URL</label>
+                <input type="url" id="add-url" name="url" required placeholder="https://example.com">
+            </div>
+            <div class="form-group">
+                <label for="add-rss">RSS URL</label>
+                <input type="url" id="add-rss" name="rss_url" placeholder="https://example.com/feed.xml">
+            </div>
+            <div class="form-group">
+                <label for="add-interval">Scan interval (min)</label>
+                <input type="number" id="add-interval" name="scan_interval" min="1" placeholder="Default">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Add source</button>
+    </form>
+
+    </details>
 </div>
 {{end}}

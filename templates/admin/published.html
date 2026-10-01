@@ -1,6 +1,5 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
 {{define "content"}}
-{{template "admin_nav" "published"}}
 <div class="admin-published">
     <h1>Published Articles</h1>
     {{if .Articles}}
@@ -36,5 +35,4 @@
     <p>No published articles.</p>
     {{end}}
 </div>
-<script src="/static/js/admin.js"></script>
 {{end}}

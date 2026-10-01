@@ -1,6 +1,8 @@
 package web
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -22,14 +24,14 @@ func TestAgo(t *testing.T) {
 	}
 }
 
-// Integration, real templates: every admin page shows the one shared
-// navigation, with its own tab marked.
+// Integration, real templates: every admin page shows the one admin bar,
+// with its own tab marked, and none of the public site's header or footer.
 func TestAdminPages_ShareOneNavigation(t *testing.T) {
 	app, database := realTemplateApp(t)
 	id := createPendingArticle(t, database, "Nav Article")
 	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
 	for path, tab := range map[string]string{
-		"/admin/dashboard":                       "Pending",
+		"/admin/dashboard":                       "Review",
 		"/admin/published":                       "Published",
 		"/admin/sources":                         "Sources",
 		"/admin/subscribers":                     "Subscribers",
@@ -37,15 +39,23 @@ func TestAdminPages_ShareOneNavigation(t *testing.T) {
 		"/admin/cards/new":                       "Cards",
 		"/admin/newsletter":                      "Newsletter",
 		"/admin/settings":                        "Settings",
-		"/admin/articles/" + itoa(id) + "/cards": "Pending",
+		"/admin/articles/" + itoa(id) + "/cards": "Review",
 	} {
 		body := doAdminGET(t, app, path, session).Body.String()
 		if n := strings.Count(body, `aria-label="Admin"`); n != 1 {
 			t.Errorf("%s: %d admin navs, want 1", path, n)
 			continue
 		}
-		if !strings.Contains(body, `aria-current="page">`+tab+`<`) {
+		if !strings.Contains(body, `aria-current="page">`+tab) {
 			t.Errorf("%s: tab %q not marked current", path, tab)
+		}
+		for _, public := range []string{`class="site-nav"`, `class="site-footer"`, `id="nav-search-form"`} {
+			if strings.Contains(body, public) {
+				t.Errorf("%s: carries the public site's %s", path, public)
+			}
+		}
+		if !strings.Contains(body, `<meta name="robots" content="noindex, nofollow">`) {
+			t.Errorf("%s: admin page is not noindex", path)
 		}
 	}
 }
@@ -61,7 +71,7 @@ func TestAdminSources_ShowsHealth(t *testing.T) {
 	}
 	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
 	body := doAdminGET(t, app, "/admin/sources", session).Body.String()
-	for _, want := range []string{"Last article just now", "1 in 7 days", "Nothing new yet", `class="source-stale"`, `id="edit-`} {
+	for _, want := range []string{"Last article just now", "1 this week", "Nothing new yet", `class="source-stale"`, `id="edit-`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("sources page missing %q", want)
 		}
@@ -125,5 +135,48 @@ func TestAdminArticleCards_SavedAndBackLink(t *testing.T) {
 	}
 	if strings.Contains(body, " of 0 selected") || strings.Contains(body, "selected</small>") {
 		t.Error(`"N of N selected" is still shown`)
+	}
+}
+
+// The tabs carry counts: what needs a decision (red), what is ready, card
+// updates and flags, stale sources, and the newsletter's state.
+func TestAdminBar_Counts(t *testing.T) {
+	app, database := realTemplateApp(t)
+	createPendingArticle(t, database, "Ready One")
+	createPendingArticle(t, database, "Ready Two")
+	down := createPendingArticle(t, database, "Taken Down")
+	database.UpdateArticleStatus(down, db.StatusApproved)
+	database.UpdateArticleStatus(down, db.StatusUnpublished)
+	page := createEditableCard(t, database)
+	database.AppendFlaggedField(page.ID, "annual_fee_amount", "check")
+	database.CreateSource(&db.Source{Name: "Silent", URL: "https://silent.example", Active: true})
+	database.CreateNewsletter(&db.Newsletter{Date: "2026-10-03", Subject: "W", Status: "draft", ArticleCount: 2})
+
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	body := doAdminGET(t, app, "/admin/settings", session).Body.String()
+	for _, want := range []string{
+		`<span class="tab-n alert" title="1 need a decision">1</span>`,
+		`<span class="tab-n" title="2 ready to review">2</span>`,
+		`<span class="tab-n" title="1 card updates and flags to look at">1</span>`,
+		`<span class="tab-n alert" title="1 sources with nothing new for days">1</span>`,
+		`<span class="tab-n warn">Draft</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("admin bar missing %s", want)
+		}
+	}
+}
+
+// The login page gets the admin bar without tabs or counts.
+func TestAdminBar_LoginPageHasNoTabs(t *testing.T) {
+	app, _ := realTemplateApp(t)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/login", nil))
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="admin-bar"`) || strings.Contains(body, `aria-label="Admin"`) {
+		t.Error("login page should have the bar but no tabs")
+	}
+	if strings.Contains(body, "/admin/logout") {
+		t.Error("login page offers Log out")
 	}
 }

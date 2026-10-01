@@ -1,0 +1,131 @@
+/* Admin pages only (templates/admin). Loaded after style.css, which still
+   provides the shared pieces: tables, messages, buttons, and the article
+   styles the preview uses. */
+
+/* ---------- Shell: a slim admin bar instead of the public chrome ---------- */
+.admin-body main.admin-main {
+    max-width: 1180px;
+    padding: 1.5rem 2rem 4rem;
+}
+.admin-bar {
+    position: sticky;
+    top: 0;
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 0.55rem 1.5rem;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+}
+.admin-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text);
+    font-weight: 800;
+    flex-shrink: 0;
+}
+.admin-brand:hover { text-decoration: none; }
+.admin-brand .brand-mark { width: 30px; }
+.admin-brand-word { font-size: 1.05rem; letter-spacing: -0.01em; }
+.admin-brand-tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 0.4rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+/* A <nav>, so undo the site header's sticky nav styles. */
+nav.admin-tabs {
+    position: static;
+    z-index: auto;
+    display: flex;
+    justify-content: flex-start;
+    gap: 0.15rem;
+    padding: 0;
+    background: none;
+    border: 0;
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+nav.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tabs a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.7rem;
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-size: 0.92rem;
+    white-space: nowrap;
+}
+.admin-tabs a:hover { color: var(--text); background: var(--bg); text-decoration: none; }
+.admin-tabs a.on {
+    color: var(--text);
+    background: var(--bg);
+    font-weight: 650;
+    box-shadow: inset 0 -2px 0 var(--accent);
+}
+.tab-n {
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.5;
+    padding: 0 0.42rem;
+    border-radius: 999px;
+    background: var(--border);
+    color: var(--text);
+}
+.tab-n.alert { background: #dc2626; color: #fff; }
+.tab-n.warn { background: #fef3c7; color: #92400e; }
+[data-theme="dark"] .tab-n.warn { background: #2d230c; color: #f2cc60; }
+.admin-bar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    flex-shrink: 0;
+    font-size: 0.88rem;
+}
+.admin-bar-link { color: var(--text-muted); white-space: nowrap; }
+.admin-bar #theme-toggle.theme-icon-btn {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    cursor: pointer;
+}
+.admin-bar .logout-link { color: var(--text-muted); font-size: 0.88rem; }
+.admin-bar .logout-link:hover { color: #dc2626; }
+
+@media (max-width: 760px) {
+    .admin-bar {
+        flex-wrap: wrap;
+        gap: 0.35rem 0.75rem;
+        padding: 0.5rem 0.75rem 0;
+    }
+    .admin-bar-right { margin-left: auto; gap: 0.6rem; }
+    nav.admin-tabs {
+        order: 3;
+        flex-basis: 100%;
+        padding-bottom: 0.35rem;
+        -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent);
+        mask-image: linear-gradient(90deg, #000 88%, transparent);
+    }
+    .admin-body main.admin-main { padding: 1rem 0.85rem 3rem; }
+}
+
+@media (max-width: 480px) {
+    .admin-bar-link { display: none; }
+    .admin-brand-word { font-size: 0.98rem; }
+}
+
+/* The login page: the bar alone, then the form. */
+.admin-body .login-form { margin-top: 3rem; }

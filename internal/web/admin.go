@@ -1599,7 +1599,7 @@ func (app *App) handleAdminArticleCardsGET(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Back goes to the list the article is on.
-	backURL, backLabel, navTab := "/admin/dashboard", "Pending", "pending"
+	backURL, backLabel, navTab := "/admin/dashboard", "Review", "review"
 	if article.Status == db.StatusApproved {
 		backURL, backLabel, navTab = "/admin/published", "Published", "published"
 	}

@@ -10,6 +10,9 @@ import (
 func init() {
 	templateFuncs["statusLabel"] = statusLabel
 	templateFuncs["adminTime"] = adminTime
+	// Replaced per App by loadTemplates with versioned URLs.
+	templateFuncs["adminStylesheetURL"] = func() string { return adminStylesheetPath }
+	templateFuncs["adminScriptURL"] = func() string { return adminScriptPath }
 }
 
 // statusLabel turns a stored status such as "auto_approved" into what the

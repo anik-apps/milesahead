@@ -1511,41 +1511,15 @@ tr:hover {
 .nl-manual summary { cursor: pointer; font-weight: 600; color: var(--text-muted); }
 .nl-manual p { margin: 0.5rem 0 0.75rem; }
 
-/* Admin Navigation */
-.admin-nav {
-    display: flex;
-    gap: 1rem;
-    padding: 0.75rem 0;
-    margin-bottom: 1.5rem;
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
-}
-.admin-nav a {
-    color: var(--text-muted);
-    font-weight: 500;
-    font-size: 0.9rem;
-    padding: 0.3rem 0.6rem;
-    border-radius: 4px;
-}
-.admin-nav a:hover {
-    color: var(--accent);
-    background: var(--card-bg);
-    text-decoration: none;
-}
-.admin-nav a.active {
-    color: var(--accent);
-    font-weight: 600;
-}
-.admin-nav .logout-btn {
-    margin-left: auto;
-    color: #dc2626;
-}
 /* Sources: a source's edit form is a row under it, shown when targeted
    (#edit-N), so it needs no script. */
 .source-edit-row:not(:target) { display: none; }
 .source-edit-row > td { background: var(--card-bg); }
 .source-edit-row .source-form { margin: 0; }
-.sources-table .actions { flex-direction: row; min-width: 0; }
+.row-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
+.health-cell { white-space: nowrap; }
+.add-source { margin-top: 2rem; }
+.add-source > summary { cursor: pointer; font-weight: 650; font-size: 1.05rem; margin-bottom: 0.75rem; }
 .source-stale > td { background: #fef2f2; }
 [data-theme="dark"] .source-stale > td { background: #3b1114; }
 .health-flag { color: #b91c1c; font-weight: 600; }
@@ -1943,18 +1917,6 @@ tr:hover {
         padding: 0.25rem 0;
     }
 
-    /* Issue 9 + 14: Admin nav horizontal scroll with fade hint */
-    .admin-nav {
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        white-space: nowrap;
-        -webkit-overflow-scrolling: touch;
-        padding-bottom: 8px;
-        position: relative;
-        mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        padding-right: 2rem;
-    }
 }
 
 /* Issue 4: Dashboard table at tablet */

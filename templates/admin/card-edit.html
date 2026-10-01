@@ -1,6 +1,5 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
 {{define "content"}}
-{{template "admin_nav" "cards"}}
 <div class="admin-card-edit">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
         <h1>{{if .IsNew}}New Card{{else}}Edit: {{.Card.Title}}{{end}}</h1>

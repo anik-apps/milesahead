@@ -1,6 +1,5 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
 {{define "content"}}
-{{template "admin_nav" "pending"}}
 <div class="admin-dashboard">
     {{if eq .Message "revision_submitted"}}
     <div class="message success">Revision feedback submitted. The AI is regenerating the article — refresh in about 30 seconds to see the updated version.</div>
@@ -262,5 +261,4 @@ document.addEventListener('keydown', function(e) {
     }
 });
 </script>
-<script src="/static/js/admin.js"></script>
 {{end}}

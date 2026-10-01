@@ -1,0 +1,53 @@
+{{/* The admin pages' own page shell: a slim admin bar instead of the public
+     site's header and footer. Signed-in pages get tabs with counts (.Nav,
+     filled by renderTemplate); the login page gets the bar alone. */}}
+{{define "admin_layout"}}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .Title}}{{.Title}} - {{end}}MilesAhead admin</title>
+    <script>try{var t=localStorage.getItem('theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+    <meta name="color-scheme" content="light dark">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="stylesheet" href="{{stylesheetURL}}">
+    <link rel="stylesheet" href="{{adminStylesheetURL}}">
+    <link rel="icon" href="/static/img/brand/favicon-32.png" type="image/png" sizes="32x32">
+    <link rel="icon" href="/static/img/brand/favicon.svg" type="image/svg+xml">
+</head>
+<body class="admin-body">
+    <header class="admin-bar">
+        <a class="admin-brand" href="{{if .Nav}}/admin/dashboard{{else}}/{{end}}" aria-label="MilesAhead admin">
+            {{template "brand-mark"}}<span class="admin-brand-word">MilesAhead</span><span class="admin-brand-tag">Admin</span>
+        </a>
+        {{with .Nav}}
+        <nav class="admin-tabs" aria-label="Admin">
+            <a href="/admin/dashboard"{{if eq .Tab "review"}} class="on" aria-current="page"{{end}}>Review{{if .Decide}} <span class="tab-n alert" title="{{.Decide}} need a decision">{{.Decide}}</span>{{end}}{{if .Ready}} <span class="tab-n" title="{{.Ready}} ready to review">{{.Ready}}</span>{{end}}</a>
+            <a href="/admin/published"{{if eq .Tab "published"}} class="on" aria-current="page"{{end}}>Published</a>
+            <a href="/admin/cards"{{if eq .Tab "cards"}} class="on" aria-current="page"{{end}}>Cards{{if .CardWork}} <span class="tab-n" title="{{.CardWork}} card updates and flags to look at">{{.CardWork}}</span>{{end}}</a>
+            <a href="/admin/newsletter"{{if eq .Tab "newsletter"}} class="on" aria-current="page"{{end}}>Newsletter{{if .Newsletter}} <span class="tab-n{{if .NewsletterAlert}} warn{{end}}">{{.Newsletter}}</span>{{end}}</a>
+            <a href="/admin/sources"{{if eq .Tab "sources"}} class="on" aria-current="page"{{end}}>Sources{{if .StaleSources}} <span class="tab-n alert" title="{{.StaleSources}} sources with nothing new for days">{{.StaleSources}}</span>{{end}}</a>
+            <a href="/admin/subscribers"{{if eq .Tab "subscribers"}} class="on" aria-current="page"{{end}}>Subscribers</a>
+            <a href="/admin/settings"{{if eq .Tab "settings"}} class="on" aria-current="page"{{end}}>Settings</a>
+        </nav>
+        {{end}}
+        <div class="admin-bar-right">
+            <a href="/" class="admin-bar-link" target="_blank" rel="noopener">View site&nbsp;&#8599;</a>
+            <button id="theme-toggle" type="button" class="theme-icon-btn" aria-label="Dark theme" aria-pressed="false">
+                <svg class="i-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <svg class="i-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            </button>
+            {{if .Nav}}
+            <form method="POST" action="/admin/logout" class="inline-form">
+                <button type="submit" class="logout-link">Log out</button>
+            </form>
+            {{end}}
+        </div>
+    </header>
+    <main class="admin-main">
+        {{template "content" .}}
+    </main>
+    <script src="/static/js/main.js"></script>
+    <script src="{{adminScriptURL}}"></script>
+</body>
+</html>{{end}}

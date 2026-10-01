@@ -76,3 +76,22 @@ func parseDBTime(v interface{}) (time.Time, error) {
 	}
 	return time.Time{}, fmt.Errorf("unexpected time type %T", v)
 }
+
+// CountArticlesByStatus returns how many articles are in each status.
+func (d *Database) CountArticlesByStatus() (map[string]int, error) {
+	rows, err := d.db.Query(`SELECT status, COUNT(*) FROM generated_articles GROUP BY status`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var s string
+		var n int
+		if err := rows.Scan(&s, &n); err != nil {
+			return nil, err
+		}
+		out[s] = n
+	}
+	return out, rows.Err()
+}

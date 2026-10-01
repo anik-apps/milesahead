@@ -197,8 +197,15 @@ func (app *App) loadTemplates(dir string) error {
 	}
 
 	// static/ sits beside templates/, as it does in the repository and on the server.
-	css := versionedStylesheet(filepath.Join(filepath.Dir(dir), "static"))
-	appFuncs := template.FuncMap{"stylesheetURL": func() string { return css }}
+	staticDir := filepath.Join(filepath.Dir(dir), "static")
+	css := versionedStylesheet(staticDir)
+	adminCSS := versionedFile(staticDir, adminStylesheetPath)
+	adminJS := versionedFile(staticDir, adminScriptPath)
+	appFuncs := template.FuncMap{
+		"stylesheetURL":      func() string { return css },
+		"adminStylesheetURL": func() string { return adminCSS },
+		"adminScriptURL":     func() string { return adminJS },
+	}
 
 	// Parse each page template separately with the layout so that each gets
 	// its own "content" block definition without conflicts.
@@ -223,6 +230,23 @@ func (app *App) loadTemplates(dir string) error {
 
 // stylesheetPath is the site stylesheet's URL path.
 const stylesheetPath = "/static/css/style.css"
+
+// The admin pages' own stylesheet and script, versioned like the site's.
+const (
+	adminStylesheetPath = "/static/css/admin.css"
+	adminScriptPath     = "/static/js/admin.js"
+)
+
+// versionedFile returns urlPath (a /static/... path) with a short hash of the
+// file's content as ?v=, or the bare path if it cannot be read.
+func versionedFile(staticDir, urlPath string) string {
+	b, err := os.ReadFile(filepath.Join(staticDir, filepath.FromSlash(strings.TrimPrefix(urlPath, "/static/"))))
+	if err != nil {
+		return urlPath
+	}
+	sum := sha256.Sum256(b)
+	return urlPath + "?v=" + hex.EncodeToString(sum[:])[:12]
+}
 
 // versionedStylesheet returns the stylesheet URL with a short hash of its
 // content as ?v=, or the bare path if the file cannot be read.
@@ -251,6 +275,10 @@ func (app *App) renderTemplate(w http.ResponseWriter, name string, data interfac
 		return
 	}
 	if m, ok := data.(map[string]interface{}); ok {
+		// Signed-in admin pages get the admin bar's tab and counts.
+		if t.Lookup("admin_layout") != nil && name != "login.html" {
+			m["Nav"] = app.adminNavFor(name, m)
+		}
 		// Pages without their own image (home, compare, search) still get a
 		// branded preview when shared. Crawlers need an absolute URL.
 		if img, _ := m["OGImage"].(string); img == "" {
