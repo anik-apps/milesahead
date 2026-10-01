@@ -57,6 +57,9 @@ type Pipeline struct {
 	// detailModels is the chain for the inline key-details call; empty means
 	// the critic chain. See SetDetailModels.
 	detailModels []string
+	// outlets lists the news sites and blogs articles are written from (the
+	// sources table), read once per article. See SetOutlets.
+	outlets func() []Outlet
 }
 
 // NewPipeline creates a new Pipeline with the given quality threshold (0-100).
@@ -82,6 +85,22 @@ func (p *Pipeline) SetDetailModels(models []string) {
 	p.detailModels = models
 }
 
+// SetOutlets sets where the pipeline reads the outlets articles must not name
+// or link to: production passes every row of the sources table. The article's
+// own sources and the built-in outlets are checked whether or not it is set.
+func (p *Pipeline) SetOutlets(fn func() []Outlet) {
+	p.outlets = fn
+}
+
+// outletMatcher builds the outlet check for one article.
+func (p *Pipeline) outletMatcher(sources []SourceArticle) *OutletMatcher {
+	var table []Outlet
+	if p.outlets != nil {
+		table = p.outlets()
+	}
+	return NewOutletMatcher(OutletsFor(sources, table))
+}
+
 // ErrNotEnoughSources is returned when a cluster has fewer than 2 unique sources.
 var ErrNotEnoughSources = fmt.Errorf("need at least 2 different sources to generate an article")
 
@@ -104,6 +123,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	}
 
 	slog.Info("article generated", "type", articleType, "sources", len(sources))
+	outlets := p.outletMatcher(sources)
 
 	content, err := p.generator.Generate(articleType, sources)
 	if err != nil {
@@ -112,6 +132,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 
 	content = cleanMarkdown(content)
 	content, unresolved := cleanSourceRefs("generation", content, sources)
+	content, mentions := checkOutlets("generation", content, outlets)
 
 	// Critic reviews the article
 	verification, err := p.critic.Verify(content, sources)
@@ -119,6 +140,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		return nil, err
 	}
 	flagSourceRefs(verification, unresolved, sources)
+	flagOutletMentions(verification, mentions)
 	verification.Score = adjustScore(verification)
 	metrics.CriticScore.Observe(float64(verification.Score))
 
@@ -135,9 +157,13 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		if err == nil && revised != "" {
 			revised = cleanMarkdown(revised)
 			revised, revisedUnresolved := cleanSourceRefs("auto-revision", revised, sources)
+			revised, revisedMentions := checkOutlets("auto-revision", revised, outlets)
 			v2, err := p.critic.Verify(revised, sources)
 			if err == nil {
 				flagSourceRefs(v2, revisedUnresolved, sources)
+				// One revision only: a mention that survives it stays on the
+				// verdict for the admin, who can judge the exceptions.
+				flagOutletMentions(v2, revisedMentions)
 				v2.Score = adjustScore(v2)
 				slog.Info("critic scored revision", "model", v2.Model, "score", v2.Score,
 					"previous", verification.Score)
@@ -155,6 +181,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	if len(keyDetails) == 0 {
 		kd, lk := p.extractDetails(parsedTitle, content)
 		kd = cleanDetailSourceRefs(kd, sources)
+		kd = dropOutletDetails(kd, outlets, parsedTitle)
 		if len(kd) > 0 {
 			keyDetails = kd
 		}
@@ -168,7 +195,7 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		Title:           parsedTitle,
 		TLDR:            tldr,
 		KeyDetails:      keyDetails,
-		Links:           links,
+		Links:           outlets.DropOutletLinks(links),
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
@@ -224,12 +251,15 @@ func (p *Pipeline) ProcessWithFeedback(sources []SourceArticle, previousOutput, 
 func (p *Pipeline) buildResult(content, articleType string, sources []SourceArticle) (*PipelineResult, error) {
 	content = cleanMarkdown(content)
 	content, unresolved := cleanSourceRefs("revision", content, sources)
+	outlets := p.outletMatcher(sources)
+	content, mentions := checkOutlets("revision", content, outlets)
 
 	verification, err := p.critic.Verify(content, sources)
 	if err != nil {
 		return nil, err
 	}
 	flagSourceRefs(verification, unresolved, sources)
+	flagOutletMentions(verification, mentions)
 	verification.Score = adjustScore(verification)
 	metrics.CriticScore.Observe(float64(verification.Score))
 	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
@@ -242,60 +272,123 @@ func (p *Pipeline) buildResult(content, articleType string, sources []SourceArti
 		Title:           parsedTitle,
 		TLDR:            tldr,
 		KeyDetails:      keyDetails,
-		Links:           links,
+		Links:           outlets.DropOutletLinks(links),
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
 	}, nil
 }
 
-// cleanSourceRefs rewrites numbered source references ("Source 1 notes...")
-// in a raw generator reply to the outlet's name, using the order the sources
-// were presented in. It runs on the whole reply, so the title, TLDR and
-// structured key details are covered along with the body. References it
-// cannot map are returned for flagSourceRefs.
+// cleanSourceRefs removes citation markers ("[1]") from a raw generator reply
+// and returns the numbered source references left in it ("Source 1 notes...")
+// for flagSourceRefs. It runs on the whole reply, so the title, TLDR and
+// structured key details are covered along with the body.
 //
-// Both halves exist because neither is enough alone. The rewrite is
-// deterministic, so a mappable reference never reaches the site even when the
-// critic misses it or the revision pass does not run. The flag handles the
-// rest: the critic's attribution check fails, the issue feeds the auto-revision
-// that Process already performs, and an article that still carries one is
-// scored down rather than published looking clean.
-func cleanSourceRefs(stage, content string, sources []SourceArticle) (string, []string) {
-	out, rep := FixSourceRefs(content, sources)
-	if rep.Changed() {
-		slog.Warn("rewrote numbered source references", "stage", stage, "changes", rep.Rewritten)
+// A reference is not rewritten to the outlet it stood for: articles must not
+// name the sites they were written from. It is flagged instead -- the
+// attribution check fails, the issue feeds the auto-revision that Process
+// already performs, and an article that still carries one is scored down
+// rather than published looking clean.
+func cleanSourceRefs(stage, content string, _ []SourceArticle) (string, []string) {
+	out, removed := StripCitationMarkers(content)
+	if len(removed) > 0 {
+		slog.Warn("removed citation markers", "stage", stage, "markers", removed)
 	}
-	if len(rep.Unresolved) > 0 {
-		slog.Warn("numbered source references left for revision", "stage", stage, "refs", rep.Unresolved)
+	refs := FindSourceRefs(out)
+	if len(refs) > 0 {
+		slog.Warn("numbered source references left for revision", "stage", stage, "refs", refs)
 	}
-	return out, rep.Unresolved
+	return out, refs
 }
 
-// flagSourceRefs records unmappable numbered references on a critic verdict,
-// before adjustScore, so they cost the score the same way a failed attribution
-// check reported by the critic does.
-func flagSourceRefs(v *VerificationResult, unresolved []string, sources []SourceArticle) {
-	if len(unresolved) == 0 {
+// flagSourceRefs records numbered references on a critic verdict, before
+// adjustScore, so they cost the score the same way a failed attribution check
+// reported by the critic does.
+func flagSourceRefs(v *VerificationResult, refs []string, _ []SourceArticle) {
+	if len(refs) == 0 {
 		return
 	}
 	v.AttributionCheck = false
-	v.Issues = append(v.Issues, SourceRefIssue(unresolved, sources))
+	v.Issues = append(v.Issues, SourceRefIssue(refs))
 }
 
-// cleanDetailSourceRefs applies the same rewrite to key details extracted by a
-// separate call, dropping any detail with a reference it cannot map: a bullet
-// is public copy and there is no revision pass after this point.
-func cleanDetailSourceRefs(details []KeyDetail, sources []SourceArticle) []KeyDetail {
+// cleanDetailSourceRefs removes citation markers from key details and drops
+// any detail that still refers to a source by number: a bullet is public copy
+// and there is no revision pass after this point.
+func cleanDetailSourceRefs(details []KeyDetail, _ []SourceArticle) []KeyDetail {
 	var kept []KeyDetail
 	for _, d := range details {
-		label, lrep := FixSourceRefs(d.Label, sources)
-		value, vrep := FixSourceRefs(d.Value, sources)
-		if len(lrep.Unresolved)+len(vrep.Unresolved) > 0 {
-			slog.Warn("dropped key detail with a numbered source reference", "label", d.Label)
+		label, _ := StripCitationMarkers(d.Label)
+		value, _ := StripCitationMarkers(d.Value)
+		if refs := FindSourceRefs(label + " " + value); len(refs) > 0 {
+			slog.Warn("dropped key detail with a numbered source reference", "label", d.Label, "refs", refs)
 			continue
 		}
 		kept = append(kept, KeyDetail{Label: label, Value: value})
+	}
+	return kept
+}
+
+// checkOutlets unwraps links to outlet sites in a generator reply (articles
+// link to official pages only; the link text stays) and returns the reply with
+// every place its visible text names an outlet, for flagOutletMentions.
+func checkOutlets(stage, content string, m *OutletMatcher) (string, []OutletMention) {
+	out, unlinked := m.StripOutletLinks(content)
+	if len(unlinked) > 0 {
+		slog.Warn("removed links to news sites", "stage", stage, "outlets", unlinked)
+	}
+	mentions := m.Find(withoutOutletLinkLines(out, m))
+	if len(mentions) > 0 {
+		names := make([]string, len(mentions))
+		for i, mn := range mentions {
+			names[i] = mn.Text
+		}
+		slog.Warn("article names a news site", "stage", stage, "mentions", names)
+	}
+	return out, mentions
+}
+
+// withoutOutletLinkLines removes the entries of a reply's LINKS section that
+// point to an outlet's site. They are dropped from the result anyway (see
+// DropOutletLinks), so their text ("OMAAT post") is not worth a revision.
+func withoutOutletLinkLines(content string, m *OutletMatcher) string {
+	return linksBlockRE.ReplaceAllStringFunc(content, func(block string) string {
+		lines := strings.Split(block, "\n")
+		kept := lines[:0]
+		for _, line := range lines {
+			if i := strings.LastIndex(line, " | "); i >= 0 {
+				u := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line[i+3:]), "</li>"))
+				if _, ok := m.OutletForURL(u); ok {
+					continue
+				}
+			}
+			kept = append(kept, line)
+		}
+		return strings.Join(kept, "\n")
+	})
+}
+
+// flagOutletMentions records outlet mentions on a critic verdict, before
+// adjustScore, as a failed attribution check with one issue per outlet.
+func flagOutletMentions(v *VerificationResult, mentions []OutletMention) {
+	if len(mentions) == 0 {
+		return
+	}
+	v.AttributionCheck = false
+	v.Issues = append(v.Issues, OutletIssues(mentions)...)
+}
+
+// dropOutletDetails drops key details that name an outlet the title does not.
+// They come from a separate call with no revision pass after it; an outlet the
+// title names is taken to be the subject of the story, which may be named.
+func dropOutletDetails(details []KeyDetail, m *OutletMatcher, title string) []KeyDetail {
+	var kept []KeyDetail
+	for _, d := range details {
+		if ms := m.DerivedTextMentions(d.Label+": "+d.Value, title); len(ms) > 0 {
+			slog.Warn("dropped key detail that names a news site", "label", d.Label, "outlet", ms[0].Outlet)
+			continue
+		}
+		kept = append(kept, d)
 	}
 	return kept
 }

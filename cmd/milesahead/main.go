@@ -51,6 +51,24 @@ func newImageScoring(cfg *config.Config, client ai.HFClientInterface, visionMode
 	return searcher, scorer
 }
 
+// sourceOutlets reads every row of the sources table, active or not, as the
+// outlets articles must not name. It is read on each use, so a source added in
+// the admin is covered from the next article on. A read error leaves only the
+// article's own sources and the built-in outlets to check, which is logged.
+func sourceOutlets(database *db.Database) func() []ai.Outlet {
+	return func() []ai.Outlet {
+		rows, err := database.ListAllSources()
+		if err != nil {
+			slog.Warn("could not list sources for the outlet check", "error", err)
+		}
+		out := make([]ai.Outlet, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, ai.Outlet{Name: r.Name, URL: r.URL})
+		}
+		return out
+	}
+}
+
 // enrichmentModels is the chain for every short AI call: enrichment, image
 // text-scoring, the newsletter pick, card-update detection and the pipeline's
 // inline key-details call.
@@ -190,6 +208,9 @@ func main() {
 
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
 	pipeline.SetDetailModels(enrichModels)
+	// Articles must not name or link to the sites they are written from.
+	outlets := sourceOutlets(database)
+	pipeline.SetOutlets(outlets)
 	if cfg.AI.Critic2Model != "" {
 		critic2 := ai.NewCritic(criticClient, cfg.AI.Critic2Model)
 		pipeline.SetCritic2(critic2)
@@ -227,6 +248,7 @@ func main() {
 	// Reconciled, a miss is picked up on the next pass.
 	enricher := enrich.New(database, hfClient, enrichModels,
 		cfg.Site.PersonaName, side.imageSearcher, side.imageScorer)
+	enricher.Outlets = outlets
 	if cfg.AI.EnrichmentMaxAttempts > 0 {
 		enricher.MaxAttempts = cfg.AI.EnrichmentMaxAttempts
 	}

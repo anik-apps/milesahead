@@ -175,14 +175,64 @@ func TestSourcePrompts_LabelByOutletAndForbidNumbering(t *testing.T) {
 		if !strings.Contains(prompt, sourceReferenceRule) {
 			t.Errorf("%s prompt missing the source reference rule", name)
 		}
-		for _, want := range []string{"NEVER refer to a source by number or position", `"Source 1"`, `"the first source"`, "name the outlet"} {
+		for _, want := range []string{"NEVER refer to a source by number or position", `"Source 1"`, `"the first source"`} {
 			if !strings.Contains(prompt, want) {
 				t.Errorf("%s prompt missing %q", name, want)
 			}
 		}
 	}
-	if !strings.Contains(writers["revision"], "If the previous article refers to a source by number or position") {
+	if !strings.Contains(writers["revision"], "or refers to a source by number or position") {
 		t.Error("revision prompt does not ask for existing numbered references to be fixed")
+	}
+}
+
+// TestPrompts_NeverNameOutlets: every prompt that writes or checks article
+// text carries the owner's rule -- never name or refer to the news sites and
+// blogs -- with both exceptions verbatim, and none still tells the model to
+// name the outlet when attributing.
+func TestPrompts_NeverNameOutlets(t *testing.T) {
+	src := sampleSources()
+	prompts := map[string]string{
+		"deal":        DealAlertPrompt(src),
+		"roundup":     RoundupPrompt(src),
+		"summary":     SummaryPrompt(src),
+		"revision":    RevisionPrompt(src, "<p>previous</p>", "fix", "issue"),
+		"critic":      CriticPrompt("<p>article</p>", src),
+		"critic2":     Critic2Prompt("<p>article</p>", src),
+		"scouts_take": ScoutsTakePrompt("Scout", "T", "tldr", "<p>body</p>"),
+		"details":     ExtractDetailsPrompt("T", "<p>body</p>"),
+	}
+	exception1 := "1. The outlet is itself the subject of the story (e.g. a sale on Thrifty Traveler Premium)."
+	exception2 := `2. An unconfirmed report whose only source is that outlet — then one mention, phrased as a report ("reportedly, according to X").`
+	for name, p := range prompts {
+		for _, want := range []string{
+			"NEVER name or refer to the news sites and blogs you were given",
+			"State facts plainly",
+			"Issuers, airlines, hotel chains and their official pages are NOT news sites",
+			exception1, exception2,
+		} {
+			if !strings.Contains(p, want) {
+				t.Errorf("%s prompt missing %q", name, want)
+			}
+		}
+		for _, old := range []string{
+			"name the outlet:", "name the outlet instead", "name the outlet or drop", "name the outlet only if",
+			"Doctor of Credit is reporting", "One Mile at a Time notes...",
+			"link the source name to their article", "The Points Guy is reporting</a>",
+			"Do not mention source site names UNLESS",
+		} {
+			if strings.Contains(p, old) {
+				t.Errorf("%s prompt still carries the old guidance %q", name, old)
+			}
+		}
+	}
+	for _, name := range []string{"critic", "critic2"} {
+		if !strings.Contains(prompts[name], "set attribution_check to false and add an issue that quotes the phrase and says to remove the mention") {
+			t.Errorf("%s prompt does not fail attribution on a news-site mention", name)
+		}
+	}
+	if !strings.Contains(prompts["revision"], "If the previous article names or refers to a news site or blog") {
+		t.Error("revision prompt does not ask for existing news-site mentions to be removed")
 	}
 }
 

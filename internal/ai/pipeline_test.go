@@ -8,7 +8,7 @@ import (
 )
 
 func TestPipeline_Process_AboveThreshold(t *testing.T) {
-	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA [TPG]"}
+	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA"}
 	criticMock := &mockHFClient{
 		response: `{"score": 90, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`,
 	}
@@ -277,7 +277,7 @@ func TestParseDashItems_Inline(t *testing.T) {
 // (minutes per reply since 2026-09-29) it would time out on every article, so
 // it runs on the chain given to SetDetailModels and falls over a retired model.
 func TestPipeline_DetailsUseTheirOwnChain(t *testing.T) {
-	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA [TPG]"}
+	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA"}
 	criticClient := &perModelMockHFClient{
 		responses: map[string]string{
 			"critic": `{"score": 90, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`,
@@ -312,7 +312,7 @@ func TestPipeline_LogsWhichCriticScored(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA [TPG]"}
+	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA"}
 	criticClient := &perModelMockHFClient{
 		responses: map[string]string{
 			"fallback-critic": `{"score": 90, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`,

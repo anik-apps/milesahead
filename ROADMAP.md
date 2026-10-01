@@ -257,15 +257,27 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       fails attribution on them. Generated text is also checked deterministically: a
       reference that maps to a source is rewritten to the outlet's name, and one that does
       not fails the attribution check and goes to the auto-revision. Scout's Take and key
-      details refuse such text. `cmd/repair-source-refs` fixes stored articles (dry run by
-      default).
+      details refuse such text.
+- [x] **Articles named the news sites they were written from** — the site owner's rule
+      is that articles never name or refer to the outlets in the `sources` table (or
+      TPG, OMAAT, DoC, VFTW, FM), except when the outlet is the subject of the story or
+      for an unconfirmed report only it carries. The fix above made it worse: it
+      rewrote "Source 1 notes" to "One Mile at a Time notes". Now a numbered reference
+      is flagged rather than rewritten, every prompt carries the rule and both
+      exceptions, and a deterministic check flags outlet mentions in the title, TLDR,
+      key details and body for the one auto-revision (a survivor is kept, failing
+      attribution, for the admin). Links to outlet sites are unwrapped. Enrichment
+      refuses a Scout's Take, and drops a key detail, that names an outlet.
+      `cmd/repair-source-refs`, which wrote outlet names into stored articles, is gone.
 
 ## Up Next
 
-- [ ] **Run `repair-source-refs -apply` on production** — dry run on 2026-10-01 found
-      articles 57, 336, 1078 and 1136, all mappable. Take a backup first. Article 336 also
-      ends in a leaked revision changelog ("Ensured all claims align with provided
-      sources") that the tool does not touch; it needs a revision request.
+- [ ] **Fix stored articles that name news sites** — `cmd/flag-outlet-mentions`
+      (read-only) found 33 on 2026-10-01: 6 approved, 18 pending, 6 draft, 2 rejected,
+      1 revision requested. The owner is fixing the 6 approved ones by hand; the rest
+      need a revision request or an edit, after judging the two exceptions (articles
+      1019 and 1022 are about Thrifty Traveler Premium itself). Article 336 also ends in
+      a leaked revision changelog.
 
 - [ ] **Newsletter signup and delivery are broken end to end** — found in the
       2026-09-23 UX review, and confirmed in the code. Nobody who signs up on the site
