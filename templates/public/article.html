@@ -1,11 +1,5 @@
 {{template "layout" .}}
 {{define "content"}}
-{{if .UnderReview}}
-<div class="under-review">
-    <h1>Article Under Review</h1>
-    <p>This article is currently under review and will be available once approved.</p>
-</div>
-{{else}}
 {{/* Order: what the story is (headline, whether the offer is still on, a
      one-paragraph summary), then the photo, then the story with its key
      details beside it, then Scout's Take, the cards it names and where to
@@ -155,7 +149,6 @@
         </div>
     </div>
 </article>
-{{end}}
 {{end}}
 
 {{define "article-key-details"}}
