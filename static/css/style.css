@@ -1852,7 +1852,7 @@ tr:hover {
     overflow-wrap: break-word;
 }
 
-.admin-table td:first-child a {
+.admin-table td:first-child a:not(.btn) {
     display: block;
     line-height: 1.4;
 }

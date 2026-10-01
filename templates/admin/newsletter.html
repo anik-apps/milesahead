@@ -43,7 +43,7 @@
             </form>
             {{end}}
         </div>
-        <p class="dim nl-help">Approve: it goes out on schedule. Hold: kept, but not sent until approved. Skip: not sent this week.</p>
+        <p class="dim nl-help">{{if or (eq .Status "draft") (eq .Status "hold") (eq .Status "skipped")}}Approve: it goes out on schedule. {{end}}{{if ne .Status "hold"}}Hold: kept, but not sent until approved. {{end}}{{if ne .Status "skipped"}}Skip: not sent this week.{{end}}</p>
         {{end}}
     </section>
     {{end}}
