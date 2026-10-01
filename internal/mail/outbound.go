@@ -27,6 +27,9 @@ type Sender struct {
 	from     string
 	smtpUser string
 	dialFn   DialFunc
+	// newsletterWhen is how often the newsletter comes, for the
+	// confirmation email; see SetNewsletterSchedule.
+	newsletterWhen string
 }
 
 // NewSender creates a new Sender configured with SMTP settings.
@@ -69,9 +72,17 @@ func (s *Sender) SendAdminNotification(toEmail string, article *db.GeneratedArti
 	return s.send(m)
 }
 
-// SendConfirmation sends a subscription confirmation email.
+// SetNewsletterSchedule sets how the confirmation email says the
+// newsletter comes, "every Saturday at 8:00 AM ET"
+// (newsletter.WeeklySendWhen). Unset, it says "once a week".
+func (s *Sender) SetNewsletterSchedule(when string) {
+	s.newsletterWhen = when
+}
+
+// SendConfirmation sends a subscription confirmation email, in plain text
+// and HTML, with absolute links to https://domain.
 func (s *Sender) SendConfirmation(toEmail, token, domain string) error {
-	htmlBody, err := RenderConfirmation(token, domain)
+	htmlBody, textBody, err := RenderConfirmation(token, domain, s.newsletterWhen)
 	if err != nil {
 		return fmt.Errorf("rendering confirmation: %w", err)
 	}
@@ -80,7 +91,8 @@ func (s *Sender) SendConfirmation(toEmail, token, domain string) error {
 	m.SetHeader("From", s.from)
 	m.SetHeader("To", toEmail)
 	m.SetHeader("Subject", "Confirm your subscription to MilesAhead")
-	m.SetBody("text/html", htmlBody)
+	m.SetBody("text/plain", textBody)
+	m.AddAlternative("text/html", htmlBody)
 
 	return s.send(m)
 }

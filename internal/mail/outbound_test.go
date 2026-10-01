@@ -270,7 +270,7 @@ func TestRenderNotification_ContainsVerificationChecks(t *testing.T) {
 }
 
 func TestRenderConfirmation_ContainsConfirmLink(t *testing.T) {
-	html, err := RenderConfirmation("abc123", "milesahead.com")
+	html, _, err := RenderConfirmation("abc123", "milesahead.com", "")
 	if err != nil {
 		t.Fatalf("RenderConfirmation failed: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestRenderConfirmation_ContainsConfirmLink(t *testing.T) {
 }
 
 func TestRenderConfirmation_ContainsUnsubscribeLink(t *testing.T) {
-	html, err := RenderConfirmation("abc123", "milesahead.com")
+	html, _, err := RenderConfirmation("abc123", "milesahead.com", "")
 	if err != nil {
 		t.Fatalf("RenderConfirmation failed: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestRenderConfirmation_ContainsUnsubscribeLink(t *testing.T) {
 }
 
 func TestRenderConfirmation_ContainsSubscriptionTitle(t *testing.T) {
-	html, err := RenderConfirmation("abc123", "milesahead.com")
+	html, _, err := RenderConfirmation("abc123", "milesahead.com", "")
 	if err != nil {
 		t.Fatalf("RenderConfirmation failed: %v", err)
 	}
@@ -355,6 +355,59 @@ func TestSendConfirmation(t *testing.T) {
 	}
 	if mock.sent[0].to[0] != "subscriber@test.com" {
 		t.Errorf("expected to=subscriber@test.com, got %s", mock.sent[0].to[0])
+	}
+}
+
+// The confirmation email goes as plain text and HTML, says what the reader
+// signed up for and how often it comes, and links back absolutely: an email
+// client has no base URL.
+func TestSendConfirmation_Content(t *testing.T) {
+	sender, mock := newTestSender()
+	sender.SetNewsletterSchedule("every Saturday at 8:00 AM ET")
+
+	if err := sender.SendConfirmation("subscriber@test.com", "conf-token", "milesahead.example"); err != nil {
+		t.Fatal(err)
+	}
+	msg := mock.sent[0]
+	if got := msg.parsed(t).Header.Get("Subject"); got != "Confirm your subscription to MilesAhead" {
+		t.Errorf("subject = %q", got)
+	}
+	html, text := msg.part(t, "text/html"), msg.part(t, "text/plain")
+	if html == "" || text == "" {
+		t.Fatalf("want both an HTML and a plain-text part; html %d bytes, text %d bytes", len(html), len(text))
+	}
+	confirm := "https://milesahead.example/subscribe/confirm?token=conf-token"
+	unsub := "https://milesahead.example/unsubscribe?token=conf-token"
+	for name, body := range map[string]string{"html": html, "text": text} {
+		for _, want := range []string{
+			confirm, unsub,
+			"One email, every Saturday at 8:00 AM ET.",
+			"the ones about to end",
+			"We only use your address to send the newsletter.",
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s part should contain %q:\n%s", name, want, body)
+			}
+		}
+	}
+	if !strings.Contains(html, `href="`+confirm+`"`) {
+		t.Errorf("the HTML button should link to %s", confirm)
+	}
+	if strings.Contains(html, `href="/`) {
+		t.Error("the HTML has a relative link, which does not work in an email")
+	}
+}
+
+// Without a schedule set, the email still says how often.
+func TestRenderConfirmation_DefaultFrequency(t *testing.T) {
+	html, text, err := RenderConfirmation("t", "milesahead.example", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{html, text} {
+		if !strings.Contains(body, "One email, once a week.") {
+			t.Errorf("want the default frequency in:\n%s", body)
+		}
 	}
 }
 
@@ -552,14 +605,14 @@ func TestSetDialFunc(t *testing.T) {
 }
 
 func TestRenderConfirmation_IsBranded(t *testing.T) {
-	html, err := RenderConfirmation("abc123", "milesahead.com")
+	html, _, err := RenderConfirmation("abc123", "milesahead.com", "")
 	if err != nil {
 		t.Fatalf("RenderConfirmation failed: %v", err)
 	}
 	for _, want := range []string{
 		`src="https://milesahead.com/static/img/brand/email-lockup.png"`,
 		`src="https://milesahead.com/static/img/brand/email-band.png"`,
-		"Thank you for subscribing to MilesAhead!",
+		"Thanks for signing up for the MilesAhead weekly email.",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("confirmation email should contain %s", want)

@@ -63,10 +63,14 @@ const weeklySubject = "MilesAhead Weekly"
 
 // WeeklySendSchedule is when the scheduler runs SendWeekly: Saturdays at
 // 08:00 New York time. WeeklySendLabel says the same for the admin page, which
-// tells the admin when the current issue goes out.
+// tells the admin when the current issue goes out, and WeeklySendWhen for
+// readers (the sign-up page and the confirmation email). A test holds all
+// three to the same day and time.
 const (
 	WeeklySendSchedule = "CRON_TZ=America/New_York 0 0 8 * * 6"
 	WeeklySendLabel    = "8:00 AM ET"
+	WeeklySendDay      = "Saturday"
+	WeeklySendWhen     = "every " + WeeklySendDay + " at " + WeeklySendLabel
 )
 
 // Service handles newsletter generation and delivery.

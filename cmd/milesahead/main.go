@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -139,6 +140,31 @@ func newAISideJobs(cfg *config.Config, database *db.Database, client ai.HFClient
 	}
 }
 
+// warnIfSMTPUnset logs, once at startup, when the SMTP settings look like
+// the example's placeholders: confirmation and newsletter emails would then
+// fail on every send. Only the host is logged, never the credentials.
+func warnIfSMTPUnset(c config.SMTPConfig) {
+	if smtpLooksUnset(c) {
+		slog.Warn("mail: SMTP is not configured; confirmation and newsletter emails will fail to send",
+			"host", c.Host, "from_set", c.From != "")
+	}
+}
+
+// smtpLooksUnset reports whether c cannot be a working SMTP setup: no host
+// or From, a localhost host (nothing listens there in production), or
+// credentials still holding a placeholder.
+func smtpLooksUnset(c config.SMTPConfig) bool {
+	if c.Host == "" || c.From == "" || c.Host == "localhost" || c.Host == "127.0.0.1" {
+		return true
+	}
+	for _, v := range []string{c.User, c.Password} {
+		if v == "" || v == "placeholder" || strings.HasPrefix(v, "${") {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -240,6 +266,8 @@ func main() {
 	// Image scoring, the newsletter pick and card-update detection, all on the
 	// short-call chain.
 	mailSender := mail.NewSender(cfg.Mail.SMTP)
+	mailSender.SetNewsletterSchedule(newsletter.WeeklySendWhen)
+	warnIfSMTPUnset(cfg.Mail.SMTP)
 	side := newAISideJobs(cfg, database, hfClient, mailSender, visionModel, enrichModels)
 
 	// Enrichment runs as a reconciliation pass rather than inline in article
@@ -344,6 +372,10 @@ func main() {
 		slog.Error("failed to create web app", "error", err)
 		os.Exit(1)
 	}
+
+	// Sign-ups get their confirmation email from the same SMTP sender as
+	// the newsletter, which carries each reader's own unsubscribe link.
+	app.SetConfirmationMailer(mailSender)
 
 	// Web server with explicit Server struct for graceful shutdown
 	httpServer := &http.Server{
