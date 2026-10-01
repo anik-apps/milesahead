@@ -167,9 +167,10 @@ func (app *App) scoreClass(score int, has bool) string {
 }
 
 // reviewQueue loads every article waiting on the admin and sorts it into the
-// dashboard's groups. With all false the ready group is capped at
-// readyLimit.
-func (app *App) reviewQueue(all bool) []dashboardGroup {
+// dashboard's groups, each in the order order. With all false the ready group
+// is capped at readyLimit, after sorting, so the cap keeps the rows that sort
+// first.
+func (app *App) reviewQueue(all bool, order queueSort) []dashboardGroup {
 	x := queueExtras{pending: map[int64]db.PendingRevision{}}
 	if list, err := app.db.ListPendingRevisions(); err == nil {
 		for _, p := range list {
@@ -184,7 +185,7 @@ func (app *App) reviewQueue(all bool) []dashboardGroup {
 		groupDecide: {Key: groupDecide, Title: "Needs a decision",
 			Note: "Rewrites that gave up, and articles taken down. Nothing happens until you act."},
 		groupReady: {Key: groupReady, Title: "Ready to review",
-			Note: "Oldest first."},
+			Note: "New articles and drafts, " + order.label() + "."},
 		groupRewriting: {Key: groupRewriting, Title: "Being rewritten",
 			Note: "Waiting on a rewrite; they move to Ready when it lands. You can still approve or reject what is shown."},
 	}
@@ -204,14 +205,8 @@ func (app *App) reviewQueue(all bool) []dashboardGroup {
 		}
 	}
 
-	// Ready: oldest first, so nothing waits forever behind new arrivals.
-	sort.Slice(ready, func(i, j int) bool { return ready[i].CreatedAt.Before(ready[j].CreatedAt) })
-	groups[groupReady].Total = len(ready)
-	if !all && len(ready) > readyLimit {
-		ready = ready[:readyLimit]
-	}
-
-	// One query each for the critic results and sources of every row shown.
+	// Critic results for the whole queue (one query): the score orders
+	// need them before the ready group is capped.
 	ids := make([]int64, 0, len(ready)+len(other))
 	for _, a := range append(append([]db.GeneratedArticle{}, other...), ready...) {
 		ids = append(ids, a.ID)
@@ -219,6 +214,23 @@ func (app *App) reviewQueue(all bool) []dashboardGroup {
 	var err error
 	if x.verifications, err = app.db.LatestVerifications(ids); err != nil {
 		slog.Warn("dashboard: could not load critic results", "error", err)
+	}
+
+	// Ready is ordered by when the article was created.
+	readyKey := func(a db.GeneratedArticle) queueKey {
+		v, ok := x.verifications[a.ID]
+		return queueKey{at: a.CreatedAt, score: v.Score, hasScore: ok, id: a.ID}
+	}
+	sort.SliceStable(ready, func(i, j int) bool { return order.less(readyKey(ready[i]), readyKey(ready[j])) })
+	groups[groupReady].Total = len(ready)
+	if !all && len(ready) > readyLimit {
+		ready = ready[:readyLimit]
+	}
+
+	// Sources for the rows shown (one query).
+	ids = ids[:0]
+	for _, a := range append(append([]db.GeneratedArticle{}, other...), ready...) {
+		ids = append(ids, a.ID)
 	}
 	if x.sources, err = app.db.LinkedSourcesForArticles(ids); err != nil {
 		slog.Warn("dashboard: could not load sources", "error", err)
@@ -239,8 +251,13 @@ func (app *App) reviewQueue(all bool) []dashboardGroup {
 		groups[groupReady].Rows = append(groups[groupReady].Rows, row)
 	}
 
+	// The other groups are ordered by when the article last changed: when
+	// it was taken down, or its rewrite requested.
 	byUpdated := func(rows []adminArticleRow) {
-		sort.SliceStable(rows, func(i, j int) bool { return rows[i].updatedAtRaw.Before(rows[j].updatedAtRaw) })
+		key := func(r adminArticleRow) queueKey {
+			return queueKey{at: r.updatedAtRaw, score: r.VerificationScore, hasScore: r.HasScore, id: r.ID}
+		}
+		sort.SliceStable(rows, func(i, j int) bool { return order.less(key(rows[i]), key(rows[j])) })
 	}
 	byUpdated(groups[groupDecide].Rows)
 	byUpdated(groups[groupRewriting].Rows)
@@ -251,21 +268,21 @@ func (app *App) reviewQueue(all bool) []dashboardGroup {
 
 	// Prev and next follow the order on the page, across groups, so the
 	// preview can step through the whole queue.
-	var order []*adminArticleRow
+	var pageOrder []*adminArticleRow
 	for g := range out {
 		app.attachRevisionHistory(out[g].Rows)
 		for i := range out[g].Rows {
-			order = append(order, &out[g].Rows[i])
+			pageOrder = append(pageOrder, &out[g].Rows[i])
 		}
 	}
-	for i, row := range order {
+	for i, row := range pageOrder {
 		row.Position = i + 1
-		row.QueueLen = len(order)
+		row.QueueLen = len(pageOrder)
 		if i > 0 {
-			row.PrevID = order[i-1].ID
+			row.PrevID = pageOrder[i-1].ID
 		}
-		if i+1 < len(order) {
-			row.NextID = order[i+1].ID
+		if i+1 < len(pageOrder) {
+			row.NextID = pageOrder[i+1].ID
 		}
 	}
 	return out
@@ -282,7 +299,8 @@ var dashboardMessages = map[string]string{
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 	all := r.URL.Query().Get("all") == "1"
-	groups := app.reviewQueue(all)
+	order := parseSort(r.URL.Query().Get("sort"), queueSorts)
+	groups := app.reviewQueue(all, order)
 	total := 0
 	for _, g := range groups {
 		total += g.Total
@@ -305,6 +323,11 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"MessageRev":   queryInt(r, "rev"),
 		"OpenID":       queryInt(r, "open"),
 		"PersonaName":  app.cfg.Site.PersonaName,
+		"All":          all,
+		"Sort":         string(order),
+		"SortLabel":    order.label(),
+		"Sorts":        sortChoices(order, queueSorts),
+		"ShowAllURL":   withSort(r, "/admin/dashboard?all=1", queueSorts),
 	}
 	if msg == "approved" {
 		if id := queryInt(r, "id"); id > 0 {
@@ -348,13 +371,13 @@ func (app *App) handleUndoApprove(w http.ResponseWriter, r *http.Request) {
 	// from the form.
 	if _, err := app.articleManager.UndoApprove(id); err != nil {
 		if errors.Is(err, db.ErrUndoExpired) {
-			http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=undo_expired&id=%d", id), http.StatusSeeOther)
+			http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=undo_expired&id=%d", id), queueSorts), http.StatusSeeOther)
 			return
 		}
 		http.Error(w, fmt.Sprintf("Failed to undo: %v", err), http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=undone&id=%d&open=%d", id, id), http.StatusSeeOther)
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=undone&id=%d&open=%d", id, id), queueSorts), http.StatusSeeOther)
 }
 
 // nextParam is the "next" form value as an article id for ?open=, or 0.

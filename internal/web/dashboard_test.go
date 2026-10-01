@@ -60,14 +60,14 @@ func TestDashboard_GroupsTheQueue(t *testing.T) {
 	if !strings.Contains(section(body, "q-decide"), `<span class="tab-n alert">2</span>`) {
 		t.Error("Needs a decision should show its count in red")
 	}
-	// Page order: decide (oldest updated first), then ready (oldest first).
-	// The preview of the first ready article points back at the last
-	// decide row and on to the next ready one.
-	if !strings.Contains(body, `id="preview-`+itoa(ready)+`" class="preview-overlay" data-id="`+itoa(ready)+`" data-next="preview-`+itoa(draft)+`"`) {
+	// Page order: decide, then ready, each newest first by default. The
+	// preview of the first ready article (the draft, created last) leads on
+	// to the next ready one.
+	if !strings.Contains(body, `id="preview-`+itoa(draft)+`" class="preview-overlay" data-id="`+itoa(draft)+`" data-next="preview-`+itoa(ready)+`"`) {
 		t.Error("the first ready article's preview does not lead to the next one")
 	}
 	// Each decision posts the revision shown and the article to open next.
-	if !strings.Contains(body, `<input type="hidden" name="next" value="`+itoa(draft)+`">`) {
+	if !strings.Contains(body, `<input type="hidden" name="next" value="`+itoa(ready)+`">`) {
 		t.Error("approve does not carry the next article")
 	}
 	if !strings.Contains(body, "Approve rev 1 &amp; next") {
@@ -83,7 +83,7 @@ func TestDashboard_SaysWhenTheQueueIsCapped(t *testing.T) {
 	}
 	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
 	body := doAdminGET(t, app, "/admin/dashboard", session).Body.String()
-	if !strings.Contains(body, "Showing 25 of 27, oldest first.") || !strings.Contains(body, `href="/admin/dashboard?all=1"`) {
+	if !strings.Contains(body, "Showing 25 of 27, newest first.") || !strings.Contains(body, `href="/admin/dashboard?all=1"`) {
 		t.Error("capped queue does not say how many are hidden")
 	}
 	if n := strings.Count(section(body, "q-ready"), `class="q-row`); n != readyLimit {

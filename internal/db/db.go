@@ -364,9 +364,22 @@ func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, erro
 	return scanGeneratedArticles(rows)
 }
 
+// ListPublishedArticles returns approved articles, most recently published
+// first.
 func (d *Database) ListPublishedArticles(limit, offset int) ([]GeneratedArticle, error) {
+	return d.ListPublishedArticlesSorted(false, limit, offset)
+}
+
+// ListPublishedArticlesSorted is ListPublishedArticles in either order:
+// oldestFirst lists the earliest published first. Ties go by id, the same
+// way round, so the order is stable.
+func (d *Database) ListPublishedArticlesSorted(oldestFirst bool, limit, offset int) ([]GeneratedArticle, error) {
+	order := "published_at DESC, id DESC"
+	if oldestFirst {
+		order = "published_at ASC, id ASC"
+	}
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles WHERE status = ? ORDER BY `+order+` LIMIT ? OFFSET ?`,
 		StatusApproved, limit, offset,
 	)
 	if err != nil {
