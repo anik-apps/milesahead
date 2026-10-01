@@ -683,3 +683,20 @@ func TestAnnualFeeKnown(t *testing.T) {
 		}
 	}
 }
+
+// With no cards published at all, the summary must not read "No cards match":
+// nothing was filtered out, there is nothing yet.
+func TestHandleCardsList_EmptySiteSummary(t *testing.T) {
+	app := setupRealTemplateCardApp(t)
+	body := getPath(t, app, "/cards/")
+	if strings.Contains(body, "No cards match") {
+		t.Error("an unfiltered empty index must not say no cards match")
+	}
+	if !strings.Contains(body, "No cards yet") || !strings.Contains(body, "No cards published yet.") {
+		t.Error("an unfiltered empty index should say there are no cards yet")
+	}
+	filtered := getPath(t, app, "/cards/?fee=none")
+	if !strings.Contains(filtered, "No cards match") {
+		t.Error("a filtered empty index should say no cards match")
+	}
+}

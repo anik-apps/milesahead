@@ -26,7 +26,7 @@
          hides Go, which is there for browsers without JavaScript. */}}
     <div class="cards-results">
         <p class="cards-results-summary" role="status">
-            <span class="cards-results-count">{{if .Count}}{{.CountText}}{{else}}No cards match{{end}}</span>
+            <span class="cards-results-count">{{if .Count}}{{.CountText}}{{else if .Filtered}}No cards match{{else}}No cards yet{{end}}</span>
             {{range .Applied}}<span class="cards-results-item"><span class="active-filters-sep" aria-hidden="true">·</span> <span class="cards-results-applied">{{.}}</span></span>
             {{end}}{{range .Legacy}}<span class="cards-results-item"><span class="active-filters-sep" aria-hidden="true">·</span> <a href="{{.RemoveURL}}" class="filter-remove" aria-label="Remove filter: {{.Label}}">{{.Label}}<span class="filter-remove-x" aria-hidden="true">✕</span></a></span>
             {{end}}{{if .Filtered}}<span class="cards-results-item"><span class="active-filters-sep" aria-hidden="true">·</span> <a href="{{.ClearURL}}" class="filter-clear">Clear</a></span>{{end}}
