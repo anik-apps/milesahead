@@ -208,12 +208,40 @@ func wireSignup(app signupMailerSetter, cfg *config.Config, m web.ConfirmationMa
 	return true
 }
 
+// checkConfig loads the config at path as startup would, without starting
+// anything. The deploy workflow runs it on the config it generated before
+// copying it to the server, so a bad value (a secret that breaks the YAML,
+// a non-numeric port) fails the deploy instead of the service.
+func checkConfig(path string) error {
+	cfg, err := config.Load(path)
+	if err != nil {
+		return err
+	}
+	if cfg.Server.Port <= 0 {
+		return fmt.Errorf("server.port must be set")
+	}
+	if cfg.DB.Path == "" {
+		return fmt.Errorf("db.path must be set")
+	}
+	return nil
+}
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
 	configPath := flag.String("config", "config.yaml", "path to config file")
+	checkOnly := flag.Bool("check-config", false, "load the config file, report whether it is valid, and exit (non-zero if not)")
 	flag.Parse()
+
+	if *checkOnly {
+		if err := checkConfig(*configPath); err != nil {
+			fmt.Fprintln(os.Stderr, "config invalid:", err)
+			os.Exit(1)
+		}
+		fmt.Println("config ok:", *configPath)
+		return
+	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
