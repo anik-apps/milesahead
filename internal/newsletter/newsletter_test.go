@@ -12,6 +12,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/mail"
 )
 
 // mockSender records calls to SendNewsletter.
@@ -22,10 +23,10 @@ type mockSender struct {
 type sendCall struct {
 	subject    string
 	html       string
-	recipients []string
+	recipients []mail.Recipient
 }
 
-func (m *mockSender) SendNewsletter(subject, htmlContent string, recipients []string) (int, error) {
+func (m *mockSender) SendNewsletter(subject, htmlContent string, recipients []mail.Recipient) (int, error) {
 	m.calls = append(m.calls, sendCall{subject: subject, html: htmlContent, recipients: recipients})
 	return len(recipients), nil
 }
@@ -367,8 +368,9 @@ func TestBuildTemplateData_FeaturedLeadStory(t *testing.T) {
 	if len(data.Sidebar) != 2 {
 		t.Errorf("sidebar count = %d, want 2", len(data.Sidebar))
 	}
-	if data.UnsubscribeURL != "https://example.com/unsubscribe" {
-		t.Errorf("unsubscribe URL = %q", data.UnsubscribeURL)
+	// Each copy sent gets its reader's own link in place of the placeholder.
+	if data.UnsubscribeURL != mail.UnsubscribeURLPlaceholder {
+		t.Errorf("unsubscribe URL = %q, want the per-reader placeholder", data.UnsubscribeURL)
 	}
 }
 

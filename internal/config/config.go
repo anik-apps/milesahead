@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 
@@ -99,6 +100,16 @@ type MailConfig struct {
 type NewsletterConfig struct {
 	SendTime string `yaml:"send_time"`
 	Timezone string `yaml:"timezone"`
+	// SignupEnabled opens newsletter sign-up: the header, footer, home and
+	// article placements, the /subscribe form and the confirmation email.
+	// Off by default, and treated as off at startup when the SMTP settings
+	// look unset, so readers never sign up for email that cannot be sent.
+	SignupEnabled bool `yaml:"signup_enabled"`
+	// UnsubscribeMailbox, when set, is added to every newsletter's
+	// List-Unsubscribe header as a mailto. Set it only to a mailbox someone
+	// reads and acts on; empty (the default), the header has the one-click
+	// https link alone, which is what Gmail and Yahoo require.
+	UnsubscribeMailbox string `yaml:"unsubscribe_mailbox"`
 }
 
 type VotesConfig struct {
@@ -123,29 +134,30 @@ type Config struct {
 	Site       SiteConfig       `yaml:"site"`
 }
 
-var envVarPattern = regexp.MustCompile(`\$\{(\w+)\}`)
+// envVarPattern is a string value that is exactly ${NAME}.
+var envVarPattern = regexp.MustCompile(`^\$\{(\w+)\}$`)
 
-// Load reads a YAML config file from the given path, expands any ${ENV_VAR}
-// patterns with the corresponding environment variable values, and returns
-// the parsed Config.
+// Load reads a YAML config file from the given path and returns the parsed
+// Config. A string value that is exactly ${NAME} is replaced by that
+// environment variable, when it is set.
+//
+// The replacement happens after parsing, on whole values only. It used to be
+// a text substitution before parsing, so a secret holding a quote broke the
+// YAML, and a value written into the file (by the deploy workflow, from a
+// secret) that happened to contain ${NAME} was rewritten. A value can still
+// not be the literal text ${NAME} on its own; and numbers cannot come from
+// the environment this way.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
 	}
 
-	expanded := envVarPattern.ReplaceAllFunc(data, func(match []byte) []byte {
-		varName := envVarPattern.FindSubmatch(match)[1]
-		if val, ok := os.LookupEnv(string(varName)); ok {
-			return []byte(val)
-		}
-		return match
-	})
-
 	var cfg Config
-	if err := yaml.Unmarshal(expanded, &cfg); err != nil {
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
+	expandEnv(reflect.ValueOf(&cfg).Elem())
 
 	// Unset means shadow: the check starts out observing, and blocking is an
 	// explicit decision. An unknown value is an error rather than a silent
@@ -165,4 +177,32 @@ func Load(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// expandEnv replaces every string in v that is exactly ${NAME} with the
+// environment variable NAME, if it is set. The value is used as it is: it
+// is not parsed as YAML, and ${...} inside it is left alone.
+func expandEnv(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Pointer:
+		if !v.IsNil() {
+			expandEnv(v.Elem())
+		}
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if v.Field(i).CanSet() {
+				expandEnv(v.Field(i))
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			expandEnv(v.Index(i))
+		}
+	case reflect.String:
+		if m := envVarPattern.FindStringSubmatch(v.String()); m != nil {
+			if val, ok := os.LookupEnv(m[1]); ok {
+				v.SetString(val)
+			}
+		}
+	}
 }

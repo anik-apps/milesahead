@@ -366,6 +366,7 @@ func TestFeed_ReturnsValidRSS(t *testing.T) {
 
 func TestSubscribe_Success(t *testing.T) {
 	app, database := setupPublicTestApp(t)
+	app.SetConfirmationMailer(&fakeMailer{}) // sign-up open
 
 	form := strings.NewReader("email=test@example.com")
 	req := httptest.NewRequest(http.MethodPost, "/subscribe", form)
@@ -399,6 +400,7 @@ func TestSubscribe_Success(t *testing.T) {
 
 func TestSubscribe_InvalidEmail(t *testing.T) {
 	app, _ := setupPublicTestApp(t)
+	app.SetConfirmationMailer(&fakeMailer{}) // sign-up open
 
 	form := strings.NewReader("email=invalid")
 	req := httptest.NewRequest(http.MethodPost, "/subscribe", form)

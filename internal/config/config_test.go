@@ -274,3 +274,30 @@ func TestLoadConfig_StoryDedup(t *testing.T) {
 		})
 	}
 }
+
+// ${NAME} is replaced only when it is the whole value, and the replacement
+// is used verbatim: a secret holding quotes, backslashes or ${...} neither
+// breaks the YAML nor is expanded again. Text that merely contains ${NAME}
+// (a value the deploy workflow wrote from a secret) is left alone.
+func TestLoad_EnvExpansionIsWholeValueAndVerbatim(t *testing.T) {
+	t.Setenv("SMTP_PASSWORD", `pa"ss\word ${HOME} $(id) `+"`id`"+` #x`)
+	t.Setenv("HOME", "/home/should-not-appear")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	yamlText := "mail:\n  smtp:\n    password: \"${SMTP_PASSWORD}\"\n    user: \"keep ${HOME} literal\"\n    from: \"${UNSET_VAR_FOR_TEST}\"\n"
+	if err := os.WriteFile(path, []byte(yamlText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `pa"ss\word ${HOME} $(id) ` + "`id`" + ` #x`; cfg.Mail.SMTP.Password != want {
+		t.Errorf("password = %q, want %q", cfg.Mail.SMTP.Password, want)
+	}
+	if cfg.Mail.SMTP.User != "keep ${HOME} literal" {
+		t.Errorf("user = %q, want the text left alone", cfg.Mail.SMTP.User)
+	}
+	if cfg.Mail.SMTP.From != "${UNSET_VAR_FOR_TEST}" {
+		t.Errorf("from = %q, want an unset variable left as written", cfg.Mail.SMTP.From)
+	}
+}

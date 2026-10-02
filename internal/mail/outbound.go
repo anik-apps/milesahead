@@ -1,8 +1,12 @@
 package mail
 
 import (
+	"errors"
 	"fmt"
+	"html"
 	"io"
+	netmail "net/mail"
+	"strings"
 
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
@@ -23,6 +27,12 @@ type Sender struct {
 	from     string
 	smtpUser string
 	dialFn   DialFunc
+	// newsletterWhen is how often the newsletter comes, for the
+	// confirmation email; see SetNewsletterSchedule.
+	newsletterWhen string
+	// unsubscribeMailbox, when set, gets a mailto in List-Unsubscribe; see
+	// SetUnsubscribeMailbox.
+	unsubscribeMailbox string
 }
 
 // NewSender creates a new Sender configured with SMTP settings.
@@ -65,9 +75,17 @@ func (s *Sender) SendAdminNotification(toEmail string, article *db.GeneratedArti
 	return s.send(m)
 }
 
-// SendConfirmation sends a subscription confirmation email.
+// SetNewsletterSchedule sets how the confirmation email says the
+// newsletter comes, "every Saturday at 8:00 AM ET"
+// (newsletter.WeeklySendWhen). Unset, it says "once a week".
+func (s *Sender) SetNewsletterSchedule(when string) {
+	s.newsletterWhen = when
+}
+
+// SendConfirmation sends a subscription confirmation email, in plain text
+// and HTML, with absolute links to https://domain.
 func (s *Sender) SendConfirmation(toEmail, token, domain string) error {
-	htmlBody, err := RenderConfirmation(token, domain)
+	htmlBody, textBody, err := RenderConfirmation(token, domain, s.newsletterWhen)
 	if err != nil {
 		return fmt.Errorf("rendering confirmation: %w", err)
 	}
@@ -76,17 +94,48 @@ func (s *Sender) SendConfirmation(toEmail, token, domain string) error {
 	m.SetHeader("From", s.from)
 	m.SetHeader("To", toEmail)
 	m.SetHeader("Subject", "Confirm your subscription to MilesAhead")
-	m.SetBody("text/html", htmlBody)
+	m.SetBody("text/plain", textBody)
+	m.AddAlternative("text/html", htmlBody)
 
 	return s.send(m)
 }
 
+// Recipient is one subscriber a newsletter goes to, with the link that
+// unsubscribes that subscriber alone.
+type Recipient struct {
+	Email string
+	// UnsubscribeURL is the subscriber's own absolute unsubscribe link,
+	// https://DOMAIN/unsubscribe?token=... GET shows a confirm button; POST
+	// (the button, or a mail provider's RFC 8058 one-click request)
+	// unsubscribes.
+	UnsubscribeURL string
+}
+
+// UnsubscribeURLPlaceholder stands in a newsletter's HTML wherever the
+// reader's own unsubscribe link goes. The issue is rendered once, and
+// SendNewsletter puts each recipient's link in place of it.
+const UnsubscribeURLPlaceholder = "https://unsubscribe.invalid/milesahead-reader-link"
+
 // SendNewsletter sends the newsletter to each of recipients in turn, and
 // returns how many of them, from the first, it reached. It stops at the
 // first failure, which is then at recipients[sent].
-func (s *Sender) SendNewsletter(subject, htmlContent string, recipients []string) (sent int, err error) {
+//
+// Each copy carries its recipient's own unsubscribe link, in the body (in
+// place of UnsubscribeURLPlaceholder) and in the List-Unsubscribe and
+// List-Unsubscribe-Post headers (RFC 2369, RFC 8058), which Gmail and Yahoo
+// require of bulk senders; see setListUnsubscribe. Nothing is sent unless every copy can have one:
+// htmlContent must hold the placeholder and every recipient an https link.
+func (s *Sender) SendNewsletter(subject, htmlContent string, recipients []Recipient) (sent int, err error) {
 	if len(recipients) == 0 {
 		return 0, nil
+	}
+	if !strings.Contains(htmlContent, UnsubscribeURLPlaceholder) {
+		return 0, errors.New("newsletter not sent: its HTML has no place for the reader's unsubscribe link")
+	}
+	for i, r := range recipients {
+		if !strings.HasPrefix(r.UnsubscribeURL, "https://") {
+			return 0, fmt.Errorf("newsletter not sent: subscriber %d has no https unsubscribe link", i+1)
+		}
 	}
 
 	sc, err := s.dialFn()
@@ -95,20 +144,53 @@ func (s *Sender) SendNewsletter(subject, htmlContent string, recipients []string
 	}
 	defer sc.Close()
 
-	for _, to := range recipients {
+	for _, r := range recipients {
 		m := gomail.NewMessage()
 		m.SetHeader("From", s.from)
-		m.SetHeader("To", to)
+		m.SetHeader("To", r.Email)
 		m.SetHeader("Subject", subject)
-		m.SetBody("text/html", htmlContent)
+		s.setListUnsubscribe(m, r.UnsubscribeURL)
+		m.SetBody("text/html", strings.ReplaceAll(htmlContent, UnsubscribeURLPlaceholder, html.EscapeString(r.UnsubscribeURL)))
 
 		if err := gomail.Send(sc, m); err != nil {
-			return sent, fmt.Errorf("sending newsletter to %s: %w", to, err)
+			return sent, fmt.Errorf("sending newsletter to %s: %w", r.Email, err)
 		}
 		sent++
 	}
 
 	return sent, nil
+}
+
+// setListUnsubscribe adds the headers mail providers use for their own
+// Unsubscribe button: the reader's https link, which takes the one-click
+// POST (what Gmail and Yahoo require), and, only when a monitored mailbox is
+// set (SetUnsubscribeMailbox), a mailto to it. A mailto to an address nobody
+// reads would leave readers who use it thinking they had unsubscribed.
+func (s *Sender) setListUnsubscribe(m *gomail.Message, unsubscribeURL string) {
+	values := []string{"<" + unsubscribeURL + ">"}
+	if s.unsubscribeMailbox != "" {
+		values = append(values, "<mailto:"+s.unsubscribeMailbox+"?subject=unsubscribe>")
+	}
+	m.SetHeader("List-Unsubscribe", values...)
+	m.SetHeader("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
+}
+
+// SetUnsubscribeMailbox adds a mailto to that address to every newsletter's
+// List-Unsubscribe header. Set it only to a mailbox someone reads and acts
+// on (newsletter.unsubscribe_mailbox). An empty or invalid address leaves the
+// mailto out; it reports an invalid one.
+func (s *Sender) SetUnsubscribeMailbox(addr string) error {
+	s.unsubscribeMailbox = ""
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return nil
+	}
+	parsed, err := netmail.ParseAddress(addr)
+	if err != nil {
+		return fmt.Errorf("unsubscribe mailbox %q is not an email address: %w", addr, err)
+	}
+	s.unsubscribeMailbox = parsed.Address
+	return nil
 }
 
 // SendVoteAlert notifies the admin of high downvotes on an article.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/mail"
 )
 
 const (
@@ -172,7 +173,9 @@ func TestSendDaily_RerendersTheStoredIssue(t *testing.T) {
 	if nl.Status != "sent" {
 		t.Errorf("status = %q, want sent", nl.Status)
 	}
-	if nl.HTMLContent != html {
+	// The stored copy is the issue as sent, with the plain /unsubscribe
+	// link in place of each reader's own.
+	if nl.HTMLContent != svc.forDisplay(html) {
 		t.Error("the stored issue should be what was sent")
 	}
 }
@@ -653,7 +656,7 @@ type hookSender struct {
 	reach  int
 }
 
-func (h *hookSender) SendNewsletter(subject, htmlContent string, recipients []string) (int, error) {
+func (h *hookSender) SendNewsletter(subject, htmlContent string, recipients []mail.Recipient) (int, error) {
 	if h.during != nil {
 		h.during()
 	}
@@ -827,7 +830,7 @@ func TestSendDaily_PartialSendStaysSent(t *testing.T) {
 		t.Errorf("an address in the SMTP error should be redacted: %q", withAddr.Error())
 	}
 	reached := sender.calls[0].recipients
-	if len(reached) != 2 || partial.FailedAt == reached[0] || partial.FailedAt == reached[1] {
+	if len(reached) != 2 || partial.FailedAt == reached[0].Email || partial.FailedAt == reached[1].Email {
 		t.Errorf("reached %v, failed at %q: want it to fail at the third", reached, partial.FailedAt)
 	}
 	nl, gerr := database.GetNewsletterByDate(svc.todayDate())

@@ -5,9 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -139,12 +142,107 @@ func newAISideJobs(cfg *config.Config, database *db.Database, client ai.HFClient
 	}
 }
 
+// warnIfSMTPUnset logs, once at startup, when the SMTP settings look unset
+// (smtpLooksUnset, passed in as unset): no email can be sent, so the weekly
+// newsletter is skipped and sign-up stays closed. Only the host is logged,
+// never the credentials.
+func warnIfSMTPUnset(c config.SMTPConfig, unset bool) {
+	if unset {
+		slog.Warn("mail: SMTP is not configured; no newsletter or confirmation email will be sent",
+			"host", c.Host, "from_set", c.From != "")
+	}
+}
+
+// smtpLooksUnset reports whether c cannot be a working SMTP setup: no host
+// or From, credentials still holding a placeholder ("placeholder", or an
+// unexpanded "${...}"), or a relay on this machine that nothing answers.
+// Empty credentials are allowed, for a relay that needs none.
+func smtpLooksUnset(c config.SMTPConfig) bool {
+	if c.Host == "" || c.From == "" {
+		return true
+	}
+	for _, v := range []string{c.User, c.Password} {
+		if v == "placeholder" || strings.HasPrefix(v, "${") {
+			return true
+		}
+	}
+	switch c.Host {
+	case "localhost", "127.0.0.1", "::1":
+		return !smtpReachable(net.JoinHostPort(c.Host, strconv.Itoa(c.Port)))
+	}
+	return false
+}
+
+// smtpReachable reports whether something accepts connections at addr.
+// Tests replace it.
+var smtpReachable = func(addr string) bool {
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// signupMailerSetter is the part of web.App wireSignup uses.
+type signupMailerSetter interface {
+	SetConfirmationMailer(web.ConfirmationMailer)
+}
+
+// wireSignup opens newsletter sign-up (placements, the /subscribe form and
+// confirmation emails, all sent by m) when newsletter.signup_enabled is on
+// and SMTP looks configured (smtpUnset false; see smtpLooksUnset), and
+// reports whether it did. On with SMTP unset is an ERROR, and sign-up stays
+// closed: readers would sign up and never get the email.
+func wireSignup(app signupMailerSetter, cfg *config.Config, smtpUnset bool, m web.ConfirmationMailer) bool {
+	if !cfg.Newsletter.SignupEnabled {
+		slog.Info("newsletter sign-up is closed (newsletter.signup_enabled is off)")
+		return false
+	}
+	if smtpUnset {
+		slog.Error("newsletter sign-up stays closed: newsletter.signup_enabled is on but SMTP is not configured",
+			"host", cfg.Mail.SMTP.Host, "port", cfg.Mail.SMTP.Port, "from_set", cfg.Mail.SMTP.From != "")
+		return false
+	}
+	app.SetConfirmationMailer(m)
+	slog.Info("newsletter sign-up is open", "smtp_host", cfg.Mail.SMTP.Host)
+	return true
+}
+
+// checkConfig loads the config at path as startup would, without starting
+// anything. The deploy workflow runs it on the config it generated before
+// copying it to the server, so a bad value (a secret that breaks the YAML,
+// a non-numeric port) fails the deploy instead of the service.
+func checkConfig(path string) error {
+	cfg, err := config.Load(path)
+	if err != nil {
+		return err
+	}
+	if cfg.Server.Port <= 0 {
+		return fmt.Errorf("server.port must be set")
+	}
+	if cfg.DB.Path == "" {
+		return fmt.Errorf("db.path must be set")
+	}
+	return nil
+}
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
 	configPath := flag.String("config", "config.yaml", "path to config file")
+	checkOnly := flag.Bool("check-config", false, "load the config file, report whether it is valid, and exit (non-zero if not)")
 	flag.Parse()
+
+	if *checkOnly {
+		if err := checkConfig(*configPath); err != nil {
+			fmt.Fprintln(os.Stderr, "config invalid:", err)
+			os.Exit(1)
+		}
+		fmt.Println("config ok:", *configPath)
+		return
+	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -240,6 +338,13 @@ func main() {
 	// Image scoring, the newsletter pick and card-update detection, all on the
 	// short-call chain.
 	mailSender := mail.NewSender(cfg.Mail.SMTP)
+	mailSender.SetNewsletterSchedule(newsletter.WeeklySendWhen)
+	if err := mailSender.SetUnsubscribeMailbox(cfg.Newsletter.UnsubscribeMailbox); err != nil {
+		slog.Warn("mail: List-Unsubscribe will have no mailto", "error", err)
+	}
+	// Checked once: it can dial a local relay.
+	smtpUnset := smtpLooksUnset(cfg.Mail.SMTP)
+	warnIfSMTPUnset(cfg.Mail.SMTP, smtpUnset)
 	side := newAISideJobs(cfg, database, hfClient, mailSender, visionModel, enrichModels)
 
 	// Enrichment runs as a reconciliation pass rather than inline in article
@@ -267,6 +372,10 @@ func main() {
 		}
 	})
 	newsletterSvc := side.newsletter
+	// With no SMTP, the weekly send is skipped (a warning, not a failure)
+	// and the admin's Send says why, rather than dialling a relay that is
+	// not there and firing the send-failed alert every Saturday.
+	newsletterSvc.SetMailUnavailable(smtpUnset)
 
 	// Clustering and generation, with both duplicate checks; see
 	// clusterGenerator.
@@ -344,6 +453,11 @@ func main() {
 		slog.Error("failed to create web app", "error", err)
 		os.Exit(1)
 	}
+
+	// Newsletter sign-up, with confirmation emails from the same SMTP sender
+	// as the newsletter, only when newsletter.signup_enabled is on and SMTP
+	// is configured.
+	wireSignup(app, cfg, smtpUnset, mailSender)
 
 	// Web server with explicit Server struct for graceful shutdown
 	httpServer := &http.Server{
