@@ -18,7 +18,6 @@
     var body = panel.querySelector('.arch-panel-body');
     var closeBtn = panel.querySelector('.arch-panel-close');
     var status = fig.querySelector('.arch-status');
-    var edgeGroup = svg.querySelector('.arch-edges');
     var edges = Array.prototype.slice.call(svg.querySelectorAll('.arch-edge'));
     var nodes = Array.prototype.slice.call(svg.querySelectorAll('.arch-node'));
     var list = document.querySelector('.arch-list');
@@ -74,13 +73,14 @@
       });
     }
 
-    // Highlights a node's edges, drawn last so they sit above the others.
+    // Highlights a node's edges (and scheduler jobs), drawn last in their
+    // layer so they sit above the others.
     function mark(id, cls) {
       edges.forEach(function (g) { g.classList.remove(cls); });
       if (!id) return;
       edgesOf(id).forEach(function (g) {
         g.classList.add(cls);
-        edgeGroup.appendChild(g);
+        g.parentNode.appendChild(g);
       });
     }
 

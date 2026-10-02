@@ -9,6 +9,7 @@
   --arch-muted: #5b6474;
   --arch-lane-a: #f6f8fb;
   --arch-lane-b: #eef2f7;
+  --arch-lane-rail: #f1eff8;
   --arch-lane-label: #5b6474;
   --arch-node: #ffffff;
   --arch-border: #8a94a6;
@@ -27,6 +28,7 @@
   --arch-muted: #a3acba;
   --arch-lane-a: #161a20;
   --arch-lane-b: #1b2028;
+  --arch-lane-rail: #1c1a24;
   --arch-lane-label: #a3acba;
   --arch-node: #20252e;
   --arch-border: #6f7a8c;
@@ -76,6 +78,7 @@
 
 .arch-lane--a { fill: var(--arch-lane-a); }
 .arch-lane--b { fill: var(--arch-lane-b); }
+.arch-lane--rail { fill: var(--arch-lane-rail); }
 
 .arch-lane-label {
   fill: var(--arch-lane-label);
@@ -116,6 +119,39 @@
 
 .arch-edge-label--b {
   stroke: var(--arch-lane-b);
+}
+
+.arch-edge-label--rail {
+  stroke: var(--arch-lane-rail);
+}
+
+/* A scheduler job, drawn inside the node it runs. It sits over the node, so
+   clicks go through to the node. */
+.arch-triggers {
+  pointer-events: none;
+}
+
+.arch-trigger-label {
+  fill: var(--arch-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.arch-trigger-clock,
+.arch-trigger-hands {
+  fill: none;
+  stroke: var(--arch-muted);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+}
+
+.arch-trigger.is-on .arch-trigger-label {
+  fill: var(--arch-accent);
+}
+
+.arch-trigger.is-on .arch-trigger-clock,
+.arch-trigger.is-on .arch-trigger-hands {
+  stroke: var(--arch-accent);
 }
 
 .arch-edge.is-on .arch-edge-line {
