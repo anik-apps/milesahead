@@ -204,3 +204,68 @@ func emailCount(t *testing.T, outcome string) float64 {
 	}
 	return m.GetCounter().GetValue()
 }
+
+// With SMTP not configured, the scheduled weekly is skipped with a warning:
+// nothing is dialled, nothing counted as failed, and the issue stays unsent
+// for when mail works. The admin's daily Send says why instead.
+func TestSend_MailUnavailable(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	_, live, _ := seed(t, database)
+	subscribeTwo(t, database)
+
+	sender := &mockSender{}
+	svc := NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "America/New_York"}, nil, nil, "milesahead.example")
+	svc.SetMailUnavailable(true)
+	if _, err := database.CreateNewsletter(&db.Newsletter{
+		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &live,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	failed0 := emailCount(t, metrics.EmailFailed)
+	if err := svc.SendWeekly(); err != nil {
+		t.Errorf("SendWeekly() = %v, want a skipped send (nil)", err)
+	}
+	if len(sender.calls) != 0 {
+		t.Error("nothing should be sent without SMTP")
+	}
+	if d := emailCount(t, metrics.EmailFailed) - failed0; d != 0 {
+		t.Errorf("a skipped send counted %v failures, want 0", d)
+	}
+	if nl, _ := database.GetNewsletterByDate(svc.thisSaturday()); nl == nil || nl.Status != "auto_approved" {
+		t.Errorf("the weekly should stay unsent, got %+v", nl)
+	}
+
+	daily := NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "UTC"}, nil, nil, "milesahead.example")
+	daily.SetMailUnavailable(true)
+	if err := daily.SendDaily(); !errors.Is(err, ErrMailUnavailable) {
+		t.Errorf("SendDaily() = %v, want ErrMailUnavailable", err)
+	}
+	if len(sender.calls) != 0 {
+		t.Error("nothing should be sent without SMTP")
+	}
+}
+
+// An issue is never recorded as sent to nobody: with no subscriber left to
+// send to (none has an unsubscribe token), the send is refused and the
+// issue keeps its status.
+func TestSendOnce_RefusesEmptyRecipientList(t *testing.T) {
+	setTemplateDir(t)
+	database, cleanup := setupTestDB(t)
+	defer cleanup()
+	seed(t, database)
+	sender := &mockSender{}
+	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
+	id := storeDaily(t, database, svc, "approved", "<p>x</p>")
+	nl := &db.Newsletter{ID: id, Date: svc.todayDate(), Status: "approved", Subject: "s"}
+	if err := svc.sendOnce(nl, "<p>x</p>", nil); !errors.Is(err, ErrNoRecipients) {
+		t.Errorf("sendOnce with no recipients = %v, want ErrNoRecipients", err)
+	}
+	if got, _ := database.GetNewsletterByDate(svc.todayDate()); got == nil || got.Status != "approved" {
+		t.Errorf("the issue should keep its status, got %+v", got)
+	}
+	if len(sender.calls) != 0 {
+		t.Error("nothing should be sent")
+	}
+}

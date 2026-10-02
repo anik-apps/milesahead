@@ -87,6 +87,16 @@ type Service struct {
 	// now is the clock: time.Now, except in tests that need a given time
 	// of day.
 	now func() time.Time
+	// mailUnavailable is set when SMTP is not configured; see
+	// SetMailUnavailable.
+	mailUnavailable bool
+}
+
+// SetMailUnavailable records that outgoing mail is not configured. The
+// weekly send is then skipped with a warning (not counted as a failure, and
+// the issue stays unsent), and SendDaily returns ErrMailUnavailable.
+func (s *Service) SetMailUnavailable(unavailable bool) {
+	s.mailUnavailable = unavailable
 }
 
 // NewService creates a new newsletter Service.
@@ -736,6 +746,11 @@ func (s *Service) SendWeekly() error {
 		slog.Info("no confirmed subscribers, skipping send")
 		return nil
 	}
+	if s.mailUnavailable {
+		slog.Warn("weekly newsletter not sent: outgoing mail (SMTP) is not configured; it stays unsent",
+			"date", sendDate, "subscribers", len(subscribers))
+		return nil
+	}
 
 	// Re-render template at send time to reflect any admin overrides, and
 	// because the newsletter was built the evening before: an offer in it
@@ -862,6 +877,11 @@ var (
 	ErrAlreadySent = errors.New("nothing sent: today's newsletter was already sent")
 	// ErrNoSubscribers: there is no one to send it to.
 	ErrNoSubscribers = errors.New("nothing sent: there are no confirmed subscribers")
+	// ErrMailUnavailable: outgoing mail (SMTP) is not configured.
+	ErrMailUnavailable = errors.New("nothing sent: outgoing mail (SMTP) is not configured; set mail.smtp in the config")
+	// ErrNoRecipients: no confirmed subscriber can be sent a copy (none has
+	// an unsubscribe token).
+	ErrNoRecipients = errors.New("nothing sent: no confirmed subscriber has an unsubscribe link")
 )
 
 // dailyWindow is when the articles in today's daily nl may have been
@@ -975,6 +995,9 @@ func (s *Service) SendDaily() error {
 	if len(subscribers) == 0 {
 		return ErrNoSubscribers
 	}
+	if s.mailUnavailable {
+		return ErrMailUnavailable
+	}
 
 	since, until := s.dailyWindow(nl, s.now())
 	articles, err := s.listLiveSince(since)
@@ -1014,6 +1037,10 @@ func (s *Service) SendDaily() error {
 // got. It returns ErrAlreadySent when the issue was sent since nl was read,
 // and an error naming the new status when an admin changed it.
 func (s *Service) sendOnce(nl *db.Newsletter, html string, recipients []mail.Recipient) error {
+	// Never record an issue as sent to nobody.
+	if len(recipients) == 0 {
+		return ErrNoRecipients
+	}
 	claimed, err := s.db.ClaimNewsletterSend(nl.ID, nl.Status)
 	if err != nil {
 		return fmt.Errorf("nothing sent: could not record the newsletter as sent: %w", err)

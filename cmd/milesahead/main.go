@@ -142,12 +142,13 @@ func newAISideJobs(cfg *config.Config, database *db.Database, client ai.HFClient
 	}
 }
 
-// warnIfSMTPUnset logs, once at startup, when the SMTP settings look like
-// the example's placeholders: confirmation and newsletter emails would then
-// fail on every send. Only the host is logged, never the credentials.
-func warnIfSMTPUnset(c config.SMTPConfig) {
-	if smtpLooksUnset(c) {
-		slog.Warn("mail: SMTP is not configured; confirmation and newsletter emails will fail to send",
+// warnIfSMTPUnset logs, once at startup, when the SMTP settings look unset
+// (smtpLooksUnset, passed in as unset): no email can be sent, so the weekly
+// newsletter is skipped and sign-up stays closed. Only the host is logged,
+// never the credentials.
+func warnIfSMTPUnset(c config.SMTPConfig, unset bool) {
+	if unset {
+		slog.Warn("mail: SMTP is not configured; no newsletter or confirmation email will be sent",
 			"host", c.Host, "from_set", c.From != "")
 	}
 }
@@ -190,15 +191,15 @@ type signupMailerSetter interface {
 
 // wireSignup opens newsletter sign-up (placements, the /subscribe form and
 // confirmation emails, all sent by m) when newsletter.signup_enabled is on
-// and SMTP looks configured, and reports whether it did. On with SMTP unset
-// is an ERROR, and sign-up stays closed: readers would sign up and never get
-// the email.
-func wireSignup(app signupMailerSetter, cfg *config.Config, m web.ConfirmationMailer) bool {
+// and SMTP looks configured (smtpUnset false; see smtpLooksUnset), and
+// reports whether it did. On with SMTP unset is an ERROR, and sign-up stays
+// closed: readers would sign up and never get the email.
+func wireSignup(app signupMailerSetter, cfg *config.Config, smtpUnset bool, m web.ConfirmationMailer) bool {
 	if !cfg.Newsletter.SignupEnabled {
 		slog.Info("newsletter sign-up is closed (newsletter.signup_enabled is off)")
 		return false
 	}
-	if smtpLooksUnset(cfg.Mail.SMTP) {
+	if smtpUnset {
 		slog.Error("newsletter sign-up stays closed: newsletter.signup_enabled is on but SMTP is not configured",
 			"host", cfg.Mail.SMTP.Host, "port", cfg.Mail.SMTP.Port, "from_set", cfg.Mail.SMTP.From != "")
 		return false
@@ -341,7 +342,9 @@ func main() {
 	if err := mailSender.SetUnsubscribeMailbox(cfg.Newsletter.UnsubscribeMailbox); err != nil {
 		slog.Warn("mail: List-Unsubscribe will have no mailto", "error", err)
 	}
-	warnIfSMTPUnset(cfg.Mail.SMTP)
+	// Checked once: it can dial a local relay.
+	smtpUnset := smtpLooksUnset(cfg.Mail.SMTP)
+	warnIfSMTPUnset(cfg.Mail.SMTP, smtpUnset)
 	side := newAISideJobs(cfg, database, hfClient, mailSender, visionModel, enrichModels)
 
 	// Enrichment runs as a reconciliation pass rather than inline in article
@@ -369,6 +372,10 @@ func main() {
 		}
 	})
 	newsletterSvc := side.newsletter
+	// With no SMTP, the weekly send is skipped (a warning, not a failure)
+	// and the admin's Send says why, rather than dialling a relay that is
+	// not there and firing the send-failed alert every Saturday.
+	newsletterSvc.SetMailUnavailable(smtpUnset)
 
 	// Clustering and generation, with both duplicate checks; see
 	// clusterGenerator.
@@ -450,7 +457,7 @@ func main() {
 	// Newsletter sign-up, with confirmation emails from the same SMTP sender
 	// as the newsletter, only when newsletter.signup_enabled is on and SMTP
 	// is configured.
-	wireSignup(app, cfg, mailSender)
+	wireSignup(app, cfg, smtpUnset, mailSender)
 
 	// Web server with explicit Server struct for graceful shutdown
 	httpServer := &http.Server{

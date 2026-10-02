@@ -108,7 +108,7 @@ func TestWireSignup(t *testing.T) {
 			logs := captureLog(t)
 			app := &recordingApp{}
 			cfg := &config.Config{Mail: config.MailConfig{SMTP: tc.smtp}, Newsletter: config.NewsletterConfig{SignupEnabled: tc.enabled}}
-			open := wireSignup(app, cfg, sender)
+			open := wireSignup(app, cfg, smtpLooksUnset(tc.smtp), sender)
 			if open != tc.wantOpen || (app.mailer != nil) != tc.wantOpen {
 				t.Errorf("wireSignup = %v (mailer set %v), want open %v", open, app.mailer != nil, tc.wantOpen)
 			}

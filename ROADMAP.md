@@ -344,7 +344,9 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       and newsletter sends (one "sent" per reader reached, one "failed" per send that
       stops); `deploy/grafana-alerts.json` has two rules, two or more failed
       confirmations in 6 hours and any failed newsletter send in 6 hours. Import them
-      into Grafana with the others.
+      into Grafana with the others. While SMTP looks unset, the Saturday send is
+      skipped with a warning (not a failure, so the alert stays quiet, and the issue
+      stays unsent) and the admin's Send says SMTP is not configured.
 
       **Turn-on checklist.** Production's `mail.smtp` (checked read-only on 2026-10-01)
       is `localhost:587` with placeholder credentials and nothing listens on a mail
