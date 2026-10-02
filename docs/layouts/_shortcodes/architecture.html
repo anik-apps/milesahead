@@ -13,14 +13,14 @@
 {{- $W := $d.width -}}
 {{- $H := $d.height -}}
 {{- $RX := $d.rail_x -}}
-{{- $NW := 160 -}}
-{{- $NH := 64 -}}
+{{- $NW := 174 -}}
+{{- $NH := 74 -}}
 {{- $kinds := dict "vm" "Runs on the VM" "external" "Third-party service" "off" "Not running in production" -}}
 {{- $types := dict -}}
 {{- range $d.types }}{{ $types = merge $types (dict .id .name) }}{{ end -}}
 {{- /* Corner radius per type: a job is a plain rectangle, a service well
   rounded, people a stadium; a database is drawn as a cylinder below. */ -}}
-{{- $radius := dict "job" 3 "service" 18 "people" 32 -}}
+{{- $radius := dict "job" 3 "service" 18 "people" 37 -}}
 {{- /* The scheduler's job for each node, if it has one. */ -}}
 {{- $trig := dict -}}
 {{- range $d.triggers }}{{ $trig = merge $trig (dict .to .label) }}{{ end -}}
@@ -80,7 +80,7 @@
             {{- else }}
             <rect class="arch-node-box" x="{{ $x0 }}" y="{{ $y0 }}" width="{{ $NW }}" height="{{ $NH }}" rx="{{ index $radius $n.type | default 10 }}"/>
             {{- end }}
-            {{- $bx := cond (eq $n.badge "left") (sub $cx 62) (cond (eq $n.badge "corner") (add $cx 78) (add $cx 62)) }}
+            {{- $bx := cond (eq $n.badge "left") (sub $cx 69) (cond (eq $n.badge "corner") (add $cx 85) (add $cx 69)) }}
             <g class="arch-badge" aria-hidden="true">
               <circle class="arch-badge-disc" cx="{{ $bx }}" cy="{{ $y0 }}" r="13"/>
               <use class="arch-badge-icon" href="#arch-i-{{ $n.type }}" x="{{ sub $bx 8 }}" y="{{ sub $y0 8 }}" width="16" height="16"/>

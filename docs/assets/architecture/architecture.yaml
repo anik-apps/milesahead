@@ -8,7 +8,7 @@
 # the rail starts at rail_x. Each band and the rail is drawn as a panel inset
 # by 6 on every side, so 12 separates neighbours; edges between bands cross
 # that gap. Keep nodes, badges and labels inside their panel. A node is
-# 160 x 64, centred on (x, y).
+# 174 x 74, centred on (x, y).
 #
 # Edges are drawn by hand as orthogonal paths (M, H, V) that end on a node's
 # border, so moving a node means redrawing its edges. Every edge between bands
@@ -30,7 +30,7 @@
 # within 40 of its centre, clear of the badge.
 
 width: 1210
-height: 856
+height: 1027
 rail_x: 968
 
 # Component types, in legend order.
@@ -50,12 +50,12 @@ types:
   - {id: docs, name: Docs hosting}
 
 lanes:
-  - {name: Sources, y: 0, h: 108, icon: band-sources}
-  - {name: Ingestion, y: 108, h: 108, icon: band-ingestion}
-  - {name: AI pipeline, y: 216, h: 200, icon: band-ai}
-  - {name: Content & data, y: 416, h: 108, icon: band-content}
-  - {name: Delivery & mail, y: 524, h: 224, icon: band-delivery}
-  - {name: Readers, y: 748, h: 108, icon: people}
+  - {name: Sources, y: 0, h: 130, icon: band-sources}
+  - {name: Ingestion, y: 130, h: 129, icon: band-ingestion}
+  - {name: AI pipeline, y: 259, h: 240, icon: band-ai}
+  - {name: Content & data, y: 499, h: 130, icon: band-content}
+  - {name: Delivery & mail, y: 629, h: 269, icon: band-delivery}
+  - {name: Readers, y: 898, h: 129, icon: people}
   - {name: Operations, rail: true, icon: band-ops}
 
 nodes:
@@ -64,7 +64,7 @@ nodes:
     sub: RSS feeds · blog pages
     lane: 0
     x: 100
-    y: 62
+    y: 74
     type: source
     kind: external
     purpose: |
@@ -84,7 +84,7 @@ nodes:
     sub: 4 free image APIs
     lane: 0
     x: 860
-    y: 62
+    y: 74
     type: api
     kind: external
     purpose: |
@@ -109,7 +109,7 @@ nodes:
     sub: internal/scanner
     lane: 1
     x: 100
-    y: 170
+    y: 204
     type: job
     kind: vm
     purpose: |
@@ -126,8 +126,8 @@ nodes:
     title: Clustering
     sub: internal/cluster
     lane: 1
-    x: 360
-    y: 170
+    x: 350
+    y: 204
     type: job
     kind: vm
     purpose: |
@@ -144,7 +144,7 @@ nodes:
     sub: covered raws · 7-day check
     lane: 1
     x: 590
-    y: 170
+    y: 204
     type: job
     kind: vm
     purpose: |
@@ -172,8 +172,8 @@ nodes:
     title: Scheduler
     sub: cron jobs
     lane: 6
-    x: 1110
-    y: 170
+    x: 1114
+    y: 204
     type: scheduler
     kind: vm
     purpose: |
@@ -199,7 +199,7 @@ nodes:
     sub: write · check · revise
     lane: 2
     x: 330
-    y: 278
+    y: 334
     type: job
     kind: vm
     purpose: |
@@ -222,7 +222,7 @@ nodes:
     sub: integrate.api.nvidia.com
     lane: 2
     x: 590
-    y: 366
+    y: 439
     type: api
     kind: external
     purpose: |
@@ -248,7 +248,7 @@ nodes:
     sub: internal/enrich
     lane: 2
     x: 860
-    y: 278
+    y: 334
     type: job
     kind: vm
     purpose: |
@@ -273,7 +273,7 @@ nodes:
     sub: status · revisions · undo
     lane: 3
     x: 330
-    y: 478
+    y: 574
     type: job
     badge: corner
     kind: vm
@@ -295,7 +295,7 @@ nodes:
     sub: WAL · FTS5 · backups
     lane: 3
     x: 860
-    y: 478
+    y: 574
     type: database
     kind: vm
     purpose: |
@@ -320,7 +320,7 @@ nodes:
     sub: site · admin · API
     lane: 4
     x: 860
-    y: 586
+    y: 703
     type: service
     badge: left
     kind: vm
@@ -344,7 +344,7 @@ nodes:
     sub: TLS · zstd/gzip
     lane: 4
     x: 860
-    y: 698
+    y: 838
     type: proxy
     kind: vm
     purpose: |
@@ -363,7 +363,7 @@ nodes:
     sub: site · docs · mail records
     lane: 4
     x: 620
-    y: 698
+    y: 838
     type: dns
     kind: external
     purpose: |
@@ -384,7 +384,7 @@ nodes:
     sub: IMAP · not running
     lane: 3
     x: 100
-    y: 478
+    y: 574
     type: mail
     badge: corner
     kind: off
@@ -405,7 +405,7 @@ nodes:
     sub: weekly · Saturdays
     lane: 4
     x: 430
-    y: 586
+    y: 703
     type: job
     kind: vm
     purpose: |
@@ -426,7 +426,7 @@ nodes:
     sub: SMTP 587 · STARTTLS
     lane: 4
     x: 430
-    y: 698
+    y: 838
     type: mail
     kind: external
     purpose: |
@@ -460,7 +460,7 @@ nodes:
     sub: readers' mail
     lane: 5
     x: 430
-    y: 810
+    y: 972
     type: mail
     kind: external
     purpose: |
@@ -476,7 +476,7 @@ nodes:
     sub: browsers · the admin
     lane: 5
     x: 860
-    y: 810
+    y: 972
     type: people
     kind: external
     purpose: |
@@ -493,8 +493,8 @@ nodes:
     title: GitHub Actions
     sub: tests gate deploys
     lane: 6
-    x: 1110
-    y: 478
+    x: 1114
+    y: 574
     type: ci
     kind: external
     purpose: |
@@ -513,8 +513,8 @@ nodes:
     title: Docs site
     sub: Cloudflare Pages
     lane: 6
-    x: 1110
-    y: 278
+    x: 1114
+    y: 334
     type: docs
     kind: external
     purpose: |
@@ -529,8 +529,8 @@ nodes:
     title: Grafana Alloy
     sub: metrics · logs
     lane: 6
-    x: 1110
-    y: 698
+    x: 1114
+    y: 838
     type: monitoring
     kind: vm
     purpose: |
@@ -545,8 +545,8 @@ nodes:
     title: Grafana Cloud
     sub: dashboards · alerts
     lane: 6
-    x: 1110
-    y: 810
+    x: 1114
+    y: 972
     type: monitoring
     kind: external
     purpose: |
@@ -566,35 +566,35 @@ nodes:
 
 edges:
   # Sources and ingestion
-  - {from: sources, to: scanner, d: "M130 94 V138"}
-  - {from: scanner, to: cluster, label: "48 h", lx: 230, ly: 163, d: "M180 170 H280"}
-  - {from: cluster, to: dedup, label: "2+ sites", lx: 475, ly: 163, d: "M440 170 H510"}
-  - {from: dedup, to: pipeline, label: "new story", lx: 480, ly: 245, d: "M560 202 V232 H330 V246"}
-  - {from: dedup, to: nvidia, label: "same story?", lx: 596, ly: 240, anchor: start, d: "M590 202 V334"}
-  - {from: imagesrc, to: enrich, label: "search · probe", lx: 854, ly: 125, anchor: end, d: "M860 94 V246"}
+  - {from: sources, to: scanner, d: "M130 111 V167"}
+  - {from: scanner, to: cluster, label: "48 h", lx: 225, ly: 197, d: "M187 204 H263"}
+  - {from: cluster, to: dedup, label: "2+ sites", lx: 470, ly: 197, d: "M437 204 H503"}
+  - {from: dedup, to: pipeline, label: "new story", lx: 480, ly: 291, d: "M560 241 V278 H330 V297"}
+  - {from: dedup, to: nvidia, label: "same story?", lx: 596, ly: 288, anchor: start, d: "M590 241 V402"}
+  - {from: imagesrc, to: enrich, label: "search · probe", lx: 854, ly: 150, anchor: end, d: "M860 111 V297"}
   # AI
-  - {from: pipeline, to: nvidia, label: "write · check", lx: 472, ly: 271, d: "M410 278 H535 V334"}
-  - {from: enrich, to: nvidia, label: "short calls · vision", lx: 706, ly: 271, d: "M780 278 H630 V334"}
-  - {from: pipeline, to: articles, label: "draft + score", lx: 336, ly: 378, anchor: start, d: "M330 310 V446"}
-  - {from: enrich, to: sqlite, label: "take · tags · image", lx: 854, ly: 378, anchor: end, d: "M860 310 V446"}
+  - {from: pipeline, to: nvidia, label: "write · check", lx: 472, ly: 327, d: "M417 334 H535 V402"}
+  - {from: enrich, to: nvidia, label: "short calls · vision", lx: 700, ly: 327, d: "M773 334 H630 V402"}
+  - {from: pipeline, to: articles, label: "draft + score", lx: 336, ly: 454, anchor: start, d: "M330 371 V537"}
+  - {from: enrich, to: sqlite, label: "take · tags · image", lx: 854, ly: 454, anchor: end, d: "M860 371 V537"}
   # Content and data
-  - {from: imap, to: articles, label: "replies", lx: 215, ly: 471, dashed: true, d: "M180 478 H250"}
-  - {from: articles, to: sqlite, label: "generated_articles", lx: 595, ly: 471, d: "M410 478 H780"}
-  - {from: sqlite, to: newsletter, label: "articles · subscribers", lx: 625, ly: 549, d: "M820 510 V536 H430 V554"}
-  - {from: sqlite, to: web, label: "read · write", lx: 866, ly: 540, anchor: start, d: "M860 510 V554"}
+  - {from: imap, to: articles, label: "replies", lx: 215, ly: 567, dashed: true, d: "M187 574 H243"}
+  - {from: articles, to: sqlite, label: "generated_articles", lx: 595, ly: 567, d: "M417 574 H773"}
+  - {from: sqlite, to: newsletter, label: "articles · subscribers", lx: 625, ly: 656, d: "M820 611 V643 H430 V666"}
+  - {from: sqlite, to: web, label: "read · write", lx: 866, ly: 648, anchor: start, d: "M860 611 V666"}
   # Delivery and mail
-  - {from: web, to: caddy, label: ":9090", lx: 866, ly: 658, anchor: start, d: "M860 618 V666"}
-  - {from: web, to: oci, label: "confirmations", lx: 650, ly: 637, d: "M820 618 V642 H470 V666"}
-  - {from: newsletter, to: oci, label: "SMTP 587", lx: 424, ly: 648, anchor: end, d: "M430 618 V666"}
-  - {from: cloudflare, to: caddy, label: "A record", lx: 740, ly: 691, dashed: true, d: "M700 698 H780"}
-  - {from: cloudflare, to: inboxes, label: "SPF · DKIM · DMARC", lx: 606, ly: 773, anchor: start, dashed: true, d: "M600 730 V760 H470 V778"}
-  - {from: oci, to: inboxes, label: "deliver", lx: 424, ly: 770, anchor: end, d: "M430 730 V778"}
-  - {from: caddy, to: readers, label: "HTTPS", lx: 854, ly: 770, anchor: end, d: "M860 730 V778"}
+  - {from: web, to: caddy, label: ":9090", lx: 866, ly: 790, anchor: start, d: "M860 740 V801"}
+  - {from: web, to: oci, label: "confirmations", lx: 650, ly: 765, d: "M820 740 V770 H470 V801"}
+  - {from: newsletter, to: oci, label: "SMTP 587", lx: 424, ly: 778, anchor: end, d: "M430 740 V801"}
+  - {from: cloudflare, to: caddy, label: "A record", lx: 740, ly: 831, dashed: true, d: "M707 838 H773"}
+  - {from: cloudflare, to: inboxes, label: "SPF · DKIM · DMARC", lx: 606, ly: 925, anchor: start, dashed: true, d: "M600 875 V912 H470 V935"}
+  - {from: oci, to: inboxes, label: "deliver", lx: 424, ly: 924, anchor: end, d: "M430 875 V935"}
+  - {from: caddy, to: readers, label: "HTTPS", lx: 854, ly: 924, anchor: end, d: "M860 875 V935"}
   # Operations rail
-  - {from: gha, to: sqlite, label: "backup", lx: 1000, ly: 471, d: "M1030 478 H940"}
-  - {from: gha, to: web, label: "deploy · SSH", lx: 1076, ly: 548, anchor: start, d: "M1070 510 V576 H940"}
-  - {from: web, to: alloy, label: "metrics", lx: 1116, ly: 638, anchor: start, d: "M940 598 H1110 V666"}
-  - {from: alloy, to: grafana, label: "push", lx: 1104, ly: 770, anchor: end, d: "M1110 730 V778"}
+  - {from: gha, to: sqlite, label: "backup", lx: 1000, ly: 567, d: "M1027 574 H947"}
+  - {from: gha, to: web, label: "deploy · SSH", lx: 1080, ly: 658, anchor: start, d: "M1074 611 V691 H947"}
+  - {from: web, to: alloy, label: "metrics", lx: 1120, ly: 766, anchor: start, d: "M947 718 H1114 V801"}
+  - {from: alloy, to: grafana, label: "push", lx: 1108, ly: 924, anchor: end, d: "M1114 875 V935"}
 
 # The scheduler's jobs, shown inside the node each one runs.
 triggers:
