@@ -1,0 +1,125 @@
+{{- /*
+  Interactive architecture diagram. Data: assets/architecture/architecture.yaml.
+  Script: assets/architecture/architecture.js. Styles: assets/architecture/
+  architecture.css, linked from layouts/_partials/custom/head-end.html on pages
+  that use this shortcode.
+
+  Without JavaScript each node is a link to its entry in the list under the
+  diagram, and every entry is open. The script turns the nodes into buttons
+  that open a details panel, and collapses the list.
+*/ -}}
+{{- $page := .Page -}}
+{{- $d := resources.Get "architecture/architecture.yaml" | transform.Unmarshal -}}
+{{- $W := 1270 -}}
+{{- $LH := 120 -}}
+{{- $NW := 156 -}}
+{{- $NH := 56 -}}
+{{- $H := mul (len $d.lanes) $LH -}}
+{{- $kinds := dict "vm" "Runs on the VM" "external" "Third-party service" "off" "Not running in production" -}}
+<figure class="arch" id="arch" data-arch>
+  <p class="arch-hint" id="arch-hint">Select a component to see what it does, where its code lives and how it is configured. With a keyboard, Tab moves between components, Enter opens one and Escape closes it.</p>
+  <p class="arch-swipe">The diagram is wider than this screen: swipe sideways to see all of it, or use the list below it.</p>
+  <div class="arch-stage">
+    <div class="arch-scroll">
+      <svg class="arch-svg" viewBox="0 0 {{ $W }} {{ $H }}" role="group" aria-label="MilesAhead architecture diagram" aria-describedby="arch-hint">
+        <defs>
+          <marker id="arch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arch-arrowhead" d="M0 0 L10 5 L0 10 z"/></marker>
+          <marker id="arch-arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arch-arrowhead arch-arrowhead--on" d="M0 0 L10 5 L0 10 z"/></marker>
+        </defs>
+
+        <g class="arch-lanes" aria-hidden="true">
+          {{- range $i, $lane := $d.lanes }}
+          <rect class="arch-lane arch-lane--{{ if modBool $i 2 }}a{{ else }}b{{ end }}" x="0" y="{{ mul $i $LH }}" width="{{ $W }}" height="{{ $LH }}"/>
+          <text class="arch-lane-label" x="10" y="{{ add (mul $i $LH) 20 }}">{{ $lane }}</text>
+          {{- end }}
+        </g>
+
+        <g class="arch-legend" aria-hidden="true" transform="translate(290 50)">
+          <rect class="arch-node-box" x="0" y="0" width="26" height="16" rx="4"/>
+          <text class="arch-legend-text" x="34" y="12">{{ index $kinds "vm" }}</text>
+          <rect class="arch-node-box arch-node--external" x="180" y="0" width="26" height="16" rx="4"/>
+          <text class="arch-legend-text" x="214" y="12">{{ index $kinds "external" }}</text>
+          <rect class="arch-node-box arch-node--off" x="380" y="0" width="26" height="16" rx="4"/>
+          <text class="arch-legend-text" x="414" y="12">{{ index $kinds "off" }}</text>
+        </g>
+
+        <g class="arch-edges" aria-hidden="true">
+          {{- range $e := $d.edges }}
+          <g class="arch-edge{{ if $e.dashed }} arch-edge--dashed{{ end }}{{ if $e.both }} arch-edge--both{{ end }}" data-from="{{ $e.from }}" data-to="{{ $e.to }}">
+            <path class="arch-edge-line" d="{{ $e.d }}" marker-end="url(#arch-arrow)"{{ if $e.both }} marker-start="url(#arch-arrow)"{{ end }}/>
+            {{- if $e.label }}
+            <text class="arch-edge-label arch-edge-label--{{ if modBool (div (int $e.ly) $LH) 2 }}a{{ else }}b{{ end }}" x="{{ $e.lx }}" y="{{ $e.ly }}" text-anchor="{{ $e.anchor | default "middle" }}">{{ $e.label }}</text>
+            {{- end }}
+          </g>
+          {{- end }}
+        </g>
+
+        <g class="arch-nodes">
+          {{- range $n := $d.nodes }}
+          {{- $cx := add 96 (mul 216 $n.col) -}}
+          {{- $cy := add 60 (mul $LH $n.lane) }}
+          <a class="arch-node arch-node--{{ $n.kind }}" href="#arch-c-{{ $n.id }}" data-id="{{ $n.id }}" aria-label="{{ $n.title }}: {{ $n.sub }}{{ if ne $n.kind "vm" }} ({{ lower (index $kinds $n.kind) }}){{ end }}">
+            <rect class="arch-node-ring" x="{{ sub $cx (add (div $NW 2) 5) }}" y="{{ sub $cy (add (div $NH 2) 5) }}" width="{{ add $NW 10 }}" height="{{ add $NH 10 }}" rx="14"/>
+            <rect class="arch-node-box" x="{{ sub $cx (div $NW 2) }}" y="{{ sub $cy (div $NH 2) }}" width="{{ $NW }}" height="{{ $NH }}" rx="10"/>
+            <text class="arch-node-title" x="{{ $cx }}" y="{{ sub $cy 3 }}" text-anchor="middle">{{ $n.title }}</text>
+            <text class="arch-node-sub" x="{{ $cx }}" y="{{ add $cy 15 }}" text-anchor="middle">{{ $n.sub }}</text>
+          </a>
+          {{- end }}
+        </g>
+      </svg>
+    </div>
+
+    <section class="arch-panel" id="arch-panel" aria-labelledby="arch-panel-title" hidden>
+      <div class="arch-panel-head">
+        <h3 class="arch-panel-title" id="arch-panel-title" tabindex="-1"></h3>
+        <button type="button" class="arch-panel-close" aria-label="Close details">&times;</button>
+      </div>
+      <p class="arch-panel-kind"></p>
+      <div class="arch-panel-body"></div>
+    </section>
+  </div>
+  <p class="arch-status" role="status" aria-live="polite"></p>
+  <figcaption class="arch-caption">Solid boxes run on the OCI VM; dashed boxes are third-party services; the grey one is in the code but not running in production. Arrows show the direction data or control flows. Every component is also described in the list below.</figcaption>
+</figure>
+
+<div class="arch-list">
+  {{- range $i, $lane := $d.lanes }}
+  <h3 class="arch-list-lane">{{ $lane }}</h3>
+  {{- range $n := $d.nodes }}
+  {{- if eq $n.lane $i }}
+  <details class="arch-item arch-item--{{ $n.kind }}" id="arch-c-{{ $n.id }}" data-id="{{ $n.id }}" data-title="{{ $n.title }}" data-kind="{{ index $kinds $n.kind }}" open>
+    <summary><span class="arch-item-title">{{ $n.title }}</span> <span class="arch-item-sub">{{ $n.sub }}</span></summary>
+    <div class="arch-item-body">
+      {{- $page.RenderString (dict "display" "block") $n.purpose }}
+      <dl class="arch-facts">
+        {{- with $n.code }}
+        <dt>Code</dt>
+        <dd>{{ range $j, $c := . }}{{ if $j }}, {{ end }}<code>{{ $c }}</code>{{ end }}</dd>
+        {{- end }}
+        {{- with $n.data }}
+        <dt>Reads / writes</dt>
+        <dd>{{ $page.RenderString . }}</dd>
+        {{- end }}
+        {{- with $n.config }}
+        <dt>Config</dt>
+        <dd>{{ range $j, $c := . }}{{ if $j }}, {{ end }}<code>{{ $c }}</code>{{ end }}</dd>
+        {{- end }}
+        {{- with $n.metrics }}
+        <dt>Metrics</dt>
+        <dd>{{ range $j, $c := . }}{{ if $j }}, {{ end }}<code>{{ $c }}</code>{{ end }}</dd>
+        {{- end }}
+      </dl>
+      {{- with $n.more }}
+      <div class="arch-more">{{ $page.RenderString (dict "display" "block") . }}</div>
+      {{- end }}
+      {{- with $n.docs }}
+      <p class="arch-docs">Read more: {{ range $j, $l := . }}{{ if $j }} · {{ end }}<a href="{{ $l.url | relURL }}">{{ $l.text }}</a>{{ end }}</p>
+      {{- end }}
+    </div>
+  </details>
+  {{- end }}
+  {{- end }}
+  {{- end }}
+</div>
+{{- $js := resources.Get "architecture/architecture.js" | minify | fingerprint }}
+<script src="{{ $js.RelPermalink }}" integrity="{{ $js.Data.Integrity }}" defer></script>

@@ -1,0 +1,479 @@
+/* Interactive architecture diagram (layouts/_shortcodes/architecture.html).
+   Colours are variables so Hextra's light and dark themes both work; the
+   accent follows the theme's primary colour. */
+
+.arch,
+.arch-list {
+  --arch-bg: #ffffff;
+  --arch-fg: #1f2937;
+  --arch-muted: #5b6474;
+  --arch-lane-a: #f6f8fb;
+  --arch-lane-b: #eef2f7;
+  --arch-lane-label: #5b6474;
+  --arch-node: #ffffff;
+  --arch-border: #8a94a6;
+  --arch-edge: #8f9aab;
+  --arch-edge-label: #3f4856;
+  --arch-off: #9aa3b2;
+  --arch-accent: var(--color-primary-600, #0b5bd3);
+  --arch-accent-soft: rgba(11, 91, 211, 0.1);
+  --arch-panel-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+}
+
+.dark .arch,
+.dark .arch-list {
+  --arch-bg: #111111;
+  --arch-fg: #e6e9ef;
+  --arch-muted: #a3acba;
+  --arch-lane-a: #161a20;
+  --arch-lane-b: #1b2028;
+  --arch-lane-label: #a3acba;
+  --arch-node: #20252e;
+  --arch-border: #6f7a8c;
+  --arch-edge: #6c7789;
+  --arch-edge-label: #c3cad6;
+  --arch-off: #7c8596;
+  --arch-accent: var(--color-primary-400, #5aa9ff);
+  --arch-accent-soft: rgba(90, 169, 255, 0.16);
+  --arch-panel-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+
+.arch {
+  margin: 1.5rem 0 1rem;
+  container-type: inline-size;
+  color: var(--arch-fg);
+}
+
+.arch-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.875rem;
+  color: var(--arch-muted);
+}
+
+/* The hint describes keyboard and pointer use, which needs the script. */
+.arch:not(.arch--js) .arch-hint {
+  display: none;
+}
+
+.arch-stage {
+  position: relative;
+}
+
+.arch-scroll {
+  overflow-x: auto;
+  border-radius: 12px;
+  border: 1px solid var(--arch-lane-b);
+  -webkit-overflow-scrolling: touch;
+}
+
+.arch-svg {
+  display: block;
+  width: 100%;
+  min-width: 860px;
+  height: auto;
+  font-family: inherit;
+}
+
+.arch-lane--a { fill: var(--arch-lane-a); }
+.arch-lane--b { fill: var(--arch-lane-b); }
+
+.arch-lane-label {
+  fill: var(--arch-lane-label);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.arch-legend-text {
+  fill: var(--arch-muted);
+  font-size: 13px;
+}
+
+/* Edges */
+.arch-edge-line {
+  fill: none;
+  stroke: var(--arch-edge);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.arch-edge--dashed .arch-edge-line {
+  stroke-dasharray: 5 4;
+}
+
+.arch-arrowhead { fill: var(--arch-edge); }
+.arch-arrowhead--on { fill: var(--arch-accent); }
+
+.arch-edge-label {
+  fill: var(--arch-edge-label);
+  font-size: 12.5px;
+  paint-order: stroke;
+  stroke: var(--arch-lane-a);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+
+.arch-edge-label--b {
+  stroke: var(--arch-lane-b);
+}
+
+.arch-edge.is-on .arch-edge-line {
+  stroke: var(--arch-accent);
+  stroke-width: 2.6;
+  marker-end: url(#arch-arrow-on);
+}
+
+.arch-edge--both.is-on .arch-edge-line {
+  marker-start: url(#arch-arrow-on);
+}
+
+.arch-edge.is-on .arch-edge-label {
+  fill: var(--arch-fg);
+  font-weight: 600;
+}
+
+/* Nodes */
+.arch-node {
+  cursor: pointer;
+  outline: none;
+  text-decoration: none;
+}
+
+.arch-node-box {
+  fill: var(--arch-node);
+  stroke: var(--arch-border);
+  stroke-width: 1.5;
+}
+
+.arch-node--external .arch-node-box,
+.arch-node-box.arch-node--external {
+  stroke-dasharray: 6 4;
+}
+
+.arch-node--off .arch-node-box,
+.arch-node-box.arch-node--off {
+  stroke: var(--arch-off);
+  stroke-dasharray: 2 4;
+}
+
+.arch-node--off .arch-node-title,
+.arch-node--off .arch-node-sub {
+  fill: var(--arch-off);
+}
+
+.arch-node-ring {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 3;
+}
+
+.arch-node-title {
+  fill: var(--arch-fg);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.arch-node-sub {
+  fill: var(--arch-muted);
+  font-size: 11.5px;
+}
+
+.arch-node:hover .arch-node-box {
+  stroke: var(--arch-accent);
+}
+
+.arch-node:focus-visible .arch-node-ring {
+  stroke: var(--arch-accent);
+}
+
+.arch-node.is-selected .arch-node-box {
+  stroke: var(--arch-accent);
+  stroke-width: 3;
+  stroke-dasharray: none;
+  fill: var(--arch-accent-soft);
+}
+
+/* With a selection, everything not connected to it steps back. */
+.arch.has-selection .arch-node:not(.is-selected):not(.is-related) {
+  opacity: 0.4;
+}
+
+.arch.has-selection .arch-edge:not(.is-on) {
+  opacity: 0.22;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .arch-node,
+  .arch-edge {
+    transition: opacity 0.15s ease;
+  }
+  .arch-edge-line,
+  .arch-node-box {
+    transition: stroke 0.15s ease;
+  }
+}
+
+/* Details panel: an overlay on wide screens, below the diagram on narrow
+   ones. */
+.arch-panel {
+  margin-top: 0.75rem;
+  padding: 1rem 1.1rem 1.1rem;
+  border: 1px solid var(--arch-border);
+  border-radius: 12px;
+  background: var(--arch-bg);
+  color: var(--arch-fg);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.arch-panel[hidden] {
+  display: none;
+}
+
+@container (min-width: 820px) {
+  .arch-panel {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 380px;
+    max-height: calc(100% - 24px);
+    overflow-y: auto;
+    margin: 0;
+    box-shadow: var(--arch-panel-shadow);
+  }
+  .arch-panel[data-side="left"] {
+    right: auto;
+    left: 12px;
+  }
+}
+
+.arch-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.arch-panel-title {
+  margin: 0 !important;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.arch-panel-title:focus {
+  outline: none;
+}
+
+.arch-panel-title:focus-visible {
+  outline: 2px solid var(--arch-accent);
+  outline-offset: 2px;
+}
+
+.arch-panel-close {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid var(--arch-border);
+  background: transparent;
+  color: var(--arch-fg);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.arch-panel-close:hover,
+.arch-panel-close:focus-visible {
+  border-color: var(--arch-accent);
+  color: var(--arch-accent);
+  outline: none;
+}
+
+.arch-panel-kind {
+  margin: 0.15rem 0 0.6rem !important;
+  font-size: 0.8rem;
+  color: var(--arch-muted);
+}
+
+.arch-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.arch-caption {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--arch-muted);
+}
+
+/* The list: every component, also the no-script fallback. */
+.arch-list {
+  margin-top: 1.5rem;
+}
+
+.arch-list-lane {
+  margin: 1.4rem 0 0.4rem !important;
+  font-size: 0.8rem !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--arch-muted);
+}
+
+.arch-item {
+  border: 1px solid var(--arch-lane-b);
+  border-radius: 10px;
+  margin: 0.4rem 0;
+  scroll-margin-top: 5rem;
+}
+
+.arch-item > summary {
+  cursor: pointer;
+  padding: 0.55rem 0.8rem;
+  list-style-position: inside;
+}
+
+.arch-item-title {
+  font-weight: 600;
+}
+
+.arch-item-sub {
+  color: var(--arch-muted);
+  font-size: 0.875rem;
+  margin-left: 0.35rem;
+}
+
+.arch-item--off .arch-item-title {
+  color: var(--arch-muted);
+}
+
+.arch-item-body {
+  padding: 0 0.9rem 0.8rem;
+  font-size: 0.925rem;
+}
+
+.arch-item:target {
+  border-color: var(--arch-accent);
+}
+
+/* Shared by the list entries and the panel, which copies them. */
+.arch-item-body p,
+.arch-panel-body p {
+  margin: 0.5rem 0;
+}
+
+.arch-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 0.8rem;
+  margin: 0.6rem 0;
+}
+
+.arch-facts dt {
+  font-weight: 600;
+  color: var(--arch-muted);
+  font-size: 0.85em;
+  padding-top: 0.1em;
+}
+
+.arch-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.arch-facts dd p {
+  margin: 0;
+}
+
+.arch-panel-body .arch-facts {
+  grid-template-columns: 1fr;
+  gap: 0.1rem;
+}
+
+.arch-panel-body .arch-facts dd {
+  margin-bottom: 0.45rem;
+}
+
+.arch-more table {
+  font-size: 0.85em;
+  margin: 0.5rem 0;
+  display: block;
+  overflow-x: auto;
+}
+
+.arch-more th,
+.arch-more td {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--arch-lane-b);
+  vertical-align: top;
+}
+
+.arch-more code,
+.arch-facts code {
+  overflow-wrap: anywhere;
+}
+
+.arch-docs {
+  font-size: 0.9em;
+}
+
+.arch-docs a,
+.arch-panel-body a {
+  color: var(--arch-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media print {
+  .arch-panel,
+  .arch-hint {
+    display: none !important;
+  }
+  .arch-item {
+    break-inside: avoid;
+  }
+}
+
+/* Hextra's prose rules space definition lists and paragraphs for long-form
+   text; the panel and the list entries are denser. */
+.arch .arch-facts dt,
+.arch-list .arch-facts dt {
+  margin: 0;
+}
+
+.arch .arch-facts dd,
+.arch-list .arch-facts dd {
+  margin: 0;
+  padding: 0;
+}
+
+.arch .arch-panel-body p,
+.arch-list .arch-item-body p {
+  margin: 0.5rem 0;
+  line-height: 1.55;
+}
+
+.arch .arch-panel-body table,
+.arch-list .arch-item-body table {
+  margin: 0.6rem 0;
+}
+
+/* Below the SVG's minimum width it scrolls sideways; say so. */
+.arch-swipe {
+  display: none;
+  margin: 0 0 0.6rem;
+  font-size: 0.875rem;
+  color: var(--arch-muted);
+}
+
+@container (max-width: 859px) {
+  .arch-swipe {
+    display: block;
+  }
+}

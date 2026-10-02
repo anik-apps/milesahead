@@ -1,0 +1,10 @@
+{{- /* The architecture diagram's styles, only on pages that use it. Such a
+  page sets toc: false, but Hextra still reserves the table of contents'
+  column; hiding it gives the diagram that width. */ -}}
+{{- if .HasShortcode "architecture" -}}
+{{- $css := resources.Get "architecture/architecture.css" | minify | fingerprint -}}
+<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+{{- if eq .Params.toc false }}
+<style>.hextra-toc{display:none}</style>
+{{- end }}
+{{- end -}}
