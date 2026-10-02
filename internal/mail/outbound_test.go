@@ -467,21 +467,51 @@ func TestSendNewsletter_PerRecipientUnsubscribe(t *testing.T) {
 		if !strings.Contains(body, `href="`+r.UnsubscribeURL+`"`) {
 			t.Errorf("%s: body should link to its own %s:\n%s", r.Email, r.UnsubscribeURL, body)
 		}
+		// Checked in the decoded body and headers: the raw message is
+		// quoted-printable, which would hide the URL's "=" either way.
 		other := recipients[1-i].UnsubscribeURL
-		if strings.Contains(msg.raw, other) {
+		if strings.Contains(body, other) || strings.Contains(msg.parsed(t).Header.Get("List-Unsubscribe"), other) {
 			t.Errorf("%s: message carries the other reader's link %s", r.Email, other)
 		}
 		if strings.Contains(body, UnsubscribeURLPlaceholder) || strings.Contains(body, `/unsubscribe"`) {
 			t.Errorf("%s: body still has the placeholder or a bare /unsubscribe:\n%s", r.Email, body)
 		}
 		h := msg.parsed(t).Header
-		wantLU := "<" + r.UnsubscribeURL + ">, <mailto:noreply@milesahead.com?subject=unsubscribe>"
+		// No mailto by default: the From address is not read.
+		wantLU := "<" + r.UnsubscribeURL + ">"
 		if got := h.Get("List-Unsubscribe"); got != wantLU {
 			t.Errorf("%s: List-Unsubscribe = %q, want %q", r.Email, got, wantLU)
 		}
 		if got := h.Get("List-Unsubscribe-Post"); got != "List-Unsubscribe=One-Click" {
 			t.Errorf("%s: List-Unsubscribe-Post = %q, want List-Unsubscribe=One-Click", r.Email, got)
 		}
+	}
+}
+
+// With a monitored mailbox set, List-Unsubscribe also has a mailto to it
+// (never to the From address); an invalid one is refused and left out.
+func TestSendNewsletter_UnsubscribeMailbox(t *testing.T) {
+	sender, mock := newTestSender()
+	sender.from = "MilesAhead <noreply@milesahead.com>"
+	if err := sender.SetUnsubscribeMailbox("Unsubscribes <unsubscribe@milesahead.com>"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sender.SendNewsletter("Weekly Digest", issueHTML, recipientsFor("a@test.com")); err != nil {
+		t.Fatal(err)
+	}
+	want := "<https://milesahead.com/unsubscribe?token=tok-a>, <mailto:unsubscribe@milesahead.com?subject=unsubscribe>"
+	if got := mock.sent[0].parsed(t).Header.Get("List-Unsubscribe"); got != want {
+		t.Errorf("List-Unsubscribe = %q, want %q", got, want)
+	}
+
+	if err := sender.SetUnsubscribeMailbox("not an address"); err == nil {
+		t.Error("an invalid mailbox should be reported")
+	}
+	if _, err := sender.SendNewsletter("Weekly Digest", issueHTML, recipientsFor("b@test.com")); err != nil {
+		t.Fatal(err)
+	}
+	if got := mock.sent[1].parsed(t).Header.Get("List-Unsubscribe"); strings.Contains(got, "mailto:") {
+		t.Errorf("after an invalid mailbox the header should have no mailto, got %q", got)
 	}
 }
 

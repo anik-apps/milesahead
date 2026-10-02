@@ -105,6 +105,11 @@ type NewsletterConfig struct {
 	// Off by default, and treated as off at startup when the SMTP settings
 	// look unset, so readers never sign up for email that cannot be sent.
 	SignupEnabled bool `yaml:"signup_enabled"`
+	// UnsubscribeMailbox, when set, is added to every newsletter's
+	// List-Unsubscribe header as a mailto. Set it only to a mailbox someone
+	// reads and acts on; empty (the default), the header has the one-click
+	// https link alone, which is what Gmail and Yahoo require.
+	UnsubscribeMailbox string `yaml:"unsubscribe_mailbox"`
 }
 
 type VotesConfig struct {

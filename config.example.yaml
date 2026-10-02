@@ -170,6 +170,11 @@ newsletter:
   # localhost, or placeholder credentials) the app logs an ERROR at startup
   # and keeps sign-up closed. Checklist in ROADMAP.md (Newsletter).
   signup_enabled: false
+  # A mailbox someone reads and acts on, added to every newsletter's
+  # List-Unsubscribe header as a mailto. Leave empty unless one exists: the
+  # one-click https link is what Gmail and Yahoo require, and a mailto to an
+  # unread address leaves readers thinking they unsubscribed when they did not.
+  unsubscribe_mailbox: ""
 
 votes:
   alert_threshold: 10

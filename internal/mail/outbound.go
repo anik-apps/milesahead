@@ -30,6 +30,9 @@ type Sender struct {
 	// newsletterWhen is how often the newsletter comes, for the
 	// confirmation email; see SetNewsletterSchedule.
 	newsletterWhen string
+	// unsubscribeMailbox, when set, gets a mailto in List-Unsubscribe; see
+	// SetUnsubscribeMailbox.
+	unsubscribeMailbox string
 }
 
 // NewSender creates a new Sender configured with SMTP settings.
@@ -120,7 +123,7 @@ const UnsubscribeURLPlaceholder = "https://unsubscribe.invalid/milesahead-reader
 // Each copy carries its recipient's own unsubscribe link, in the body (in
 // place of UnsubscribeURLPlaceholder) and in the List-Unsubscribe and
 // List-Unsubscribe-Post headers (RFC 2369, RFC 8058), which Gmail and Yahoo
-// require of bulk senders. Nothing is sent unless every copy can have one:
+// require of bulk senders; see setListUnsubscribe. Nothing is sent unless every copy can have one:
 // htmlContent must hold the placeholder and every recipient an https link.
 func (s *Sender) SendNewsletter(subject, htmlContent string, recipients []Recipient) (sent int, err error) {
 	if len(recipients) == 0 {
@@ -160,25 +163,34 @@ func (s *Sender) SendNewsletter(subject, htmlContent string, recipients []Recipi
 
 // setListUnsubscribe adds the headers mail providers use for their own
 // Unsubscribe button: the reader's https link, which takes the one-click
-// POST, and a mailto to the sending address as the fallback RFC 2369
-// expects.
+// POST (what Gmail and Yahoo require), and, only when a monitored mailbox is
+// set (SetUnsubscribeMailbox), a mailto to it. A mailto to an address nobody
+// reads would leave readers who use it thinking they had unsubscribed.
 func (s *Sender) setListUnsubscribe(m *gomail.Message, unsubscribeURL string) {
 	values := []string{"<" + unsubscribeURL + ">"}
-	if addr := s.fromAddress(); addr != "" {
-		values = append(values, "<mailto:"+addr+"?subject=unsubscribe>")
+	if s.unsubscribeMailbox != "" {
+		values = append(values, "<mailto:"+s.unsubscribeMailbox+"?subject=unsubscribe>")
 	}
 	m.SetHeader("List-Unsubscribe", values...)
 	m.SetHeader("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
 }
 
-// fromAddress is the bare address mail is sent from ("" if the From setting
-// is not a valid address).
-func (s *Sender) fromAddress() string {
-	addr, err := netmail.ParseAddress(strings.TrimSpace(s.from))
-	if err != nil {
-		return ""
+// SetUnsubscribeMailbox adds a mailto to that address to every newsletter's
+// List-Unsubscribe header. Set it only to a mailbox someone reads and acts
+// on (newsletter.unsubscribe_mailbox). An empty or invalid address leaves the
+// mailto out; it reports an invalid one.
+func (s *Sender) SetUnsubscribeMailbox(addr string) error {
+	s.unsubscribeMailbox = ""
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return nil
 	}
-	return addr.Address
+	parsed, err := netmail.ParseAddress(addr)
+	if err != nil {
+		return fmt.Errorf("unsubscribe mailbox %q is not an email address: %w", addr, err)
+	}
+	s.unsubscribeMailbox = parsed.Address
+	return nil
 }
 
 // SendVoteAlert notifies the admin of high downvotes on an article.

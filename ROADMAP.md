@@ -319,7 +319,7 @@ Found during the 2026-08-31 card-video review, ordered by severity.
          the 10-minute claim; startup warns when the SMTP settings look unset.
       2. ~~**Every Unsubscribe link in the newsletter fails.**~~ Each copy now carries its
          reader's own `https://DOMAIN/unsubscribe?token=...`, in the body and in
-         `List-Unsubscribe` (with a mailto to the sending address) and
+         `List-Unsubscribe` (a mailto only if `newsletter.unsubscribe_mailbox` is set) and
          `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, which `POST /unsubscribe`
          accepts. The issue is rendered once with a placeholder that the sender replaces
          per reader, and the sender refuses to send if any copy could not carry a link.
@@ -360,10 +360,11 @@ Found during the 2026-08-31 card-video review, ordered by severity.
          `mail.smtp`; unset, it keeps the placeholders.
       3. Publish SPF and DKIM for the sending domain (and DMARC), as the relay
          documents. Gmail and Yahoo reject or junk bulk mail without them.
-      4. Decide the `List-Unsubscribe` mailto: it goes to the From address, so either
-         make that a mailbox someone reads, or drop the mailto in
-         `mail.Sender.setListUnsubscribe` (the https one-click link is the one that
-         matters).
+      4. Optional: if a mailbox exists that someone reads and acts on, set
+         `newsletter.unsubscribe_mailbox` to it in the deploy config to add a mailto to
+         `List-Unsubscribe`. Leave it empty otherwise (the default): the https one-click
+         link is what Gmail and Yahoo require, and a mailto to an unread address would
+         leave readers thinking they had unsubscribed.
       5. Set `signup_enabled: true` in the deploy workflow's config and deploy. The log
          should say "newsletter sign-up is open"; an ERROR "newsletter sign-up stays
          closed" means the SMTP settings still look unset.

@@ -103,7 +103,7 @@ func TestSendDaily_EachReaderGetsTheirOwnUnsubscribeLink(t *testing.T) {
 		if strings.Contains(body, `/unsubscribe"`) || strings.Contains(body, mail.UnsubscribeURLPlaceholder) {
 			t.Errorf("%s: the body has a bare /unsubscribe or the placeholder", to)
 		}
-		if got, want := h.Get("List-Unsubscribe"), "<"+own+">, <mailto:noreply@milesahead.example?subject=unsubscribe>"; got != want {
+		if got, want := h.Get("List-Unsubscribe"), "<"+own+">"; got != want {
 			t.Errorf("%s: List-Unsubscribe = %q, want %q", to, got, want)
 		}
 		if got := h.Get("List-Unsubscribe-Post"); got != "List-Unsubscribe=One-Click" {

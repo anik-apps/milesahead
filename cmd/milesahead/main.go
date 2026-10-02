@@ -338,6 +338,9 @@ func main() {
 	// short-call chain.
 	mailSender := mail.NewSender(cfg.Mail.SMTP)
 	mailSender.SetNewsletterSchedule(newsletter.WeeklySendWhen)
+	if err := mailSender.SetUnsubscribeMailbox(cfg.Newsletter.UnsubscribeMailbox); err != nil {
+		slog.Warn("mail: List-Unsubscribe will have no mailto", "error", err)
+	}
 	warnIfSMTPUnset(cfg.Mail.SMTP)
 	side := newAISideJobs(cfg, database, hfClient, mailSender, visionModel, enrichModels)
 
