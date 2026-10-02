@@ -7,7 +7,7 @@ A self-hosted content aggregation platform that scans miles and points websites,
 ## Features
 
 - **Automated Scanning** — RSS scraping of 6+ miles/points sources every 2-4 hours
-- **AI Pipeline** — Dual-model: Nemotron generates articles, Llama 70B verifies accuracy
+- **AI Pipeline** — Nemotron 3 Ultra writes each article (with fallbacks); a critic chain (Nemotron 3 Super, then Kimi K3, thinking off) checks it against the sources, and one auto-revision fixes what it finds
 - **Duplicate Stories** — Each scan clusters the last 48h of scanned posts by title and generates one article per multi-source cluster, after two checks. The raw-ID check skips a cluster that reuses a source some article was written from, and records the cluster's other posts in `covered_raws` so that late coverage cannot come back as a second article once the original sources age out. The story check (`internal/storydedup`, `scanner.story_dedup`) compares the cluster with every article from the last 7 days: a TF-IDF prefilter, then one short AI call on the enrichment chain ("same story? materially new?"). It runs in `shadow` mode, logging `story dedup decision` and counting `milesahead_story_dedup_decisions_total` without blocking, until its decisions have been reviewed
 - **Image Pipeline** — 4-source search (Unsplash, Pexels, Openverse, Wikimedia) with vision model scoring
 - **Reference Pages** — 52 credit card guides across 6 categories with Scout persona verdicts. `/cards/` filters with one row of links (category chips and a "No annual fee" toggle; older `?fee=` band and `?issuer=` links still filter) and sorts from a menu on the results line (by category, name, lowest or highest fee); each card page opens with a summary (fee, welcome offer, best earning rates ranked by `rankEarnRates`, the verdict's first sentence, Apply and a Compare form) and ends with "Next steps"
@@ -29,7 +29,7 @@ A self-hosted content aggregation platform that scans miles and points websites,
 
 - **Language:** Go 1.26+
 - **Database:** SQLite (WAL mode)
-- **AI:** NVIDIA API (Nemotron, Llama 70B, Llama Vision)
+- **AI:** NVIDIA API (Nemotron 3 Ultra and Super, Kimi K3, gpt-oss-20b, Llama 3.2 Vision)
 - **Deployment:** OCI ARM VM, Caddy, systemd, GitHub Actions CI/CD
 - **Observability:** Grafana Cloud (Prometheus + Loki via Alloy)
 
@@ -206,7 +206,7 @@ cd docs && hugo server
 # Visit http://localhost:1313
 ```
 
-Covers: [Getting Started](docs/content/docs/getting-started.md) · [Architecture](docs/content/docs/architecture/_index.md) · [AI Pipeline](docs/content/docs/architecture/ai-pipeline.md) · [Reference Pages](docs/content/docs/features/reference-pages.md) · [Deployment](docs/content/docs/deployment/_index.md) · [Development](docs/content/docs/development/_index.md)
+Covers: [Getting Started](docs/content/docs/getting-started.md) · [Architecture](docs/content/docs/architecture/_index.md) (with an interactive diagram) · [AI Pipeline](docs/content/docs/architecture/ai-pipeline.md) · [Image Pipeline](docs/content/docs/architecture/image-pipeline.md) · [Reference Pages](docs/content/docs/features/reference-pages.md) · [Article Workflow](docs/content/docs/features/article-workflow.md) · [Reader Site](docs/content/docs/features/reader-site.md) · [Newsletter](docs/content/docs/features/newsletter.md) · [Deployment](docs/content/docs/deployment/_index.md) · [Email](docs/content/docs/deployment/email.md) · [Development](docs/content/docs/development/_index.md)
 
 ## License
 

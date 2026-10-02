@@ -3,7 +3,7 @@ title: Image Pipeline
 weight: 2
 ---
 
-The image pipeline finds relevant, freely-licensed images for generated articles. It searches multiple APIs in parallel, then uses a two-phase AI scoring system to pick the best match.
+The image pipeline finds relevant, freely-licensed images for generated articles. It searches four image APIs in parallel, then uses a two-phase AI scoring system to pick the best match. It runs inside the [enrichment reconciler](../ai-pipeline/#enrichment), for articles with no image yet and for an admin's [Find a new image](#find-a-new-image) request.
 
 ## Flow
 
@@ -12,7 +12,7 @@ The image pipeline finds relevant, freely-licensed images for generated articles
           |
           v
   +-------------------+
-  |  Parallel Search   |  5 APIs queried concurrently
+  |  Parallel Search   |  4 APIs queried concurrently
   |  (per query term)  |  Max 3 results per API
   +--------+----------+
            |
@@ -41,13 +41,13 @@ The image pipeline finds relevant, freely-licensed images for generated articles
 
 ## Image Sources
 
-All sources provide freely-licensed images. The searcher queries each API in parallel for every search term.
+All sources provide freely-licensed images. The searcher (`internal/images/search.go`) queries each API in parallel for every search term; Unsplash and Pexels are skipped when their key is not set. Every request carries a `MilesAhead/1.0` User-Agent.
 
 | Source | API Key Required | License | Notes |
 |--------|-----------------|---------|-------|
 | Unsplash | Yes (free) | Unsplash License | High-quality photos, landscape orientation |
 | Pexels | Yes (free) | Pexels License | Good variety, landscape orientation |
-| Openverse | No | CC-licensed | Aggregates Flickr, Wikimedia, and other open sources |
+| Openverse | No | CC-licensed | Aggregates Flickr, Wikimedia Commons and other open collections; the result's provider is kept (`openverse/flickr`, ...) |
 | Wikimedia Commons | No | Various CC/PD | Uses MediaWiki API with thumbnail generation |
 
 ## Two-Phase Scoring
@@ -90,8 +90,8 @@ be switched on without it.
 
 ## Selection Process
 
-1. Search all 5 APIs in parallel with the article's query terms
-2. Deduplicate by URL
+1. Search all 4 APIs in parallel with the article's query terms (or the admin's search words, see [Find a new image](#find-a-new-image))
+2. Drop pictures turned down for this article, then deduplicate by URL
 3. Enforce source diversity: max 3 images per source, cap total at 15
 4. Phase 1 text scoring narrows to top 5 candidates
 5. Phase 2 vision scoring picks the best match
@@ -158,7 +158,9 @@ Wikimedia/Flickr thumbnails for sized URLs:
   every step is over the cap, the lightest one is taken as long as it is
   lighter than the file the row holds, or that file does not load at all (an
   800 px thumbnail, a 404, an HTML page): a copy just seen to load beats a
-  broken one. Otherwise the row keeps its file.
+  broken one. That replacement for a broken file may be at most twice the cap
+  (`brokenCeilingFactor`); if every copy is heavier, the image is cleared so
+  enrichment picks a fresh one. Otherwise the row keeps its file.
 - Original widths come from the Commons API, one request (20 files) a pass,
   newest articles first; titles Commons normalizes are followed. A file it
   has no answer for is set aside for 6 hours so it cannot hold the older rows
@@ -186,6 +188,54 @@ Wikimedia/Flickr thumbnails for sized URLs:
   `milesahead_article_images_unconvertible` counts the others, and
   `milesahead_image_resize_total{outcome}` counts rows resized, left
   unchanged (`unconfirmed`), cleared and found `unconvertible`.
+
+## Find a New Image
+
+A rewrite only changes the text, and enrichment only picks an image for an
+article that has none. So a different picture is asked for separately, with
+**Find a new image**:
+
+- under the photo in the admin preview, or **New image…** in its sticky
+  action bar;
+- in the "⋯" actions menu of a Review row or a Published row.
+
+Each posts to `POST /admin/articles/{id}/new-image` (CSRF-protected, admin
+only) with an optional **Search for…** box, e.g. "Hyatt Regency lobby".
+
+- **Search words.** They are cleaned to one line of at most 100 characters,
+  **replace** the generated image queries (so generated results cannot crowd
+  them out), and the scorer is told "The editor asked for a picture of: …".
+  The relevance bar, the byte caps and the fetchability checks are unchanged.
+- **Queueing.** The request is a row in `article_image_requests` (`state`
+  `pending` or `failed`, `hint`, `seq`). The next enrichment pass (every 15
+  minutes) takes pending requests first, with a fresh attempt budget. As a
+  side effect, any other field of that article that had used up its attempts
+  is retried too.
+- **Swap when found.** A request never clears the image: the current picture
+  stays up, live or not, until a replacement is found. The new image,
+  thumbnail and credit are then written in one transaction that also deletes
+  the request, so readers never see an article without an image.
+- **Turned-down pictures.** The image being replaced (display image and
+  thumbnail) is recorded in `article_rejected_images` and never picked for
+  that article again, at any size. `images.Identity` reduces a URL to the
+  picture behind it: the Wikimedia file at any width, the Flickr or Pexels
+  photo id, or the Unsplash photo path. `Searcher.SearchExcluding` drops those
+  pictures before the per-source and total caps, so they do not take a slot.
+- **No result fails at once.** If nothing new turns up besides turned-down
+  pictures, nothing is relevant enough, or nothing loads, the request is
+  marked `failed` straight away: the same words would find the same pictures
+  again. A transient error (a timeout, a provider error) leaves it pending
+  until its attempt budget is spent.
+- **Races.** The image write is guarded by the request's `seq`: asking again
+  while a pass is working on the earlier request means that pass cannot
+  close the new one or swap in its image. A normal pass filling an empty
+  image does not land on top of a request made during it either.
+- **What the admin sees.** Rows and the preview show **"Finding a new
+  image…"** while pending and **"No new image found — try other search
+  words"** after a failure; the dashboard's poll notices both.
+- **Rewrite box hint.** Typing image, photo, picture or pic into the rewrite
+  feedback shows "Rewrites only change the text — use Find a new image to
+  change the picture." It is a browser-side reminder and never blocks.
 
 ## Stored Fields
 

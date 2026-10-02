@@ -1,0 +1,490 @@
+# Data for the interactive architecture diagram on the Architecture page
+# (layouts/_shortcodes/architecture.html). One file drives the SVG, the
+# details panel and the plain list under the diagram.
+#
+# Geometry: lane i spans y = 120*i .. 120*i + 120; a node sits at
+# x = 96 + 216*col, y = 120*lane + 60 and is 156 x 56. Edge paths are drawn
+# by hand on that grid (viewBox 0 0 1270 840), so moving a node means
+# redrawing its edges.
+#
+# kind: vm (runs on the VM), external (third-party service), off (in the code
+# but not running in production).
+
+lanes:
+  - External sources
+  - Ingestion
+  - AI pipeline
+  - Content & data
+  - Delivery
+  - Mail
+  - Operations
+
+nodes:
+  - id: sources
+    title: News sources
+    sub: RSS feeds · blog pages
+    lane: 0
+    col: 0
+    kind: external
+    purpose: |
+      The miles-and-points blogs and news sites in the `sources` table, added and
+      edited on the admin Sources page. Each has an RSS URL or a CSS selector for
+      scraping, and can override the scan interval. Articles are written from them
+      but never name them.
+    code: [internal/scanner]
+    data: Read by the scanner; rows managed in the admin (`sources`).
+    config: [scanner.default_interval, scanner.user_agent]
+    docs:
+      - {text: "Adding sources", url: "/docs/getting-started/#adding-sources"}
+      - {text: "Source references and outlet mentions", url: "/docs/architecture/ai-pipeline/"}
+
+  - id: imagesrc
+    title: Image sources
+    sub: 4 free image APIs
+    lane: 0
+    col: 5
+    kind: external
+    purpose: |
+      The image search queries four APIs in parallel for every search term:
+      **Unsplash** and **Pexels** (API keys), **Openverse** (no key; aggregates
+      Flickr, Wikimedia and other open collections) and the **Wikimedia Commons**
+      MediaWiki API. At most 3 results per API per query, 3 per source after
+      de-duplication and 15 in total.
+    code: [internal/images/search.go, internal/images/sizing.go, internal/images/identity.go]
+    data: No database access; results go to the enrichment reconciler.
+    config: [ai.unsplash_key, ai.pexels_key]
+    metrics: ["milesahead_image_search_total{source,outcome}", milesahead_image_search_candidates]
+    more: |
+      Every request carries a `MilesAhead/1.0` User-Agent (Wikimedia rejects
+      generic clients), and Wikimedia thumbnails are warmed at most two at a time,
+      as its robot policy asks.
+    docs:
+      - {text: "Image pipeline", url: "/docs/architecture/image-pipeline/"}
+
+  - id: scanner
+    title: Scanner
+    sub: internal/scanner
+    lane: 1
+    col: 0
+    kind: vm
+    purpose: |
+      Fetches each active source's RSS feed, or scrapes its page, and stores new
+      posts. A SHA-256 hash of title and link rejects duplicates at insert. Runs at
+      startup and then every `scanner.default_interval` minutes (180 in
+      production); a scan still running when the next is due makes that one skip.
+    code: [internal/scanner, cmd/milesahead/scan.go]
+    data: Reads `sources`; writes `raw_articles`.
+    config: [scanner.default_interval, scanner.user_agent]
+    metrics: [milesahead_scans_total]
+
+  - id: cluster
+    title: Clustering
+    sub: internal/cluster
+    lane: 1
+    col: 1
+    kind: vm
+    purpose: |
+      Groups the last 48 hours of scanned posts by title similarity (TF-IDF
+      cosine). Only a cluster with posts from at least two different sites goes on
+      to generation, so every article has more than one source to be checked
+      against.
+    code: [internal/cluster]
+    data: Reads `raw_articles`.
+    config: [scanner.cluster_threshold]
+
+  - id: dedup
+    title: Story dedup
+    sub: covered raws · 7-day check
+    lane: 1
+    col: 2
+    kind: vm
+    purpose: |
+      Two checks before anything is written. **Raw-ID check:** a cluster that
+      reuses a post some article was written from (`article_sources`) or already
+      covers (`covered_raws`) is skipped, and its other posts are recorded in
+      `covered_raws`, so late coverage cannot come back as a second article once
+      the originals leave the 48-hour window. **Story check:** the cluster is
+      compared with every article from the last 7 days, in any status: a TF-IDF
+      prefilter keeps up to 5 scoring at least 0.25, then one short AI call on the
+      enrichment chain decides "same story, and if so materially new?". If that
+      call fails, a lexical score of at least 0.55 decides.
+    code: [internal/storydedup, internal/db/coverage.go, cmd/milesahead/scan.go]
+    data: Reads `generated_articles`, `article_sources`, `covered_raws`; writes `covered_raws`.
+    config: ["scanner.story_dedup (shadow in production; block or off)"]
+    metrics: ["milesahead_story_dedup_decisions_total{decision,mode}"]
+    more: |
+      In `shadow` mode the story check logs `story dedup decision` and counts, but
+      still generates. `block` skips the duplicate and records its posts with
+      reason `story_match`.
+    docs:
+      - {text: "Deduplication", url: "/docs/features/article-workflow/#deduplication"}
+
+  - id: scheduler
+    title: Scheduler
+    sub: cron jobs
+    lane: 1
+    col: 4
+    kind: vm
+    purpose: |
+      `robfig/cron` with panic recovery, wired in `cmd/milesahead/main.go`. It
+      starts every background job in the process.
+    code: [internal/scheduler, cmd/milesahead/main.go]
+    config: [scanner.default_interval, ai.enrichment_interval, mail.imap.poll_interval]
+    more: |
+      | Job | When |
+      |---|---|
+      | Scan, cluster, generate | at startup, then every 3 h (overlapping runs skipped) |
+      | Enrichment pass | ~90 s after startup, then every 15 min |
+      | Revision reconciler | ~45 s after startup, then every 5 min |
+      | Newsletter build | Fridays 20:00 New York time |
+      | Newsletter send | Saturdays 08:00 New York time |
+      | IMAP poll | only when IMAP is configured (off in production) |
+
+      Shutdown is bounded to 85 s, inside systemd's 90 s stop timeout: 60 s for
+      running jobs, 10 s for HTTP, 15 s for request-started rewrites.
+
+  - id: pipeline
+    title: AI pipeline
+    sub: write · check · revise
+    lane: 2
+    col: 1
+    kind: vm
+    purpose: |
+      Turns a cluster into a checked draft. The generator writes (with a fallback
+      chain); editor notes are split out; citation markers are removed and any
+      numbered source reference or news-site mention is flagged; the critic chain
+      scores it with thinking off; remarks that only confirm a passed check are
+      dropped; if any issue is left, the generator revises once and the
+      higher-scoring version is kept. Key details and links come from the raw
+      reply, with a separate extraction call only as a fallback.
+    code: [internal/ai, internal/editornote]
+    data: None directly; returns a result to the article manager.
+    config: [ai.generator_model, ai.fallback_generator_model, ai.critic_model, ai.critic_disable_thinking, ai.critic_threshold, ai.request_timeout]
+    metrics: [milesahead_critic_score, milesahead_articles_generated_total, milesahead_ai_api_duration_seconds, milesahead_ai_api_errors_total]
+    docs:
+      - {text: "AI pipeline", url: "/docs/architecture/ai-pipeline/"}
+
+  - id: nvidia
+    title: NVIDIA API
+    sub: integrate.api.nvidia.com
+    lane: 2
+    col: 3
+    kind: external
+    purpose: |
+      The OpenAI-compatible endpoint (`https://integrate.api.nvidia.com/v1`) every
+      model is called through. A startup preflight probes each configured model,
+      since the provider's catalogue lists models that do not answer.
+    config: [ai.hf_base_url, ai.hf_api_token]
+    metrics: ["milesahead_ai_preflight_models_reachable{role}", milesahead_ai_api_errors_total]
+    more: |
+      | Role | Models (tried in order) |
+      |---|---|
+      | Generator | `nvidia/nemotron-3-ultra-550b-a55b`, then `openai/gpt-oss-20b`, `nvidia/nemotron-3-super-120b-a12b` |
+      | Critic (thinking off) | `nvidia/nemotron-3-super-120b-a12b`, then `moonshotai/kimi-k3` |
+      | Short calls | `openai/gpt-oss-20b`, then `nvidia/nemotron-3-super-120b-a12b` |
+      | Vision | `meta/llama-3.2-11b-vision-instruct` |
+
+      The API key is the `NVIDIA_API_KEY` GitHub secret.
+    docs:
+      - {text: "Models", url: "/docs/architecture/ai-pipeline/#models"}
+
+  - id: enrich
+    title: Enrichment
+    sub: internal/enrich
+    lane: 2
+    col: 5
+    kind: vm
+    purpose: |
+      A background pass that fills what generation leaves empty: Scout's Take, key
+      details, tags and the image. A miss is simply retried next pass. Each pass
+      first resizes stored oversized images and serves any **Find a new image**
+      request; the new picture replaces the old one only once it is found.
+    code: [internal/enrich, internal/images/scorer.go]
+    data: Reads and writes `generated_articles`; `article_image_requests`, `article_rejected_images`.
+    config: [ai.enrichment_model, ai.enrichment_interval, ai.enrichment_max_attempts, ai.enrichment_max_duration, ai.vision_model]
+    metrics: [milesahead_articles_degraded, milesahead_enrichment_passes_total, milesahead_enrichment_last_success_timestamp_seconds, milesahead_image_resize_total, milesahead_article_images_unsized]
+    more: |
+      Short calls are capped at 30 s. A Scout's Take that names a news site or
+      cites "Source 1" is refused, and such key details are dropped. Grafana alerts
+      when no pass has finished for an hour.
+    docs:
+      - {text: "Enrichment", url: "/docs/architecture/ai-pipeline/"}
+      - {text: "Find a new image", url: "/docs/architecture/image-pipeline/"}
+
+  - id: articles
+    title: Article manager
+    sub: status · revisions · undo
+    lane: 3
+    col: 1
+    kind: vm
+    purpose: |
+      Owns an article's status. A new article is `pending` at or above
+      `critic_threshold` (75) and `draft` below. Approve and reject post the
+      revision the admin saw and are refused if a rewrite landed since; an approval
+      can be undone for 30 s. Rewrites start at once and a revision reconciler
+      retries them every 5 min with backoff (5, 10, 20, 40 min), giving up after 5
+      failures.
+    code: [internal/article, internal/cardupdate, internal/linker]
+    data: "`generated_articles`, `article_revisions`, `admin_feedback`, `verification_results`, `approval_undo`, `article_sources`."
+    metrics: [milesahead_articles_approved_total, milesahead_revisions_total, "milesahead_revision_reconcile_total{outcome}", "milesahead_revisions_waiting{state}"]
+    docs:
+      - {text: "Article workflow", url: "/docs/features/article-workflow/"}
+
+  - id: sqlite
+    title: SQLite
+    sub: WAL · FTS5 · backups
+    lane: 3
+    col: 3
+    kind: vm
+    purpose: |
+      One SQLite file in WAL mode (`modernc.org/sqlite`, pure Go) at
+      `/opt/milesahead/data/milesahead.db`. Migrations run at every start. Search
+      uses two FTS5 indexes (`articles_fts`, `cards_fts`; porter stemming, accents
+      folded), rebuilt once when their version in `search_index_versions` changes.
+    code: [internal/db, deploy/backup.sh, .github/workflows/backup.yml]
+    config: [db.path]
+    more: |
+      **Backups.** `milesahead-backup.timer` runs `backup.sh` daily at 03:30:
+      `VACUUM INTO` (a plain copy would miss pages still in the WAL),
+      `PRAGMA integrity_check`, gzip, 30 days kept on the server. The Database
+      Backup workflow then pulls the newest archive off the box daily, checks that
+      it restores, and keeps the 14 most recent in the `db-backups` release.
+    docs:
+      - {text: "Database tables", url: "/docs/architecture/#database-tables"}
+      - {text: "Backups", url: "/docs/deployment/#backups"}
+
+  - id: web
+    title: Web server
+    sub: site · admin · API
+    lane: 4
+    col: 3
+    kind: vm
+    purpose: |
+      The Go `net/http` server on port 9090: the public site (home, articles,
+      cards, compare, search, feed, sign-up), the admin dashboard (session login,
+      CSRF, `noindex`), `POST /api/vote`, `/healthz` and `/metrics`. HTML is
+      `no-cache`; content-versioned static files are cached for a year, others for
+      an hour. It also sends sign-up confirmation emails.
+    code: [internal/web, templates/, static/]
+    data: Reads nearly every table; writes admin decisions, votes, subscribers, sessions and image requests.
+    config: [server.port, server.domain, admin.password_hash, newsletter.signup_enabled]
+    metrics: [milesahead_http_requests_total, milesahead_http_duration_seconds, milesahead_http_response_bytes, milesahead_votes_total]
+    docs:
+      - {text: "Reader site", url: "/docs/features/reader-site/"}
+      - {text: "Article workflow", url: "/docs/features/article-workflow/"}
+
+  - id: caddy
+    title: Caddy
+    sub: TLS · zstd/gzip
+    lane: 4
+    col: 4
+    kind: vm
+    purpose: |
+      The VM's shared reverse proxy, in Docker, reading one file per site from
+      `/opt/fynans/caddy-sites/`. `milesahead.caddy` serves
+      `milesahead.kumaranik.com` over HTTPS, compresses responses with
+      `encode zstd gzip`, sets security headers and proxies to the app on port
+      9090. The deploy validates the file inside the container before installing
+      it, and fails if the reload fails.
+    code: [deploy/milesahead.caddy]
+    docs:
+      - {text: "Deployment", url: "/docs/deployment/"}
+
+  - id: cloudflare
+    title: Cloudflare DNS
+    sub: site · docs · mail records
+    lane: 4
+    col: 5
+    kind: external
+    purpose: |
+      DNS for the site, which resolves to the VM, the docs subdomain (Cloudflare
+      Pages), and the mail-authentication records that let inboxes trust mail from
+      `milesahead.kumaranik.com`.
+    more: |
+      | Record | Name | Value |
+      |---|---|---|
+      | CNAME (DKIM) | `milesahead-202610._domainkey.milesahead.kumaranik.com` | `milesahead-202610.milesahead.kumaranik.com.dkim.sjc1.oracleemaildelivery.com` |
+      | TXT (SPF) | `milesahead.kumaranik.com` | `v=spf1 include:rp.oracleemaildelivery.com ~all` |
+      | TXT (DMARC) | `_dmarc.milesahead.kumaranik.com` | `v=DMARC1; p=none;` |
+    docs:
+      - {text: "Email", url: "/docs/deployment/email/"}
+
+  - id: imap
+    title: Review replies
+    sub: IMAP · not running
+    lane: 5
+    col: 0
+    kind: off
+    purpose: |
+      Code for reviewing by email: review messages with a `review+TOKEN@`
+      Reply-To, and an IMAP poller that reads replies (APPROVE, REJECT, UNPUBLISH,
+      or anything else as rewrite feedback). **Not running in production:** the
+      deploy config sets `mail.imap` to localhost with placeholder credentials, so
+      startup logs `mail polling disabled`; the token resolver is a placeholder;
+      and nothing sends review emails. Reviews happen in the admin dashboard.
+    code: [internal/mail/inbound.go, cmd/milesahead/main.go]
+    config: [mail.imap.host, mail.imap.user, mail.imap.password, mail.imap.poll_interval]
+    docs:
+      - {text: "Email", url: "/docs/deployment/email/#inbound-mail"}
+
+  - id: newsletter
+    title: Newsletter
+    sub: weekly · Saturdays
+    lane: 5
+    col: 2
+    kind: vm
+    purpose: |
+      Builds the weekly issue on Friday evening (AI-ranked candidates, Scout's
+      Pick, Card of the Week) and sends it Saturday at 08:00 New York time to
+      confirmed subscribers. The issue is re-rendered at send time and each copy
+      gets its reader's own unsubscribe link, in the body and in
+      `List-Unsubscribe` with one-click `List-Unsubscribe-Post`.
+    code: [internal/newsletter, internal/mail/outbound.go, internal/web/subscribe.go]
+    data: Reads `generated_articles`, `reference_pages`, `subscribers`; writes `newsletters`, `newsletter_candidates`.
+    config: [newsletter.timezone, newsletter.signup_enabled, newsletter.unsubscribe_mailbox]
+    metrics: ["milesahead_emails_sent_total{kind,outcome}", milesahead_subscribers_total]
+    docs:
+      - {text: "Newsletter", url: "/docs/features/newsletter/"}
+
+  - id: oci
+    title: OCI Email Delivery
+    sub: SMTP 587 · STARTTLS
+    lane: 5
+    col: 4
+    kind: external
+    purpose: |
+      The outbound mail relay for confirmation emails and newsletters (and the
+      admin's vote alerts): Oracle Cloud's Email Delivery service, reached over
+      SMTP with STARTTLS.
+    config: [mail.smtp.host, mail.smtp.port, mail.smtp.user, mail.smtp.password, mail.smtp.from]
+    metrics: ["milesahead_emails_sent_total{kind,outcome}"]
+    more: |
+      | Setting | Value |
+      |---|---|
+      | Region | `us-sanjose-1`, Always Free tier (3,000 emails a month) |
+      | Email domain | `milesahead.kumaranik.com`, DKIM selector `milesahead-202610` |
+      | Approved sender | `noreply@milesahead.kumaranik.com` |
+      | SMTP endpoint | `smtp.email.us-sanjose-1.oci.oraclecloud.com:587`, STARTTLS |
+      | Sending identity | IAM user `milesahead-smtp` in group `milesahead-smtp-senders`, policy `milesahead-smtp-send`: "Allow group milesahead-smtp-senders to use email-family in tenancy" |
+      | Credentials | GitHub secrets `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD` (optional `SMTP_PORT`, `SMTP_FROM`), written into `mail.smtp` by the deploy's config job, JSON-quoted with `jq`, and checked with `-check-config` |
+
+      A test message passed SPF, DKIM and DMARC at Gmail.
+
+      **Suppression list.** OCI adds its own `List-Unsubscribe` to any message
+      that has no https one, and an unsubscribe through it puts the address on
+      OCI's suppression list, not in the app. Every reader email therefore carries
+      the app's own per-reader link, which OCI leaves alone. Admin emails still get
+      OCI's header, so do not use a mail client's Unsubscribe button on them.
+    docs:
+      - {text: "Email", url: "/docs/deployment/email/"}
+
+  - id: inboxes
+    title: Inboxes
+    sub: readers' mail
+    lane: 5
+    col: 5
+    kind: external
+    purpose: |
+      Readers' mail providers. They check SPF, DKIM and DMARC against the records
+      in Cloudflare, and Gmail and Yahoo require a one-click unsubscribe from bulk
+      senders, which the `List-Unsubscribe` and `List-Unsubscribe-Post` headers
+      provide.
+    docs:
+      - {text: "Email troubleshooting", url: "/docs/deployment/email/#troubleshooting"}
+
+  - id: gha
+    title: GitHub Actions
+    sub: tests gate deploys
+    lane: 6
+    col: 0
+    kind: external
+    purpose: |
+      `deploy.yml` runs on every push to `main`: **test** (go vet, `go test -race`,
+      the node tests) → **build** (linux/arm64) → **config** (writes `config.yaml`
+      from secrets, runs `-check-config`) → **deploy** (copy files, validate and
+      reload Caddy, refresh Alloy and the backup timer, swap the binary, restart,
+      check it is active) → **seed** and **grafana**. Deploys queue rather than
+      overlap. `ci.yml` checks pull requests; `backup.yml` takes the daily off-box
+      backup.
+    code: [.github/workflows/deploy.yml, .github/workflows/ci.yml, .github/workflows/backup.yml]
+    docs:
+      - {text: "Deployment", url: "/docs/deployment/"}
+
+  - id: docs
+    title: Docs site
+    sub: Cloudflare Pages
+    lane: 6
+    col: 1
+    kind: external
+    purpose: |
+      This site: Hugo with the Hextra theme, in `docs/`, published by Cloudflare
+      Pages at `docs.milesahead.kumaranik.com`. This diagram is the `architecture`
+      shortcode, drawn from `docs/assets/architecture/architecture.yaml`.
+    code: [docs/]
+    docs:
+      - {text: "Development", url: "/docs/development/"}
+
+  - id: alloy
+    title: Grafana Alloy
+    sub: metrics · logs
+    lane: 6
+    col: 4
+    kind: vm
+    purpose: |
+      Runs on the VM under systemd. Scrapes `localhost:9090/metrics` every 30 s
+      and remote-writes to Grafana Cloud's Prometheus, and ships the
+      `milesahead.service` journal to Grafana Cloud's Loki.
+    code: [deploy/alloy-config.alloy, deploy/alloy.service]
+    docs:
+      - {text: "Observability", url: "/docs/deployment/#observability"}
+
+  - id: grafana
+    title: Grafana Cloud
+    sub: dashboards · alerts
+    lane: 6
+    col: 5
+    kind: external
+    purpose: |
+      Holds the metrics and logs, two dashboards and five alert rules, all kept in
+      `deploy/` and pushed by the deploy's grafana job when its secrets are set.
+    code: [deploy/grafana-alerts.json, deploy/grafana-dashboard-business.json, deploy/grafana-dashboard-service.json]
+    more: |
+      | Alert | Fires when |
+      |---|---|
+      | No articles generated in 24 h | fewer than 1 generated in 24 h, for 1 h |
+      | AI API failures sustained | more than 30 final AI API failures in 6 h |
+      | Enrichment reconciler has stalled | no completed pass for over an hour |
+      | Confirmation emails failing | 2 or more failed in 6 h |
+      | Newsletter send failed | any failed send in 6 h |
+    docs:
+      - {text: "Observability", url: "/docs/deployment/#observability"}
+
+edges:
+  - {from: sources, to: scanner, label: "RSS · scrape", lx: 104, ly: 114, anchor: start, d: "M96 88 V152"}
+  - {from: scheduler, to: scanner, label: "every 3 h", lx: 744, ly: 132, d: "M960 152 V138 H124 V152"}
+  - {from: scanner, to: cluster, label: "48 h", lx: 204, ly: 172, d: "M174 180 H234"}
+  - {from: cluster, to: dedup, label: "2+ sites", lx: 420, ly: 172, d: "M390 180 H450"}
+  - {from: dedup, to: pipeline, label: "new story", lx: 420, ly: 234, d: "M528 208 V240 H312 V272"}
+  - {from: dedup, to: nvidia, label: "same story?", lx: 665, ly: 172, d: "M606 180 H724 V272"}
+  - {from: pipeline, to: nvidia, label: "write · critic chain", lx: 528, ly: 292, d: "M390 300 H666"}
+  - {from: enrich, to: nvidia, label: "short calls · vision", lx: 960, ly: 292, d: "M1098 300 H822"}
+  - {from: imagesrc, to: enrich, label: "search · probe", lx: 1166, ly: 114, anchor: end, d: "M1176 88 V272"}
+  - {from: scheduler, to: enrich, label: "every 15 min", lx: 1089, ly: 172, d: "M1038 180 H1140 V272"}
+  - {from: pipeline, to: articles, label: "draft + score", lx: 320, ly: 364, anchor: start, d: "M312 328 V392"}
+  - {from: articles, to: sqlite, label: "generated_articles", lx: 528, ly: 412, d: "M390 420 H666"}
+  - {from: enrich, to: sqlite, label: "take · details · tags · image", lx: 940, ly: 412, d: "M1176 328 V420 H822"}
+  - {from: scheduler, to: articles, label: "revisions every 5 min", lx: 488, ly: 458, d: "M1000 208 V224 H1068 V464 H340 V448"}
+  - {from: scheduler, to: newsletter, label: "Fri build · Sat 08:00 ET", lx: 852, ly: 458, d: "M1000 208 V224 H1068 V464 H636 V616 H560 V632"}
+  - {from: web, to: sqlite, label: "reads · writes", lx: 752, ly: 486, anchor: start, both: true, d: "M744 512 V448"}
+  - {from: web, to: articles, label: "admin decisions", lx: 480, ly: 534, d: "M666 540 H312 V448"}
+  - {from: caddy, to: web, label: ":9090", lx: 852, ly: 534, d: "M882 540 H822"}
+  - {from: cloudflare, to: caddy, label: "A record", lx: 1068, ly: 534, dashed: true, d: "M1098 540 H1038"}
+  - {from: gha, to: web, label: "deploy over SSH", lx: 430, ly: 572, d: "M174 780 H204 V556 H666"}
+  - {from: gha, to: sqlite, label: "daily VACUUM INTO backup", lx: 420, ly: 490, d: "M174 780 H204 V496 H704 V448"}
+  - {from: imap, to: articles, label: "replies (off)", lx: 104, ly: 412, anchor: start, dashed: true, d: "M96 632 V420 H234"}
+  - {from: newsletter, to: oci, label: "SMTP 587 · STARTTLS", lx: 800, ly: 652, d: "M606 660 H882"}
+  - {from: web, to: oci, label: "confirmations", lx: 865, ly: 594, d: "M800 568 V600 H930 V632"}
+  - {from: oci, to: inboxes, label: "deliver", lx: 1068, ly: 652, d: "M1038 660 H1098"}
+  - {from: cloudflare, to: inboxes, label: "SPF · DKIM · DMARC", lx: 1166, ly: 604, anchor: end, dashed: true, d: "M1176 568 V632"}
+  - {from: web, to: alloy, label: "scraped every 30 s", lx: 720, ly: 742, anchor: start, d: "M712 568 V780 H882"}
+  - {from: alloy, to: grafana, label: "push", lx: 1068, ly: 774, d: "M1038 780 H1098"}
