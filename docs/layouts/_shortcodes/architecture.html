@@ -16,6 +16,11 @@
 {{- $NW := 160 -}}
 {{- $NH := 64 -}}
 {{- $kinds := dict "vm" "Runs on the VM" "external" "Third-party service" "off" "Not running in production" -}}
+{{- $types := dict -}}
+{{- range $d.types }}{{ $types = merge $types (dict .id .name) }}{{ end -}}
+{{- /* Corner radius per type: a job is a plain rectangle, a service well
+  rounded, people a stadium; a database is drawn as a cylinder below. */ -}}
+{{- $radius := dict "job" 3 "service" 18 "people" 32 -}}
 {{- /* The scheduler's job for each node, if it has one. */ -}}
 {{- $trig := dict -}}
 {{- range $d.triggers }}{{ $trig = merge $trig (dict .to .label) }}{{ end -}}
@@ -23,6 +28,7 @@
 {{- $bands := slice -}}
 {{- range $i, $l := $d.lanes }}{{ if not $l.rail }}{{ $bands = $bands | append (dict "i" $i "y" $l.y "h" $l.h) }}{{ end }}{{ end -}}
 <figure class="arch" id="arch" data-arch>
+  {{ partial "arch-icons.html" . }}
   <p class="arch-hint" id="arch-hint">Select a component to see what it does, where its code lives and how it is configured. With a keyboard, Tab moves between components, Enter opens one and Escape closes it.</p>
   <p class="arch-swipe">The diagram is wider than this screen: swipe sideways to see all of it, or use the list below it.</p>
   <div class="arch-stage">
@@ -43,15 +49,6 @@
           <text class="arch-lane-label" x="12" y="{{ add $lane.y 18 }}">{{ $lane.name }}</text>
           {{- end }}
           {{- end }}
-        </g>
-
-        <g class="arch-legend" aria-hidden="true" transform="translate(214 54)">
-          <rect class="arch-node-box" x="0" y="0" width="26" height="16" rx="4"/>
-          <text class="arch-legend-text" x="34" y="12">{{ index $kinds "vm" }}</text>
-          <rect class="arch-node-box arch-node--external" x="150" y="0" width="26" height="16" rx="4"/>
-          <text class="arch-legend-text" x="184" y="12">{{ index $kinds "external" }}</text>
-          <rect class="arch-node-box arch-node--off" x="330" y="0" width="26" height="16" rx="4"/>
-          <text class="arch-legend-text" x="364" y="12">{{ index $kinds "off" }}</text>
         </g>
 
         <g class="arch-edges" aria-hidden="true">
@@ -76,7 +73,18 @@
           {{- $job := index $trig $n.id }}
           <a class="arch-node arch-node--{{ $n.kind }}" href="#arch-c-{{ $n.id }}" data-id="{{ $n.id }}" aria-label="{{ $n.title }}: {{ $n.sub }}{{ if ne $n.kind "vm" }} ({{ lower (index $kinds $n.kind) }}){{ end }}{{ with $job }}; the scheduler runs it {{ . }}{{ end }}">
             <rect class="arch-node-ring" x="{{ sub $cx (add (div $NW 2) 5) }}" y="{{ sub $cy (add (div $NH 2) 5) }}" width="{{ add $NW 10 }}" height="{{ add $NH 10 }}" rx="14"/>
-            <rect class="arch-node-box" x="{{ sub $cx (div $NW 2) }}" y="{{ sub $cy (div $NH 2) }}" width="{{ $NW }}" height="{{ $NH }}" rx="10"/>
+            {{- $x0 := sub $cx (div $NW 2) }}{{ $y0 := sub $cy (div $NH 2) }}
+            {{- if eq $n.type "database" }}
+            <path class="arch-node-box" d="M{{ $x0 }} {{ add $y0 7 }} A{{ div $NW 2 }} 7 0 0 1 {{ add $x0 $NW }} {{ add $y0 7 }} V{{ sub (add $y0 $NH) 7 }} A{{ div $NW 2 }} 7 0 0 1 {{ $x0 }} {{ sub (add $y0 $NH) 7 }} Z"/>
+            <path class="arch-node-rim" d="M{{ $x0 }} {{ add $y0 7 }} A{{ div $NW 2 }} 7 0 0 0 {{ add $x0 $NW }} {{ add $y0 7 }}"/>
+            {{- else }}
+            <rect class="arch-node-box" x="{{ $x0 }}" y="{{ $y0 }}" width="{{ $NW }}" height="{{ $NH }}" rx="{{ index $radius $n.type | default 10 }}"/>
+            {{- end }}
+            {{- $bx := cond (eq $n.badge "left") (sub $cx 62) (add $cx 62) }}
+            <g class="arch-badge" aria-hidden="true">
+              <circle class="arch-badge-disc" cx="{{ $bx }}" cy="{{ $y0 }}" r="13"/>
+              <use class="arch-badge-icon" href="#arch-i-{{ $n.type }}" x="{{ sub $bx 8 }}" y="{{ sub $y0 8 }}" width="16" height="16"/>
+            </g>
             <text class="arch-node-title" x="{{ $cx }}" y="{{ sub $cy (cond (ne $job nil) 11 3) }}" text-anchor="middle">{{ $n.title }}</text>
             <text class="arch-node-sub" x="{{ $cx }}" y="{{ add $cy (cond (ne $job nil) 5 15) }}" text-anchor="middle">{{ $n.sub }}</text>
           </a>
@@ -107,8 +115,20 @@
       <div class="arch-panel-body"></div>
     </section>
   </div>
+  <div class="arch-legend" aria-label="Legend">
+    <ul class="arch-legend-row">
+      <li><span class="arch-swatch arch-swatch--vm" aria-hidden="true"></span>{{ index $kinds "vm" }}</li>
+      <li><span class="arch-swatch arch-swatch--external" aria-hidden="true"></span>{{ index $kinds "external" }}</li>
+      <li><span class="arch-swatch arch-swatch--off" aria-hidden="true"></span>{{ index $kinds "off" }}</li>
+    </ul>
+    <ul class="arch-legend-row">
+      {{- range $d.types }}
+      <li><svg class="arch-legend-icon" aria-hidden="true" focusable="false"><use href="#arch-i-{{ .id }}"/></svg>{{ .name }}</li>
+      {{- end }}
+    </ul>
+  </div>
   <p class="arch-status" role="status" aria-live="polite"></p>
-  <figcaption class="arch-caption">Data flows down, from the news and image sources to readers' browsers and inboxes; the operations components are on the right. Solid boxes run on the OCI VM, dashed boxes are third-party services, and the grey one is in the code but not running in production. A clock line marks a job the Scheduler starts. Every component is also described in the list below.</figcaption>
+  <figcaption class="arch-caption">Data flows down, from the news and image sources to readers' browsers and inboxes; the operations components are on the right. Solid boxes run on the OCI VM, dashed boxes are third-party services, and the grey one is in the code but not running in production; the shape and the badge on each box say what kind of component it is. A clock line marks a job the Scheduler starts. Every component is also described in the list below.</figcaption>
 </figure>
 
 <div class="arch-list">
@@ -116,8 +136,8 @@
   <h3 class="arch-list-lane">{{ $lane.name }}</h3>
   {{- range $n := $d.nodes }}
   {{- if eq $n.lane $i }}
-  <details class="arch-item arch-item--{{ $n.kind }}" id="arch-c-{{ $n.id }}" data-id="{{ $n.id }}" data-title="{{ $n.title }}" data-kind="{{ index $kinds $n.kind }}" open>
-    <summary><span class="arch-item-title">{{ $n.title }}</span> <span class="arch-item-sub">{{ $n.sub }}</span></summary>
+  <details class="arch-item arch-item--{{ $n.kind }}" id="arch-c-{{ $n.id }}" data-id="{{ $n.id }}" data-title="{{ $n.title }}" data-kind="{{ index $types $n.type }} · {{ index $kinds $n.kind }}" open>
+    <summary><svg class="arch-item-icon" aria-hidden="true" focusable="false"><use href="#arch-i-{{ $n.type }}"/></svg><span class="arch-item-title">{{ $n.title }}</span> <span class="arch-item-sub">{{ $n.sub }}</span> <span class="arch-item-type">{{ index $types $n.type }}</span></summary>
     <div class="arch-item-body">
       {{- $page.RenderString (dict "display" "block") $n.purpose }}
       <dl class="arch-facts">
