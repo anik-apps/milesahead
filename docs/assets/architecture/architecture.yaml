@@ -2,29 +2,70 @@
 # (layouts/_shortcodes/architecture.html). One file drives the SVG, the
 # details panel and the plain list under the diagram.
 #
-# Geometry: lane i spans y = 120*i .. 120*i + 120; a node sits at
-# x = 96 + 216*col, y = 120*lane + 60 and is 156 x 56. Edge paths are drawn
-# by hand on that grid (viewBox 0 0 1270 840), so moving a node means
-# redrawing its edges.
+# Layout: data flows top to bottom through horizontal bands (sources,
+# ingestion, AI, content and data, delivery, readers); the operations
+# components sit in a rail on the right. Each band has a top y and a height;
+# the rail starts at rail_x. Each band and the rail is drawn as a panel inset
+# by 6 on every side, so 12 separates neighbours; edges between bands cross
+# that gap. Keep nodes, badges and labels inside their panel. A node is
+# 174 x 74, centred on (x, y).
+#
+# Edges are drawn by hand as orthogonal paths (M, H, V) that end on a node's
+# border, so moving a node means redrawing its edges. Every edge between bands
+# points down; inside a band the chain runs left to right, and the operations
+# rail joins with short horizontal connectors. Keep it that way: no edge
+# crossing another, passing through a node or running under a label.
+#
+# triggers are the scheduler's jobs, drawn as a clock line inside the node the
+# job runs rather than as edges, so they do not cross the data flow. They
+# highlight with the Scheduler like edges do.
 #
 # kind: vm (runs on the VM), external (third-party service), off (in the code
-# but not running in production).
+# but not running in production); it sets the border.
+#
+# type: what the component is, which sets its shape and the glyph in the
+# badge on its top-right corner (top-left with badge: left, or on the corner
+# itself with badge: corner, where a label or a long title needs the room). Types and glyphs are listed under types below and
+# drawn in layouts/_partials/arch-icons.html. Edges entering a node's top stay
+# within 40 of its centre, clear of the badge.
+
+width: 1210
+height: 1027
+rail_x: 968
+
+# Component types, in legend order.
+types:
+  - {id: job, name: Job or process}
+  - {id: service, name: Service}
+  - {id: database, name: Database}
+  - {id: api, name: External API}
+  - {id: source, name: Feed source}
+  - {id: scheduler, name: Scheduler}
+  - {id: mail, name: Mail}
+  - {id: dns, name: DNS}
+  - {id: proxy, name: Proxy}
+  - {id: people, name: People}
+  - {id: monitoring, name: Monitoring}
+  - {id: ci, name: CI and deploys}
+  - {id: docs, name: Docs hosting}
 
 lanes:
-  - External sources
-  - Ingestion
-  - AI pipeline
-  - Content & data
-  - Delivery
-  - Mail
-  - Operations
+  - {name: Sources, y: 0, h: 130, icon: band-sources}
+  - {name: Ingestion, y: 130, h: 129, icon: band-ingestion}
+  - {name: AI pipeline, y: 259, h: 240, icon: band-ai}
+  - {name: Content & data, y: 499, h: 130, icon: band-content}
+  - {name: Delivery & mail, y: 629, h: 269, icon: band-delivery}
+  - {name: Readers, y: 898, h: 129, icon: people}
+  - {name: Operations, rail: true, icon: band-ops}
 
 nodes:
   - id: sources
     title: News sources
     sub: RSS feeds · blog pages
     lane: 0
-    col: 0
+    x: 100
+    y: 74
+    type: source
     kind: external
     purpose: |
       The miles-and-points blogs and news sites in the `sources` table, added and
@@ -42,7 +83,9 @@ nodes:
     title: Image sources
     sub: 4 free image APIs
     lane: 0
-    col: 5
+    x: 860
+    y: 74
+    type: api
     kind: external
     purpose: |
       The image search queries four APIs in parallel for every search term:
@@ -65,7 +108,9 @@ nodes:
     title: Scanner
     sub: internal/scanner
     lane: 1
-    col: 0
+    x: 100
+    y: 204
+    type: job
     kind: vm
     purpose: |
       Fetches each active source's RSS feed, or scrapes its page, and stores new
@@ -81,7 +126,9 @@ nodes:
     title: Clustering
     sub: internal/cluster
     lane: 1
-    col: 1
+    x: 350
+    y: 204
+    type: job
     kind: vm
     purpose: |
       Groups the last 48 hours of scanned posts by title similarity (TF-IDF
@@ -96,7 +143,9 @@ nodes:
     title: Story dedup
     sub: covered raws · 7-day check
     lane: 1
-    col: 2
+    x: 590
+    y: 204
+    type: job
     kind: vm
     purpose: |
       Two checks before anything is written. **Raw-ID check:** a cluster that
@@ -122,8 +171,10 @@ nodes:
   - id: scheduler
     title: Scheduler
     sub: cron jobs
-    lane: 1
-    col: 4
+    lane: 6
+    x: 1114
+    y: 204
+    type: scheduler
     kind: vm
     purpose: |
       `robfig/cron` with panic recovery, wired in `cmd/milesahead/main.go`. It
@@ -147,7 +198,9 @@ nodes:
     title: AI pipeline
     sub: write · check · revise
     lane: 2
-    col: 1
+    x: 330
+    y: 334
+    type: job
     kind: vm
     purpose: |
       Turns a cluster into a checked draft. The generator writes (with a fallback
@@ -168,7 +221,9 @@ nodes:
     title: NVIDIA API
     sub: integrate.api.nvidia.com
     lane: 2
-    col: 3
+    x: 590
+    y: 439
+    type: api
     kind: external
     purpose: |
       The OpenAI-compatible endpoint (`https://integrate.api.nvidia.com/v1`) every
@@ -192,7 +247,9 @@ nodes:
     title: Enrichment
     sub: internal/enrich
     lane: 2
-    col: 5
+    x: 860
+    y: 334
+    type: job
     kind: vm
     purpose: |
       A background pass that fills what generation leaves empty: Scout's Take, key
@@ -215,7 +272,10 @@ nodes:
     title: Article manager
     sub: status · revisions · undo
     lane: 3
-    col: 1
+    x: 330
+    y: 574
+    type: job
+    badge: corner
     kind: vm
     purpose: |
       Owns an article's status. A new article is `pending` at or above
@@ -234,7 +294,9 @@ nodes:
     title: SQLite
     sub: WAL · FTS5 · backups
     lane: 3
-    col: 3
+    x: 860
+    y: 574
+    type: database
     kind: vm
     purpose: |
       One SQLite file in WAL mode (`modernc.org/sqlite`, pure Go) at
@@ -257,14 +319,18 @@ nodes:
     title: Web server
     sub: site · admin · API
     lane: 4
-    col: 3
+    x: 860
+    y: 703
+    type: service
+    badge: left
     kind: vm
     purpose: |
       The Go `net/http` server on port 9090: the public site (home, articles,
       cards, compare, search, feed, sign-up), the admin dashboard (session login,
       CSRF, `noindex`), `POST /api/vote`, `/healthz` and `/metrics`. HTML is
       `no-cache`; content-versioned static files are cached for a year, others for
-      an hour. It also sends sign-up confirmation emails.
+      an hour. It also sends sign-up confirmation emails. Admin decisions
+      (approve, reject, rewrite, undo) go through the article manager.
     code: [internal/web, templates/, static/]
     data: Reads nearly every table; writes admin decisions, votes, subscribers, sessions and image requests.
     config: [server.port, server.domain, admin.password_hash, newsletter.signup_enabled]
@@ -277,7 +343,9 @@ nodes:
     title: Caddy
     sub: TLS · zstd/gzip
     lane: 4
-    col: 4
+    x: 860
+    y: 838
+    type: proxy
     kind: vm
     purpose: |
       The VM's shared reverse proxy, in Docker, reading one file per site from
@@ -294,7 +362,9 @@ nodes:
     title: Cloudflare DNS
     sub: site · docs · mail records
     lane: 4
-    col: 5
+    x: 620
+    y: 838
+    type: dns
     kind: external
     purpose: |
       DNS for the site, which resolves to the VM, the docs subdomain (Cloudflare
@@ -312,8 +382,11 @@ nodes:
   - id: imap
     title: Review replies
     sub: IMAP · not running
-    lane: 5
-    col: 0
+    lane: 3
+    x: 100
+    y: 574
+    type: mail
+    badge: corner
     kind: off
     purpose: |
       Code for reviewing by email: review messages with a `review+TOKEN@`
@@ -330,8 +403,10 @@ nodes:
   - id: newsletter
     title: Newsletter
     sub: weekly · Saturdays
-    lane: 5
-    col: 2
+    lane: 4
+    x: 430
+    y: 703
+    type: job
     kind: vm
     purpose: |
       Builds the weekly issue on Friday evening (AI-ranked candidates, Scout's
@@ -349,8 +424,10 @@ nodes:
   - id: oci
     title: OCI Email Delivery
     sub: SMTP 587 · STARTTLS
-    lane: 5
-    col: 4
+    lane: 4
+    x: 430
+    y: 838
+    type: mail
     kind: external
     purpose: |
       The outbound mail relay for confirmation emails and newsletters (and the
@@ -382,7 +459,9 @@ nodes:
     title: Inboxes
     sub: readers' mail
     lane: 5
-    col: 5
+    x: 430
+    y: 972
+    type: mail
     kind: external
     purpose: |
       Readers' mail providers. They check SPF, DKIM and DMARC against the records
@@ -392,11 +471,31 @@ nodes:
     docs:
       - {text: "Email troubleshooting", url: "/docs/deployment/email/#troubleshooting"}
 
+  - id: readers
+    title: Readers
+    sub: browsers · the admin
+    lane: 5
+    x: 860
+    y: 972
+    type: people
+    kind: external
+    purpose: |
+      People reading the site, and the admin, in a browser at
+      `milesahead.kumaranik.com`. Cloudflare DNS sends them to the VM, Caddy
+      answers over HTTPS and passes each request to the web server. Readers
+      browse, search, vote and sign up for the newsletter; the admin reviews
+      articles in the dashboard under `/admin`.
+    docs:
+      - {text: "Reader site", url: "/docs/features/reader-site/"}
+      - {text: "Article workflow", url: "/docs/features/article-workflow/"}
+
   - id: gha
     title: GitHub Actions
     sub: tests gate deploys
     lane: 6
-    col: 0
+    x: 1114
+    y: 574
+    type: ci
     kind: external
     purpose: |
       `deploy.yml` runs on every push to `main`: **test** (go vet, `go test -race`,
@@ -414,7 +513,9 @@ nodes:
     title: Docs site
     sub: Cloudflare Pages
     lane: 6
-    col: 1
+    x: 1114
+    y: 334
+    type: docs
     kind: external
     purpose: |
       This site: Hugo with the Hextra theme, in `docs/`, published by Cloudflare
@@ -428,7 +529,9 @@ nodes:
     title: Grafana Alloy
     sub: metrics · logs
     lane: 6
-    col: 4
+    x: 1114
+    y: 838
+    type: monitoring
     kind: vm
     purpose: |
       Runs on the VM under systemd. Scrapes `localhost:9090/metrics` every 30 s
@@ -442,7 +545,9 @@ nodes:
     title: Grafana Cloud
     sub: dashboards · alerts
     lane: 6
-    col: 5
+    x: 1114
+    y: 972
+    type: monitoring
     kind: external
     purpose: |
       Holds the metrics and logs, two dashboards and five alert rules, all kept in
@@ -460,31 +565,40 @@ nodes:
       - {text: "Observability", url: "/docs/deployment/#observability"}
 
 edges:
-  - {from: sources, to: scanner, label: "RSS · scrape", lx: 104, ly: 114, anchor: start, d: "M96 88 V152"}
-  - {from: scheduler, to: scanner, label: "every 3 h", lx: 744, ly: 132, d: "M960 152 V138 H124 V152"}
-  - {from: scanner, to: cluster, label: "48 h", lx: 204, ly: 172, d: "M174 180 H234"}
-  - {from: cluster, to: dedup, label: "2+ sites", lx: 420, ly: 172, d: "M390 180 H450"}
-  - {from: dedup, to: pipeline, label: "new story", lx: 420, ly: 234, d: "M528 208 V240 H312 V272"}
-  - {from: dedup, to: nvidia, label: "same story?", lx: 665, ly: 172, d: "M606 180 H724 V272"}
-  - {from: pipeline, to: nvidia, label: "write · critic chain", lx: 528, ly: 292, d: "M390 300 H666"}
-  - {from: enrich, to: nvidia, label: "short calls · vision", lx: 960, ly: 292, d: "M1098 300 H822"}
-  - {from: imagesrc, to: enrich, label: "search · probe", lx: 1166, ly: 114, anchor: end, d: "M1176 88 V272"}
-  - {from: scheduler, to: enrich, label: "every 15 min", lx: 1089, ly: 172, d: "M1038 180 H1140 V272"}
-  - {from: pipeline, to: articles, label: "draft + score", lx: 320, ly: 364, anchor: start, d: "M312 328 V392"}
-  - {from: articles, to: sqlite, label: "generated_articles", lx: 528, ly: 412, d: "M390 420 H666"}
-  - {from: enrich, to: sqlite, label: "take · details · tags · image", lx: 940, ly: 412, d: "M1176 328 V420 H822"}
-  - {from: scheduler, to: articles, label: "revisions every 5 min", lx: 488, ly: 458, d: "M1000 208 V224 H1068 V464 H340 V448"}
-  - {from: scheduler, to: newsletter, label: "Fri build · Sat 08:00 ET", lx: 852, ly: 458, d: "M1000 208 V224 H1068 V464 H636 V616 H560 V632"}
-  - {from: web, to: sqlite, label: "reads · writes", lx: 752, ly: 486, anchor: start, both: true, d: "M744 512 V448"}
-  - {from: web, to: articles, label: "admin decisions", lx: 480, ly: 534, d: "M666 540 H312 V448"}
-  - {from: caddy, to: web, label: ":9090", lx: 852, ly: 534, d: "M882 540 H822"}
-  - {from: cloudflare, to: caddy, label: "A record", lx: 1068, ly: 534, dashed: true, d: "M1098 540 H1038"}
-  - {from: gha, to: web, label: "deploy over SSH", lx: 430, ly: 572, d: "M174 780 H204 V556 H666"}
-  - {from: gha, to: sqlite, label: "daily VACUUM INTO backup", lx: 420, ly: 490, d: "M174 780 H204 V496 H704 V448"}
-  - {from: imap, to: articles, label: "replies (off)", lx: 104, ly: 412, anchor: start, dashed: true, d: "M96 632 V420 H234"}
-  - {from: newsletter, to: oci, label: "SMTP 587 · STARTTLS", lx: 800, ly: 652, d: "M606 660 H882"}
-  - {from: web, to: oci, label: "confirmations", lx: 865, ly: 594, d: "M800 568 V600 H930 V632"}
-  - {from: oci, to: inboxes, label: "deliver", lx: 1068, ly: 652, d: "M1038 660 H1098"}
-  - {from: cloudflare, to: inboxes, label: "SPF · DKIM · DMARC", lx: 1166, ly: 604, anchor: end, dashed: true, d: "M1176 568 V632"}
-  - {from: web, to: alloy, label: "scraped every 30 s", lx: 720, ly: 742, anchor: start, d: "M712 568 V780 H882"}
-  - {from: alloy, to: grafana, label: "push", lx: 1068, ly: 774, d: "M1038 780 H1098"}
+  # Sources and ingestion
+  - {from: sources, to: scanner, d: "M130 111 V167"}
+  - {from: scanner, to: cluster, label: "48 h", lx: 225, ly: 197, d: "M187 204 H263"}
+  - {from: cluster, to: dedup, label: "2+ sites", lx: 470, ly: 197, d: "M437 204 H503"}
+  - {from: dedup, to: pipeline, label: "new story", lx: 480, ly: 291, d: "M560 241 V278 H330 V297"}
+  - {from: dedup, to: nvidia, label: "same story?", lx: 596, ly: 288, anchor: start, d: "M590 241 V402"}
+  - {from: imagesrc, to: enrich, label: "search · probe", lx: 854, ly: 150, anchor: end, d: "M860 111 V297"}
+  # AI
+  - {from: pipeline, to: nvidia, label: "write · check", lx: 472, ly: 327, d: "M417 334 H535 V402"}
+  - {from: enrich, to: nvidia, label: "short calls · vision", lx: 700, ly: 327, d: "M773 334 H630 V402"}
+  - {from: pipeline, to: articles, label: "draft + score", lx: 336, ly: 454, anchor: start, d: "M330 371 V537"}
+  - {from: enrich, to: sqlite, label: "take · tags · image", lx: 854, ly: 454, anchor: end, d: "M860 371 V537"}
+  # Content and data
+  - {from: imap, to: articles, label: "replies", lx: 215, ly: 567, dashed: true, d: "M187 574 H243"}
+  - {from: articles, to: sqlite, label: "generated_articles", lx: 595, ly: 567, d: "M417 574 H773"}
+  - {from: sqlite, to: newsletter, label: "articles · subscribers", lx: 625, ly: 656, d: "M820 611 V643 H430 V666"}
+  - {from: sqlite, to: web, label: "read · write", lx: 866, ly: 648, anchor: start, d: "M860 611 V666"}
+  # Delivery and mail
+  - {from: web, to: caddy, label: ":9090", lx: 866, ly: 790, anchor: start, d: "M860 740 V801"}
+  - {from: web, to: oci, label: "confirmations", lx: 650, ly: 765, d: "M820 740 V770 H470 V801"}
+  - {from: newsletter, to: oci, label: "SMTP 587", lx: 424, ly: 778, anchor: end, d: "M430 740 V801"}
+  - {from: cloudflare, to: caddy, label: "A record", lx: 740, ly: 831, dashed: true, d: "M707 838 H773"}
+  - {from: cloudflare, to: inboxes, label: "SPF · DKIM · DMARC", lx: 606, ly: 925, anchor: start, dashed: true, d: "M600 875 V912 H470 V935"}
+  - {from: oci, to: inboxes, label: "deliver", lx: 424, ly: 924, anchor: end, d: "M430 875 V935"}
+  - {from: caddy, to: readers, label: "HTTPS", lx: 854, ly: 924, anchor: end, d: "M860 875 V935"}
+  # Operations rail
+  - {from: gha, to: sqlite, label: "backup", lx: 1000, ly: 567, d: "M1027 574 H947"}
+  - {from: gha, to: web, label: "deploy · SSH", lx: 1080, ly: 658, anchor: start, d: "M1074 611 V691 H947"}
+  - {from: web, to: alloy, label: "metrics", lx: 1120, ly: 766, anchor: start, d: "M947 718 H1114 V801"}
+  - {from: alloy, to: grafana, label: "push", lx: 1108, ly: 924, anchor: end, d: "M1114 875 V935"}
+
+# The scheduler's jobs, shown inside the node each one runs.
+triggers:
+  - {from: scheduler, to: scanner, label: "every 3 h"}
+  - {from: scheduler, to: enrich, label: "every 15 min"}
+  - {from: scheduler, to: articles, label: "retries every 5 min"}
+  - {from: scheduler, to: newsletter, label: "Fri build · Sat send"}

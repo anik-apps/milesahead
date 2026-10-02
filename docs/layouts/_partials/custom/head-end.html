@@ -8,3 +8,13 @@
 <style>.hextra-toc{display:none}</style>
 {{- end }}
 {{- end -}}
+{{- /* The flow diagrams' styles (layouts/_shortcodes/flow.html). */ -}}
+{{- if .HasShortcode "flow" -}}
+{{- $css := resources.Get "flows/flow.css" | minify | fingerprint -}}
+<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+{{- end -}}
+{{- /* The home page and the section cards. */ -}}
+{{- if or .IsHome (.HasShortcode "doc-sections") -}}
+{{- $css := resources.Get "home/home.css" | minify | fingerprint -}}
+<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+{{- end -}}

@@ -1,60 +1,30 @@
 ---
 title: Miles Ahead
+layout: hextra-home
+description: Documentation for Miles Ahead, a self-hosted AI content platform for miles and points news.
 ---
 
-{{< hextra/hero-badge >}}
-  <span>Self-Hosted</span>
+<div class="home">
+<div class="home-hero">
+
+{{< hextra/hero-badge link="https://milesahead.kumaranik.com" >}}
+  <span>Live at milesahead.kumaranik.com</span>
   {{< icon name="arrow-circle-right" attributes="height=14" >}}
 {{< /hextra/hero-badge >}}
 
-<div class="hx-mt-6 hx-mb-6">
 {{< hextra/hero-headline >}}
-  AI-Powered Miles &amp; Points News
+  Miles Ahead documentation
 {{< /hextra/hero-headline >}}
+
+<p class="home-intro">Miles Ahead is a self-hosted content platform for miles and points news: it scans travel blogs, has one model write each story and another check it, and publishes it once an admin approves, with photos, credit card guides and a weekly newsletter. These pages cover how to run it, how it works and what each feature does.</p>
+
+<div class="home-actions">
+{{< hextra/hero-button text="Read the docs →" link="/docs/getting-started/" >}}
+<a class="home-button-alt" href="/docs/architecture/">Architecture</a>
 </div>
 
-<div class="hx-mb-12">
-{{< hextra/hero-subtitle >}}
-  A self-hosted content platform that scans miles-and-points blogs, clusters related stories, and uses AI to generate verified articles with structured metadata, reference pages, images, and a weekly newsletter.
-{{< /hextra/hero-subtitle >}}
 </div>
 
-<div class="hx-mb-6">
-{{< hextra/hero-button text="Get Started" link="docs/getting-started" >}}
-{{< hextra/hero-button text="GitHub" link="https://github.com/anik-apps/milesahead" style="alt" >}}
+{{< doc-sections >}}
+
 </div>
-
-<div class="hx-mt-6"></div>
-
-{{< hextra/feature-grid >}}
-  {{< hextra/feature-card
-    title="Automated Scanning"
-    subtitle="RSS and scrape-based scanner monitors miles-and-points blogs on configurable intervals. Content-hash deduplication prevents reprocessing."
-    icon="rss"
-  >}}
-  {{< hextra/feature-card
-    title="AI Pipeline"
-    subtitle="Generate-critique-revise loop using Nemotron for generation and a separate critic chain for verification. Critic scoring with hallucination caps ensures factual accuracy."
-    icon="sparkles"
-  >}}
-  {{< hextra/feature-card
-    title="Reference Pages"
-    subtitle="52 curated credit card pages across 6 categories with structured sections, Scout's Verdict, and automatic cross-linking from articles."
-    icon="book-open"
-  >}}
-  {{< hextra/feature-card
-    title="Admin Dashboard"
-    subtitle="A grouped review queue with keyboard shortcuts, safe approvals with Undo, rewrites and new images on request. Manage sources, cards and the newsletter."
-    icon="adjustments"
-  >}}
-  {{< hextra/feature-card
-    title="Image Pipeline"
-    subtitle="Searches 4 free image APIs in parallel, then scores candidates with a text pre-filter and a Llama Vision model for relevance."
-    icon="photograph"
-  >}}
-  {{< hextra/feature-card
-    title="Zero Cost"
-    subtitle="Runs on a free-tier OCI ARM instance with SQLite, free NVIDIA API endpoints, and free image APIs. No cloud databases or paid services required."
-    icon="currency-dollar"
-  >}}
-{{< /hextra/feature-grid >}}

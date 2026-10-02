@@ -1,0 +1,137 @@
+# The AI pipeline flow on docs/content/docs/architecture/ai-pipeline.md, drawn
+# by layouts/_shortcodes/flow.html. Follows Pipeline.Process in
+# internal/ai/pipeline.go step for step; keep it in that order.
+
+caption: |
+  How `Pipeline.Process` (`internal/ai/pipeline.go`) turns a cluster into an
+  article. Files are in `internal/ai` unless the path says otherwise. A
+  retry or fallback is marked ↻ on its box rather than drawn as a loop.
+
+steps:
+  - kind: start
+    title: Cluster of scanned posts
+    desc: One story, posts from the last 48 h, past both duplicate checks
+    code: cmd/milesahead/scan.go
+
+  - kind: decision
+    title: Posts from 2 or more sites?
+    code: pipeline.go · Process
+    continue: "yes"
+    exit:
+      label: "no"
+      title: Not generated
+      desc: "`ErrNotEnoughSources`"
+      tone: skip
+
+  - title: Pick the article type
+    desc: deal or summary, from keywords in the posts
+    code: pipeline.go · detectArticleType
+
+  - title: Generate
+    desc: The generator writes the article from the sources
+    badge: next model in the chain on a 429, 5xx, timeout or retired model
+    code: generator.go · Generate
+    exit:
+      label: error
+      title: Dropped from this scan
+
+  - title: Split out editor notes
+    desc: Admin-only remarks leave the text before anything reads it
+    code: pipeline.go · takeEditorNotes
+
+  - title: Read key details and links
+    desc: From the raw reply, before any cleanup
+    code: pipeline.go · replyDetails
+
+  - title: Clean Markdown
+    desc: Leftover Markdown becomes HTML
+    code: pipeline.go · cleanMarkdown
+
+  - title: Strip citation markers
+    desc: "`[1]` goes; numbered “Source N” references are noted"
+    code: pipeline.go · cleanSourceRefs
+
+  - title: Check for news-site names
+    desc: Links to outlets are unwrapped; mentions are noted
+    code: pipeline.go · checkOutlets
+
+  - title: Critic chain scores it
+    desc: Factual, attribution, completeness and hallucination checks; thinking off
+    badge: each critic retries once, then the next takes over
+    code: critic.go · Verify
+    exit:
+      label: error
+      title: Dropped from this scan
+      desc: A reply without JSON counts as an error too
+
+  - title: Drop remarks that confirm a pass
+    desc: An issue that only says a check passed is removed
+    code: criticissues.go · dropPassedChecks
+
+  - kind: decision
+    title: Source reference or outlet mention noted?
+    code: pipeline.go · flagSourceRefs, flagOutletMentions
+    branches:
+      - label: "no"
+        note: Verdict as the critic gave it
+      - label: "yes"
+        steps:
+          - title: Add them as issues
+            desc: The attribution check fails
+
+  - title: Adjust the score
+    desc: A failed hallucination check caps it at 60; each other failed check costs 10
+    code: pipeline.go · adjustScore
+
+  - kind: decision
+    title: Any issue left?
+    code: pipeline.go · needsRevision
+    branches:
+      - label: "no"
+        note: Keep the draft
+      - label: "yes"
+        steps:
+          - title: Revise once
+            desc: The generator gets the issue list; the same cleanup and checks run on the reply
+            badge: one revision only, never a loop
+            code: generator.go · GenerateWithFeedback
+          - title: Critic checks the revision
+            code: critic.go · Verify
+          - title: Keep the higher score
+            desc: The revision wins a tie; if revising or its check fails, the first draft stays
+
+  - title: Finalize
+    desc: Title, TLDR and body HTML from the kept version
+    code: pipeline.go · finalizeContent
+
+  - kind: decision
+    title: Key details in the reply?
+    branches:
+      - label: "yes"
+        note: Use them
+      - label: "no"
+        steps:
+          - title: Extract them separately
+            desc: One call on the short-call chain; a detail citing a source or naming an outlet is dropped
+            code: pipeline.go · extractDetails
+
+  - title: Drop links to news sites
+    desc: Articles link to official pages only
+    code: outlets.go · DropOutletLinks
+
+  - kind: decision
+    title: Score at least `critic_threshold` (75)?
+    desc: The article manager stores the result
+    code: internal/article/manager.go · CreateFromPipeline
+    merge: false
+    branches:
+      - label: "yes"
+        steps:
+          - kind: end
+            title: Pending
+            desc: In the admin's review queue
+      - label: "no"
+        steps:
+          - kind: end
+            title: Draft
+            desc: Saved for the admin, not queued

@@ -1,0 +1,118 @@
+# The image pipeline flow on docs/content/docs/architecture/image-pipeline.md,
+# drawn by layouts/_shortcodes/flow.html. Follows Service.findImage and
+# enrichOne in internal/enrich/enrich.go, Searcher.SearchExcluding in
+# internal/images/search.go and Scorer.Score in internal/images/scorer.go.
+
+caption: |
+  How an enrichment pass (`internal/enrich/enrich.go · findImage`) finds an
+  article's image. A step that tries again is marked ↻ rather than drawn as a
+  loop. **No match** means the search ran and nothing would do: a pending
+  request is marked failed at once. **Failed** is worth another try: the
+  article comes back next pass, until its attempts run out.
+
+steps:
+  - kind: start
+    title: Article with no image, or a Find a new image request
+    desc: Pending requests go first in each pass; the picture being replaced is already on the turned-down list
+    code: internal/enrich/enrich.go · enrichOne
+
+  - kind: decision
+    title: Time left in the pass?
+    code: findImage
+    continue: "yes"
+    exit:
+      label: "no"
+      title: Put off to the next pass
+      desc: No attempt is used
+      tone: skip
+
+  - title: Read the turned-down pictures
+    desc: Every picture an admin replaced for this article
+    code: "internal/db/imagerequests.go · RejectedImageURLs"
+
+  - kind: decision
+    title: Search words from the admin?
+    desc: A pending request can carry them
+    branches:
+      - label: "no"
+        steps:
+          - title: Write search queries
+            desc: Short-call chain, from the title and TLDR; the title itself if that fails
+            code: internal/ai/enrichment.go · GenerateImageQueries
+      - label: "yes"
+        steps:
+          - title: Use the words as the only query
+            desc: The scorer is told what the editor asked for
+
+  - title: Search the 4 image APIs in parallel
+    desc: Unsplash and Pexels (with a key), Openverse, Wikimedia Commons; 3 results per API per query, URLs rewritten to sized copies
+    code: internal/images/search.go · SearchExcluding
+    exit:
+      label: error
+      title: Failed
+      desc: Every API call failed
+
+  - title: Leave out turned-down pictures
+    desc: The same picture at any size, by `images.Identity`, before the caps
+    code: internal/images/identity.go
+
+  - title: De-duplicate and diversify
+    desc: One copy of each URL, at most 3 per source and 15 in total
+
+  - kind: decision
+    title: Any candidates?
+    continue: "yes"
+    exit:
+      label: "no"
+      title: No match
+      tone: skip
+
+  - title: Score by text
+    desc: Every candidate 1-10 from its description, source and credit, on the short-call chain
+    code: internal/images/scorer.go · textScore
+
+  - title: Score the top 5 by vision
+    desc: Wikimedia thumbnails warmed first (2 at a time, 15 s at most), then Llama 3.2 Vision looks at each one
+    badge: a thumbnail that will not load scores ×0.6; if every call fails, the text scores stand
+    code: internal/images/scorer.go · visionScore
+
+  - kind: decision
+    title: Best score at least 6?
+    code: enrich.go · MinImageScore
+    continue: "yes"
+    exit:
+      label: "no"
+      title: No match
+      desc: None relevant enough (no scores at all counts as Failed)
+      tone: skip
+
+  - title: Take the best that loads and fits
+    desc: "Ranged GET: `image/*`, thumbnail at most 512 KiB, display image at most 1 MiB; stops at the pass deadline"
+    badge: next candidate down, while scores are 6 or more
+    code: internal/images/search.go · Usable
+
+  - kind: decision
+    title: One fits?
+    continue: "yes"
+    exit:
+      label: "no"
+      title: No match
+      desc: Every relevant image failed to load or was too large
+      tone: skip
+
+  - kind: decision
+    title: Answering an admin's request?
+    code: internal/db/enrichment.go · applyImage
+    branches:
+      - label: "no"
+        steps:
+          - title: Save the image
+            desc: Image, thumbnail and credit, unless a request arrived during the pass
+      - label: "yes"
+        steps:
+          - title: Swap the picture
+            desc: The new image is written and the request closed in one transaction; a newer request wins
+
+  - kind: end
+    title: Article shows its image
+    desc: "`image_url`, `image_thumbnail`, `image_attribution`"

@@ -1,5 +1,6 @@
 ---
 title: AI Pipeline
+description: "How a cluster of scanned posts becomes a checked article: generation, cleanup, the critic chain, one auto-revision and the score that decides pending or draft."
 weight: 1
 ---
 
@@ -7,60 +8,11 @@ The AI pipeline turns a cluster of scanned posts into a verified article. It wri
 
 ## Pipeline Flow
 
-```
-  Cluster of scanned posts (2+ unique sites required)
-          |
-          v
-  Duplicate checks              covered_raws, then the story check
-  (see Article Workflow)        (skip, or generate a follow-up)
-          |
-          v
-  +----------------------+
-  |      Generator       |  nemotron-3-ultra-550b-a55b, then fallbacks
-  |  (type: deal/summary |  Detects: deal, summary, roundup
-  |   /roundup)          |
-  +----------+-----------+
-             |
-             v
-  Editor notes split out         admin-only, never graded or published
-  Citation markers removed       "[1]"
-  Numbered refs + outlet         "Source 1 notes...", "The Points Guy
-  mentions flagged               reports..." -> attribution issues
-             |
-             v
-  +----------------------+
-  |    Critic chain      |  nemotron-3-super, then kimi-k3; thinking off
-  | factual, attribution,|
-  | completeness,        |
-  | hallucination        |
-  +----------+-----------+
-             |
-     dropPassedChecks           removes issues that only confirm a pass
-             |
-     any issue left?
-      /            \
-    no              yes
-     |               |
-     |        +------v-------+
-     |        | Auto-revise  |  once; the generator gets the issue list
-     |        +------+-------+
-     |               |
-     |        +------v-------+
-     |        |  Re-verify   |  higher score kept (revision wins ties)
-     |        +------+-------+
-     |               |
-     +-------+-------+
-             |
-             v
-  Key details + links parsed from the raw reply
-  (a separate extraction call only if the reply had none)
-             |
-             v
-       PipelineResult
-             |
-             v
-  Article manager: pending if score >= critic_threshold, else draft
-```
+{{< flow "ai-pipeline" >}}
+
+An admin's rewrite (`ProcessWithFeedback`, via `buildResult`) puts the new
+reply through the same cleanup, checks and scoring, but not the
+auto-revision or the separate key-detail call: the admin reads the result.
 
 A cluster needs posts from at least two different sites; with fewer the pipeline returns `ErrNotEnoughSources` and nothing is generated. Before a cluster reaches the generator, the scan loop (`cmd/milesahead/scan.go`) runs the two duplicate checks described in [Article Workflow](../../features/article-workflow/#deduplication).
 

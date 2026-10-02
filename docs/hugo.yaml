@@ -18,12 +18,18 @@ markup:
 
 menu:
   main:
+    - name: Docs
+      pageRef: /docs
+      weight: 1
+    - name: Architecture
+      pageRef: /docs/architecture
+      weight: 2
     - name: Site
       url: https://milesahead.kumaranik.com
-      weight: 1
+      weight: 3
     - name: GitHub
       url: https://github.com/anik-apps/milesahead
-      weight: 2
+      weight: 4
 
 params:
   description: Documentation for Miles Ahead — a self-hosted AI content platform for miles & points news.
