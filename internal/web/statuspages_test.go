@@ -1,7 +1,10 @@
 package web
 
 import (
+	"bytes"
+	"errors"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -11,6 +14,8 @@ import (
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/metrics"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // do sends a request through the app and returns the recorder.
@@ -150,16 +155,23 @@ func TestServerError_DatabaseFailure(t *testing.T) {
 
 // --- Newsletter flow ---
 
-// fakeMailer records confirmation emails.
+// fakeMailer records confirmation emails. With fail set, every send
+// fails with it (and is not recorded).
 type fakeMailer struct {
-	mu   sync.Mutex
-	sent []string
+	mu      sync.Mutex
+	sent    []string
+	domains []string
+	fail    error
 }
 
 func (f *fakeMailer) SendConfirmation(to, token, domain string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.fail != nil {
+		return f.fail
+	}
 	f.sent = append(f.sent, to+" "+token)
+	f.domains = append(f.domains, domain)
 	return nil
 }
 
@@ -189,6 +201,7 @@ func subscribe(t *testing.T, app *App, email string) *httptest.ResponseRecorder 
 
 func TestSubscribePage_Form(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
+	openSignup(app)
 	rec := do(t, app, http.MethodGet, "/subscribe", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("GET /subscribe: status %d, want 200 (it used to be 405)", rec.Code)
@@ -267,8 +280,81 @@ func TestSubscribe_ResendsConfirmationAfterCooldown(t *testing.T) {
 	}
 }
 
+// confirmationCount reads milesahead_emails_sent_total{kind="confirmation",outcome}.
+func confirmationCount(t *testing.T, outcome string) float64 {
+	t.Helper()
+	var m dto.Metric
+	if err := metrics.EmailsSentTotal.WithLabelValues(metrics.EmailConfirmation, outcome).Write(&m); err != nil {
+		t.Fatal(err)
+	}
+	return m.GetCounter().GetValue()
+}
+
+// lockedBuffer is a log destination the background send can write to while
+// the test reads it.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// A sent confirmation is counted. A failed one is logged and counted, and
+// gives back its claim, so the reader can ask again at once rather than wait
+// out the cooldown for an email that never came.
+func TestSubscribe_ConfirmationOutcomesCounted(t *testing.T) {
+	app, mailer, _ := newsletterApp(t)
+	logs := &lockedBuffer{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	sent0, failed0 := confirmationCount(t, metrics.EmailSent), confirmationCount(t, metrics.EmailFailed)
+	subscribe(t, app, "ok@example.com")
+	if mailer.count() != 1 || confirmationCount(t, metrics.EmailSent)-sent0 != 1 {
+		t.Fatalf("a sent confirmation should count once as sent (sent %d)", mailer.count())
+	}
+	if mailer.domains[0] != app.siteDomain() {
+		t.Errorf("confirmation built on domain %q, want the site's %q", mailer.domains[0], app.siteDomain())
+	}
+
+	mailer.mu.Lock()
+	mailer.fail = errors.New("dialing SMTP: connection refused")
+	mailer.mu.Unlock()
+	subscribe(t, app, "fails@example.com")
+	if d := confirmationCount(t, metrics.EmailFailed) - failed0; d != 1 {
+		t.Errorf("failed confirmations counted %v, want 1", d)
+	}
+	if !strings.Contains(logs.String(), "sending the confirmation email failed") || !strings.Contains(logs.String(), "connection refused") {
+		t.Errorf("the failure should be logged with its cause:\n%s", logs.String())
+	}
+	if strings.Contains(logs.String(), "fails@example.com") {
+		t.Errorf("the log should identify the subscriber by id, not address:\n%s", logs.String())
+	}
+
+	// The claim was released: the next try sends straight away.
+	mailer.mu.Lock()
+	mailer.fail = nil
+	mailer.mu.Unlock()
+	subscribe(t, app, "fails@example.com")
+	if mailer.count() != 2 {
+		t.Errorf("after a failed send the reader's retry should send at once; %d sent", mailer.count())
+	}
+}
+
 func TestSubscribe_InvalidAddressIs400(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
+	openSignup(app)
 	rec := do(t, app, http.MethodPost, "/subscribe", "email=not-an-address")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status %d, want 400", rec.Code)
@@ -293,6 +379,7 @@ func TestSubscribe_HoneypotIsIgnored(t *testing.T) {
 
 func TestSubscribe_RateLimited(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
+	openSignup(app)
 	var last int
 	for i := 0; i <= subscribeMaxAttempts; i++ {
 		last = do(t, app, http.MethodPost, "/subscribe", "email=a"+strconv.Itoa(i)+"@example.com").Code

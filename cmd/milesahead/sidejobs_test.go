@@ -13,6 +13,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/images"
+	"github.com/kumaranik/milesahead/internal/mail"
 )
 
 // modelLog is a model client that records which models were called. Models
@@ -51,7 +52,7 @@ func (m *modelLog) take() string {
 
 type nopSender struct{}
 
-func (nopSender) SendNewsletter(string, string, []string) (int, error) { return 0, nil }
+func (nopSender) SendNewsletter(string, string, []mail.Recipient) (int, error) { return 0, nil }
 
 // TestSideJobs_UseTheEnrichmentChainNotTheCritic is the production wiring:
 // image text-scoring, the newsletter pick and card-update detection all ran on

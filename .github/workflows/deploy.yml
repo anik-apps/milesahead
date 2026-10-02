@@ -156,25 +156,56 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan ${{ secrets.OCI_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Write application config
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      # Generates config.yaml on the runner only. Every secret goes into the
+      # file JSON-encoded by q (a JSON string is a valid YAML double-quoted
+      # scalar), so a quote, backslash, '#', '$' or newline in a secret
+      # arrives intact instead of breaking the YAML or being altered. The
+      # shell expands the heredoc once: '$(...)' or backticks inside a secret
+      # are not run. cmd/milesahead's deploy config test runs this step.
+      - name: Generate application config
         env:
-          OCI_HOST: ${{ secrets.OCI_HOST }}
-          OCI_USER: ${{ secrets.OCI_USER }}
+          CONFIG_OUT: /tmp/config.yaml
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           ADMIN_PASSWORD_HASH: ${{ secrets.ADMIN_PASSWORD_HASH }}
           UNSPLASH_KEY: ${{ secrets.UNSPLASH_KEY }}
           PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
+          # Outbound mail (confirmation emails and the newsletter). Unset,
+          # the placeholders below stay, and the app keeps newsletter
+          # sign-up closed even with signup_enabled on.
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
         run: |
-          SSH="ssh $OCI_USER@$OCI_HOST"
+          set -eo pipefail
+          q() { jq -n --arg v "$1" '$v'; }
 
-          # Deploy config file (via /tmp to avoid permission issues)
-          cat > /tmp/config.yaml << CONFIGEOF
+          SMTP_PORT="${SMTP_PORT:-587}"
+          if ! [[ "$SMTP_PORT" =~ ^[0-9]+$ ]]; then
+            echo "::error::SMTP_PORT must be numeric"
+            exit 1
+          fi
+          ADMIN_PASSWORD_HASH_Q=$(q "${ADMIN_PASSWORD_HASH}")
+          NVIDIA_API_KEY_Q=$(q "${NVIDIA_API_KEY}")
+          UNSPLASH_KEY_Q=$(q "${UNSPLASH_KEY}")
+          PEXELS_KEY_Q=$(q "${PEXELS_KEY}")
+          SMTP_HOST_Q=$(q "${SMTP_HOST:-localhost}")
+          SMTP_USER_Q=$(q "${SMTP_USER:-placeholder}")
+          SMTP_PASSWORD_Q=$(q "${SMTP_PASSWORD:-placeholder}")
+          SMTP_FROM_Q=$(q "${SMTP_FROM:-noreply@milesahead.kumaranik.com}")
+
+          cat > "$CONFIG_OUT" << CONFIGEOF
           server:
             port: 9090
             domain: milesahead.kumaranik.com
 
           admin:
-            password_hash: "${ADMIN_PASSWORD_HASH}"
+            password_hash: ${ADMIN_PASSWORD_HASH_Q}
 
           db:
             path: /opt/milesahead/data/milesahead.db
@@ -201,21 +232,21 @@ jobs:
             enrichment_max_attempts: 3
             enrichment_max_duration: 10
             critic2_model: ""
-            hf_api_token: "${NVIDIA_API_KEY}"
+            hf_api_token: ${NVIDIA_API_KEY_Q}
             hf_base_url: "https://integrate.api.nvidia.com/v1"
             critic_threshold: 75
             max_retries: 3
             cache_ttl: 3600
-            unsplash_key: "${UNSPLASH_KEY}"
-            pexels_key: "${PEXELS_KEY}"
+            unsplash_key: ${UNSPLASH_KEY_Q}
+            pexels_key: ${PEXELS_KEY_Q}
 
           mail:
             smtp:
-              host: localhost
-              port: 587
-              user: "placeholder"
-              password: "placeholder"
-              from: "noreply@milesahead.kumaranik.com"
+              host: ${SMTP_HOST_Q}
+              port: ${SMTP_PORT}
+              user: ${SMTP_USER_Q}
+              password: ${SMTP_PASSWORD_Q}
+              from: ${SMTP_FROM_Q}
             imap:
               host: localhost
               port: 993
@@ -226,6 +257,10 @@ jobs:
           newsletter:
             send_time: "08:00"
             timezone: "America/New_York"
+            # Closed until the SMTP secrets above are set and the sending
+            # domain has SPF and DKIM; see ROADMAP.md (Newsletter) for the
+            # turn-on checklist.
+            signup_enabled: false
 
           votes:
             alert_threshold: 10
@@ -233,8 +268,21 @@ jobs:
             alert_window: 24
           CONFIGEOF
 
+      # The config must load before it replaces the server's: a bad value
+      # fails the deploy here rather than stopping the service.
+      - name: Check application config
+        run: go run ./cmd/milesahead -check-config -config /tmp/config.yaml
+
+      - name: Copy application config
+        env:
+          OCI_HOST: ${{ secrets.OCI_HOST }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+        run: |
+          SSH="ssh $OCI_USER@$OCI_HOST"
+          # Via /tmp to avoid permission issues.
           scp /tmp/config.yaml $OCI_USER@$OCI_HOST:${{ env.APP_DIR }}/config.yaml
           $SSH "chmod 600 ${{ env.APP_DIR }}/config.yaml"
+          rm -f /tmp/config.yaml
 
   deploy:
     needs: [build, config]

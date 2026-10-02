@@ -1,8 +1,13 @@
 package mail
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
+	"mime/quotedprintable"
+	netmail "net/mail"
 	"strings"
 	"testing"
 	"time"
@@ -21,14 +26,73 @@ type mockSendCloser struct {
 type mockMessage struct {
 	from string
 	to   []string
+	raw  string // the message as it would go over SMTP
 }
 
 func (m *mockSendCloser) Send(from string, to []string, msg io.WriterTo) error {
 	if m.failTo != "" && len(to) > 0 && to[0] == m.failTo {
 		return fmt.Errorf("550 mailbox unavailable")
 	}
-	m.sent = append(m.sent, mockMessage{from: from, to: to})
+	var buf bytes.Buffer
+	if _, err := msg.WriteTo(&buf); err != nil {
+		return err
+	}
+	m.sent = append(m.sent, mockMessage{from: from, to: to, raw: buf.String()})
 	return nil
+}
+
+// parsed is a captured message read back the way a mail client would:
+// headers unfolded, and the body of the part with the given content type
+// decoded.
+func (m mockMessage) parsed(t *testing.T) *netmail.Message {
+	t.Helper()
+	msg, err := netmail.ReadMessage(strings.NewReader(m.raw))
+	if err != nil {
+		t.Fatalf("reading captured message: %v", err)
+	}
+	return msg
+}
+
+// part returns the decoded body of the message's part of contentType
+// ("text/plain" or "text/html"), whether the message is multipart or not.
+func (m mockMessage) part(t *testing.T, contentType string) string {
+	t.Helper()
+	msg := m.parsed(t)
+	mt, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatalf("content type: %v", err)
+	}
+	if !strings.HasPrefix(mt, "multipart/") {
+		if mt != contentType {
+			return ""
+		}
+		return decodeBody(t, msg.Header.Get("Content-Transfer-Encoding"), msg.Body)
+	}
+	mr := multipart.NewReader(msg.Body, params["boundary"])
+	for {
+		p, err := mr.NextPart()
+		if err == io.EOF {
+			return ""
+		}
+		if err != nil {
+			t.Fatalf("reading part: %v", err)
+		}
+		if pt, _, _ := mime.ParseMediaType(p.Header.Get("Content-Type")); pt == contentType {
+			return decodeBody(t, p.Header.Get("Content-Transfer-Encoding"), p)
+		}
+	}
+}
+
+func decodeBody(t *testing.T, encoding string, r io.Reader) string {
+	t.Helper()
+	if strings.EqualFold(encoding, "quoted-printable") {
+		r = quotedprintable.NewReader(r)
+	}
+	b, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	return string(b)
 }
 
 func (m *mockSendCloser) Close() error { return nil }
@@ -206,7 +270,7 @@ func TestRenderNotification_ContainsVerificationChecks(t *testing.T) {
 }
 
 func TestRenderConfirmation_ContainsConfirmLink(t *testing.T) {
-	html, err := RenderConfirmation("abc123", "milesahead.com")
+	html, _, err := RenderConfirmation("abc123", "milesahead.com", "")
 	if err != nil {
 		t.Fatalf("RenderConfirmation failed: %v", err)
 	}
@@ -218,7 +282,7 @@ func TestRenderConfirmation_ContainsConfirmLink(t *testing.T) {
 }
 
 func TestRenderConfirmation_ContainsUnsubscribeLink(t *testing.T) {
-	html, err := RenderConfirmation("abc123", "milesahead.com")
+	html, _, err := RenderConfirmation("abc123", "milesahead.com", "")
 	if err != nil {
 		t.Fatalf("RenderConfirmation failed: %v", err)
 	}
@@ -230,7 +294,7 @@ func TestRenderConfirmation_ContainsUnsubscribeLink(t *testing.T) {
 }
 
 func TestRenderConfirmation_ContainsSubscriptionTitle(t *testing.T) {
-	html, err := RenderConfirmation("abc123", "milesahead.com")
+	html, _, err := RenderConfirmation("abc123", "milesahead.com", "")
 	if err != nil {
 		t.Fatalf("RenderConfirmation failed: %v", err)
 	}
@@ -294,11 +358,77 @@ func TestSendConfirmation(t *testing.T) {
 	}
 }
 
+// The confirmation email goes as plain text and HTML, says what the reader
+// signed up for and how often it comes, and links back absolutely: an email
+// client has no base URL.
+func TestSendConfirmation_Content(t *testing.T) {
+	sender, mock := newTestSender()
+	sender.SetNewsletterSchedule("every Saturday at 8:00 AM ET")
+
+	if err := sender.SendConfirmation("subscriber@test.com", "conf-token", "milesahead.example"); err != nil {
+		t.Fatal(err)
+	}
+	msg := mock.sent[0]
+	if got := msg.parsed(t).Header.Get("Subject"); got != "Confirm your subscription to MilesAhead" {
+		t.Errorf("subject = %q", got)
+	}
+	html, text := msg.part(t, "text/html"), msg.part(t, "text/plain")
+	if html == "" || text == "" {
+		t.Fatalf("want both an HTML and a plain-text part; html %d bytes, text %d bytes", len(html), len(text))
+	}
+	confirm := "https://milesahead.example/subscribe/confirm?token=conf-token"
+	unsub := "https://milesahead.example/unsubscribe?token=conf-token"
+	for name, body := range map[string]string{"html": html, "text": text} {
+		for _, want := range []string{
+			confirm, unsub,
+			"One email, every Saturday at 8:00 AM ET.",
+			"the ones about to end",
+			"We only use your address to send the newsletter.",
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s part should contain %q:\n%s", name, want, body)
+			}
+		}
+	}
+	if !strings.Contains(html, `href="`+confirm+`"`) {
+		t.Errorf("the HTML button should link to %s", confirm)
+	}
+	if strings.Contains(html, `href="/`) {
+		t.Error("the HTML has a relative link, which does not work in an email")
+	}
+}
+
+// Without a schedule set, the email still says how often.
+func TestRenderConfirmation_DefaultFrequency(t *testing.T) {
+	html, text, err := RenderConfirmation("t", "milesahead.example", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{html, text} {
+		if !strings.Contains(body, "One email, once a week.") {
+			t.Errorf("want the default frequency in:\n%s", body)
+		}
+	}
+}
+
+// recipientsFor gives each address its own unsubscribe link.
+func recipientsFor(emails ...string) []Recipient {
+	out := make([]Recipient, len(emails))
+	for i, e := range emails {
+		out[i] = Recipient{Email: e, UnsubscribeURL: "https://milesahead.com/unsubscribe?token=tok-" + strings.Split(e, "@")[0]}
+	}
+	return out
+}
+
+// issueHTML is a rendered issue: the reader's link goes where the
+// placeholder is.
+const issueHTML = `<h1>News</h1><p><a href="` + UnsubscribeURLPlaceholder + `">Unsubscribe</a></p>`
+
 func TestSendNewsletter(t *testing.T) {
 	sender, mock := newTestSender()
-	recipients := []string{"a@test.com", "b@test.com", "c@test.com"}
+	recipients := recipientsFor("a@test.com", "b@test.com", "c@test.com")
 
-	sent, err := sender.SendNewsletter("Weekly Digest", "<h1>News</h1>", recipients)
+	sent, err := sender.SendNewsletter("Weekly Digest", issueHTML, recipients)
 	if err != nil {
 		t.Fatalf("SendNewsletter failed: %v", err)
 	}
@@ -310,16 +440,111 @@ func TestSendNewsletter(t *testing.T) {
 		t.Fatalf("expected 3 sent messages, got %d", len(mock.sent))
 	}
 	for i, r := range recipients {
-		if mock.sent[i].to[0] != r {
-			t.Errorf("message %d: expected to=%s, got %s", i, r, mock.sent[i].to[0])
+		if mock.sent[i].to[0] != r.Email {
+			t.Errorf("message %d: expected to=%s, got %s", i, r.Email, mock.sent[i].to[0])
 		}
+	}
+}
+
+// Every copy carries its own reader's unsubscribe link, in the body and in
+// the List-Unsubscribe headers a mail provider's Unsubscribe button uses
+// (RFC 2369, RFC 8058), and never the shared placeholder or a bare
+// /unsubscribe.
+func TestSendNewsletter_PerRecipientUnsubscribe(t *testing.T) {
+	sender, mock := newTestSender()
+	sender.from = "MilesAhead <noreply@milesahead.com>"
+	recipients := recipientsFor("a@test.com", "b@test.com")
+
+	if _, err := sender.SendNewsletter("Weekly Digest", issueHTML, recipients); err != nil {
+		t.Fatalf("SendNewsletter failed: %v", err)
+	}
+	if len(mock.sent) != 2 {
+		t.Fatalf("sent %d messages, want 2", len(mock.sent))
+	}
+	for i, r := range recipients {
+		msg := mock.sent[i]
+		body := msg.part(t, "text/html")
+		if !strings.Contains(body, `href="`+r.UnsubscribeURL+`"`) {
+			t.Errorf("%s: body should link to its own %s:\n%s", r.Email, r.UnsubscribeURL, body)
+		}
+		// Checked in the decoded body and headers: the raw message is
+		// quoted-printable, which would hide the URL's "=" either way.
+		other := recipients[1-i].UnsubscribeURL
+		if strings.Contains(body, other) || strings.Contains(msg.parsed(t).Header.Get("List-Unsubscribe"), other) {
+			t.Errorf("%s: message carries the other reader's link %s", r.Email, other)
+		}
+		if strings.Contains(body, UnsubscribeURLPlaceholder) || strings.Contains(body, `/unsubscribe"`) {
+			t.Errorf("%s: body still has the placeholder or a bare /unsubscribe:\n%s", r.Email, body)
+		}
+		h := msg.parsed(t).Header
+		// No mailto by default: the From address is not read.
+		wantLU := "<" + r.UnsubscribeURL + ">"
+		if got := h.Get("List-Unsubscribe"); got != wantLU {
+			t.Errorf("%s: List-Unsubscribe = %q, want %q", r.Email, got, wantLU)
+		}
+		if got := h.Get("List-Unsubscribe-Post"); got != "List-Unsubscribe=One-Click" {
+			t.Errorf("%s: List-Unsubscribe-Post = %q, want List-Unsubscribe=One-Click", r.Email, got)
+		}
+	}
+}
+
+// With a monitored mailbox set, List-Unsubscribe also has a mailto to it
+// (never to the From address); an invalid one is refused and left out.
+func TestSendNewsletter_UnsubscribeMailbox(t *testing.T) {
+	sender, mock := newTestSender()
+	sender.from = "MilesAhead <noreply@milesahead.com>"
+	if err := sender.SetUnsubscribeMailbox("Unsubscribes <unsubscribe@milesahead.com>"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sender.SendNewsletter("Weekly Digest", issueHTML, recipientsFor("a@test.com")); err != nil {
+		t.Fatal(err)
+	}
+	want := "<https://milesahead.com/unsubscribe?token=tok-a>, <mailto:unsubscribe@milesahead.com?subject=unsubscribe>"
+	if got := mock.sent[0].parsed(t).Header.Get("List-Unsubscribe"); got != want {
+		t.Errorf("List-Unsubscribe = %q, want %q", got, want)
+	}
+
+	if err := sender.SetUnsubscribeMailbox("not an address"); err == nil {
+		t.Error("an invalid mailbox should be reported")
+	}
+	if _, err := sender.SendNewsletter("Weekly Digest", issueHTML, recipientsFor("b@test.com")); err != nil {
+		t.Fatal(err)
+	}
+	if got := mock.sent[1].parsed(t).Header.Get("List-Unsubscribe"); strings.Contains(got, "mailto:") {
+		t.Errorf("after an invalid mailbox the header should have no mailto, got %q", got)
+	}
+}
+
+// A copy that could not carry its reader's link is never sent: not when the
+// issue has no place for it, nor when a recipient's link is missing or not
+// https (a provider's one-click POST needs https). Nothing is dialled.
+func TestSendNewsletter_RefusesWithoutUnsubscribeLink(t *testing.T) {
+	cases := map[string]struct {
+		html       string
+		recipients []Recipient
+	}{
+		"no placeholder in the issue": {"<h1>News</h1>", recipientsFor("a@test.com")},
+		"recipient without a link":    {issueHTML, []Recipient{{Email: "a@test.com"}}},
+		"relative link":               {issueHTML, []Recipient{{Email: "a@test.com", UnsubscribeURL: "/unsubscribe?token=x"}}},
+		"one bad among good":          {issueHTML, append(recipientsFor("a@test.com"), Recipient{Email: "b@test.com", UnsubscribeURL: "http://x/unsubscribe?token=y"})},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			sender, mock := newTestSender()
+			dialled := false
+			sender.dialFn = func() (SendCloser, error) { dialled = true; return mock, nil }
+			sent, err := sender.SendNewsletter("Weekly Digest", tc.html, tc.recipients)
+			if err == nil || sent != 0 || dialled || len(mock.sent) != 0 {
+				t.Errorf("SendNewsletter = %d, %v (dialled %v, %d sent); want 0, an error, nothing dialled", sent, err, dialled, len(mock.sent))
+			}
+		})
 	}
 }
 
 func TestSendNewsletter_EmptyRecipients(t *testing.T) {
 	sender, _ := newTestSender()
 
-	sent, err := sender.SendNewsletter("Subject", "<p>body</p>", nil)
+	sent, err := sender.SendNewsletter("Subject", issueHTML, nil)
 	if err != nil || sent != 0 {
 		t.Fatalf("SendNewsletter with empty recipients = %d, %v; want 0, nil", sent, err)
 	}
@@ -330,9 +555,9 @@ func TestSendNewsletter_EmptyRecipients(t *testing.T) {
 func TestSendNewsletter_FailsPartway(t *testing.T) {
 	sender, mock := newTestSender()
 	mock.failTo = "b@test.com"
-	recipients := []string{"a@test.com", "b@test.com", "c@test.com"}
+	recipients := recipientsFor("a@test.com", "b@test.com", "c@test.com")
 
-	sent, err := sender.SendNewsletter("Weekly Digest", "<h1>News</h1>", recipients)
+	sent, err := sender.SendNewsletter("Weekly Digest", issueHTML, recipients)
 	if err == nil || !strings.Contains(err.Error(), "b@test.com") {
 		t.Errorf("SendNewsletter error = %v, want one naming b@test.com", err)
 	}
@@ -348,7 +573,7 @@ func TestSendNewsletter_FailsPartway(t *testing.T) {
 func TestSendNewsletter_DialFails(t *testing.T) {
 	sender, _ := newTestSender()
 	sender.dialFn = func() (SendCloser, error) { return nil, fmt.Errorf("dialing SMTP: refused") }
-	sent, err := sender.SendNewsletter("Subject", "<p>body</p>", []string{"a@test.com"})
+	sent, err := sender.SendNewsletter("Subject", issueHTML, recipientsFor("a@test.com"))
 	if err == nil || sent != 0 {
 		t.Errorf("SendNewsletter = %d, %v; want 0 and an error", sent, err)
 	}
@@ -410,14 +635,14 @@ func TestSetDialFunc(t *testing.T) {
 }
 
 func TestRenderConfirmation_IsBranded(t *testing.T) {
-	html, err := RenderConfirmation("abc123", "milesahead.com")
+	html, _, err := RenderConfirmation("abc123", "milesahead.com", "")
 	if err != nil {
 		t.Fatalf("RenderConfirmation failed: %v", err)
 	}
 	for _, want := range []string{
 		`src="https://milesahead.com/static/img/brand/email-lockup.png"`,
 		`src="https://milesahead.com/static/img/brand/email-band.png"`,
-		"Thank you for subscribing to MilesAhead!",
+		"Thanks for signing up for the MilesAhead weekly email.",
 	} {
 		if !strings.Contains(html, want) {
 			t.Errorf("confirmation email should contain %s", want)

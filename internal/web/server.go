@@ -16,6 +16,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/newsletter"
 	"github.com/kumaranik/milesahead/internal/offer"
 	"github.com/kumaranik/milesahead/internal/vote"
 )
@@ -33,8 +34,14 @@ var templateFuncs = template.FuncMap{
 		return template.HTML(s)
 	},
 	"scrollTables": scrollTables,
-	"endedLabel":   endedLabel,
-	"typeBadge":    typeBadge,
+	// newsletterWhen and newsletterDay tell readers when the newsletter
+	// comes: "every Saturday at 8:00 AM ET", "Saturday".
+	"newsletterWhen": func() string { return newsletter.WeeklySendWhen },
+	"newsletterDay":  func() string { return newsletter.WeeklySendDay },
+	// signupOpen is replaced per App by loadTemplates; see App.signupOpen.
+	"signupOpen": func() bool { return false },
+	"endedLabel": endedLabel,
+	"typeBadge":  typeBadge,
 	"deref": func(v interface{}) string {
 		if v == nil {
 			return ""
@@ -98,7 +105,8 @@ type App struct {
 	// starts: the approval's undo window, so an approval undone in time
 	// drafts no card updates. Tests shorten it.
 	cardDetectDelay time.Duration
-	// mailer sends subscription confirmations; nil means none are sent.
+	// mailer sends subscription confirmations. Sign-up is open only with
+	// one (see SetConfirmationMailer).
 	mailer ConfirmationMailer
 	// subscribeLimiter caps sign-up attempts per IP address.
 	subscribeLimiter *rateLimiter
@@ -224,6 +232,9 @@ func (app *App) loadTemplates(dir string) error {
 		"scriptURL":          func() string { return js },
 		"adminStylesheetURL": func() string { return adminCSS },
 		"adminScriptURL":     func() string { return adminJS },
+		// Read as each page renders: the mailer is set after the templates
+		// are parsed.
+		"signupOpen": app.signupOpen,
 	}
 
 	// Parse each page template separately with the layout so that each gets

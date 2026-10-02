@@ -209,13 +209,42 @@ var (
 		Buckets: []float64{256, 1024, 4096, 16384, 65536, 262144, 1048576},
 	}, []string{"method", "path"})
 
+	// EmailsSentTotal counts reader emails by kind (confirmation,
+	// newsletter) and outcome (sent, failed). A newsletter counts one "sent"
+	// per recipient reached and one "failed" when a send stops; a
+	// confirmation counts one of either. Every series is created at zero in
+	// Init, so an alert on increase() sees the first failure.
+	EmailsSentTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_emails_sent_total",
+		Help: "Reader emails by kind (confirmation, newsletter) and outcome (sent, failed)",
+	}, []string{"kind", "outcome"})
+
 	DailyUniqueVisitors = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "milesahead_daily_unique_visitors_total",
 		Help: "Approximate unique visitors (increments on first-seen IP hash)",
 	})
 )
 
+// EmailsSentTotal labels.
+const (
+	EmailConfirmation = "confirmation"
+	EmailNewsletter   = "newsletter"
+	EmailSent         = "sent"
+	EmailFailed       = "failed"
+)
+
+// initEmailSeries creates every EmailsSentTotal series at zero, so the
+// first failure is an increase an alert can see rather than a new series.
+func initEmailSeries() {
+	for _, kind := range []string{EmailConfirmation, EmailNewsletter} {
+		for _, outcome := range []string{EmailSent, EmailFailed} {
+			EmailsSentTotal.WithLabelValues(kind, outcome)
+		}
+	}
+}
+
 func Init() {
+	initEmailSeries()
 	prometheus.MustRegister(
 		ScansTotal, ArticlesGeneratedTotal, ArticlesApprovedTotal,
 		EnrichmentFailuresTotal, ArticlesDegraded,
@@ -227,7 +256,7 @@ func Init() {
 		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,
 		ImageSelectedScore, ImageSelectedTotal,
 		ImageResizeTotal, ArticleImagesUnsized, ArticleImagesUnconvertible,
-		ResponseBytes, DailyUniqueVisitors,
+		ResponseBytes, DailyUniqueVisitors, EmailsSentTotal,
 	)
 }
 

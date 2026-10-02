@@ -77,6 +77,8 @@
             </section>
             {{end}}
 
+            {{if signupOpen}}{{template "article-signup"}}{{end}}
+
             {{if .LinkedCards}}
             <section class="card-embeds" aria-labelledby="card-embeds-title">
                 <h2 class="article-section-title card-embeds-heading" id="card-embeds-title">{{if .LinkedCardsHeading}}{{.LinkedCardsHeading}}{{else}}Cards in this story{{end}}</h2>
@@ -165,4 +167,26 @@
     <li><a href="{{.URL}}" target="_blank" rel="noopener">&rarr; {{.Text}}<span class="article-sr-only"> (opens in a new tab)</span></a></li>
     {{end}}
 </ul>
+{{end}}
+
+{{/* The newsletter sign-up at the end of every article. It posts to the
+     sign-up page's handler, honeypot included, and lands on its "check
+     your inbox" step. */}}
+{{define "article-signup"}}
+<section class="article-signup" aria-labelledby="article-signup-title">
+    <h2 class="article-signup-title" id="article-signup-title">Get the week&rsquo;s best deals by email</h2>
+    <form method="POST" action="/subscribe" class="article-signup-form">
+        <label for="article-signup-email" class="visually-hidden">Email address</label>
+        <div class="article-signup-row">
+            <input type="email" id="article-signup-email" name="email" placeholder="Your email address" autocomplete="email" inputmode="email" required>
+            <button type="submit">Subscribe</button>
+        </div>
+        {{/* People never see this field; bots fill it in. */}}
+        <div class="hp-field" aria-hidden="true">
+            <label for="article-signup-website">Leave this empty</label>
+            <input type="text" id="article-signup-website" name="website" tabindex="-1" autocomplete="off">
+        </div>
+    </form>
+    <p class="article-signup-note">One email a week. Unsubscribe anytime. We only use your address to send the newsletter.</p>
+</section>
 {{end}}
