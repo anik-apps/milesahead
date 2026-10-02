@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/kumaranik/milesahead/internal/editornote"
@@ -128,9 +129,9 @@ type EnrichmentUpdate struct {
 	TagsJSON         *string
 
 	// ImageRequestSeq is the admin's request this pass's image answers (see
-	// ArticleNeedingEnrichment), or 0. With ImageURL set it closes that
-	// request -- and only that one, so a request made while the pass ran
-	// stays pending.
+	// ArticleNeedingEnrichment), or 0. The image is written only if that is
+	// still the current request, and then closes it; a request made while
+	// the pass ran supersedes the image and stays pending (see applyImage).
 	ImageRequestSeq int64
 
 	// Uncounted leaves enrichment_attempts alone. It is for a pass in which
@@ -169,9 +170,6 @@ func (d *Database) ApplyEnrichment(id int64, u EnrichmentUpdate) error {
 		sets = append(sets, "expires_on = ?")
 		args = append(args, nullIfEmpty(offer.EndDate(*u.KeyDetails, writtenAt(createdAt))))
 	}
-	add("image_url", u.ImageURL)
-	add("image_thumbnail", u.ImageThumbnail)
-	add("image_attribution", u.ImageAttribution)
 	add("tags_json", u.TagsJSON)
 
 	// updated_at is deliberately NOT touched. It is used to tell when an
@@ -188,16 +186,61 @@ func (d *Database) ApplyEnrichment(id int64, u EnrichmentUpdate) error {
 		return fmt.Errorf("applying enrichment to article %d: %w", id, err)
 	}
 	if u.ImageURL != nil {
-		// The new image and the end of the request that asked for it land
-		// together. An earlier failed request is over too: the article has
-		// a new image now.
-		if _, err := tx.Exec(`DELETE FROM article_image_requests
-			WHERE article_id = ? AND (seq = ? OR state = ?)`, id, u.ImageRequestSeq, ImageRequestFailed); err != nil {
-			return fmt.Errorf("closing the image request for article %d: %w", id, err)
+		if err := applyImage(tx, id, u); err != nil {
+			return err
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("applying enrichment to article %d: %w", id, err)
+	}
+	return nil
+}
+
+// applyImage writes the image a pass found, inside ApplyEnrichment's
+// transaction, but only if the admin's request it answers is still the
+// current one: still pending at u.ImageRequestSeq, or, for a pass that served
+// no request (seq 0), none pending. A request made while the pass ran
+// supersedes it -- the admin may have turned down the very image the pass was
+// replacing, or asked for something else -- so its image is dropped and the
+// newer request is left pending for the next pass. The other fields of the
+// update still apply.
+//
+// The check is part of the UPDATE, and the transaction already holds the
+// write lock from the UPDATE before it, so no request can slip in between.
+// When the image lands, the request it answered is closed in the same
+// transaction, and so is an earlier failed one: the article has a new image.
+func applyImage(tx *sql.Tx, id int64, u EnrichmentUpdate) error {
+	sets := []string{"image_url = ?"}
+	args := []any{*u.ImageURL}
+	if u.ImageThumbnail != nil {
+		sets = append(sets, "image_thumbnail = ?")
+		args = append(args, *u.ImageThumbnail)
+	}
+	if u.ImageAttribution != nil {
+		sets = append(sets, "image_attribution = ?")
+		args = append(args, *u.ImageAttribution)
+	}
+	current := `NOT EXISTS (SELECT 1 FROM article_image_requests WHERE article_id = ? AND state = ?)`
+	args = append(args, id, id, ImageRequestPending)
+	if u.ImageRequestSeq > 0 {
+		current = `EXISTS (SELECT 1 FROM article_image_requests WHERE article_id = ? AND state = ? AND seq = ?)`
+		args = append(args, u.ImageRequestSeq)
+	}
+	res, err := tx.Exec("UPDATE generated_articles SET "+strings.Join(sets, ", ")+
+		" WHERE id = ? AND "+current, args...)
+	if err != nil {
+		return fmt.Errorf("applying the image to article %d: %w", id, err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return fmt.Errorf("applying the image to article %d: %w", id, err)
+	} else if n == 0 {
+		slog.Info("enrichment: image dropped, a newer image request superseded the pass",
+			"article_id", id, "pass_request_seq", u.ImageRequestSeq)
+		return nil
+	}
+	if _, err := tx.Exec(`DELETE FROM article_image_requests
+		WHERE article_id = ? AND (seq = ? OR state = ?)`, id, u.ImageRequestSeq, ImageRequestFailed); err != nil {
+		return fmt.Errorf("closing the image request for article %d: %w", id, err)
 	}
 	return nil
 }

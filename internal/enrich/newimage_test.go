@@ -276,3 +276,56 @@ func TestRun_NewImageRequestSurvivesAScoringOutage(t *testing.T) {
 		t.Errorf("image %q after %d attempts, want the old one after 1", url, attempts)
 	}
 }
+
+// askAgain is promptLog that, while the pass scores the candidates, has the
+// admin ask for a new image again.
+type askAgain struct {
+	*promptLog
+	once  sync.Once
+	again func()
+}
+
+func (c *askAgain) Generate(model, prompt string, maxTokens int) (string, error) {
+	if strings.Contains(prompt, "image editor") {
+		c.once.Do(c.again)
+	}
+	return c.promptLog.Generate(model, prompt, maxTokens)
+}
+
+// Integration: the admin asks again while a pass is working on their first
+// request. The pass finds a picture, but the request it answers has been
+// superseded, so the article keeps its image and the newer request stays
+// pending, with its words, for the next pass.
+func TestRun_NewImageRequestSupersededMidPass(t *testing.T) {
+	d := testDB(t)
+	id := seedTurnedDown(t, d, "Hyatt Regency lobby")
+
+	hosts := &newImageHosts{openverse: openverseResults(lobby, pool)}
+	client := &askAgain{
+		promptLog: &promptLog{scriptedClient: scriptedClient{reply: map[string]string{
+			"image editor": `{"scores":[{"index":0,"score":8}]}`,
+		}}},
+		again: func() {
+			if _, err := d.RequestNewImage(id, "rooftop pool"); err != nil {
+				t.Error(err)
+			}
+		},
+	}
+	srv := httptest.NewServer(hosts)
+	t.Cleanup(srv.Close)
+	searcher := images.NewSearcher("", "")
+	searcher.SetTransport(hostRouter{srv.Listener.Addr().String()})
+	s := New(d, client, []string{"m1"}, "Scout", searcher, images.NewScorer(client, []string{"m1"}))
+	s.Pace = 0
+	s.Run()
+
+	if url, thumb, _ := storedImage(t, d, id); url != storedLobby || thumb != storedLobbyThumb || storedCredit(t, d, id) != "Photo credit" {
+		t.Errorf("a superseded pass swapped its image in: %q / %q", url, thumb)
+	}
+	if r := requestOf(t, d, id); !r.Pending() || r.Seq != 2 || r.Hint != "rooftop pool" {
+		t.Errorf("request = %+v, want the newer one still pending", r)
+	}
+	if list, _ := d.ListArticlesNeedingEnrichment(3, 10); len(list) != 1 || list[0].ImageRequestSeq != 2 {
+		t.Errorf("the newer request is not queued for the next pass: %+v", list)
+	}
+}

@@ -85,16 +85,19 @@ func TestRequestNewImage_QueuesFirstWithAFreshBudget(t *testing.T) {
 	}
 }
 
-// The new image and the end of its request land in one write; a pass
-// working on an earlier request neither closes nor fails a later one.
+// The new image and the end of its request land in one write. A pass
+// working on an earlier request neither closes nor fails a later one, and
+// does not swap its image in either: the admin asked again while it ran, and
+// may have turned down the very picture it was replacing. Its other fields
+// still apply.
 func TestImageRequest_ClosedOnlyByTheRequestItAnswers(t *testing.T) {
 	d := openTestDB(t)
 	id := makeArticle(t, d, "swap")
-	setFields(t, d, id, enriched)
-	d.RequestNewImage(id, "first")
-	d.RequestNewImage(id, "second") // seq 2
+	setFields(t, d, id, enriched+", scouts_take = ''")
+	d.RequestNewImage(id, "first")  // a pass starts on seq 1
+	d.RequestNewImage(id, "second") // the admin asks again: seq 2
 
-	// A pass that started on seq 1 cannot fail seq 2.
+	// The seq-1 pass cannot fail seq 2.
 	if err := d.FailImageRequest(id, 1, "nothing"); err != nil {
 		t.Fatal(err)
 	}
@@ -102,13 +105,34 @@ func TestImageRequest_ClosedOnlyByTheRequestItAnswers(t *testing.T) {
 		t.Fatalf("after a stale failure: %+v", r)
 	}
 
-	// Nor close it: its image lands, the request stays.
-	img, thumb, by := "https://img.example/b-1280.jpg", "https://img.example/b-500.jpg", "by B"
-	if err := d.ApplyEnrichment(id, EnrichmentUpdate{ImageURL: &img, ImageThumbnail: &thumb, ImageAttribution: &by, ImageRequestSeq: 1}); err != nil {
+	// Nor swap its image in, or close seq 2; its Scout's Take still lands.
+	img, thumb, by, take := "https://img.example/b-1280.jpg", "https://img.example/b-500.jpg", "by B", "fresh take"
+	if err := d.ApplyEnrichment(id, EnrichmentUpdate{ScoutsTake: &take, ImageURL: &img, ImageThumbnail: &thumb, ImageAttribution: &by, ImageRequestSeq: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if r := mustRequest(t, d, id); !r.Pending() {
+	if r := mustRequest(t, d, id); !r.Pending() || r.Seq != 2 || r.Hint != "second" {
 		t.Fatalf("a stale pass closed the newer request: %+v", r)
+	}
+	var gotImg, gotThumb, gotBy, gotTake string
+	read := func() {
+		d.DB().QueryRow(`SELECT image_url, image_thumbnail, image_attribution, scouts_take FROM generated_articles WHERE id = ?`, id).
+			Scan(&gotImg, &gotThumb, &gotBy, &gotTake)
+	}
+	read()
+	if gotImg != "https://img.example/a-1280.jpg" || gotThumb != "https://img.example/a-500.jpg" || gotBy != "by A" {
+		t.Errorf("a superseded pass swapped its image in: %q %q %q", gotImg, gotThumb, gotBy)
+	}
+	if gotTake != take {
+		t.Errorf("scouts_take = %q; the superseded image must not drop the other fields", gotTake)
+	}
+
+	// A pass that served no request (seq 0) does not swap one in under a
+	// pending request either.
+	if err := d.ApplyEnrichment(id, EnrichmentUpdate{ImageURL: &img, ImageThumbnail: &thumb, ImageAttribution: &by}); err != nil {
+		t.Fatal(err)
+	}
+	if read(); gotImg != "https://img.example/a-1280.jpg" {
+		t.Errorf("a pass with no request replaced the image under a pending one: %q", gotImg)
 	}
 
 	// The pass for seq 2 closes it, swapping image, thumbnail and credit.
@@ -119,13 +143,40 @@ func TestImageRequest_ClosedOnlyByTheRequestItAnswers(t *testing.T) {
 	if r := mustRequest(t, d, id); r.State != "" {
 		t.Errorf("request still there after its image landed: %+v", r)
 	}
-	var gotImg, gotThumb, gotBy string
-	d.DB().QueryRow(`SELECT image_url, image_thumbnail, image_attribution FROM generated_articles WHERE id = ?`, id).Scan(&gotImg, &gotThumb, &gotBy)
-	if gotImg != img || gotThumb != thumb || gotBy != by {
+	if read(); gotImg != img || gotThumb != thumb || gotBy != by {
 		t.Errorf("stored %q %q %q", gotImg, gotThumb, gotBy)
 	}
 	if got, _ := d.ListArticlesNeedingEnrichment(3, 10); len(got) != 0 {
 		t.Errorf("still listed after the swap: %+v", got)
+	}
+}
+
+// With no request, or only a failed one, a pass's image lands as before,
+// and ends the failed request.
+func TestApplyEnrichment_ImageWithoutAPendingRequest(t *testing.T) {
+	d := openTestDB(t)
+	id := makeArticle(t, d, "plain")
+	img := "https://img.example/e.jpg"
+	if err := d.ApplyEnrichment(id, EnrichmentUpdate{ImageURL: &img, ImageThumbnail: &img}); err != nil {
+		t.Fatal(err)
+	}
+	var got string
+	d.DB().QueryRow(`SELECT image_url FROM generated_articles WHERE id = ?`, id).Scan(&got)
+	if got != img {
+		t.Fatalf("image = %q, want %q", got, img)
+	}
+	d.RequestNewImage(id, "")
+	d.FailImageRequest(id, 1, "nothing")
+	img2 := "https://img.example/f.jpg"
+	if err := d.ApplyEnrichment(id, EnrichmentUpdate{ImageURL: &img2, ImageThumbnail: &img2}); err != nil {
+		t.Fatal(err)
+	}
+	d.DB().QueryRow(`SELECT image_url FROM generated_articles WHERE id = ?`, id).Scan(&got)
+	if got != img2 {
+		t.Errorf("image = %q, want %q", got, img2)
+	}
+	if r := mustRequest(t, d, id); r.State != "" {
+		t.Errorf("failed request not ended by the new image: %+v", r)
 	}
 }
 
