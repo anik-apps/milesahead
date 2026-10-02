@@ -1,0 +1,24 @@
+# The documentation's main sections, as cards on the home page and the Docs
+# index (layouts/_shortcodes/doc-sections.html). Links are site paths.
+
+groups:
+  - name: Run it
+    cols: 4
+    cards:
+      - {title: Getting started, icon: play, link: /docs/getting-started/, text: "Prerequisites, configuration and a first local run, then adding sources."}
+      - {title: Development, icon: code, link: /docs/development/, text: "Project layout, tests and the one-off maintenance tools."}
+      - {title: Deployment, icon: server, link: /docs/deployment/, text: "The OCI VM, the GitHub Actions deploy, backups and observability."}
+      - {title: Email, icon: mail, link: /docs/deployment/email/, text: "Outgoing mail through OCI Email Delivery, DNS records and troubleshooting."}
+  - name: How it works
+    cols: 3
+    cards:
+      - {title: Architecture, icon: view-grid, link: /docs/architecture/, text: "Every component on one interactive diagram, from sources to readers."}
+      - {title: AI pipeline, icon: sparkles, link: /docs/architecture/ai-pipeline/, text: "How a cluster of posts becomes a checked article: models, critic, revision."}
+      - {title: Image pipeline, icon: photograph, link: /docs/architecture/image-pipeline/, text: "Four free image APIs, text and vision scoring, and Find a new image."}
+  - name: Features
+    cols: 4
+    cards:
+      - {title: Article workflow, icon: clipboard-check, link: /docs/features/article-workflow/, text: "Statuses, the review queue, rewrites, undo and deduplication."}
+      - {title: Reader site, icon: globe-alt, link: /docs/features/reader-site/, text: "What readers see: home, articles, cards, compare, search and sign-up."}
+      - {title: Newsletter, icon: newspaper, link: /docs/features/newsletter/, text: "The weekly issue: how it is built, sent and unsubscribed from."}
+      - {title: Reference pages, icon: credit-card, link: /docs/features/reference-pages/, text: "The 52 credit card guides, their seed data and admin tools."}

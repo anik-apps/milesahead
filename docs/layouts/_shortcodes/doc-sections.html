@@ -1,0 +1,13 @@
+{{- /* The documentation's main sections as groups of Hextra cards. Data:
+  assets/home/sections.yaml. Used on the home page and the Docs index. */ -}}
+{{- $d := resources.Get "home/sections.yaml" | transform.Unmarshal -}}
+<div class="doc-sections not-prose">
+{{- range $d.groups }}
+  <h2 class="doc-sections-head">{{ .name }}</h2>
+  {{- $cards := "" -}}
+  {{- range .cards }}
+  {{- $cards = print $cards (partial "shortcodes/card" (dict "page" $.Page "link" .link "title" .title "icon" .icon "subtitle" .text)) -}}
+  {{- end }}
+  {{ partial "shortcodes/cards" (dict "cols" .cols "content" ($cards | safeHTML)) }}
+{{- end }}
+</div>
