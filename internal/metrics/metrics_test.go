@@ -47,6 +47,12 @@ type alertRule struct {
 		Model struct {
 			Expr       string `json:"expr"`
 			Expression string `json:"expression"`
+			Conditions []struct {
+				Evaluator struct {
+					Type   string    `json:"type"`
+					Params []float64 `json:"params"`
+				} `json:"evaluator"`
+			} `json:"conditions"`
 		} `json:"model"`
 	} `json:"data"`
 	Labels      map[string]string `json:"labels"`
@@ -108,4 +114,20 @@ func TestAlertRulesWatchEmailFailures(t *testing.T) {
 	for uid := range want {
 		t.Errorf("rule %s is missing from deploy/grafana-alerts.json", uid)
 	}
+}
+
+// "Two or more" failures: increase() extrapolates, so one failure can read
+// as a little over 1, and a threshold of gt 1 would fire on it.
+func TestConfirmationAlertNeedsTwoFailures(t *testing.T) {
+	for _, r := range loadAlertRules(t) {
+		if r.UID != "milesahead-confirmation-email-failures" {
+			continue
+		}
+		ev := r.Data[2].Model.Conditions[0].Evaluator
+		if ev.Type != "gt" || len(ev.Params) != 1 || ev.Params[0] < 1.5 || ev.Params[0] >= 2 {
+			t.Errorf("threshold = %s %v, want gt 1.5", ev.Type, ev.Params)
+		}
+		return
+	}
+	t.Error("the confirmation failures rule is missing")
 }

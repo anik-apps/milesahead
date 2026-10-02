@@ -263,7 +263,7 @@
               "evaluator": {
                 "type": "gt",
                 "params": [
-                  1
+                  1.5
                 ]
               }
             }
@@ -279,7 +279,7 @@
     },
     "annotations": {
       "summary": "Sign-up confirmation emails are failing to send",
-      "description": "Two or more confirmation emails failed to send in the last 6 hours (milesahead_emails_sent_total{kind=\"confirmation\",outcome=\"failed\"}). Readers who sign up see \"check your inbox\" and get nothing, so they never become subscribers. Each failure is logged as \"subscribe: sending the confirmation email failed\" (journalctl -u milesahead) with the SMTP error; the usual causes are SMTP settings in /opt/milesahead/config.yaml (mail.smtp) or the provider refusing the sender. The claim is released on failure, so a reader who tries again after the fix gets a link. One failure alone does not fire (a single bad address or a provider hiccup is not an outage), but sign-ups are few, so the window is long: a reader who retries after a failure is enough to fire it. NoData is OK: the series are created at zero on startup, so their absence means the app is down, which the service alerts cover."
+      "description": "Two or more confirmation emails failed to send in the last 6 hours (milesahead_emails_sent_total{kind=\"confirmation\",outcome=\"failed\"}). Readers who sign up see \"check your inbox\" and get nothing, so they never become subscribers. Each failure is logged as \"subscribe: sending the confirmation email failed\" (journalctl -u milesahead) with the SMTP error; the usual causes are SMTP settings in /opt/milesahead/config.yaml (mail.smtp) or the provider refusing the sender. The claim is released on failure, so a reader who tries again after the fix gets a link. The threshold is 1.5, not 1: increase() extrapolates across the window, so a single failure can read as slightly more than 1. One failure alone does not fire (a single bad address or a provider hiccup is not an outage), but sign-ups are few, so the window is long: a reader who retries after a failure is enough to fire it. NoData is OK: the series are created at zero on startup, so their absence means the app is down, which the service alerts cover."
     }
   },
   {
