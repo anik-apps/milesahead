@@ -1,5 +1,6 @@
 ---
 title: Image Pipeline
+description: "How the enrichment pass finds an article image: four free image APIs, turned-down pictures, text and vision scoring, byte caps, and Find a new image requests."
 weight: 2
 ---
 
@@ -7,37 +8,7 @@ The image pipeline finds relevant, freely-licensed images for generated articles
 
 ## Flow
 
-```
-  Article Title + TLDR
-          |
-          v
-  +-------------------+
-  |  Parallel Search   |  4 APIs queried concurrently
-  |  (per query term)  |  Max 3 results per API
-  +--------+----------+
-           |
-           v
-  +-------------------+
-  |   Deduplicate     |  Remove duplicate URLs
-  |   + Diversify     |  Max 3 per source, cap at 15
-  +--------+----------+
-           |
-           v
-  +-------------------+
-  |  Phase 1: Text    |  Score descriptions/tags
-  |  Pre-Filter       |  using text model
-  +--------+----------+
-           |
-           v
-  +-------------------+
-  |  Phase 2: Vision  |  Send actual images to
-  |  Model Scoring    |  Llama Vision for scoring
-  +--------+----------+
-           |
-           v
-  Top-scored ImageResult
-  (URL, Thumbnail, Attribution)
-```
+{{< flow "image-pipeline" >}}
 
 ## Image Sources
 
