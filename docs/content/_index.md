@@ -15,7 +15,7 @@ title: Miles Ahead
 
 <div class="hx-mb-12">
 {{< hextra/hero-subtitle >}}
-  A self-hosted content platform that scans miles-and-points blogs, clusters related stories, and uses AI to generate verified articles with structured metadata, reference pages, images, and a daily newsletter.
+  A self-hosted content platform that scans miles-and-points blogs, clusters related stories, and uses AI to generate verified articles with structured metadata, reference pages, images, and a weekly newsletter.
 {{< /hextra/hero-subtitle >}}
 </div>
 
@@ -44,12 +44,12 @@ title: Miles Ahead
   >}}
   {{< hextra/feature-card
     title="Admin Dashboard"
-    subtitle="Review, approve, reject, or request revisions on generated articles. Manage sources, reference pages, and newsletter subscribers."
+    subtitle="A grouped review queue with keyboard shortcuts, safe approvals with Undo, rewrites and new images on request. Manage sources, cards and the newsletter."
     icon="adjustments"
   >}}
   {{< hextra/feature-card
     title="Image Pipeline"
-    subtitle="Searches 5 free image APIs in parallel, then scores candidates with a text pre-filter and Llama Vision model for relevance."
+    subtitle="Searches 4 free image APIs in parallel, then scores candidates with a text pre-filter and a Llama Vision model for relevance."
     icon="photograph"
   >}}
   {{< hextra/feature-card
