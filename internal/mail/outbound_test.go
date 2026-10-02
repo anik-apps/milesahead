@@ -396,6 +396,15 @@ func TestSendConfirmation_Content(t *testing.T) {
 	if strings.Contains(html, `href="/`) {
 		t.Error("the HTML has a relative link, which does not work in an email")
 	}
+	// The relay adds its own List-Unsubscribe to mail without an https one,
+	// which would unsubscribe the reader at the relay instead of in the app.
+	h := msg.parsed(t).Header
+	if got, want := h.Get("List-Unsubscribe"), "<"+unsub+">"; got != want {
+		t.Errorf("List-Unsubscribe = %q, want %q", got, want)
+	}
+	if got := h.Get("List-Unsubscribe-Post"); got != "List-Unsubscribe=One-Click" {
+		t.Errorf("List-Unsubscribe-Post = %q", got)
+	}
 }
 
 // Without a schedule set, the email still says how often.

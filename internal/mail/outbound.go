@@ -6,6 +6,7 @@ import (
 	"html"
 	"io"
 	netmail "net/mail"
+	"net/url"
 	"strings"
 
 	"github.com/kumaranik/milesahead/internal/config"
@@ -94,6 +95,11 @@ func (s *Sender) SendConfirmation(toEmail, token, domain string) error {
 	m.SetHeader("From", s.from)
 	m.SetHeader("To", toEmail)
 	m.SetHeader("Subject", "Confirm your subscription to MilesAhead")
+	// The reader's own unsubscribe link, as on every newsletter. Without one,
+	// OCI Email Delivery adds its own List-Unsubscribe, and a reader who uses
+	// it lands on OCI's suppression list while the app still counts them
+	// subscribed, so no newsletter would ever reach them.
+	s.setListUnsubscribe(m, "https://"+domain+"/unsubscribe?token="+url.QueryEscape(token))
 	m.SetBody("text/plain", textBody)
 	m.AddAlternative("text/html", htmlBody)
 
