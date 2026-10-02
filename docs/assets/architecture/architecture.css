@@ -477,3 +477,7 @@
     display: block;
   }
 }
+
+.arch .arch-panel-body .arch-facts dd {
+  margin-bottom: 0.5rem;
+}
