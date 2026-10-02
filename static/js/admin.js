@@ -66,7 +66,8 @@ document.addEventListener('submit', function (e) {
 
 // Which shortcut a key press means on the review queue, or null. Kept free
 // of the DOM so it can be tested on its own (tests/js/admin.test.mjs).
-// previewOpen: a preview is showing; helpOpen: the shortcut list is showing.
+// previewOpen: a preview is showing; helpOpen: the shortcut list is showing;
+// menuOpen: a row's actions menu is open, and has the keyboard to itself.
 // Nothing fires while the admin is typing in a box, or with a modifier key
 // held (so browser shortcuts keep working); Escape only leaves the box.
 window.adminShortcuts = (function () {
@@ -76,7 +77,8 @@ window.adminShortcuts = (function () {
     var tag = t.tagName;
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!t.isContentEditable;
   }
-  function action(e, previewOpen, helpOpen) {
+  function action(e, previewOpen, helpOpen, menuOpen) {
+    if (menuOpen) return null;
     if (e.key === 'Escape') {
       if (typing(e.target)) return 'blur';
       if (helpOpen) return 'hide-help';
@@ -101,6 +103,162 @@ window.adminShortcuts = (function () {
     return null;
   }
   return { action: action, typing: typing };
+})();
+
+// Row actions menus (the review queue and Published): a button with
+// aria-haspopup="menu" and aria-controls naming a role="menu" list of
+// role="menuitem" links and buttons. Opening focuses the first item (the
+// last with ArrowUp); ArrowUp/ArrowDown, Home and End move between items;
+// Escape closes and puts focus back on the button; Tab and a click outside
+// close. One menu is open at a time. The functions take {btn, list} so the
+// tests can drive them with stand-ins (tests/js/admin.test.mjs).
+window.adminMenus = (function () {
+  'use strict';
+  var current = null; // the open {btn, list}, or null
+
+  function items(m) { return Array.prototype.slice.call(m.list.querySelectorAll('[role="menuitem"]')); }
+  function isOpen(m) { return !!current && current.list === m.list; }
+
+  function open(m, where) {
+    if (current && !isOpen(m)) close(current, false);
+    m.list.hidden = false;
+    m.btn.setAttribute('aria-expanded', 'true');
+    current = m;
+    var it = items(m);
+    if (it.length) it[where === 'last' ? it.length - 1 : 0].focus();
+  }
+
+  function close(m, refocus) {
+    m = m || current;
+    if (!m) return;
+    m.list.hidden = true;
+    m.btn.setAttribute('aria-expanded', 'false');
+    if (isOpen(m)) current = null;
+    if (refocus) m.btn.focus();
+  }
+
+  function toggle(m) { if (isOpen(m)) close(m, true); else open(m); }
+
+  // A key pressed while menu m is open, focus inside it. Returns true when
+  // the menu used the key (the caller then stops the browser's default).
+  function key(m, e) {
+    var it = items(m);
+    if (!it.length) return false;
+    var i = it.indexOf(e.target);
+    switch (e.key) {
+      case 'Escape': close(m, true); return true;
+      case 'Tab': close(m, false); return false; // focus moves on as usual
+      case 'ArrowDown': it[i < 0 ? 0 : (i + 1) % it.length].focus(); return true;
+      case 'ArrowUp': it[i <= 0 ? it.length - 1 : i - 1].focus(); return true;
+      case 'Home': it[0].focus(); return true;
+      case 'End': it[it.length - 1].focus(); return true;
+      case ' ':
+        // Space activates a menu item; links only do that for Enter.
+        if (e.target && e.target.tagName === 'A') { e.target.click(); return true; }
+        return false;
+    }
+    return false;
+  }
+
+  return { open: open, close: close, toggle: toggle, isOpen: isOpen, key: key, current: function () { return current; } };
+})();
+
+// Wire the menus, the panels they reveal, and the Sort selects.
+(function () {
+  'use strict';
+  var M = window.adminMenus;
+
+  function menuFor(btn) {
+    var list = document.getElementById(btn.getAttribute('aria-controls'));
+    return list ? { btn: btn, list: list } : null;
+  }
+
+  // Open upwards when there is no room below (rows near the bottom).
+  function place(m) {
+    if (!M.isOpen(m) || !m.list.getBoundingClientRect) return;
+    m.list.classList.remove('is-up');
+    var r = m.list.getBoundingClientRect();
+    var b = m.btn.getBoundingClientRect();
+    if (r.bottom > window.innerHeight && b.top > r.height + 8) m.list.classList.add('is-up');
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var btn = t.closest('.row-menu-btn');
+    if (btn) {
+      var m = menuFor(btn);
+      if (m) { M.toggle(m); place(m); }
+      return;
+    }
+    var cur = M.current();
+    if (!cur) return;
+    if (cur.list.contains(t)) {
+      // An item: let it act first (submit, the reject confirm, opening the
+      // preview), then close, returning focus to the button unless the
+      // item moved it somewhere else.
+      setTimeout(function () {
+        var a = document.activeElement;
+        M.close(cur, !a || a === document.body || cur.list.contains(a));
+      }, 0);
+      return;
+    }
+    M.close(cur, false);
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var cur = M.current();
+    if (cur) {
+      if (e.target && cur.list.contains(e.target)) {
+        if (M.key(cur, e)) e.preventDefault();
+      } else if (e.key === 'Escape') {
+        M.close(cur, true);
+        e.preventDefault();
+      }
+      return;
+    }
+    var btn = e.target && e.target.closest && e.target.closest('.row-menu-btn');
+    if (btn && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      var m = menuFor(btn);
+      if (m) { M.open(m, e.key === 'ArrowUp' ? 'last' : 'first'); place(m); e.preventDefault(); }
+    }
+  });
+
+  // data-reveal="id" shows a hidden panel (Published: the unpublish-and-
+  // rewrite form) and focuses its box; data-hide="id" hides it again and
+  // returns focus to the row's menu button.
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var show = t.closest('[data-reveal]');
+    var hide = show ? null : t.closest('[data-hide]');
+    if (!show && !hide) return;
+    var panel = document.getElementById(show ? show.getAttribute('data-reveal') : hide.getAttribute('data-hide'));
+    if (!panel) return;
+    panel.hidden = !show;
+    if (show) {
+      var box = panel.querySelector('textarea, input:not([type="hidden"])');
+      if (box) box.focus();
+    } else {
+      var btn = panel.parentNode && panel.parentNode.querySelector('.row-menu-btn');
+      if (btn) btn.focus();
+    }
+  });
+
+  function init() {
+    // A panel whose box got its draft back (see adminDrafts) opens again.
+    document.querySelectorAll('form[hidden] textarea[data-draft]').forEach(function (t) {
+      if (t.value) t.form.hidden = false;
+    });
+    // Sort menus apply as soon as they change.
+    document.querySelectorAll('select[data-autosubmit]').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        if (sel.form.requestSubmit) sel.form.requestSubmit(); else sel.form.submit();
+      });
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
 
 // The review queue (dashboard) and its previews.
@@ -145,7 +303,16 @@ window.adminShortcuts = (function () {
 
   dash.addEventListener('click', function (e) {
     var link = e.target.closest('[data-preview]');
-    if (link) { e.preventDefault(); open(link.getAttribute('data-preview')); return; }
+    if (link) {
+      e.preventDefault();
+      open(link.getAttribute('data-preview'));
+      // "Request rewrite..." in a row's menu: straight to the box.
+      if (link.getAttribute('data-focus') === 'rewrite' && current) {
+        var box = current.querySelector('.actionbar-rewrite textarea');
+        if (box) box.focus();
+      }
+      return;
+    }
     if (e.target.closest('.preview-close')) { close(); return; }
     if (e.target.classList.contains('preview-overlay')) close();
   });
@@ -186,7 +353,9 @@ window.adminShortcuts = (function () {
   }
 
   document.addEventListener('keydown', function (e) {
-    var action = window.adminShortcuts.action(e, !!current, !!(help && !help.hidden));
+    // A key a row's menu already used (Escape closing it) is not a shortcut.
+    if (e.defaultPrevented) return;
+    var action = window.adminShortcuts.action(e, !!current, !!(help && !help.hidden), !!window.adminMenus.current());
     if (!action) return;
     switch (action) {
       case 'blur': e.target.blur(); return;
@@ -226,14 +395,16 @@ window.adminShortcuts = (function () {
   });
 
   // Poll the queue; when it changed (a rewrite landed, a new article came
-  // in), offer a refresh, or refresh by itself when nothing is open and
-  // nothing is being typed. Drafts survive either way (data-draft above).
+  // in), offer a refresh, or refresh by itself when no preview or menu is
+  // open and nothing is being typed. Drafts survive either way (data-draft
+  // above).
   // The page to reload: the dashboard as the admin is viewing it (keeping
-  // ?all=1), without the one-off message, toast or preview of an action.
+  // ?all=1 and ?sort=), without the one-off message, toast or preview of an
+  // action.
   function refreshURL() {
     var keep = new URLSearchParams();
-    var all = new URLSearchParams(location.search).get('all');
-    if (all) keep.set('all', all);
+    var now = new URLSearchParams(location.search);
+    ['all', 'sort'].forEach(function (k) { var v = now.get(k); if (v) keep.set(k, v); });
     var q = keep.toString();
     return location.pathname + (q ? '?' + q : '');
   }
@@ -249,7 +420,7 @@ window.adminShortcuts = (function () {
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (s) {
           if (!s || !s.version || s.version === version) return;
-          if (!current && !typing(document.activeElement)) { location.href = refreshURL(); return; }
+          if (!current && !window.adminMenus.current() && !typing(document.activeElement)) { location.href = refreshURL(); return; }
           if (banner) banner.hidden = false;
         })
         .catch(function () {});

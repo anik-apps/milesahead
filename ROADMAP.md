@@ -32,6 +32,7 @@
 - [x] Structured card data — earning rates, credits, benefits, protections, transfer partners for 52 cards
 - [x] CI/CD refactored into separate build/deploy/seed/grafana jobs
 - [x] Admin rework — own shell with counts on the tabs, grouped review queue with decisions in the preview (revision-checked approve, approve-and-next, undo, shortcuts), source health, card editor with inline flags, card updates as a word diff
+- [x] Review queue sort (newest first by default, oldest, critic score) and per-row actions menus on Review and Published; compact type pills
 
 ## Reliability & Hardening
 
@@ -486,6 +487,9 @@ image shipped in #73. Everything else is here, most severe first.
       links keep each other's filters, compact tiles with fee, best earning rate and offer
       in place of the cut-off quote, and art in a fixed box, lazy after the first six. The
       phone page is about 10 screens unfiltered, 2-3 filtered.
+      The three rows of controls (chips, fee bands, issuer and sort menus with Apply) are
+      now one row of chips and a "No annual fee" toggle, with the sort as a menu on the
+      results line that applies on change; older fee-band and issuer links still filter.
 - [ ] **Trust signals** — articles now carry a byline (#90), but there is no About,
       corrections or privacy page, though the site collects emails. *Fix:* an About page
       on how stories are researched for the byline to link to, and a privacy page linked

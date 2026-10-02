@@ -7,41 +7,38 @@
     </div>
 
     {{with .Index}}
-    {{/* A plain GET form: the chips and fee bands are links that keep the other
-         filters, and the selects submit with the button. Every view has its
-         own URL and nothing needs JavaScript. Not a <nav>: the site styles every
-         <nav> as the sticky header. */}}
-    <form class="cards-filters" method="get" action="/cards/" aria-label="Filter cards">
-        {{if .Query.Cat}}<input type="hidden" name="cat" value="{{.Query.Cat}}">{{end}}
-        {{if .Query.Fee}}<input type="hidden" name="fee" value="{{.Query.Fee}}">{{end}}
-        <div class="filter-bar" role="group" aria-label="Category">
+    {{/* One row of filters: category chips, then the "No annual fee" toggle.
+         All are links that keep the other filter and the sort, so every view
+         has its own URL and nothing needs JavaScript. A <div>, not a <nav>:
+         the site styles every <nav> as the sticky header. */}}
+    <div class="cards-filters" role="group" aria-label="Filter cards">
+        <div class="filter-bar cards-cat-bar" role="group" aria-label="Category">
             {{range .Categories}}{{if or .Count .Active}}<a href="{{.URL}}" class="filter-chip{{if .Active}} active{{end}}"{{if .Active}} aria-current="true"{{end}}>{{.Label}} <span class="filter-count">{{.Count}}</span></a>{{else}}<span class="filter-chip is-empty" aria-disabled="true">{{.Label}} <span class="filter-count">0</span></span>{{end}}
             {{end}}
         </div>
-        <div class="cards-filter-row">
-            <div class="filter-bar cards-fee-bar">
-                <span class="cards-filter-label" id="cards-fee-label">Annual fee</span>
-                <div class="filter-switch" role="group" aria-labelledby="cards-fee-label">
-                    {{range .FeeBands}}{{if or .Count .Active}}<a href="{{.URL}}" class="filter-switch-item{{if .Active}} active{{end}}"{{if .Active}} aria-current="true"{{end}}>{{.Label}}</a>{{else}}<span class="filter-switch-item is-empty" aria-disabled="true">{{.Label}}</span>{{end}}{{end}}
-                </div>
-            </div>
-            <div class="cards-selects">
-                <label class="cards-select"><span class="cards-filter-label">Issuer</span>
-                    <select name="issuer">{{range .Issuers}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
-                </label>
-                <label class="cards-select"><span class="cards-filter-label">Sort</span>
-                    <select name="sort">{{range .Sorts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
-                </label>
-                <button type="submit" class="cards-filter-apply">Apply</button>
-            </div>
-        </div>
-    </form>
+        <span class="filter-divider cards-filter-divider" aria-hidden="true"></span>
+        {{with .NoFee}}{{if or .Count .Active}}<a href="{{.URL}}" class="filter-chip filter-toggle{{if .Active}} active{{end}}" role="button" aria-pressed="{{if .Active}}true{{else}}false{{end}}">{{.Label}}</a>{{else}}<span class="filter-chip filter-toggle is-empty" aria-disabled="true">{{.Label}}</span>{{end}}{{end}}
+    </div>
 
-    <div class="active-filters cards-count" role="status">
-        <span>{{if .Count}}Showing {{.CountText}}{{else}}No cards match{{end}}</span>
-        {{if .Active}}<span class="active-filters-sep" aria-hidden="true">·</span>
-        {{range .Active}}<a href="{{.RemoveURL}}" class="filter-remove" aria-label="Remove filter: {{.Label}}">{{.Label}}<span class="filter-remove-x" aria-hidden="true">✕</span></a>
-        {{end}}<a href="/cards/" class="filter-clear">Clear all</a>{{end}}
+    {{/* The results line: the count and what is applied on the left, the sort
+         on the right. The sort is a menu, not a chip: it changes the order,
+         never which cards show. main.js opens the chosen order on change and
+         hides Go, which is there for browsers without JavaScript. */}}
+    <div class="cards-results">
+        <p class="cards-results-summary" role="status">
+            <span class="cards-results-count">{{if .Count}}{{.CountText}}{{else if .Filtered}}No cards match{{else}}No cards yet{{end}}</span>
+            {{range .Applied}}<span class="cards-results-item"><span class="active-filters-sep" aria-hidden="true">·</span> <span class="cards-results-applied">{{.}}</span></span>
+            {{end}}{{range .Legacy}}<span class="cards-results-item"><span class="active-filters-sep" aria-hidden="true">·</span> <a href="{{.RemoveURL}}" class="filter-remove" aria-label="Remove filter: {{.Label}}">{{.Label}}<span class="filter-remove-x" aria-hidden="true">✕</span></a></span>
+            {{end}}{{if .Filtered}}<span class="cards-results-item"><span class="active-filters-sep" aria-hidden="true">·</span> <a href="{{.ClearURL}}" class="filter-clear">Clear</a></span>{{end}}
+        </p>
+        <form class="cards-sort" method="get" action="/cards/">
+            {{if .Query.Cat}}<input type="hidden" name="cat" value="{{.Query.Cat}}">{{end}}
+            {{if .Query.Fee}}<input type="hidden" name="fee" value="{{.Query.Fee}}">{{end}}
+            {{if .Query.Issuer}}<input type="hidden" name="issuer" value="{{.Query.Issuer}}">{{end}}
+            <label for="cards-sort-select">Sort</label>
+            <select id="cards-sort-select" name="sort" data-sort-menu>{{range .Sorts}}<option value="{{.Value}}" data-url="{{.URL}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+            <button type="submit" class="cards-sort-go">Go</button>
+        </form>
     </div>
 
     {{if .Grouped}}
@@ -58,7 +55,7 @@
 
     {{if not .Count}}
     <div class="empty-state">
-        {{if .Active}}<p>No cards match these filters. <a href="/cards/">Show all cards</a></p>{{else}}<p>No cards published yet. Check back soon!</p>{{end}}
+        {{if .Filtered}}<p>No cards match these filters. <a href="{{.ClearURL}}">Show all cards</a></p>{{else}}<p>No cards published yet. Check back soon!</p>{{end}}
     </div>
     {{end}}
     {{end}}

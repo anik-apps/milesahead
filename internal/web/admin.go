@@ -100,6 +100,15 @@ type adminArticleRow struct {
 	updatedAtRaw time.Time
 }
 
+// CanDecide reports whether the row's article can be approved or rejected,
+// by the server's rules (article.Decidable), so its actions menu only offers
+// what will work.
+func (r adminArticleRow) CanDecide() bool { return article.Decidable(r.Status) }
+
+// CanRequestRevision reports whether a rewrite can be requested for the
+// row's article (article.Revisable).
+func (r adminArticleRow) CanRequestRevision() bool { return article.Revisable(r.Status) }
+
 // adminTimeFormat is how admin views show timestamps.
 const adminTimeFormat = "Jan 2, 2006 3:04 PM"
 
@@ -108,7 +117,8 @@ const adminTimeFormat = "Jan 2, 2006 3:04 PM"
 const publishedLimit = 100
 
 func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
-	articles, err := app.db.ListPublishedArticles(publishedLimit, 0)
+	order := parseSort(r.URL.Query().Get("sort"), publishedSorts)
+	articles, err := app.db.ListPublishedArticlesSorted(order == sortOldest, publishedLimit, 0)
 	if err != nil {
 		app.serverError(w, r, "admin: failed to load articles", err)
 		return
@@ -157,6 +167,8 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		"CSRFToken": getCSRFToken(w, r),
 		"Message":   r.URL.Query().Get("msg"),
 		"MessageID": queryInt(r, "id"),
+		"Sort":      string(order),
+		"Sorts":     sortChoices(order, publishedSorts),
 	}
 	// After a plain unpublish, the toast offers to put it back: approving
 	// the revision that was live, which needs that revision number.
@@ -212,10 +224,10 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.FormValue("return") == "published" {
-		http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=republished&id=%d", id), http.StatusSeeOther)
+		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/published?msg=republished&id=%d", id), publishedSorts), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=approved&id=%d&open=%d", id, nextParam(r)), http.StatusSeeOther)
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=approved&id=%d&open=%d", id, nextParam(r)), queueSorts), http.StatusSeeOther)
 }
 
 func (app *App) handleRejectArticle(w http.ResponseWriter, r *http.Request) {
@@ -229,7 +241,7 @@ func (app *App) handleRejectArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=rejected&id=%d&open=%d", id, nextParam(r)), http.StatusSeeOther)
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=rejected&id=%d&open=%d", id, nextParam(r)), queueSorts), http.StatusSeeOther)
 }
 
 // articleDecisionForm reads an approve or reject request: the article id from
@@ -255,11 +267,11 @@ func articleDecisionForm(w http.ResponseWriter, r *http.Request) (id int64, revi
 func (app *App) decisionFailed(w http.ResponseWriter, r *http.Request, id int64, verb string, err error) {
 	var changed *article.ErrArticleChanged
 	if errors.As(err, &changed) {
-		http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=changed&id=%d&rev=%d", id, changed.Revision), http.StatusSeeOther)
+		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=changed&id=%d&rev=%d", id, changed.Revision), queueSorts), http.StatusSeeOther)
 		return
 	}
 	if errors.Is(err, db.ErrStatusChanged) {
-		http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=status_changed&id=%d", id), http.StatusSeeOther)
+		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=status_changed&id=%d", id), queueSorts), http.StatusSeeOther)
 		return
 	}
 	http.Error(w, fmt.Sprintf("Failed to %s: %v", verb, err), http.StatusBadRequest)
@@ -285,7 +297,7 @@ func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
 
 	app.startRevision(id)
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/dashboard?msg=revision_submitted&id=%d&sent=revise-%d&open=%d", id, id, nextParam(r)), http.StatusSeeOther)
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=revision_submitted&id=%d&sent=revise-%d&open=%d", id, id, nextParam(r)), queueSorts), http.StatusSeeOther)
 }
 
 // startRevision kicks off the AI rewrite in the background so the admin sees it
@@ -316,7 +328,7 @@ func (app *App) handleUnpublishArticle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		app.startRevision(id)
-		http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=unpublished_revise&id=%d&sent=unpublish-%d", id, id), http.StatusSeeOther)
+		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/published?msg=unpublished_revise&id=%d&sent=unpublish-%d", id, id), publishedSorts), http.StatusSeeOther)
 		return
 	}
 	if err := app.articleManager.Unpublish(id); err != nil {
@@ -324,7 +336,7 @@ func (app *App) handleUnpublishArticle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=unpublished&undo=1&id=%d&sent=unpublish-%d", id, id), http.StatusSeeOther)
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/published?msg=unpublished&undo=1&id=%d&sent=unpublish-%d", id, id), publishedSorts), http.StatusSeeOther)
 }
 
 func (app *App) handleUnpublishAndRevise(w http.ResponseWriter, r *http.Request) {
