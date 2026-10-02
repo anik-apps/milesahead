@@ -291,6 +291,36 @@ kbd {
 }
 .actionbar-decide { display: flex; gap: 0.5rem; margin-left: auto; }
 .preview-actionbar .btn { padding: 0.45rem 0.9rem; }
+.actionbar-rewrite { flex-wrap: wrap; }
+.preview-actionbar .btn-quiet, .btn-quiet { background: transparent; border-color: transparent; color: var(--text-muted); font-weight: 600; }
+.btn-quiet:hover, .btn-quiet:focus-visible { color: var(--accent); border-color: var(--border); }
+
+/* "Find a new image", under the preview's photo. */
+.image-tools { margin: 0 0 1.5rem; display: flex; flex-direction: column; gap: 0.45rem; }
+.preview-body .article-hero:has(+ .image-tools) { margin-bottom: 0.6rem; }
+.image-form { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.image-form input[type="text"], .p-image-panel input[type="text"] {
+    max-width: 30rem; padding: 0.35rem 0.6rem; font: inherit; font-size: 0.85rem;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text);
+}
+.image-form input[type="text"] { flex: 1 1 260px; }
+.image-form input[type="text"]:focus, .p-image-panel input[type="text"]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-subtle); }
+.image-status { margin: 0; font-size: 0.85rem; line-height: 1.6; color: var(--text-muted); }
+.image-status .chip { font-size: 0.75rem; margin-right: 0.35rem; }
+.p-image-note { font-size: 0.8rem; color: var(--text-muted); }
+
+/* Rewrite feedback that mentions a picture: point at Find a new image. */
+.rewrite-image-hint {
+    flex-basis: 100%; margin: 0; padding: 0.35rem 0.6rem; font-size: 0.82rem; line-height: 1.45;
+    border-radius: 6px; background: #fef3c7; color: #92400e;
+}
+.rewrite-image-hint[hidden] { display: none; }
+[data-theme="dark"] .rewrite-image-hint { background: #2d230c; color: #f2cc60; }
+.link-button {
+    padding: 0; border: 0; background: none; font: inherit; font-weight: 650; color: inherit;
+    text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.link-button:hover { color: var(--accent); }
 
 /* ---------- Toast ---------- */
 .toast {
@@ -323,6 +353,9 @@ kbd {
     .actionbar-decide { margin-left: 0; width: 100%; }
     .actionbar-decide form:last-child { flex: 1; }
     .actionbar-decide form:last-child .btn { width: 100%; }
+    /* The image search box is right under the photo, and the rewrite
+       box's reminder links to it; the bar keeps its room for typing. */
+    .actionbar-image { display: none; }
     .preview-header .btn-sm[href*="/cards"] { display: none; }
     .hide-sm { display: none; }
     .preview-header { padding: 0.5rem 0.75rem; gap: 0.4rem; flex-wrap: nowrap; }

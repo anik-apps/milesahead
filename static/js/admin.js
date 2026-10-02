@@ -105,6 +105,46 @@ window.adminShortcuts = (function () {
   return { action: action, typing: typing };
 })();
 
+// Rewrite feedback that asks for a different picture. A rewrite only changes
+// the text, so a box with data-image-hint="id" shows the element id (a note
+// pointing at Find a new image) while what is typed mentions an image. It
+// never blocks sending. mentionsImage is kept free of the DOM so it can be
+// tested on its own (tests/js/admin.test.mjs).
+window.adminImageHint = (function () {
+  'use strict';
+  var WORDS = /\b(?:images?|photos?|photographs?|pictures?|pics?)\b/i;
+  function mentionsImage(text) { return WORDS.test(String(text || '')); }
+
+  function wire(box) {
+    var note = document.getElementById(box.getAttribute('data-image-hint'));
+    if (!note) return;
+    var sync = function () { note.hidden = !mentionsImage(box.value); };
+    box.addEventListener('input', sync);
+    sync(); // a restored draft
+  }
+
+  // data-jump-image="id": focus the image search box id, scrolled into view.
+  function jump(id) {
+    var box = document.getElementById(id);
+    if (!box) return;
+    if (box.scrollIntoView) box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    box.focus({ preventScroll: true });
+  }
+
+  function init() {
+    document.querySelectorAll('[data-image-hint]').forEach(wire);
+    document.addEventListener('click', function (e) {
+      var t = e.target && e.target.closest && e.target.closest('[data-jump-image]');
+      if (t) { e.preventDefault(); jump(t.getAttribute('data-jump-image')); }
+    });
+  }
+  // After the drafts script above has filled the boxes back in.
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+
+  return { mentionsImage: mentionsImage, jump: jump };
+})();
+
 // Row actions menus (the review queue and Published): a button with
 // aria-haspopup="menu" and aria-controls naming a role="menu" list of
 // role="menuitem" links and buttons. Opening focuses the first item (the
@@ -306,10 +346,15 @@ window.adminMenus = (function () {
     if (link) {
       e.preventDefault();
       open(link.getAttribute('data-preview'));
-      // "Request rewrite..." in a row's menu: straight to the box.
-      if (link.getAttribute('data-focus') === 'rewrite' && current) {
+      // "Request rewrite..." in a row's menu: straight to the box;
+      // "Find a new image..." to the image search box.
+      var focus = link.getAttribute('data-focus');
+      if (focus === 'rewrite' && current) {
         var box = current.querySelector('.actionbar-rewrite textarea');
         if (box) box.focus();
+      } else if (focus === 'new-image' && current) {
+        var hint = current.querySelector('.image-form input[name="hint"]');
+        if (hint) window.adminImageHint.jump(hint.id);
       }
       return;
     }

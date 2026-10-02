@@ -81,6 +81,8 @@ func TestDashboard_RowMenus(t *testing.T) {
 		`<input type="hidden" name="revision" value="3">`,
 		`role="menuitem" tabindex="-1" class="row-menu-approve">Approve rev 3</button>`,
 		`data-focus="rewrite">Request rewrite&hellip;</a>`,
+		// No image yet: the menu offers to find one.
+		`data-focus="new-image">Find an image&hellip;</a>`,
 		// Reject still asks first: it cannot be undone.
 		`action="/admin/articles/` + itoa(ready) + `/reject" class="row-menu-form" data-confirm="Reject article #` + itoa(ready) + `? This cannot be undone."`,
 	} {
@@ -92,8 +94,8 @@ func TestDashboard_RowMenus(t *testing.T) {
 	if strings.Contains(m, `name="next"`) {
 		t.Error("menu decisions should not open the next article")
 	}
-	if n := strings.Count(m, `role="menuitem"`); n != 4 {
-		t.Errorf("ready menu has %d items, want 4", n)
+	if n := strings.Count(m, `role="menuitem"`); n != 5 {
+		t.Errorf("ready menu has %d items, want 5", n)
 	}
 
 	if m := rowMenu(body, down); !strings.Contains(m, ">Republish rev 1</button>") {
@@ -245,7 +247,8 @@ func TestPublished_SortAndRowMenu(t *testing.T) {
 		t.Fatalf("Location %q", loc)
 	}
 	page := doAdminGET(t, app, loc, session).Body.String()
-	if !strings.Contains(page, `name="return" value="published"`) || !strings.Contains(page, `<input type="hidden" name="sort" value="oldest">`) {
+	toast := between(page, `<div class="toast"`, `</form>`)
+	if !strings.Contains(toast, `name="return" value="published"`) || !strings.Contains(toast, `<input type="hidden" name="sort" value="oldest">`) {
 		t.Error("the undo toast is missing or would lose the order")
 	}
 }

@@ -82,6 +82,9 @@ type adminArticleRow struct {
 	// RevisionThread is the article's feedback and the rewrites that answered
 	// it, oldest first, for the preview; nil when no feedback was ever sent.
 	RevisionThread []revisionRequest
+	// ImageRequest is the admin's "Find a new image", pending or failed;
+	// the zero value when there is none (see newimage.go).
+	ImageRequest db.ImageRequest
 
 	// Queue row extras (dashboard.go).
 	Group        string // groupDecide, groupReady or groupRewriting
@@ -159,6 +162,7 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 
 		rows = append(rows, row)
 	}
+	app.attachImageRequests(rows)
 
 	data := map[string]interface{}{
 		"Title":     "Published Articles",
@@ -169,6 +173,9 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		"MessageID": queryInt(r, "id"),
 		"Sort":      string(order),
 		"Sorts":     sortChoices(order, publishedSorts),
+	}
+	if data["Message"] == "image_requested" {
+		data["MessageText"] = imageRequestedMessage
 	}
 	// After a plain unpublish, the toast offers to put it back: approving
 	// the revision that was live, which needs that revision number.

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/kumaranik/milesahead/internal/editornote"
@@ -22,6 +23,13 @@ type ArticleNeedingEnrichment struct {
 	MissingKeyDetails bool
 	MissingImage      bool
 	MissingTags       bool
+
+	// ImageRequestSeq is the admin's pending request for a new image (see
+	// RequestNewImage), or 0 for none. With one, MissingImage is set even
+	// though the article has an image: it is to be replaced, and kept until
+	// it is. ImageHint is the admin's search words for it.
+	ImageRequestSeq int64
+	ImageHint       string
 }
 
 // AnyMissing reports whether there is anything left to fill.
@@ -38,7 +46,9 @@ func (a ArticleNeedingEnrichment) Missing() string {
 	if a.MissingKeyDetails {
 		m = append(m, "key_details")
 	}
-	if a.MissingImage {
+	if a.MissingImage && a.ImageRequestSeq > 0 {
+		m = append(m, "new_image")
+	} else if a.MissingImage {
 		m = append(m, "image")
 	}
 	if a.MissingTags {
@@ -62,25 +72,30 @@ const emptyTags = `(tags_json IS NULL OR tags_json IN ('', '[]', 'null'))`
 // Rejected articles are skipped: spending model calls to enrich something an
 // editor has already thrown out is pure waste.
 func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]ArticleNeedingEnrichment, error) {
+	// An admin's pending request for a new image counts as a missing image,
+	// and is served first: someone is waiting on it.
 	query := fmt.Sprintf(`
-		SELECT id, title, COALESCE(tldr,''), content, enrichment_attempts,
-		       (scouts_take IS NULL OR scouts_take = '') AS need_take,
+		SELECT g.id, g.title, COALESCE(g.tldr,''), g.content, g.enrichment_attempts,
+		       (g.scouts_take IS NULL OR g.scouts_take = '') AS need_take,
 		       %s AS need_details,
-		       (image_url IS NULL OR image_url = '') AS need_image,
-		       %s AS need_tags
-		FROM generated_articles
-		WHERE status != ?
-		  AND enrichment_attempts < ?
+		       (g.image_url IS NULL OR g.image_url = '' OR r.article_id IS NOT NULL) AS need_image,
+		       %s AS need_tags,
+		       COALESCE(r.seq, 0), COALESCE(r.hint, '')
+		FROM generated_articles g
+		LEFT JOIN article_image_requests r ON r.article_id = g.id AND r.state = ?
+		WHERE g.status != ?
+		  AND g.enrichment_attempts < ?
 		  AND (
-		        (scouts_take IS NULL OR scouts_take = '')
+		        (g.scouts_take IS NULL OR g.scouts_take = '')
 		     OR %s
-		     OR (image_url IS NULL OR image_url = '')
+		     OR (g.image_url IS NULL OR g.image_url = '')
+		     OR r.article_id IS NOT NULL
 		     OR %s
 		  )
-		ORDER BY created_at DESC
+		ORDER BY (r.article_id IS NOT NULL) DESC, g.created_at DESC
 		LIMIT ?`, emptyKeyDetails, emptyTags, emptyKeyDetails, emptyTags)
 
-	rows, err := d.db.Query(query, StatusRejected, maxAttempts, limit)
+	rows, err := d.db.Query(query, ImageRequestPending, StatusRejected, maxAttempts, limit)
 	if err != nil {
 		return nil, fmt.Errorf("listing articles needing enrichment: %w", err)
 	}
@@ -90,7 +105,8 @@ func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]Arti
 	for rows.Next() {
 		var a ArticleNeedingEnrichment
 		if err := rows.Scan(&a.ID, &a.Title, &a.TLDR, &a.Content, &a.Attempts,
-			&a.MissingScoutsTake, &a.MissingKeyDetails, &a.MissingImage, &a.MissingTags); err != nil {
+			&a.MissingScoutsTake, &a.MissingKeyDetails, &a.MissingImage, &a.MissingTags,
+			&a.ImageRequestSeq, &a.ImageHint); err != nil {
 			return nil, fmt.Errorf("scanning article needing enrichment: %w", err)
 		}
 		// The Scout's Take, key details and tags are written from the
@@ -111,6 +127,12 @@ type EnrichmentUpdate struct {
 	ImageThumbnail   *string
 	ImageAttribution *string
 	TagsJSON         *string
+
+	// ImageRequestSeq is the admin's request this pass's image answers (see
+	// ArticleNeedingEnrichment), or 0. The image is written only if that is
+	// still the current request, and then closes it; a request made while
+	// the pass ran supersedes the image and stays pending (see applyImage).
+	ImageRequestSeq int64
 
 	// Uncounted leaves enrichment_attempts alone. It is for a pass in which
 	// nothing failed and the only work left undone was put off, not tried:
@@ -148,19 +170,77 @@ func (d *Database) ApplyEnrichment(id int64, u EnrichmentUpdate) error {
 		sets = append(sets, "expires_on = ?")
 		args = append(args, nullIfEmpty(offer.EndDate(*u.KeyDetails, writtenAt(createdAt))))
 	}
-	add("image_url", u.ImageURL)
-	add("image_thumbnail", u.ImageThumbnail)
-	add("image_attribution", u.ImageAttribution)
 	add("tags_json", u.TagsJSON)
 
 	// updated_at is deliberately NOT touched. It is used to tell when an
 	// article's content last changed, and a background enrichment pass is not
 	// a content edit.
 	args = append(args, id)
-	_, err := d.db.Exec(
-		"UPDATE generated_articles SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...)
+	tx, err := d.db.Begin()
 	if err != nil {
 		return fmt.Errorf("applying enrichment to article %d: %w", id, err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(
+		"UPDATE generated_articles SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...); err != nil {
+		return fmt.Errorf("applying enrichment to article %d: %w", id, err)
+	}
+	if u.ImageURL != nil {
+		if err := applyImage(tx, id, u); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("applying enrichment to article %d: %w", id, err)
+	}
+	return nil
+}
+
+// applyImage writes the image a pass found, inside ApplyEnrichment's
+// transaction, but only if the admin's request it answers is still the
+// current one: still pending at u.ImageRequestSeq, or, for a pass that served
+// no request (seq 0), none pending. A request made while the pass ran
+// supersedes it -- the admin may have turned down the very image the pass was
+// replacing, or asked for something else -- so its image is dropped and the
+// newer request is left pending for the next pass. The other fields of the
+// update still apply.
+//
+// The check is part of the UPDATE, and the transaction already holds the
+// write lock from the UPDATE before it, so no request can slip in between.
+// When the image lands, the request it answered is closed in the same
+// transaction, and so is an earlier failed one: the article has a new image.
+func applyImage(tx *sql.Tx, id int64, u EnrichmentUpdate) error {
+	sets := []string{"image_url = ?"}
+	args := []any{*u.ImageURL}
+	if u.ImageThumbnail != nil {
+		sets = append(sets, "image_thumbnail = ?")
+		args = append(args, *u.ImageThumbnail)
+	}
+	if u.ImageAttribution != nil {
+		sets = append(sets, "image_attribution = ?")
+		args = append(args, *u.ImageAttribution)
+	}
+	current := `NOT EXISTS (SELECT 1 FROM article_image_requests WHERE article_id = ? AND state = ?)`
+	args = append(args, id, id, ImageRequestPending)
+	if u.ImageRequestSeq > 0 {
+		current = `EXISTS (SELECT 1 FROM article_image_requests WHERE article_id = ? AND state = ? AND seq = ?)`
+		args = append(args, u.ImageRequestSeq)
+	}
+	res, err := tx.Exec("UPDATE generated_articles SET "+strings.Join(sets, ", ")+
+		" WHERE id = ? AND "+current, args...)
+	if err != nil {
+		return fmt.Errorf("applying the image to article %d: %w", id, err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return fmt.Errorf("applying the image to article %d: %w", id, err)
+	} else if n == 0 {
+		slog.Info("enrichment: image dropped, a newer image request superseded the pass",
+			"article_id", id, "pass_request_seq", u.ImageRequestSeq)
+		return nil
+	}
+	if _, err := tx.Exec(`DELETE FROM article_image_requests
+		WHERE article_id = ? AND (seq = ? OR state = ?)`, id, u.ImageRequestSeq, ImageRequestFailed); err != nil {
+		return fmt.Errorf("closing the image request for article %d: %w", id, err)
 	}
 	return nil
 }

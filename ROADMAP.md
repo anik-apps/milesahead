@@ -33,6 +33,7 @@
 - [x] CI/CD refactored into separate build/deploy/seed/grafana jobs
 - [x] Admin rework — own shell with counts on the tabs, grouped review queue with decisions in the preview (revision-checked approve, approve-and-next, undo, shortcuts), source health, card editor with inline flags, card updates as a word diff
 - [x] Review queue sort (newest first by default, oldest, critic score) and per-row actions menus on Review and Published; compact type pills
+- [x] Find a new image — an admin action (preview, Review and Published row menus) with optional search words; the enrichment pass finds a replacement first in line with a fresh budget, swaps it in only once found (the live image stays meanwhile), and never re-picks a turned-down image at any size. Rewrite feedback that mentions a picture points here, since rewrites only change the text
 
 ## Reliability & Hardening
 
