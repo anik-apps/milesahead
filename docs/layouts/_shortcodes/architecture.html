@@ -24,9 +24,6 @@
 {{- /* The scheduler's job for each node, if it has one. */ -}}
 {{- $trig := dict -}}
 {{- range $d.triggers }}{{ $trig = merge $trig (dict .to .label) }}{{ end -}}
-{{- /* Band of each y, for the halo behind an edge label. */ -}}
-{{- $bands := slice -}}
-{{- range $i, $l := $d.lanes }}{{ if not $l.rail }}{{ $bands = $bands | append (dict "i" $i "y" $l.y "h" $l.h) }}{{ end }}{{ end -}}
 <figure class="arch" id="arch" data-arch>
   {{ partial "arch-icons.html" . }}
   <p class="arch-hint" id="arch-hint">Select a component to see what it does, where its code lives and how it is configured. With a keyboard, Tab moves between components, Enter opens one and Escape closes it.</p>
@@ -42,11 +39,11 @@
         <g class="arch-lanes" aria-hidden="true">
           {{- range $i, $lane := $d.lanes }}
           {{- if $lane.rail }}
-          <rect class="arch-lane arch-lane--rail" x="{{ $RX }}" y="0" width="{{ sub $W $RX }}" height="{{ $H }}"/>
-          <text class="arch-lane-label" x="{{ add $RX 12 }}" y="18">{{ $lane.name }}</text>
+          <rect class="arch-lane arch-lane--rail" x="{{ add $RX 6 }}" y="6" width="{{ sub (sub $W $RX) 12 }}" height="{{ sub $H 12 }}" rx="12"/>
+          <text class="arch-lane-label" x="{{ add $RX 18 }}" y="24">{{ $lane.name }}</text>
           {{- else }}
-          <rect class="arch-lane arch-lane--{{ if modBool $i 2 }}a{{ else }}b{{ end }}" x="0" y="{{ $lane.y }}" width="{{ $RX }}" height="{{ $lane.h }}"/>
-          <text class="arch-lane-label" x="12" y="{{ add $lane.y 18 }}">{{ $lane.name }}</text>
+          <rect class="arch-lane arch-lane--band" x="6" y="{{ add $lane.y 6 }}" width="{{ sub $RX 12 }}" height="{{ sub $lane.h 12 }}" rx="12"/>
+          <text class="arch-lane-label" x="18" y="{{ add $lane.y 24 }}">{{ $lane.name }}</text>
           {{- end }}
           {{- end }}
         </g>
@@ -58,7 +55,7 @@
             {{- if $e.label }}
             {{- $halo := "rail" }}
             {{- if lt (int $e.lx) $RX }}
-            {{- range $bands }}{{ if and (ge (int $e.ly) .y) (lt (int $e.ly) (add .y .h)) }}{{ $halo = cond (modBool .i 2) "a" "b" }}{{ end }}{{ end }}
+            {{- $halo = "band" }}
             {{- end }}
             <text class="arch-edge-label arch-edge-label--{{ $halo }}" x="{{ $e.lx }}" y="{{ $e.ly }}" text-anchor="{{ $e.anchor | default "middle" }}">{{ $e.label }}</text>
             {{- end }}
@@ -80,7 +77,7 @@
             {{- else }}
             <rect class="arch-node-box" x="{{ $x0 }}" y="{{ $y0 }}" width="{{ $NW }}" height="{{ $NH }}" rx="{{ index $radius $n.type | default 10 }}"/>
             {{- end }}
-            {{- $bx := cond (eq $n.badge "left") (sub $cx 62) (add $cx 62) }}
+            {{- $bx := cond (eq $n.badge "left") (sub $cx 62) (cond (eq $n.badge "corner") (add $cx 78) (add $cx 62)) }}
             <g class="arch-badge" aria-hidden="true">
               <circle class="arch-badge-disc" cx="{{ $bx }}" cy="{{ $y0 }}" r="13"/>
               <use class="arch-badge-icon" href="#arch-i-{{ $n.type }}" x="{{ sub $bx 8 }}" y="{{ sub $y0 8 }}" width="16" height="16"/>

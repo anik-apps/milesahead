@@ -9,7 +9,9 @@
   --arch-muted: #5b6474;
   --arch-lane-a: #f6f8fb;
   --arch-lane-b: #eef2f7;
-  --arch-lane-rail: #f1eff8;
+  --arch-lane-rail: #f3f1fa;
+  --arch-panel: #f5f7fb;
+  --arch-panel-border: #dfe4ec;
   --arch-lane-label: #5b6474;
   --arch-node: #ffffff;
   --arch-border: #8a94a6;
@@ -28,7 +30,9 @@
   --arch-muted: #a3acba;
   --arch-lane-a: #161a20;
   --arch-lane-b: #1b2028;
-  --arch-lane-rail: #1c1a24;
+  --arch-lane-rail: #1b1923;
+  --arch-panel: #171b22;
+  --arch-panel-border: #2c333f;
   --arch-lane-label: #a3acba;
   --arch-node: #20252e;
   --arch-border: #6f7a8c;
@@ -64,7 +68,6 @@
 .arch-scroll {
   overflow-x: auto;
   border-radius: 12px;
-  border: 1px solid var(--arch-lane-b);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -79,6 +82,13 @@
 .arch-lane--a { fill: var(--arch-lane-a); }
 .arch-lane--b { fill: var(--arch-lane-b); }
 .arch-lane--rail { fill: var(--arch-lane-rail); }
+.arch-lane--band { fill: var(--arch-panel); }
+
+/* Each band and the operations rail is its own panel, with a gap between. */
+.arch-lane {
+  stroke: var(--arch-panel-border);
+  stroke-width: 1;
+}
 
 .arch-lane-label {
   fill: var(--arch-lane-label);
@@ -216,6 +226,10 @@
 
 .arch-edge-label--b {
   stroke: var(--arch-lane-b);
+}
+
+.arch-edge-label--band {
+  stroke: var(--arch-panel);
 }
 
 .arch-edge-label--rail {
