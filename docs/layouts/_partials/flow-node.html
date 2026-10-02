@@ -1,0 +1,16 @@
+{{- /* One box of a flow diagram (layouts/_shortcodes/flow.html).
+  Context: dict "s" (the step) "page" (the page, to render Markdown). */ -}}
+{{- $s := .s -}}
+{{- $kind := $s.kind | default "step" -}}
+<div class="flow-node flow-node--{{ $kind }}{{ with $s.tone }} flow-node--{{ . }}{{ end }}">
+  <p class="flow-title">{{ if eq $kind "decision" }}<span class="flow-diamond" aria-hidden="true"></span>{{ end }}{{ $.page.RenderString $s.title }}</p>
+  {{- with $s.desc }}
+  <p class="flow-desc">{{ $.page.RenderString . }}</p>
+  {{- end }}
+  {{- with $s.badge }}
+  <p class="flow-badge"><span class="flow-badge-icon" aria-hidden="true">↻</span> {{ $.page.RenderString . }}</p>
+  {{- end }}
+  {{- with $s.code }}
+  <p class="flow-code"><code>{{ . }}</code></p>
+  {{- end }}
+</div>
