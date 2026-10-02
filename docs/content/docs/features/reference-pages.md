@@ -3,7 +3,7 @@ title: Reference Pages
 weight: 1
 ---
 
-Reference pages are curated, evergreen guides for credit cards. They provide structured information that stays up to date as new articles are published.
+Reference pages are curated, evergreen guides for credit cards. They provide structured information that stays up to date as new articles are published. This page covers their content, seed data and admin tools; how readers browse, filter and compare them is on [Reader Site](../reader-site/#cards).
 
 ## Card Coverage
 
@@ -44,13 +44,12 @@ The `site.persona_name` config (default "Scout") defines the editorial voice use
 
 ## Auto-Linking
 
-When a new article is published that mentions a credit card, the system creates cross-links:
+Cards are linked to articles in two steps:
 
-- The article links to the relevant reference page(s)
-- The reference page's "Recent Changes" section gets an entry linking back to the article
-- Keywords stored on each reference page (`keywords_json`) drive the matching
+- **When an article is generated** (`cmd/milesahead/scan.go`, `internal/linker`), the first mention of each published card in the content becomes a link to its page, and the two most-mentioned cards become the article's related cards (its card rows). An article that mentions three or more cards relies on the admin choosing them (Linked cards, `/admin/articles/{id}/cards`).
+- **When an article is approved**, `internal/cardupdate` checks whether it changes anything on the cards it mentions and, if so, drafts pending section updates (a short AI call) for the admin to review. Detection waits out the 30-second approval Undo window.
 
-The seed data includes 42+ keyword variants per category to maximize link coverage across different ways blogs refer to cards (e.g., "CSR", "Chase Sapphire Reserve", "Sapphire Reserve").
+Keywords stored on each reference page (`keywords_json`) drive the matching. The seed data includes 42+ keyword variants per category to maximize link coverage across different ways blogs refer to cards (e.g., "CSR", "Chase Sapphire Reserve", "Sapphire Reserve").
 
 ## Card Images
 
@@ -208,10 +207,16 @@ images with no third-party request, so there is no `?beta=1` gate.
 
 ## Admin Management
 
-Reference pages can be managed through the admin dashboard:
+Cards are managed under **Cards** in the admin bar. The list puts cards with open flags or pending updates in a **Needs attention** group and has a filter box.
 
-- Edit any section's content
-- Update the Scout's Verdict
-- Change the card image URL
-- Review and approve pending updates (AI-drafted section changes triggered by new articles)
-- Set page status (draft, published)
+The card editor:
+
+- has a sticky bar with the card's status, its open flags, View page and Save, and warns about unsaved changes;
+- lays fields out as labelled two-column rows, with each flag shown on its field and a **Resolve** button (status flags included);
+- checks the JSON fields (earning rates, credits, benefits, protections) as you type, with a Format button; a bad value comes back with a 400, everything as typed, and the error and line number on its field;
+- has collapsible, reorderable sections, with Undo on Remove;
+- clears a field that was emptied, rather than keeping its old value.
+
+**Card updates** (section changes drafted when an approved article affects a card) are shown as a word-level diff with the rendered before and after, and approved or rejected one by one. An update whose section no longer exists fails visibly.
+
+The reader-facing card index, card pages and compare tool are described in [Reader Site](../reader-site/#cards).
