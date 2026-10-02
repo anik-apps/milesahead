@@ -11,16 +11,22 @@ import (
 )
 
 // The /cards/ index: every published card as a compact tile (fee, best
-// earning rate, welcome offer), with category, fee and issuer filters and a
-// sort. The filters are plain links and a GET form, so they work without
-// JavaScript and every view has its own URL: /cards/?cat=cash-back&fee=none.
+// earning rate, welcome offer). The filters are one row of links: category
+// chips and a "No annual fee" toggle (fee=none). The sort is a small GET form
+// on the results line that changes the order, never which cards show. Every
+// view has its own URL (/cards/?cat=cash-back&fee=none&sort=name) and nothing
+// needs JavaScript.
+//
+// Older links may also carry a fee band (fee=under-100, 100-400, over-400) or
+// an issuer (issuer=chase). Those still filter, and show on the results line
+// with a link that removes them, but there are no controls to set them.
 
 // cardTile is one card on the index.
 type cardTile struct {
 	Slug, Title, Issuer, ImageURL string
 	Category                      string
 	FeeAmount                     int
-	FeeKnown                      bool // see annualFeeKnown; false keeps it out of fee bands
+	FeeKnown                      bool // see annualFeeKnown; false keeps it out of "No annual fee" and the fee bands
 	HasFacts                      bool
 	Fee                           string   // "$895"; empty when the fee is unknown
 	Earn                          earnRate // best earning line; zero without data
@@ -42,24 +48,30 @@ type indexChip struct {
 	Active bool
 }
 
-// indexOption is an <option> in the issuer or sort select.
+// indexOption is an <option> in the sort menu. URL is the page in that
+// order, which the menu opens when it changes.
 type indexOption struct {
-	Value, Label string
-	Selected     bool
+	Value, Label, URL string
+	Selected          bool
 }
 
-// cardsQuery is the index's filter state, read from the URL.
+// cardsQuery is the index's filter state, read from the URL. Fee is
+// feeNone for the "No annual fee" toggle, or a fee band from an older link.
 type cardsQuery struct {
 	Cat, Fee, Issuer, Sort string
 }
 
+// feeNone is the fee value of the "No annual fee" toggle. It is the "none"
+// fee band, so /cards/?fee=none links from before the toggle still work.
+const feeNone = "none"
+
 // cardSorts are the sort choices; the first is the default and is left out of
 // URLs.
 var cardSorts = []indexOption{
-	{Value: "", Label: "Category"},
-	{Value: "fee-asc", Label: "Annual fee: low to high"},
-	{Value: "fee-desc", Label: "Annual fee: high to low"},
-	{Value: "name", Label: "Name"},
+	{Value: "", Label: "By category"},
+	{Value: "name", Label: "Name (A–Z)"},
+	{Value: "fee-asc", Label: "Lowest fee"},
+	{Value: "fee-desc", Label: "Highest fee"},
 }
 
 // cardTilesEager is how many tiles load their art straight away: the first
@@ -136,6 +148,12 @@ func readCardsQuery(v url.Values, tiles []cardTile) cardsQuery {
 	return q
 }
 
+// feeOff is q without its fee filter.
+func feeOff(q cardsQuery) cardsQuery {
+	q.Fee = ""
+	return q
+}
+
 func countMatching(tiles []cardTile, q cardsQuery) int {
 	n := 0
 	for _, t := range tiles {
@@ -193,15 +211,21 @@ func categoriesInOrder(present map[string]bool) []string {
 type cardsIndex struct {
 	Query      cardsQuery
 	Categories []indexChip // "All", then each category
-	FeeBands   []indexChip // "Any", then each band
-	Issuers    []indexOption
+	NoFee      indexChip   // the "No annual fee" toggle
 	Sorts      []indexOption
-	Active     []activeFilter
-	Count      int
-	CountText  string
-	Grouped    bool
-	Groups     []cardTileGroup // when Grouped
-	Cards      []cardTile      // otherwise
+	// Applied names the filters set by the chips above, for the results
+	// line: "Cash Back", "No annual fee".
+	Applied []string
+	// Legacy are filters from older links (a fee band, an issuer) that have
+	// no control on the page, each with a link that removes just it.
+	Legacy    []activeFilter
+	Filtered  bool   // any filter applied: offer Clear
+	ClearURL  string // every filter removed, the sort kept
+	Count     int
+	CountText string
+	Grouped   bool
+	Groups    []cardTileGroup // when Grouped
+	Cards     []cardTile      // otherwise
 }
 
 func buildCardsIndex(pages []db.ReferencePage, v url.Values) cardsIndex {
@@ -232,58 +256,45 @@ func buildCardsIndex(pages []db.ReferencePage, v url.Values) cardsIndex {
 		ix.Categories = append(ix.Categories, chip)
 	}
 
-	anyFee := q
-	anyFee.Fee = ""
-	ix.FeeBands = append(ix.FeeBands, indexChip{Label: "Any", URL: anyFee.url(), Count: countMatching(tiles, anyFee), Active: q.Fee == ""})
-	for _, b := range feeBands {
-		fq := q
-		fq.Fee = b.Key
-		chip := indexChip{Label: b.Label, URL: fq.url(), Count: countMatching(tiles, fq), Active: q.Fee == b.Key}
-		if chip.Active {
-			chip.URL = anyFee.url()
-		}
-		ix.FeeBands = append(ix.FeeBands, chip)
+	// The toggle keeps the category, issuer and sort. Turning it on replaces
+	// a fee band from an older link, which it could only contradict.
+	fq := q
+	fq.Fee = feeNone
+	ix.NoFee = indexChip{Label: "No annual fee", URL: fq.url(), Count: countMatching(tiles, fq), Active: q.Fee == feeNone}
+	if ix.NoFee.Active {
+		ix.NoFee.URL = feeOff(q).url()
 	}
 
 	issuers := map[string]string{}
 	for _, t := range tiles {
 		issuers[issuerKey(t.Issuer)] = t.Issuer
 	}
-	keys := make([]string, 0, len(issuers))
-	for k := range issuers {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	ix.Issuers = append(ix.Issuers, indexOption{Value: "", Label: "All issuers", Selected: q.Issuer == ""})
-	for _, k := range keys {
-		ix.Issuers = append(ix.Issuers, indexOption{Value: k, Label: issuers[k], Selected: q.Issuer == k})
-	}
 	for _, s := range cardSorts {
+		sq := q
+		sq.Sort = s.Value
+		s.URL = sq.url()
 		s.Selected = s.Value == q.Sort
 		ix.Sorts = append(ix.Sorts, s)
 	}
 
-	// Applied filters, each with a link that removes just it.
+	// The results line: what is applied, and links that remove the filters
+	// with no control of their own.
 	if q.Cat != "" {
-		r := q
-		r.Cat = ""
-		ix.Active = append(ix.Active, activeFilter{Label: categoryName(q.Cat), RemoveURL: r.url()})
+		ix.Applied = append(ix.Applied, categoryName(q.Cat))
 	}
-	if q.Fee != "" {
-		r := q
-		r.Fee = ""
+	if q.Fee == feeNone {
+		ix.Applied = append(ix.Applied, ix.NoFee.Label)
+	} else if q.Fee != "" {
 		b, _ := feeBandByKey(q.Fee)
-		label := b.Label
-		if b.Key == "none" {
-			label = "No annual fee"
-		}
-		ix.Active = append(ix.Active, activeFilter{Label: label, RemoveURL: r.url()})
+		ix.Legacy = append(ix.Legacy, activeFilter{Label: b.Label, RemoveURL: feeOff(q).url()})
 	}
 	if q.Issuer != "" {
 		r := q
 		r.Issuer = ""
-		ix.Active = append(ix.Active, activeFilter{Label: issuers[q.Issuer], RemoveURL: r.url()})
+		ix.Legacy = append(ix.Legacy, activeFilter{Label: issuers[q.Issuer], RemoveURL: r.url()})
 	}
+	ix.Filtered = q.Cat != "" || q.Fee != "" || q.Issuer != ""
+	ix.ClearURL = cardsQuery{Sort: q.Sort}.url()
 
 	var shown []cardTile
 	for _, t := range tiles {
@@ -312,7 +323,8 @@ func buildCardsIndex(pages []db.ReferencePage, v url.Values) cardsIndex {
 		sort.SliceStable(shown, func(i, j int) bool { return byName(shown[i], shown[j]) })
 	}
 
-	// Category headings only make sense across categories, in the default sort.
+	// Category headings only make sense across categories, in the default
+	// sort; the other sorts are one list.
 	ix.Grouped = q.Cat == "" && q.Sort == ""
 	if ix.Grouped {
 		byCat := map[string][]cardTile{}

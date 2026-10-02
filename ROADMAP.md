@@ -451,6 +451,9 @@ image shipped in #73. Everything else is here, most severe first.
       links keep each other's filters, compact tiles with fee, best earning rate and offer
       in place of the cut-off quote, and art in a fixed box, lazy after the first six. The
       phone page is about 10 screens unfiltered, 2-3 filtered.
+      The three rows of controls (chips, fee bands, issuer and sort menus with Apply) are
+      now one row of chips and a "No annual fee" toggle, with the sort as a menu on the
+      results line that applies on change; older fee-band and issuer links still filter.
 - [ ] **Trust signals** — articles now carry a byline (#90), but there is no About,
       corrections or privacy page, though the site collects emails. *Fix:* an About page
       on how stories are researched for the byline to link to, and a privacy page linked

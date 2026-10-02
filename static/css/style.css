@@ -1908,9 +1908,10 @@ tr.flagged { background: #fef2f2; }
 
 /* ========== Card Pages ========== */
 
-/* Cards index: a filter form (category chips, fee bands, issuer and sort),
-   then compact tiles with each card's fee, best earning rate and offer. The
-   chips and fee bands reuse the homepage filter styles above. */
+/* Cards index: one row of filters (category chips, a divider, the "No
+   annual fee" toggle), a results line with the count and the sort menu, then
+   compact tiles with each card's fee, best earning rate and offer. The chips
+   reuse the homepage filter styles above. */
 .cards-hero {
     text-align: center;
     padding: 1.75rem 1rem 1.25rem;
@@ -1924,31 +1925,51 @@ tr.flagged { background: #fef2f2; }
     font-size: 1.05rem;
 }
 .filter-count { margin-left: 0.35rem; font-size: 0.75rem; font-weight: 500; font-variant-numeric: tabular-nums; }
-.filter-chip.is-empty, .filter-switch-item.is-empty { opacity: 0.5; cursor: default; }
-.cards-filter-row {
+.filter-chip.is-empty { opacity: 0.5; cursor: default; }
+.cards-filters { display: flex; align-items: center; gap: 0 0.25rem; }
+/* The chips scroll if they ever outgrow the row; the toggle stays put. */
+.cards-cat-bar { flex: 0 1 auto; min-width: 0; }
+.filter-toggle { flex-shrink: 0; gap: 0.5rem; }
+/* A checkbox drawn in the chip, ticked when the toggle is on. The tick has
+   empty alt text: aria-pressed already says the toggle is on. */
+.filter-toggle::before {
+    content: ""; flex: none; display: inline-grid; place-items: center;
+    width: 15px; height: 15px; box-sizing: border-box;
+    border: 1.5px solid currentColor; border-radius: 4px;
+    font-size: 11px; font-weight: 700; line-height: 1;
+}
+.filter-toggle.active::before {
+    content: "✓"; content: "✓" / "";
+    background: var(--filter-chip-on-fg); border-color: var(--filter-chip-on-fg); color: var(--filter-chip-on-bg);
+}
+/* The summary wraps within its side, so the sort stays on the first line. */
+.cards-results {
     display: flex; align-items: center; justify-content: space-between;
-    flex-wrap: wrap; gap: 0.5rem 1.25rem; margin-top: 0.4rem;
+    gap: 0.5rem 1rem; margin: 0.6rem 0 1.25rem; padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.875rem; color: var(--text-muted);
 }
-.cards-fee-bar { flex: 0 1 auto; min-width: 0; }
-.cards-filter-label {
-    font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
-    color: var(--text-muted); white-space: nowrap;
+.cards-results-summary {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; min-width: 0; margin: 0;
 }
-.cards-selects { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 0.75rem; }
-.cards-select { display: inline-flex; align-items: center; gap: 0.4rem; }
-.cards-select select {
-    min-height: 38px; padding: 0 0.6rem; border: 1px solid var(--border); border-radius: 8px;
+/* Each separator stays with the item after it when the line wraps. */
+.cards-results-item { display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
+.cards-results-count, .cards-results-applied { color: var(--text); }
+.cards-results-count { font-weight: 600; }
+.cards-sort { flex: none; display: flex; align-items: center; gap: 0.4rem; margin-left: auto; white-space: nowrap; }
+.cards-sort select {
+    min-height: 34px; padding: 0 0.5rem; border: 1px solid var(--border); border-radius: 8px;
     background: var(--bg); color: var(--text); font: inherit; font-size: 0.875rem;
 }
-.cards-filter-apply {
-    min-height: 38px; padding: 0 1rem; border: 1px solid var(--accent); border-radius: 8px;
+.cards-sort-go {
+    min-height: 34px; padding: 0 0.75rem; border: 1px solid var(--accent); border-radius: 8px;
     background: var(--bg); color: var(--accent); font: inherit; font-size: 0.875rem; font-weight: 600; cursor: pointer;
 }
-.cards-filter-apply:hover { background: var(--accent-subtle); }
-.cards-select select:focus-visible, .cards-filter-apply:focus-visible {
+.cards-sort-go[hidden] { display: none; }
+.cards-sort-go:hover { background: var(--accent-subtle); }
+.cards-sort select:focus-visible, .cards-sort-go:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
 }
-.cards-count { margin: 0.75rem 0 1.25rem; }
 .cards-sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
@@ -1993,11 +2014,12 @@ tr.flagged { background: #fef2f2; }
     .cards-hero { padding: 1rem 0.5rem 0.75rem; }
     .cards-hero h1 { font-size: 1.6rem; }
     .cards-hero p { font-size: 0.95rem; }
-    .cards-filter-row { display: block; }
-    /* Issuer, sort and Apply share one row, labels above. */
-    .cards-selects { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; margin-top: 0.5rem; }
-    .cards-select { flex-direction: column; align-items: stretch; gap: 0.2rem; min-width: 0; }
-    .cards-select select, .cards-filter-apply { min-height: 40px; width: 100%; }
+    /* The chips scroll sideways under the edge fade; the toggle sits on its
+       own line below them. */
+    .cards-filters { display: block; }
+    .cards-filter-divider { display: none; }
+    .filter-toggle { margin-top: 0.4rem; }
+    .cards-sort select, .cards-sort-go { min-height: 40px; }
     .card-tiles { grid-template-columns: 1fr; gap: 0.5rem; }
     .card-tile { gap: 0.75rem; padding: 0.65rem 0.7rem; }
     .card-tile-title { margin-bottom: 0.25rem; }
