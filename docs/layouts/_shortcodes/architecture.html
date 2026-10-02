@@ -39,11 +39,13 @@
         <g class="arch-lanes" aria-hidden="true">
           {{- range $i, $lane := $d.lanes }}
           {{- if $lane.rail }}
-          <rect class="arch-lane arch-lane--rail" x="{{ add $RX 6 }}" y="6" width="{{ sub (sub $W $RX) 12 }}" height="{{ sub $H 12 }}" rx="12"/>
-          <text class="arch-lane-label" x="{{ add $RX 18 }}" y="24">{{ $lane.name }}</text>
+          <rect class="arch-lane arch-lane--b{{ $i }}" x="{{ add $RX 6 }}" y="6" width="{{ sub (sub $W $RX) 12 }}" height="{{ sub $H 12 }}" rx="12"/>
+          <use class="arch-lane-icon" href="#arch-i-{{ $lane.icon }}" x="{{ add $RX 16 }}" y="13" width="14" height="14"/>
+          <text class="arch-lane-label" x="{{ add $RX 36 }}" y="24">{{ $lane.name }}</text>
           {{- else }}
-          <rect class="arch-lane arch-lane--band" x="6" y="{{ add $lane.y 6 }}" width="{{ sub $RX 12 }}" height="{{ sub $lane.h 12 }}" rx="12"/>
-          <text class="arch-lane-label" x="18" y="{{ add $lane.y 24 }}">{{ $lane.name }}</text>
+          <rect class="arch-lane arch-lane--b{{ $i }}" x="6" y="{{ add $lane.y 6 }}" width="{{ sub $RX 12 }}" height="{{ sub $lane.h 12 }}" rx="12"/>
+          <use class="arch-lane-icon" href="#arch-i-{{ $lane.icon }}" x="16" y="{{ add $lane.y 13 }}" width="14" height="14"/>
+          <text class="arch-lane-label" x="36" y="{{ add $lane.y 24 }}">{{ $lane.name }}</text>
           {{- end }}
           {{- end }}
         </g>
@@ -53,11 +55,12 @@
           <g class="arch-edge{{ if $e.dashed }} arch-edge--dashed{{ end }}{{ if $e.both }} arch-edge--both{{ end }}" data-from="{{ $e.from }}" data-to="{{ $e.to }}">
             <path class="arch-edge-line" d="{{ $e.d }}" marker-end="url(#arch-arrow)"{{ if $e.both }} marker-start="url(#arch-arrow)"{{ end }}/>
             {{- if $e.label }}
-            {{- $halo := "rail" }}
+            {{- /* The halo takes the colour of the panel the label sits in. */}}
+            {{- $halo := sub (len $d.lanes) 1 }}
             {{- if lt (int $e.lx) $RX }}
-            {{- $halo = "band" }}
+            {{- range $j, $l := $d.lanes }}{{ if and (not $l.rail) (ge (int $e.ly) $l.y) (lt (int $e.ly) (add $l.y $l.h)) }}{{ $halo = $j }}{{ end }}{{ end }}
             {{- end }}
-            <text class="arch-edge-label arch-edge-label--{{ $halo }}" x="{{ $e.lx }}" y="{{ $e.ly }}" text-anchor="{{ $e.anchor | default "middle" }}">{{ $e.label }}</text>
+            <text class="arch-edge-label arch-edge-label--b{{ $halo }}" x="{{ $e.lx }}" y="{{ $e.ly }}" text-anchor="{{ $e.anchor | default "middle" }}">{{ $e.label }}</text>
             {{- end }}
           </g>
           {{- end }}
@@ -68,7 +71,7 @@
           {{- $cx := $n.x -}}
           {{- $cy := $n.y -}}
           {{- $job := index $trig $n.id }}
-          <a class="arch-node arch-node--{{ $n.kind }}" href="#arch-c-{{ $n.id }}" data-id="{{ $n.id }}" aria-label="{{ $n.title }}: {{ $n.sub }}{{ if ne $n.kind "vm" }} ({{ lower (index $kinds $n.kind) }}){{ end }}{{ with $job }}; the scheduler runs it {{ . }}{{ end }}">
+          <a class="arch-node arch-node--{{ $n.kind }} arch-type--{{ $n.type }}" href="#arch-c-{{ $n.id }}" data-id="{{ $n.id }}" aria-label="{{ $n.title }}: {{ $n.sub }}{{ if ne $n.kind "vm" }} ({{ lower (index $kinds $n.kind) }}){{ end }}{{ with $job }}; the scheduler runs it {{ . }}{{ end }}">
             <rect class="arch-node-ring" x="{{ sub $cx (add (div $NW 2) 5) }}" y="{{ sub $cy (add (div $NH 2) 5) }}" width="{{ add $NW 10 }}" height="{{ add $NH 10 }}" rx="14"/>
             {{- $x0 := sub $cx (div $NW 2) }}{{ $y0 := sub $cy (div $NH 2) }}
             {{- if eq $n.type "database" }}
@@ -120,12 +123,12 @@
     </ul>
     <ul class="arch-legend-row">
       {{- range $d.types }}
-      <li><svg class="arch-legend-icon" aria-hidden="true" focusable="false"><use href="#arch-i-{{ .id }}"/></svg>{{ .name }}</li>
+      <li class="arch-type--{{ .id }}"><span class="arch-type-swatch" aria-hidden="true"><svg class="arch-legend-icon" focusable="false"><use href="#arch-i-{{ .id }}"/></svg></span>{{ .name }}</li>
       {{- end }}
     </ul>
   </div>
   <p class="arch-status" role="status" aria-live="polite"></p>
-  <figcaption class="arch-caption">Data flows down, from the news and image sources to readers' browsers and inboxes; the operations components are on the right. Solid boxes run on the OCI VM, dashed boxes are third-party services, and the grey one is in the code but not running in production; the shape and the badge on each box say what kind of component it is. A clock line marks a job the Scheduler starts. Every component is also described in the list below.</figcaption>
+  <figcaption class="arch-caption">Data flows down, from the news and image sources to readers' browsers and inboxes; the operations components are on the right. Solid boxes run on the OCI VM, dashed boxes are third-party services, and the dotted one is in the code but not running in production. The shape, fill and badge of each box say what kind of component it is. A clock line marks a job the Scheduler starts. Every component is also described in the list below.</figcaption>
 </figure>
 
 <div class="arch-list">
@@ -134,7 +137,7 @@
   {{- range $n := $d.nodes }}
   {{- if eq $n.lane $i }}
   <details class="arch-item arch-item--{{ $n.kind }}" id="arch-c-{{ $n.id }}" data-id="{{ $n.id }}" data-title="{{ $n.title }}" data-kind="{{ index $types $n.type }} · {{ index $kinds $n.kind }}" open>
-    <summary><svg class="arch-item-icon" aria-hidden="true" focusable="false"><use href="#arch-i-{{ $n.type }}"/></svg><span class="arch-item-title">{{ $n.title }}</span> <span class="arch-item-sub">{{ $n.sub }}</span> <span class="arch-item-type">{{ index $types $n.type }}</span></summary>
+    <summary class="arch-type--{{ $n.type }}"><svg class="arch-item-icon" aria-hidden="true" focusable="false"><use href="#arch-i-{{ $n.type }}"/></svg><span class="arch-item-title">{{ $n.title }}</span> <span class="arch-item-sub">{{ $n.sub }}</span> <span class="arch-item-type">{{ index $types $n.type }}</span></summary>
     <div class="arch-item-body">
       {{- $page.RenderString (dict "display" "block") $n.purpose }}
       <dl class="arch-facts">

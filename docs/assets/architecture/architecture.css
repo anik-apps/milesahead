@@ -14,13 +14,56 @@
   --arch-panel-border: #dfe4ec;
   --arch-lane-label: #5b6474;
   --arch-node: #ffffff;
-  --arch-border: #8a94a6;
-  --arch-edge: #8f9aab;
+  --arch-border: #737d8f;
+  --arch-edge: #788396;
   --arch-edge-label: #3f4856;
   --arch-off: #9aa3b2;
   --arch-accent: var(--color-primary-600, #0b5bd3);
   --arch-accent-soft: rgba(11, 91, 211, 0.1);
   --arch-panel-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+  --arch-off-text: #575f6c;
+  /* Band panels: Sources .. Readers, then the Operations rail. */
+  --arch-band-0: #fbf1de; /* amber */
+  --arch-band-0-line: #ecd5a8;
+  --arch-band-1: #e8f3fa; /* sky */
+  --arch-band-1-line: #bcdcee;
+  --arch-band-2: #f1ecfb; /* violet */
+  --arch-band-2-line: #d6caf2;
+  --arch-band-3: #e6f4ed; /* emerald */
+  --arch-band-3-line: #b7dfca;
+  --arch-band-4: #e9effb; /* blue */
+  --arch-band-4-line: #c4d2f1;
+  --arch-band-5: #fae9ee; /* rose */
+  --arch-band-5-line: #eec6d1;
+  --arch-band-6: #edf0f4; /* slate */
+  --arch-band-6-line: #cdd4de;
+  /* Component types: box fill, and the ink for its badge. */
+  --arch-t-job: #fbfcfe;
+  --arch-t-job-ink: #475569;
+  --arch-t-service: #f2f7ff;
+  --arch-t-service-ink: #1d4ed8;
+  --arch-t-database: #effcf6;
+  --arch-t-database-ink: #047857;
+  --arch-t-api: #f7f5ff;
+  --arch-t-api-ink: #6d28d9;
+  --arch-t-source: #fff8f0;
+  --arch-t-source-ink: #c2410c;
+  --arch-t-scheduler: #f1f4ff;
+  --arch-t-scheduler-ink: #4338ca;
+  --arch-t-mail: #fffbeb;
+  --arch-t-mail-ink: #b45309;
+  --arch-t-dns: #effdff;
+  --arch-t-dns-ink: #0e7490;
+  --arch-t-proxy: #effdff;
+  --arch-t-proxy-ink: #0e7490;
+  --arch-t-people: #fff3f4;
+  --arch-t-people-ink: #be123c;
+  --arch-t-monitoring: #f0fdfa;
+  --arch-t-monitoring-ink: #0f766e;
+  --arch-t-ci: #f6f6f7;
+  --arch-t-ci-ink: #3f3f46;
+  --arch-t-docs: #fafaf9;
+  --arch-t-docs-ink: #57534e;
 }
 
 .dark .arch,
@@ -42,6 +85,49 @@
   --arch-accent: var(--color-primary-400, #5aa9ff);
   --arch-accent-soft: rgba(90, 169, 255, 0.16);
   --arch-panel-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  --arch-off-text: #9aa3b2;
+  /* Band panels: Sources .. Readers, then the Operations rail. */
+  --arch-band-0: #1f1a12; /* amber */
+  --arch-band-0-line: #463924;
+  --arch-band-1: #121c23; /* sky */
+  --arch-band-1-line: #25404f;
+  --arch-band-2: #1b1726; /* violet */
+  --arch-band-2-line: #3b3154;
+  --arch-band-3: #111f19; /* emerald */
+  --arch-band-3-line: #264534;
+  --arch-band-4: #131a28; /* blue */
+  --arch-band-4-line: #2a3a58;
+  --arch-band-5: #22141a; /* rose */
+  --arch-band-5-line: #4a2b37;
+  --arch-band-6: #171a1f; /* slate */
+  --arch-band-6-line: #323945;
+  /* Component types: box fill, and the ink for its badge. */
+  --arch-t-job: #1f2631;
+  --arch-t-job-ink: #a9b6c8;
+  --arch-t-service: #18243a;
+  --arch-t-service-ink: #93b4ff;
+  --arch-t-database: #132b23;
+  --arch-t-database-ink: #6ee7b7;
+  --arch-t-api: #231d38;
+  --arch-t-api-ink: #c4b5fd;
+  --arch-t-source: #2e2015;
+  --arch-t-source-ink: #fdba74;
+  --arch-t-scheduler: #1d203c;
+  --arch-t-scheduler-ink: #a5b4fc;
+  --arch-t-mail: #2c2412;
+  --arch-t-mail-ink: #fcd34d;
+  --arch-t-dns: #122a30;
+  --arch-t-dns-ink: #67e8f9;
+  --arch-t-proxy: #122a30;
+  --arch-t-proxy-ink: #67e8f9;
+  --arch-t-people: #2e1921;
+  --arch-t-people-ink: #fda4af;
+  --arch-t-monitoring: #122b2b;
+  --arch-t-monitoring-ink: #5eead4;
+  --arch-t-ci: #242428;
+  --arch-t-ci-ink: #c4c4cc;
+  --arch-t-docs: #272522;
+  --arch-t-docs-ink: #d6d3d1;
 }
 
 .arch {
@@ -79,16 +165,50 @@
   font-family: inherit;
 }
 
-.arch-lane--a { fill: var(--arch-lane-a); }
-.arch-lane--b { fill: var(--arch-lane-b); }
-.arch-lane--rail { fill: var(--arch-lane-rail); }
-.arch-lane--band { fill: var(--arch-panel); }
-
-/* Each band and the operations rail is its own panel, with a gap between. */
+/* Each band and the operations rail is its own panel, with a gap between,
+   in its own hue. Edge labels carry a halo of their band's colour. */
 .arch-lane {
-  stroke: var(--arch-panel-border);
   stroke-width: 1;
 }
+.arch-lane--b0 { fill: var(--arch-band-0); stroke: var(--arch-band-0-line); }
+.arch-lane--b1 { fill: var(--arch-band-1); stroke: var(--arch-band-1-line); }
+.arch-lane--b2 { fill: var(--arch-band-2); stroke: var(--arch-band-2-line); }
+.arch-lane--b3 { fill: var(--arch-band-3); stroke: var(--arch-band-3-line); }
+.arch-lane--b4 { fill: var(--arch-band-4); stroke: var(--arch-band-4-line); }
+.arch-lane--b5 { fill: var(--arch-band-5); stroke: var(--arch-band-5-line); }
+.arch-lane--b6 { fill: var(--arch-band-6); stroke: var(--arch-band-6-line); }
+.arch-edge-label--b0 { stroke: var(--arch-band-0); }
+.arch-edge-label--b1 { stroke: var(--arch-band-1); }
+.arch-edge-label--b2 { stroke: var(--arch-band-2); }
+.arch-edge-label--b3 { stroke: var(--arch-band-3); }
+.arch-edge-label--b4 { stroke: var(--arch-band-4); }
+.arch-edge-label--b5 { stroke: var(--arch-band-5); }
+.arch-edge-label--b6 { stroke: var(--arch-band-6); }
+
+.arch-lane-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--arch-lane-label);
+}
+
+/* Component types: a fill per type, with the badge in the type's ink. */
+.arch-type--job { --t-fill: var(--arch-t-job); --t-ink: var(--arch-t-job-ink); }
+.arch-type--service { --t-fill: var(--arch-t-service); --t-ink: var(--arch-t-service-ink); }
+.arch-type--database { --t-fill: var(--arch-t-database); --t-ink: var(--arch-t-database-ink); }
+.arch-type--api { --t-fill: var(--arch-t-api); --t-ink: var(--arch-t-api-ink); }
+.arch-type--source { --t-fill: var(--arch-t-source); --t-ink: var(--arch-t-source-ink); }
+.arch-type--scheduler { --t-fill: var(--arch-t-scheduler); --t-ink: var(--arch-t-scheduler-ink); }
+.arch-type--mail { --t-fill: var(--arch-t-mail); --t-ink: var(--arch-t-mail-ink); }
+.arch-type--dns { --t-fill: var(--arch-t-dns); --t-ink: var(--arch-t-dns-ink); }
+.arch-type--proxy { --t-fill: var(--arch-t-proxy); --t-ink: var(--arch-t-proxy-ink); }
+.arch-type--people { --t-fill: var(--arch-t-people); --t-ink: var(--arch-t-people-ink); }
+.arch-type--monitoring { --t-fill: var(--arch-t-monitoring); --t-ink: var(--arch-t-monitoring-ink); }
+.arch-type--ci { --t-fill: var(--arch-t-ci); --t-ink: var(--arch-t-ci-ink); }
+.arch-type--docs { --t-fill: var(--arch-t-docs); --t-ink: var(--arch-t-docs-ink); }
+
 
 .arch-lane-label {
   fill: var(--arch-lane-label);
@@ -118,13 +238,13 @@
 }
 
 .arch-badge-disc {
-  fill: var(--arch-node);
+  fill: var(--t-fill, var(--arch-node));
   stroke: var(--arch-border);
   stroke-width: 1.3;
 }
 
 .arch-badge-icon {
-  color: var(--arch-fg);
+  color: var(--t-ink, var(--arch-fg));
 }
 
 .arch-node-rim {
@@ -177,9 +297,21 @@
 
 .arch-legend-icon {
   display: inline-block;
-  width: 16px;
-  height: 16px;
-  color: var(--arch-fg);
+  width: 14px;
+  height: 14px;
+  color: var(--t-ink, var(--arch-fg));
+}
+
+/* A box type in the legend: its fill, border and ink. */
+.arch-type-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 20px;
+  border: 1.5px solid var(--arch-border);
+  border-radius: 5px;
+  background: var(--t-fill, var(--arch-node));
 }
 
 .arch-swatch {
@@ -222,18 +354,6 @@
   stroke: var(--arch-lane-a);
   stroke-width: 5px;
   stroke-linejoin: round;
-}
-
-.arch-edge-label--b {
-  stroke: var(--arch-lane-b);
-}
-
-.arch-edge-label--band {
-  stroke: var(--arch-panel);
-}
-
-.arch-edge-label--rail {
-  stroke: var(--arch-lane-rail);
 }
 
 /* A scheduler job, drawn inside the node it runs. It sits over the node, so
@@ -288,7 +408,7 @@
 }
 
 .arch-node-box {
-  fill: var(--arch-node);
+  fill: var(--t-fill, var(--arch-node));
   stroke: var(--arch-border);
   stroke-width: 1.5;
 }
@@ -306,7 +426,7 @@
 
 .arch-node--off .arch-node-title,
 .arch-node--off .arch-node-sub {
-  fill: var(--arch-off);
+  fill: var(--arch-off-text);
 }
 
 .arch-node-ring {
@@ -338,7 +458,7 @@
   stroke: var(--arch-accent);
   stroke-width: 3;
   stroke-dasharray: none;
-  fill: var(--arch-accent-soft);
+  fill: color-mix(in srgb, var(--arch-accent) 14%, var(--t-fill, var(--arch-node)));
 }
 
 /* With a selection, everything not connected to it steps back. */
@@ -495,7 +615,7 @@
   height: 1em;
   margin-right: 0.45rem;
   vertical-align: -0.12em;
-  color: var(--arch-muted);
+  color: var(--t-ink, var(--arch-muted));
 }
 
 .arch-item-type {

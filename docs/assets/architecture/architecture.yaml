@@ -50,13 +50,13 @@ types:
   - {id: docs, name: Docs hosting}
 
 lanes:
-  - {name: Sources, y: 0, h: 108}
-  - {name: Ingestion, y: 108, h: 108}
-  - {name: AI pipeline, y: 216, h: 200}
-  - {name: Content & data, y: 416, h: 108}
-  - {name: Delivery & mail, y: 524, h: 224}
-  - {name: Readers, y: 748, h: 108}
-  - {name: Operations, rail: true}
+  - {name: Sources, y: 0, h: 108, icon: band-sources}
+  - {name: Ingestion, y: 108, h: 108, icon: band-ingestion}
+  - {name: AI pipeline, y: 216, h: 200, icon: band-ai}
+  - {name: Content & data, y: 416, h: 108, icon: band-content}
+  - {name: Delivery & mail, y: 524, h: 224, icon: band-delivery}
+  - {name: Readers, y: 748, h: 108, icon: people}
+  - {name: Operations, rail: true, icon: band-ops}
 
 nodes:
   - id: sources
@@ -386,6 +386,7 @@ nodes:
     x: 100
     y: 478
     type: mail
+    badge: corner
     kind: off
     purpose: |
       Code for reviewing by email: review messages with a `review+TOKEN@`
