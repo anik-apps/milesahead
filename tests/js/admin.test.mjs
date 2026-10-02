@@ -183,3 +183,29 @@ test('Space activates a link in the menu', () => {
   assert.equal(M.key(m, { key: ' ', target: state.active }), true);
   assert.equal(items[0].clicks, 1);
 });
+
+test('rewrite feedback that asks for another picture is spotted', () => {
+  const { mentionsImage } = loadWindow().adminImageHint;
+  for (const text of [
+    'Use a different image',
+    'The PHOTO is wrong',
+    'pictures of the lounge, please',
+    'swap the pic',
+    'Pics look dated',
+    'needs a better photograph.',
+    'image: show the hotel',
+  ]) {
+    assert.equal(mentionsImage(text), true, text);
+  }
+  for (const text of [
+    '',
+    null,
+    'Tighten the second paragraph',
+    'imagine the reader is new to points', // not the word "image"
+    'an epic deal',                         // "pic" inside a word
+    'photography tips belong elsewhere',     // a different word
+    'Mention the topic earlier',
+  ]) {
+    assert.equal(mentionsImage(text), false, String(text));
+  }
+});

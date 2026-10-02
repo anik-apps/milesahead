@@ -153,6 +153,33 @@ func migrate(db *sql.DB) error {
 		expires_at DATETIME NOT NULL,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
+
+	-- An admin's "Find a new image" for an article: the enrichment
+	-- reconciler looks for a replacement while the current image stays up,
+	-- and swaps it in only once one is found. state is 'pending' until then,
+	-- or 'failed' when nothing acceptable turned up; the row is deleted when
+	-- the new image lands. hint is the admin's optional search words. seq
+	-- counts requests, so a pass that started on an earlier one cannot close
+	-- a later one. Times are unix seconds.
+	CREATE TABLE IF NOT EXISTS article_image_requests (
+		article_id INTEGER PRIMARY KEY REFERENCES generated_articles(id),
+		state TEXT NOT NULL,
+		hint TEXT NOT NULL DEFAULT '',
+		seq INTEGER NOT NULL DEFAULT 1,
+		requested_at INTEGER NOT NULL,
+		finished_at INTEGER NOT NULL DEFAULT 0,
+		last_error TEXT NOT NULL DEFAULT ''
+	);
+
+	-- Images an admin turned down for an article (its display image and
+	-- thumbnail when a new one was asked for), so the image search never
+	-- picks them, or another size of them, for it again.
+	CREATE TABLE IF NOT EXISTS article_rejected_images (
+		article_id INTEGER NOT NULL REFERENCES generated_articles(id),
+		image_url TEXT NOT NULL,
+		rejected_at INTEGER NOT NULL,
+		PRIMARY KEY (article_id, image_url)
+	);
 	`)
 	if err != nil {
 		return err

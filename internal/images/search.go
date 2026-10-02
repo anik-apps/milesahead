@@ -88,6 +88,13 @@ func (s *Searcher) newRequest(rawURL string) (*http.Request, error) {
 
 // Search queries all APIs in parallel and returns deduplicated candidates.
 func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
+	return s.SearchExcluding(queries, nil)
+}
+
+// SearchExcluding is Search leaving out the pictures in rejected, at any size.
+// They are dropped before the per-source and overall caps, so a picture an
+// editor turned down does not take the place of one they might accept.
+func (s *Searcher) SearchExcluding(queries []string, rejected Rejected) ([]ImageCandidate, error) {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	var allCandidates []ImageCandidate
@@ -200,6 +207,9 @@ func (s *Searcher) Search(queries []string) ([]ImageCandidate, error) {
 	seen := make(map[string]bool)
 	var deduped []ImageCandidate
 	for _, c := range allCandidates {
+		if rejected.Has(c) {
+			continue
+		}
 		if !seen[c.URL] {
 			seen[c.URL] = true
 			deduped = append(deduped, c)

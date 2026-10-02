@@ -73,6 +73,7 @@ func (app *App) setupRoutes() {
 	adminMux.HandleFunc("POST /admin/articles/{id}/revise", app.handleRequestRevision)
 	adminMux.HandleFunc("POST /admin/articles/{id}/unpublish", app.handleUnpublishArticle)
 	adminMux.HandleFunc("POST /admin/articles/{id}/unpublish-revise", app.handleUnpublishAndRevise)
+	adminMux.HandleFunc("POST /admin/articles/{id}/new-image", app.handleRequestNewImage)
 
 	// Newsletter action routes.
 	adminMux.HandleFunc("POST /admin/newsletter/send", app.handleNewsletterSend)

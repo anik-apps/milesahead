@@ -271,6 +271,7 @@ func (app *App) reviewQueue(all bool, order queueSort) []dashboardGroup {
 	var pageOrder []*adminArticleRow
 	for g := range out {
 		app.attachRevisionHistory(out[g].Rows)
+		app.attachImageRequests(out[g].Rows)
 		for i := range out[g].Rows {
 			pageOrder = append(pageOrder, &out[g].Rows[i])
 		}
@@ -295,6 +296,7 @@ var dashboardMessages = map[string]string{
 	"revision_submitted": "Rewrite requested. It moves to Ready to review when the new version lands, usually within a minute.",
 	"undone":             "Approval undone: the article is back in the queue and no longer on the site.",
 	"undo_expired":       "Too late to undo that approval. Use Unpublish on the Published page to take it down.",
+	"image_requested":    imageRequestedMessage,
 }
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {

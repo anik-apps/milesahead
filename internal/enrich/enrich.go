@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -302,12 +303,23 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 		}
 	}
 
+	var imageWhy string // why no image was found, for an admin's request
 	if a.MissingImage {
-		switch s.findImage(&u, a, deadline) {
+		var res imageResult
+		res, imageWhy = s.findImage(&u, a, deadline)
+		switch res {
 		case imageFound:
 			filled++
+			u.ImageRequestSeq = a.ImageRequestSeq
 		case imageDeferred:
 			putOff = true
+		case imageNoMatch:
+			failed++
+			if a.ImageRequestSeq > 0 {
+				// The search ran and nothing would do: the same words would
+				// find the same pictures next pass, so the admin hears now.
+				s.failImageRequest(a, imageWhy)
+			}
 		default:
 			failed++
 		}
@@ -338,6 +350,17 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 	if u.Uncounted {
 		attempt = a.Attempts
 	}
+	if a.ImageRequestSeq > 0 && u.ImageURL == nil && attempt >= s.MaxAttempts {
+		// The article is not listed again with its attempts spent, so a
+		// request still pending would wait for ever.
+		why := "the image search kept failing"
+		if imageWhy != "" {
+			why = imageWhy
+		} else if putOff {
+			why = "the enrichment pass kept running out of time"
+		}
+		s.failImageRequest(a, fmt.Sprintf("gave up after %d tries: %s", attempt, why))
+	}
 	slog.Info("enrichment applied", "article_id", a.ID, "was_missing", a.Missing(),
 		"filled", filled, "failed", failed, "attempt", attempt, "image_deferred", putOff)
 	return filled, failed, putOff
@@ -348,14 +371,22 @@ type imageResult int
 
 const (
 	imageFound    imageResult = iota // a candidate was picked
-	imageFailed                      // the search ran and nothing could be used
+	imageFailed                      // something went wrong; worth another try
+	imageNoMatch                     // the search ran and nothing could be used
 	imageDeferred                    // the pass deadline had passed; nothing was tried
 )
 
 // findImage searches and scores candidates, reporting whether one was good
-// enough to use. A search that finds nothing relevant is a legitimate outcome
-// rather than an error, but it still counts against the attempt budget so the
-// article is not searched forever.
+// enough to use and, when none was, why. A search that finds nothing
+// relevant is a legitimate outcome rather than an error, but it still counts
+// against the attempt budget so the article is not searched forever.
+//
+// An admin may have asked for a new image (a.ImageRequestSeq): the images
+// they turned down for the article are never picked again, at any size, and
+// their search words (a.ImageHint), when they gave some, are the query in
+// place of the generated ones -- and are shown to the scorer as what the
+// editor wants, alongside the article. Relevance, byte caps and the
+// fetchability checks are the same either way.
 //
 // deadline is the pass's. If the article's earlier model calls ran past it,
 // the search does not start: query generation, the search, warming (up to
@@ -368,38 +399,66 @@ const (
 // the scheduler skip the next one. An article whose checks are cut short gets
 // no image this pass; like any failed image step, that uses one of its
 // attempts.
-func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichment, deadline time.Time) imageResult {
+func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichment, deadline time.Time) (imageResult, string) {
 	if s.searcher == nil {
-		return imageFailed
+		return imageFailed, "image search is not configured"
 	}
 	if !time.Now().Before(deadline) {
 		slog.Info("enrichment: pass deadline reached before the image search; it waits for the next pass",
 			"article_id", a.ID)
-		return imageDeferred
+		return imageDeferred, ""
 	}
-	queries, err := ai.GenerateImageQueries(s.client, s.models, a.Title, a.TLDR)
+	turnedDown, err := s.db.RejectedImageURLs(a.ID)
 	if err != nil {
+		// Without the list the search could put back the very image the
+		// admin turned down.
+		s.recordFailure("image", a.ID, err)
+		return imageFailed, "could not read the images turned down before"
+	}
+	var queries []string
+	if a.ImageHint != "" {
+		queries = []string{a.ImageHint}
+	} else if queries, err = ai.GenerateImageQueries(s.client, s.models, a.Title, a.TLDR); err != nil {
 		slog.Warn("enrichment: image queries failed, falling back to title",
 			"article_id", a.ID, "error", err)
 		queries = []string{a.Title}
 	}
-	candidates, err := s.searcher.Search(queries)
-	if err != nil || len(candidates) == 0 {
+	candidates, err := s.searcher.SearchExcluding(queries, images.NewRejected(turnedDown))
+	if err != nil {
 		s.recordFailure("image", a.ID, err)
-		return imageFailed
+		return imageFailed, "the image search failed"
+	}
+	if len(candidates) == 0 {
+		s.recordFailure("image", a.ID, nil)
+		if len(turnedDown) > 0 {
+			return imageNoMatch, "the search found no images other than ones turned down"
+		}
+		return imageNoMatch, "the search found no images"
 	}
 	if s.scorer == nil {
-		return imageFailed
+		return imageFailed, "image scoring is not configured"
 	}
-	scored, err := s.scorer.Score(a.Title, a.TLDR, candidates)
+	summary := a.TLDR
+	if a.ImageHint != "" {
+		summary = strings.TrimSpace(summary + "\nThe editor asked for a picture of: " + a.ImageHint)
+	}
+	scored, err := s.scorer.Score(a.Title, summary, candidates)
 	if err != nil || len(scored) == 0 {
 		s.recordFailure("image", a.ID, err)
-		return imageFailed
+		return imageFailed, "scoring the images failed"
+	}
+	if scored[0].Score <= 0 {
+		// Scores run 1-10; none at all means the scoring calls failed and
+		// the candidates came back as they went in. That is worth another
+		// try, not a verdict on the pictures.
+		s.recordFailure("image", a.ID, nil)
+		return imageFailed, "scoring the images failed"
 	}
 	if scored[0].Score < MinImageScore {
 		slog.Info("enrichment: no image met the relevance bar",
 			"article_id", a.ID, "top_score", scored[0].Score)
-		return imageFailed
+		return imageNoMatch, fmt.Sprintf("none of %d images was relevant enough (best scored %.0f of 10)",
+			len(scored), scored[0].Score)
 	}
 	// Walk down in score order until one is relevant enough, actually
 	// fetchable and light enough for the page. Scoring alone is not enough: an
@@ -414,7 +473,7 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 		if !time.Now().Before(deadline) {
 			slog.Warn("enrichment: pass deadline reached while checking image candidates",
 				"article_id", a.ID, "checked", i)
-			return imageFailed
+			return imageFailed, "the enrichment pass ran out of time checking images"
 		}
 		if !s.searcher.Usable(c, deadline) {
 			continue
@@ -422,11 +481,22 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 		u.ImageURL = &scored[i].URL
 		u.ImageThumbnail = &scored[i].Thumbnail
 		u.ImageAttribution = &scored[i].Attribution
-		return imageFound
+		return imageFound, ""
 	}
 	slog.Info("enrichment: every relevant image candidate was unfetchable",
 		"article_id", a.ID, "candidates", len(scored))
-	return imageFailed
+	return imageNoMatch, "every relevant image failed to load or was too large"
+}
+
+// failImageRequest tells the admin their request for a new image found
+// nothing; the article keeps the image it has.
+func (s *Service) failImageRequest(a db.ArticleNeedingEnrichment, why string) {
+	metrics.EnrichmentFailuresTotal.WithLabelValues("new_image").Inc()
+	slog.Info("enrichment: no new image found for the admin's request",
+		"article_id", a.ID, "hint", a.ImageHint, "reason", why)
+	if err := s.db.FailImageRequest(a.ID, a.ImageRequestSeq, why); err != nil {
+		slog.Error("enrichment: could not record the failed image request", "article_id", a.ID, "error", err)
+	}
 }
 
 // outletMatcher is this pass's outlet check, or the built-in outlets alone

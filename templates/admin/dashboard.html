@@ -56,6 +56,7 @@
                             {{if eq .Status "unpublished"}}<span class="chip chip-warn">Unpublished</span>{{end}}
                             {{if eq .Status "draft"}}<span class="chip chip-mute" title="Below the critic's threshold">Draft</span>{{end}}
                             {{if .FailedChecks}}<span class="chip chip-bad">{{.FailedChecks}} critic {{if eq .FailedChecks 1}}check{{else}}checks{{end}} failed</span>{{end}}
+                            {{if .ImageRequest.Pending}}<span class="chip chip-info"{{if .ImageRequest.Hint}} title="Searching for &ldquo;{{.ImageRequest.Hint}}&rdquo;"{{end}}>Finding a new image&hellip;</span>{{else if .ImageRequest.Failed}}<span class="chip chip-bad" title="{{.ImageRequest.LastError}}">No new image found &mdash; try other search words</span>{{end}}
                             {{if not .Enriched}}<span class="chip chip-warn" title="Enrichment adds the photo and {{$.PersonaName}}'s Take within about 15 minutes">{{if .ImageURL}}No {{$.PersonaName}}'s Take yet{{else if .ScoutsTake}}No image yet{{else}}No image or take yet{{end}}</span>{{end}}
                             {{if and (eq .Group "ready") .Enriched (not .FailedChecks)}}<span class="chip chip-ok">Ready</span>{{end}}
                             {{if gt .RevisionNumber 1}}<span class="chip chip-mute">Rev {{.RevisionNumber}}</span>{{end}}
@@ -81,6 +82,7 @@
                             <button type="submit" role="menuitem" tabindex="-1" class="row-menu-approve">{{if eq .Status "unpublished"}}Republish{{else}}Approve{{end}} rev {{.RevisionNumber}}</button>
                         </form>
                         {{end}}
+                        <a role="menuitem" tabindex="-1" href="#preview-{{.ID}}" data-preview="preview-{{.ID}}" data-focus="new-image">{{if .ImageURL}}Find a new image&hellip;{{else}}Find an image&hellip;{{end}}</a>
                         {{if .CanRequestRevision}}
                         <a role="menuitem" tabindex="-1" href="#preview-{{.ID}}" data-preview="preview-{{.ID}}" data-focus="rewrite">{{if .RevisionGaveUp}}Request the rewrite again&hellip;{{else}}Request rewrite&hellip;{{end}}</a>
                         {{end}}
@@ -116,6 +118,7 @@
                     {{if .RevisionGaveUp}}<span class="chip chip-bad">Rewrite gave up</span>{{else if .RetryNote}}<span class="chip chip-warn">{{.RetryNote}}</span>{{end}}
                     {{if eq .Status "unpublished"}}<span class="chip chip-warn">Unpublished</span>{{end}}
                     {{if eq .Status "draft"}}<span class="chip chip-mute">Draft</span>{{end}}
+                    {{if .ImageRequest.Pending}}<span class="chip chip-info">Finding a new image&hellip;</span>{{else if .ImageRequest.Failed}}<span class="chip chip-bad">No new image found</span>{{end}}
                 </span>
                 <span class="preview-nav">
                     {{if .PrevID}}<a class="btn btn-sm" href="#preview-{{.PrevID}}" data-preview="preview-{{.PrevID}}" aria-label="Previous article" title="Previous (k)">&larr;</a>{{else}}<span class="btn btn-sm is-disabled" aria-hidden="true">&larr;</span>{{end}}
@@ -150,6 +153,22 @@
                     {{else}}
                     <p class="preview-missing">No image yet. Enrichment adds one within about 15 minutes of the article being created.</p>
                     {{end}}
+                    {{/* A rewrite never changes the picture; this does. The
+                         current image stays until a replacement is found. */}}
+                    <div class="image-tools" id="image-tools-{{.ID}}">
+                        {{if .ImageRequest.Pending}}
+                        <p class="image-status" role="status"><span class="chip chip-info">Finding a new image&hellip;</span> {{if .ImageRequest.Hint}}Searching for &ldquo;{{.ImageRequest.Hint}}&rdquo;. {{end}}{{if .ImageURL}}This image stays until a new one is found, usually within 15 minutes.{{else}}Usually within 15 minutes.{{end}}</p>
+                        {{else if .ImageRequest.Failed}}
+                        <p class="image-status image-status-failed" role="status"><span class="chip chip-bad">No new image found</span> Try other search words{{if .ImageURL}}; the image above stays{{end}}.{{if .ImageRequest.LastError}} <span class="dim">({{.ImageRequest.LastError}}{{if .ImageRequest.Hint}}, searched for &ldquo;{{.ImageRequest.Hint}}&rdquo;{{end}})</span>{{end}}</p>
+                        {{end}}
+                        <form method="POST" action="/admin/articles/{{.ID}}/new-image" class="image-form">
+                            {{template "csrf_field" $}}
+                            <input type="hidden" name="sort" value="{{$.Sort}}">
+                            <label class="visually-hidden" for="image-hint-{{.ID}}">Search for (optional)</label>
+                            <input type="text" id="image-hint-{{.ID}}" name="hint" maxlength="100" autocomplete="off" placeholder="Search for&hellip; (optional, e.g. Hyatt Regency lobby)" data-draft="image-{{.ID}}">
+                            <button type="submit" class="btn btn-sm">{{if .ImageURL}}Find a new image{{else}}Find an image{{end}}</button>
+                        </form>
+                    </div>
                     <div class="article-layout{{if not (or .KeyDetails .ArticleLinks)}} no-sidebar{{end}}">
                         {{if or .KeyDetails .ArticleLinks}}
                         <aside class="article-sidebar" aria-label="Key details">
@@ -277,8 +296,10 @@
                     <input type="hidden" name="next" value="{{.NextID}}">
                     <input type="hidden" name="sort" value="{{$.Sort}}">
                     <label class="visually-hidden" for="feedback-{{.ID}}">What should change?</label>
-                    <textarea id="feedback-{{.ID}}" name="feedback" rows="1" placeholder="{{if .RevisionGaveUp}}Ask for the rewrite again{{else}}What should change?{{end}} (r)" required data-draft="revise-{{.ID}}"></textarea>
+                    <textarea id="feedback-{{.ID}}" name="feedback" rows="1" placeholder="{{if .RevisionGaveUp}}Ask for the rewrite again{{else}}What should change?{{end}} (r)" required data-draft="revise-{{.ID}}" data-image-hint="rewrite-image-hint-{{.ID}}"></textarea>
                     <button type="submit" class="btn">{{if .RevisionGaveUp}}Request again{{else}}Request rewrite{{end}}</button>
+                    <button type="button" class="btn btn-quiet actionbar-image" data-jump-image="image-hint-{{.ID}}" title="Change the picture: rewrites only change the text">New image&hellip;</button>
+                    <p class="rewrite-image-hint" id="rewrite-image-hint-{{.ID}}" role="status" hidden>Rewrites only change the text &mdash; use <button type="button" class="link-button" data-jump-image="image-hint-{{.ID}}">Find a new image</button> to change the picture.</p>
                 </form>
                 <div class="actionbar-decide">
                     <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form" data-confirm="Reject article #{{.ID}}? This cannot be undone.">

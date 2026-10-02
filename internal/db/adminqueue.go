@@ -12,13 +12,17 @@ import (
 var QueueStatuses = []string{StatusPending, StatusDraft, StatusUnpublished, StatusRevisionRequested}
 
 // QueueFingerprint is a short hash of the review queue's state: which
-// articles are in it, in what status and revision, and their rewrite
-// failures. The dashboard polls it to tell the admin when the queue changed
-// (a rewrite landed, a new article arrived) without reloading the page.
+// articles are in it, in what status and revision, their rewrite failures,
+// and where a request for a new image stands (a new image landing ends it).
+// The dashboard polls it to tell the admin when the queue changed (a rewrite
+// landed, a new article arrived) without reloading the page.
 func (d *Database) QueueFingerprint() (string, error) {
 	rows, err := d.db.Query(
-		`SELECT id, status, revision_number, revision_failures, updated_at
-		 FROM generated_articles WHERE status IN (?, ?, ?, ?) ORDER BY id`,
+		`SELECT g.id, g.status, g.revision_number, g.revision_failures, g.updated_at,
+		        COALESCE(r.state || ':' || r.seq, '')
+		 FROM generated_articles g
+		 LEFT JOIN article_image_requests r ON r.article_id = g.id
+		 WHERE g.status IN (?, ?, ?, ?) ORDER BY g.id`,
 		QueueStatuses[0], QueueStatuses[1], QueueStatuses[2], QueueStatuses[3])
 	if err != nil {
 		return "", err
@@ -30,10 +34,11 @@ func (d *Database) QueueFingerprint() (string, error) {
 		var status string
 		var rev, failures int
 		var updated interface{}
-		if err := rows.Scan(&id, &status, &rev, &failures, &updated); err != nil {
+		var image string
+		if err := rows.Scan(&id, &status, &rev, &failures, &updated, &image); err != nil {
 			return "", err
 		}
-		fmt.Fprintf(h, "%d|%s|%d|%d|%v\n", id, status, rev, failures, updated)
+		fmt.Fprintf(h, "%d|%s|%d|%d|%v|%s\n", id, status, rev, failures, updated, image)
 	}
 	if err := rows.Err(); err != nil {
 		return "", err
