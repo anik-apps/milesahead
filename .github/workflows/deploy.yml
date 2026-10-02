@@ -257,10 +257,11 @@ jobs:
           newsletter:
             send_time: "08:00"
             timezone: "America/New_York"
-            # Closed until the SMTP secrets above are set and the sending
-            # domain has SPF and DKIM; see ROADMAP.md (Newsletter) for the
-            # turn-on checklist.
-            signup_enabled: false
+            # Open since 2026-10-02: SMTP secrets set (OCI Email Delivery),
+            # SPF, DKIM and DMARC published for milesahead.kumaranik.com and a
+            # test message passed all three. If the SMTP settings ever look
+            # unset, the app logs an ERROR and keeps sign-up closed anyway.
+            signup_enabled: true
 
           votes:
             alert_threshold: 10

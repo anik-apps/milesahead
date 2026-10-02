@@ -189,13 +189,14 @@ func runGenerateConfig(t *testing.T, env map[string]string) (string, error) {
 	return out, nil
 }
 
-// Production keeps sign-up closed, and without the SMTP secrets keeps the
-// placeholders the app recognises as unset; with them, they reach the config.
+// Production has sign-up switched on, and without the SMTP secrets keeps the
+// placeholders the app recognises as unset (so wireSignup still keeps it
+// closed); with them, they reach the config.
 func TestDeployConfig_SignupClosedAndSMTPFromSecrets(t *testing.T) {
 	stubReachable(t, false)
 	cfg := deployConfig(t, nil)
-	if cfg.Newsletter.SignupEnabled {
-		t.Error("the deploy config should set newsletter.signup_enabled: false")
+	if !cfg.Newsletter.SignupEnabled {
+		t.Error("the deploy config should set newsletter.signup_enabled: true")
 	}
 	if !smtpLooksUnset(cfg.Mail.SMTP) || cfg.Mail.SMTP.Port != 587 {
 		t.Errorf("without SMTP secrets the deploy config should keep unset placeholders on port 587, got host %q port %d", cfg.Mail.SMTP.Host, cfg.Mail.SMTP.Port)

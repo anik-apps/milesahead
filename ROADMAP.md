@@ -308,10 +308,8 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       change; the notes move to the admin-only column.
 
 - [ ] **Newsletter signup and delivery** — found in the 2026-09-23 UX review. Items 1-4
-      are done on `feat/newsletter-launch`, but sign-up ships **closed**
-      (`newsletter.signup_enabled: false`) until production can send mail; see the
-      turn-on checklist below. Left: that checklist, readability (5), and the
-      follow-ups below.
+      are done (#99) and sign-up is open (`newsletter.signup_enabled: true` since
+      2026-10-02; see below). Left: readability (5) and the follow-ups below.
       1. ~~**No confirmation email is sent.**~~ `cmd/milesahead/main.go` hands the SMTP
          sender to the web app (`SetConfirmationMailer`). The email is plain text plus
          HTML, links absolutely to `https://DOMAIN`, says what the newsletter is and when
@@ -350,30 +348,27 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       skipped with a warning (not a failure, so the alert stays quiet, and the issue
       stays unsent) and the admin's Send says SMTP is not configured.
 
-      **Turn-on checklist.** Production's `mail.smtp` (checked read-only on 2026-10-01)
-      is `localhost:587` with placeholder credentials and nothing listens on a mail
-      port there, so `newsletter.signup_enabled` stays `false` in
-      `.github/workflows/deploy.yml`. With it off there are no sign-up placements and
-      `/subscribe` says sign-up opens soon. To open it:
-      1. Set up an SMTP relay, e.g. OCI Email Delivery: an approved sender for the From
-         address and SMTP credentials for an OCI user; the endpoint is
-         `smtp.email.<region>.oci.oraclecloud.com`, port 587.
-      2. Add the repository secrets `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, and if
-         they differ from the defaults `SMTP_PORT` (587) and `SMTP_FROM`
-         (`noreply@milesahead.kumaranik.com`). The deploy workflow writes them into
-         `mail.smtp`; unset, it keeps the placeholders.
-      3. Publish SPF and DKIM for the sending domain (and DMARC), as the relay
-         documents. Gmail and Yahoo reject or junk bulk mail without them.
-      4. Optional: if a mailbox exists that someone reads and acts on, set
-         `newsletter.unsubscribe_mailbox` to it in the deploy config to add a mailto to
-         `List-Unsubscribe`. Leave it empty otherwise (the default): the https one-click
-         link is what Gmail and Yahoo require, and a mailto to an unread address would
-         leave readers thinking they had unsubscribed.
-      5. Set `signup_enabled: true` in the deploy workflow's config and deploy. The log
-         should say "newsletter sign-up is open"; an ERROR "newsletter sign-up stays
-         closed" means the SMTP settings still look unset.
-      6. Sign up with a real address, confirm it, and import the two email rules in
-         `deploy/grafana-alerts.json` into Grafana.
+      **Turned on 2026-10-02.** OCI Email Delivery in `us-sanjose-1`: email domain
+      `milesahead.kumaranik.com` with DKIM selector `milesahead-202610`, approved sender
+      `noreply@milesahead.kumaranik.com`, and a send-only IAM user `milesahead-smtp`
+      (group `milesahead-smtp-senders`, policy `milesahead-smtp-send`: "use
+      email-family") whose SMTP credentials are the `SMTP_HOST`/`SMTP_USER`/
+      `SMTP_PASSWORD` repository secrets. Cloudflare has the DKIM CNAME, SPF
+      (`include:rp.oracleemaildelivery.com`) and DMARC (`p=none`) on
+      `milesahead.kumaranik.com`; a test message passed SPF, DKIM and DMARC at Gmail.
+      `signup_enabled: true` in the deploy config. Free tier: 3,000 emails a month.
+      - [ ] Sign up with a real address after the deploy, confirm it, and import the
+        two email rules in `deploy/grafana-alerts.json` into Grafana.
+      - [ ] Tighten DMARC to `p=quarantine` after a few weeks of clean sends.
+      - OCI adds its **own** List-Unsubscribe to any message without an https one, and
+        an unsubscribe through it lands on OCI's suppression list, not in the app. So
+        every reader email (newsletters and the confirmation) carries the app's own
+        per-reader link; OCI leaves those alone. Admin emails (review notifications,
+        vote alerts) still get OCI's header: don't use Gmail's Unsubscribe on them,
+        or OCI will stop delivering them (remove the address from the suppression
+        list in the OCI console to undo).
+      - `newsletter.unsubscribe_mailbox` stays empty (no monitored mailbox), so
+        `List-Unsubscribe` carries the https link only.
 
       Also found: the daily digest (admin "Send", not the weekly) shows its excerpts as
       raw HTML (`<p>...`), because `buildTemplateData` cuts `Content`, which is HTML,
