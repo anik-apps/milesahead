@@ -38,7 +38,7 @@
             <li>
                 <span class="vote-alerts-main">
                     {{if .Live}}<a href="/article/{{.Slug}}" target="_blank" rel="noopener" title="Open the live article">{{.Title}} <span aria-hidden="true">&#8599;</span></a>{{else}}<span>{{if .Title}}{{.Title}}{{else}}Article #{{.ArticleID}}{{end}}</span> <span class="chip chip-mute">{{if .Status}}{{statusLabel .Status}}{{else}}deleted{{end}}</span>{{end}}
-                    <span class="q-sub"><span title="Downvotes">&#9660; {{.Downvotes}}</span> <span title="Upvotes">&#9650; {{.Upvotes}}</span> &middot; <span title="{{.UpdatedAt.Format "Jan 2, 2006 3:04 PM"}} UTC">{{.Age}}</span> &middot; #{{.ArticleID}}</span>
+                    <span class="q-sub"><span title="Upvotes">&#9650; {{.Upvotes}}</span> <span title="Downvotes">&#9660; {{.Downvotes}}</span> &middot; <span title="{{.UpdatedAt.Format "Jan 2, 2006 3:04 PM"}} UTC">{{.Age}}</span> &middot; #{{.ArticleID}}</span>
                 </span>
                 <form method="POST" action="/admin/vote-alerts/{{.ID}}/acknowledge" class="inline-form">
                     {{template "csrf_field" $}}
