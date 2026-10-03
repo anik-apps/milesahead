@@ -243,3 +243,80 @@ other, each with the width its URL fixes, and only when:
 Phones and 1x screens, and every screen outside 769-1024 px, load the
 thumbnail as before. The sidebar cards are 100 px wide at every size, so
 they use the thumbnail alone.
+
+## Article Infographics
+
+Separately from the photo, enrichment can draw an article's `key_details` as an
+SVG chart: usually a horizontal bar chart, sometimes a timeline or a few stat
+cards. No text-to-image model is reachable with this project's credentials, so
+the chart is markup written by a text model, which suits numbers better anyway.
+
+It is opt-in, with `ai.enrichment_infographics`:
+
+| Mode | Drawn | Admin preview | Article page |
+|---|---|---|---|
+| `off` (default, production) | no | no | no |
+| `preview` | yes | yes | no |
+| `on` | yes | yes | yes |
+
+Off, an article missing only its chart counts as complete: it is not listed for
+enrichment, charged an attempt or charted.
+
+### The call
+
+One call per article on the `enrichment_model` chain, after the image and only
+once key details exist. It asks for up to 6,144 tokens, more than the 30-second
+short-call class allows, so it has its own client: 120 seconds
+(`ai.InfographicCallTimeout`) and no retries, rather than the generator's
+`request_timeout` and retries. The chain is the retry within a pass, and the
+next pass the retry after that. Past the pass deadline the chart is put off
+without using an attempt, as an image search is.
+
+There are three outcomes. A chart is stored in `infographic_svg`. A failure
+leaves the column empty for a later pass and uses an attempt. An article with
+nothing to compare gets the sentinel `none`, so it is not asked again; the
+preview says "enrichment found nothing in the key details to chart".
+
+Missing charts are not counted in `milesahead_articles_degraded`: every article
+written before the feature lacks one.
+
+### Words in the chart
+
+The chart's title, description and every label are public text derived from
+the article, with no revision after them, like Scout's Take. They get the same
+checks (`svg.Text` reads them): a reference to a source by number ("Source 1")
+or a news-site name outside the subject exception refuses the chart, to be
+drawn again. `cmd/flag-outlet-mentions` reads stored charts too.
+
+### Why an image, and the sanitiser
+
+The page shows the chart as `<img src="data:image/svg+xml;base64,...">`, never
+as inline SVG. An SVG loaded as an image runs no script, loads nothing it
+references and has an opaque origin, and the site serves no URL that opens it
+as a document. A bug in the sanitiser therefore cannot become script running on
+the site.
+
+`internal/svg` is still strict, at write and again at render (a row edited by
+hand is re-checked before it is shown). It parses with `encoding/xml` in strict
+mode, keeps only drawing elements and text (`svg`, `g`, `title`, `desc`,
+`rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `path`, `text`,
+`tspan`), drops an unknown element with everything inside it, keeps only
+presentation attributes whose values use a fixed alphabet (no colon, slash,
+quote, semicolon, backslash, ampersand or angle bracket, so no URL, `url()`,
+CSS or markup can be spelt), rejects namespaced attributes, and writes the
+result with its own encoder. Comments, processing instructions, DTDs, `class`,
+`id`, `style`, anything after the root and nested `<svg>` are dropped. It
+rejects input over 64 KB, more than 400 elements, nesting deeper than 16, and a
+`viewBox` that is not four plain numbers with a size up to 4,000.
+
+The cost of an image is theming: it cannot inherit the page's colours. The
+sanitiser pins `currentColor` to the light theme's text colour, and the dark
+theme inverts the image and turns its hues back (`filter: invert(1)
+hue-rotate(180deg)`), which keeps each bar's colour family.
+
+### Placement
+
+At the top of the story, after the headline, summary and photo band, beside
+Key Details on desktop. The canvas is 560×360 with 18 px labels, shown at most
+560 px wide, so the labels stay about 11 px on a phone. It is not shown on the
+homepage: shrunk to a card thumbnail a chart cannot be read.

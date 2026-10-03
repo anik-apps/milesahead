@@ -33,6 +33,9 @@
 - [x] CI/CD refactored into separate build/deploy/seed/grafana jobs
 - [x] Admin rework — own shell with counts on the tabs, grouped review queue with decisions in the preview (revision-checked approve, approve-and-next, undo, shortcuts), source health, card editor with inline flags, card updates as a word diff
 - [x] Review queue sort (newest first by default, oldest, critic score) and per-row actions menus on Review and Published; compact type pills
+- [x] Article infographics (off until the item in Up Next) — a chart of the key details
+      drawn as SVG by the enrichment chain, shown as an `<img>` of a `data:` URL at the top
+      of the story. Re-sanitised at render; outlet and numbered-source guards on its words
 - [x] Find a new image — an admin action (preview, Review and Published row menus) with optional search words; the enrichment pass finds a replacement first in line with a fresh budget, swaps it in only once found (the live image stays meanwhile), and never re-picks a turned-down image at any size. Rewrite feedback that mentions a picture points here, since rewrites only change the text
 
 ## Reliability & Hardening
@@ -295,6 +298,13 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       rows. `cmd/repair-editor-notes` moves them out of stored content (dry run by default).
 
 ## Up Next
+
+- [ ] **Turn on article infographics** — merged off (`ai.enrichment_infographics: "off"`
+      in config.example.yaml and deploy.yml; `TestDeployConfigMirrorsCritic` keeps the
+      two equal). Set both to `"preview"`, let a few passes run, and judge the charts in
+      the review queue preview: numbers match the Key Details, labels fit, nothing names
+      a news site. Then `"on"`. Not yet checked against the production enrichment chain
+      (gpt-oss-20b, nemotron-3-super); the 2026-09-22 trial used the 550B generator.
 
 - [ ] **Fix stored articles that name news sites** — `cmd/flag-outlet-mentions`
       (read-only) found 33 on 2026-10-01: 6 approved, 18 pending, 6 draft, 2 rejected,
