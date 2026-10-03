@@ -591,7 +591,10 @@ func TestSendNewsletter_DialFails(t *testing.T) {
 func TestSendVoteAlert(t *testing.T) {
 	sender, mock := newTestSender()
 
-	err := sender.SendVoteAlert("admin@test.com", 42, "Controversial Article")
+	err := sender.SendVoteAlert("owner@test.com", VoteAlert{
+		ArticleID: 42, Title: `Controversial <b>"Article"</b>`, Upvotes: 3, Downvotes: 11, WindowHours: 24,
+		AdminURL: "https://milesahead.example/admin/published", ArticleURL: "https://milesahead.example/article/controversial",
+	})
 	if err != nil {
 		t.Fatalf("SendVoteAlert failed: %v", err)
 	}
@@ -599,8 +602,18 @@ func TestSendVoteAlert(t *testing.T) {
 	if len(mock.sent) != 1 {
 		t.Fatalf("expected 1 sent message, got %d", len(mock.sent))
 	}
-	if mock.sent[0].to[0] != "admin@test.com" {
-		t.Errorf("expected to=admin@test.com, got %s", mock.sent[0].to[0])
+	if mock.sent[0].to[0] != "owner@test.com" {
+		t.Errorf("expected to=owner@test.com, got %s", mock.sent[0].to[0])
+	}
+	text := mock.sent[0].part(t, "text/plain")
+	for _, want := range []string{"11 downvotes and 3 upvotes in the last 24 hours", "https://milesahead.example/admin/published", "still published"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("text part should say %q:\n%s", want, text)
+		}
+	}
+	html := mock.sent[0].part(t, "text/html")
+	if strings.Contains(html, "<b>") || !strings.Contains(html, "&lt;b&gt;") {
+		t.Error("the title should be escaped in the HTML part")
 	}
 }
 
@@ -634,7 +647,7 @@ func TestSetDialFunc(t *testing.T) {
 		return mock, nil
 	})
 
-	err := s.SendVoteAlert("admin@test.com", 1, "Test")
+	err := s.SendVoteAlert("admin@test.com", VoteAlert{ArticleID: 1, Title: "Test"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

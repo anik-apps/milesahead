@@ -360,11 +360,15 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       - [ ] Sign up with a real address after the deploy, confirm it, and import the
         two email rules in `deploy/grafana-alerts.json` into Grafana.
       - [ ] Tighten DMARC to `p=quarantine` after a few weeks of clean sends.
+      - [ ] Set the `ALERT_EMAIL` repository secret to a mailbox the owner reads, to
+        get vote alerts by email (`votes.alert_email`). Until then they are listed on
+        the admin Published page only, which they are either way. They used to be
+        emailed to `noreply@`, which nobody reads.
       - OCI adds its **own** List-Unsubscribe to any message without an https one, and
         an unsubscribe through it lands on OCI's suppression list, not in the app. So
         every reader email (newsletters and the confirmation) carries the app's own
-        per-reader link; OCI leaves those alone. Admin emails (review notifications,
-        vote alerts) still get OCI's header: don't use Gmail's Unsubscribe on them,
+        per-reader link; OCI leaves those alone. Admin emails (vote alerts to
+        `votes.alert_email`) still get OCI's header: don't use Gmail's Unsubscribe on them,
         or OCI will stop delivering them (remove the address from the suppression
         list in the OCI console to undo).
       - `newsletter.unsubscribe_mailbox` stays empty (no monitored mailbox), so

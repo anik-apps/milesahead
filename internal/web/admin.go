@@ -18,6 +18,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/newsletter"
 	"github.com/kumaranik/milesahead/internal/offer"
+	"github.com/kumaranik/milesahead/internal/vote"
 )
 
 // sem limits concurrent card update detection goroutines.
@@ -131,12 +132,13 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		total = counts[db.StatusApproved]
 	}
 
-	threshold := app.cfg.Votes.AlertThreshold
-	if threshold == 0 {
-		threshold = 5
+	now := app.clock()
+	alerts := app.openVoteAlerts(now)
+	alerted := make(map[int64]bool, len(alerts))
+	for _, a := range alerts {
+		alerted[a.ArticleID] = true
 	}
 
-	now := time.Now()
 	var rows []adminArticleRow
 	for _, a := range articles {
 		row := adminArticleRow{
@@ -155,9 +157,11 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		if vc, err := app.db.GetVoteCounts(a.ID); err == nil {
 			row.Upvotes = vc.Upvotes
 			row.Downvotes = vc.Downvotes
-			if vc.Downvotes >= threshold {
-				row.Flagged = true
-			}
+			// Many downvotes: an open alert, or the alert rule applied to
+			// all of its votes.
+			row.Flagged = alerted[a.ID] || vote.Exceeds(app.cfg.Votes, vc.Upvotes, vc.Downvotes)
+		} else {
+			row.Flagged = alerted[a.ID]
 		}
 
 		rows = append(rows, row)
@@ -173,9 +177,16 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		"MessageID": queryInt(r, "id"),
 		"Sort":      string(order),
 		"Sorts":     sortChoices(order, publishedSorts),
+		// Open vote alerts, for the banner above the list.
+		"VoteAlerts":       alerts,
+		"VoteAlertWindow":  app.voteAlertWindowLabel(),
+		"VoteAlertEmailed": app.cfg.Votes.AlertEmail != "",
 	}
-	if data["Message"] == "image_requested" {
+	switch data["Message"] {
+	case "image_requested":
 		data["MessageText"] = imageRequestedMessage
+	case "alert_acknowledged":
+		data["MessageText"] = "Alert acknowledged. The article alerts again only on downvotes cast from now on."
 	}
 	// After a plain unpublish, the toast offers to put it back: approving
 	// the revision that was live, which needs that revision number.
@@ -623,6 +634,7 @@ func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 			"AlertThreshold": app.cfg.Votes.AlertThreshold,
 			"AlertRatio":     app.cfg.Votes.AlertRatio,
 			"AlertWindow":    app.cfg.Votes.AlertWindow,
+			"AlertEmail":     voteAlertEmailSetting(app.cfg.Votes.AlertEmail),
 		},
 	}
 
@@ -1816,4 +1828,12 @@ func (app *App) weekHasLiveArticle(sendDate string) bool {
 		}
 	}
 	return false
+}
+
+// voteAlertEmailSetting is votes.alert_email for the settings page.
+func voteAlertEmailSetting(addr string) string {
+	if addr == "" {
+		return "not set: vote alerts are shown on the Published page only"
+	}
+	return addr
 }

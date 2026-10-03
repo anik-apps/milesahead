@@ -22,6 +22,9 @@ type adminNav struct {
 	NewsletterAlert bool
 	// StaleSources counts active sources with nothing new for days.
 	StaleSources int
+	// VoteAlerts counts articles whose recent votes crossed the alert
+	// threshold and that the admin has not acknowledged (Published page).
+	VoteAlerts int
 }
 
 // adminTabs maps each admin page template to its tab. Pages that sit under
@@ -79,6 +82,12 @@ func (app *App) adminNavFor(name string, data map[string]interface{}) *adminNav 
 			nav.Newsletter = statusLabel(nl.Status)
 			nav.NewsletterAlert = true
 		}
+	}
+
+	if n, err := app.db.CountOpenVoteAlerts(); err == nil {
+		nav.VoteAlerts = n
+	} else {
+		slog.Warn("admin nav: vote alerts", "error", err)
 	}
 
 	if n, err := app.db.StaleSourceCount(time.Now().Add(-sourceStaleAfter)); err == nil {

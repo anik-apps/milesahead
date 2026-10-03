@@ -19,6 +19,20 @@ type VoteCounts struct {
 	Down int `json:"down"`
 }
 
+// Alert is a vote alert just opened: an article's votes in the alert window
+// crossed alert_threshold and alert_ratio. It stays open, listed on the
+// admin Published page, until the admin acknowledges it.
+type Alert struct {
+	ArticleID          int64
+	Upvotes, Downvotes int
+	// Window is how far back the counts go; 0 means all of the article's
+	// votes (less any before the last acknowledged alert).
+	Window time.Duration
+}
+
+// DefaultAlertThreshold is votes.alert_threshold when it is unset.
+const DefaultAlertThreshold = 10
+
 // Service handles vote casting, deduplication, and threshold alerting.
 type Service struct {
 	db             *db.Database
@@ -27,16 +41,22 @@ type Service struct {
 	// alertWindow is how far back CheckThreshold counts votes; 0 counts
 	// all of an article's votes.
 	alertWindow time.Duration
-	OnAlert     func(articleID int64)
+	// OnAlert is called when an alert opens (not again while it is open).
+	OnAlert func(Alert)
 	// now is the clock; tests replace it.
 	now func() time.Time
 }
 
-// NewService creates a new vote Service.
-func NewService(database *db.Database, cfg config.VotesConfig, onAlert func(int64)) *Service {
+// NewService creates a new vote Service. onAlert, if not nil, is called
+// when an alert opens, on the voter's request: it should not block.
+func NewService(database *db.Database, cfg config.VotesConfig, onAlert func(Alert)) *Service {
+	threshold := cfg.AlertThreshold
+	if threshold <= 0 {
+		threshold = DefaultAlertThreshold
+	}
 	return &Service{
 		db:             database,
-		alertThreshold: cfg.AlertThreshold,
+		alertThreshold: threshold,
 		alertRatio:     cfg.AlertRatio,
 		alertWindow:    time.Duration(cfg.AlertWindow) * time.Hour,
 		OnAlert:        onAlert,
@@ -79,17 +99,40 @@ func (s *Service) CastVote(articleID int64, vote string, ipHash string) error {
 		metrics.VotesTotal.WithLabelValues("down").Inc()
 	}
 
-	// Check threshold for downvote alerts.
+	// A downvote can open an alert.
 	if voteVal == -1 {
-		if triggered, _ := s.CheckThreshold(articleID); triggered {
-			slog.Warn("vote threshold exceeded", "article_id", articleID)
-			if s.OnAlert != nil {
-				s.OnAlert(articleID)
-			}
-		}
+		s.raiseIfDue(articleID)
 	}
 
 	return nil
+}
+
+// raiseIfDue opens a vote alert for the article if its recent votes call for
+// one and none is open, and then calls OnAlert. With one open, it only
+// updates the counts the admin sees. Failures are logged: the vote itself
+// has been recorded.
+func (s *Service) raiseIfDue(articleID int64) {
+	vc, err := s.alertCounts(articleID)
+	if err != nil {
+		slog.Error("vote alert check failed", "article_id", articleID, "error", err)
+		return
+	}
+	if !s.Exceeds(vc.Upvotes, vc.Downvotes) {
+		return
+	}
+	opened, err := s.db.RecordVoteAlert(articleID, vc.Upvotes, vc.Downvotes)
+	if err != nil {
+		slog.Error("recording vote alert failed", "article_id", articleID, "error", err)
+		return
+	}
+	if !opened {
+		return
+	}
+	slog.Warn("vote threshold exceeded", "article_id", articleID,
+		"upvotes", vc.Upvotes, "downvotes", vc.Downvotes, "window", s.alertWindow)
+	if s.OnAlert != nil {
+		s.OnAlert(Alert{ArticleID: articleID, Upvotes: vc.Upvotes, Downvotes: vc.Downvotes, Window: s.alertWindow})
+	}
 }
 
 // GetCounts returns the up and down vote counts for an article.
@@ -107,15 +150,29 @@ func (s *Service) GetCounts(articleID int64) (*VoteCounts, error) {
 // CheckThreshold reports whether an article's recent votes call for an
 // alert: at least alert_threshold downvotes, making up at least alert_ratio
 // of its votes, counting only votes cast in the last alert_window hours (all
-// of them when alert_window is 0). Windowed, an article that drew a few
-// complaints long ago and has been read quietly since does not alert on the
-// next single downvote; what alerts is a burst of them.
+// of them when alert_window is 0) and after its last acknowledged alert.
+// Windowed, an article that drew a few complaints long ago and has been read
+// quietly since does not alert on the next single downvote; what alerts is a
+// burst of them. And votes the admin has already seen do not count again.
 func (s *Service) CheckThreshold(articleID int64) (bool, error) {
-	vc, err := s.db.GetVoteCountsSince(articleID, s.windowStart())
+	vc, err := s.alertCounts(articleID)
 	if err != nil {
 		return false, err
 	}
-	return s.exceeds(vc.Upvotes, vc.Downvotes), nil
+	return s.Exceeds(vc.Upvotes, vc.Downvotes), nil
+}
+
+// alertCounts counts the votes CheckThreshold weighs.
+func (s *Service) alertCounts(articleID int64) (*db.VoteCounts, error) {
+	since := s.windowStart()
+	acked, err := s.db.LastVoteAlertAcknowledged(articleID)
+	if err != nil {
+		return nil, err
+	}
+	if acked.After(since) {
+		since = acked
+	}
+	return s.db.GetVoteCountsSince(articleID, since)
 }
 
 // windowStart is the earliest vote CheckThreshold counts; zero for all.
@@ -126,10 +183,21 @@ func (s *Service) windowStart() time.Time {
 	return s.now().Add(-s.alertWindow)
 }
 
-// exceeds applies alert_threshold and alert_ratio to a vote count.
-func (s *Service) exceeds(up, down int) bool {
-	if down < s.alertThreshold || up+down == 0 {
+// Exceeds applies alert_threshold and alert_ratio to a vote count.
+func (s *Service) Exceeds(up, down int) bool {
+	return Exceeds(config.VotesConfig{AlertThreshold: s.alertThreshold, AlertRatio: s.alertRatio}, up, down)
+}
+
+// Exceeds reports whether up and down votes cross cfg's alert_threshold
+// (DefaultAlertThreshold when unset) and alert_ratio. The admin Published
+// page's "Many downvotes" chip uses it on an article's all-time votes.
+func Exceeds(cfg config.VotesConfig, up, down int) bool {
+	threshold := cfg.AlertThreshold
+	if threshold <= 0 {
+		threshold = DefaultAlertThreshold
+	}
+	if down < threshold || up+down == 0 {
 		return false
 	}
-	return float64(down)/float64(up+down) >= s.alertRatio
+	return float64(down)/float64(up+down) >= cfg.AlertRatio
 }

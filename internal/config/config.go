@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	netmail "net/mail"
 	"os"
 	"reflect"
 	"regexp"
@@ -131,6 +132,10 @@ type VotesConfig struct {
 	AlertThreshold int     `yaml:"alert_threshold"`
 	AlertRatio     float64 `yaml:"alert_ratio"`
 	AlertWindow    int     `yaml:"alert_window"`
+	// AlertEmail, when set, is where vote alerts are also emailed. Every
+	// alert is listed on the admin Published page either way; empty (the
+	// default), none is emailed.
+	AlertEmail string `yaml:"alert_email"`
 }
 
 type SiteConfig struct {
@@ -189,6 +194,14 @@ func Load(path string) (*Config, error) {
 
 	if err := cfg.Newsletter.normalize(); err != nil {
 		return nil, err
+	}
+
+	// A typo would send every alert nowhere, so it is a load error.
+	cfg.Votes.AlertEmail = strings.TrimSpace(cfg.Votes.AlertEmail)
+	if cfg.Votes.AlertEmail != "" {
+		if a, err := netmail.ParseAddress(cfg.Votes.AlertEmail); err != nil || a.Address != cfg.Votes.AlertEmail {
+			return nil, fmt.Errorf("votes.alert_email: %q is not a plain email address", cfg.Votes.AlertEmail)
+		}
 	}
 
 	if cfg.Site.PersonaName == "" {

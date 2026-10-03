@@ -373,6 +373,24 @@ kbd {
 .p-flagged { border-color: #f1a7a7; background: #fff5f5; }
 [data-theme="dark"] .p-flagged { border-color: #7f1d1d; background: #1f0f12; }
 .p-title { color: var(--text); }
+/* Vote alerts: articles readers have been voting down, until acknowledged. */
+.vote-alerts {
+    margin: 0 0 1.2rem; padding: 0.8rem 1rem; border: 1px solid #f1a7a7; border-left-width: 4px;
+    border-radius: 9px; background: #fff5f5;
+}
+[data-theme="dark"] .vote-alerts { border-color: #7f1d1d; background: #1f0f12; }
+.vote-alerts-head { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.vote-alerts-head h2 { display: flex; align-items: center; gap: 0.45rem; font-size: 1rem; margin: 0; }
+.vote-alerts-note { font-size: 0.85rem; color: var(--text-muted); margin: 0.35rem 0 0.6rem; }
+.vote-alerts-list { list-style: none; margin: 0; padding: 0; }
+.vote-alerts-list li {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    padding: 0.45rem 0; border-top: 1px solid rgba(220, 38, 38, 0.18);
+}
+.vote-alerts-main { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.vote-alerts-main a { color: var(--text); font-weight: 600; }
+.vote-alerts-main a:hover { color: var(--accent); }
+.vote-alert-line { font-size: 0.88rem; margin: 0 0 1rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 .p-title:hover { color: var(--accent); }
 .p-unpublish-panel {
     grid-column: 1 / -1; display: flex; flex-direction: column; gap: 0.45rem;

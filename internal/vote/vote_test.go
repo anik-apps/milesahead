@@ -93,9 +93,9 @@ func TestVoteThresholdAlert(t *testing.T) {
 		AlertRatio:     0.0, // any ratio triggers
 		AlertWindow:    24,
 	}
-	svc := NewService(d, cfg, func(articleID int64) {
+	svc := NewService(d, cfg, func(a Alert) {
 		mu.Lock()
-		alertedIDs = append(alertedIDs, articleID)
+		alertedIDs = append(alertedIDs, a.ArticleID)
 		mu.Unlock()
 	})
 
@@ -200,4 +200,53 @@ func seedArticleSlug(t *testing.T, d *db.Database, slug string) int64 {
 	}
 	id, _ := res.LastInsertId()
 	return id
+}
+
+// An alert opens once, is listed until acknowledged, and only votes cast
+// after the acknowledgement can open the next one.
+func TestCastVote_OpensOneAlertUntilAcknowledged(t *testing.T) {
+	d := setupTestDB(t)
+	artID := seedArticle(t, d)
+	var alerts []Alert
+	svc := NewService(d, config.VotesConfig{AlertThreshold: 3, AlertRatio: 0.5, AlertWindow: 24}, func(a Alert) {
+		alerts = append(alerts, a)
+	})
+	for i := 0; i < 5; i++ {
+		if err := svc.CastVote(artID, "down", fmt.Sprintf("d%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(alerts) != 1 {
+		t.Fatalf("OnAlert called %d times for one crossing, want 1", len(alerts))
+	}
+	if a := alerts[0]; a.ArticleID != artID || a.Downvotes != 3 || a.Upvotes != 0 || a.Window != 24*time.Hour {
+		t.Errorf("alert = %+v", a)
+	}
+	open, err := d.ListOpenVoteAlerts()
+	if err != nil || len(open) != 1 || open[0].Downvotes != 5 {
+		t.Fatalf("open alerts = %+v, %v (want one, updated to 5 downvotes)", open, err)
+	}
+
+	// Acknowledged a second from now, so the five votes above are behind it.
+	if _, err := d.AcknowledgeVoteAlert(open[0].ID, time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if hit, _ := svc.CheckThreshold(artID); hit {
+		t.Error("votes the admin has acknowledged should not count again")
+	}
+	svc.now = func() time.Time { return time.Now().Add(2 * time.Second) }
+	for i := 0; i < 3; i++ {
+		castAt(t, d, artID, -1, fmt.Sprintf("late%d", i), time.Now().Add(2*time.Second))
+	}
+	if hit, _ := svc.CheckThreshold(artID); !hit {
+		t.Error("three new downvotes after the acknowledgement should alert again")
+	}
+}
+
+// Unset, alert_threshold is 10, not 0 (which would alert on every downvote).
+func TestNewService_DefaultThreshold(t *testing.T) {
+	svc := NewService(nil, config.VotesConfig{AlertRatio: 0.4}, nil)
+	if svc.Exceeds(0, 9) || !svc.Exceeds(0, 10) {
+		t.Error("the default threshold should be 10 downvotes")
+	}
 }

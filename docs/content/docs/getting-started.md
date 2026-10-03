@@ -77,6 +77,7 @@ All settings live in a single `config.yaml` file. `config.example.yaml` document
 | `votes` | `alert_threshold` | Minimum downvotes in the window before alerting |
 | `votes` | `alert_ratio` | Share of the window's votes that must be downvotes |
 | `votes` | `alert_window` | Hours of votes the alert check counts (production 24; 0 counts all votes) |
+| `votes` | `alert_email` | Where vote alerts are also emailed (the `ALERT_EMAIL` deploy secret). Empty by default: alerts are shown on the admin Published page only |
 | `site` | `persona_name` | AI persona name (default `Scout`) |
 
 ## Admin Password Hash

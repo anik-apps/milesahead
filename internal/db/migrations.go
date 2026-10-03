@@ -117,6 +117,20 @@ func migrate(db *sql.DB) error {
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	);
 
+	-- An article whose recent votes crossed votes.alert_threshold and
+	-- alert_ratio, shown on the admin Published page until acknowledged.
+	-- At most one open (unacknowledged) alert per article.
+	CREATE TABLE IF NOT EXISTS vote_alerts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		article_id INTEGER NOT NULL REFERENCES generated_articles(id),
+		upvotes INTEGER NOT NULL DEFAULT 0,
+		downvotes INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		acknowledged_at DATETIME DEFAULT NULL
+	);
+	CREATE UNIQUE INDEX IF NOT EXISTS idx_vote_alerts_open ON vote_alerts(article_id) WHERE acknowledged_at IS NULL;
+
 	CREATE TABLE IF NOT EXISTS newsletters (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		date TEXT NOT NULL UNIQUE,

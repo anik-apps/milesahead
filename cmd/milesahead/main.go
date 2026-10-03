@@ -373,12 +373,13 @@ func main() {
 	scnr := scanner.NewScanner(database, cfg.Scanner.UserAgent)
 	articleMgr := article.NewManager(database, pipeline)
 	mailPoller := mail.NewPoller(cfg.Mail.IMAP, articleMgr, &stubTokenResolver{})
-	voteSvc := vote.NewService(database, cfg.Votes, func(articleID int64) {
-		a, _ := database.GetGeneratedArticle(articleID)
-		if a != nil {
-			mailSender.SendVoteAlert(cfg.Mail.SMTP.From, articleID, a.Title)
-		}
-	})
+	// Vote alerts are recorded for the admin Published page by the vote
+	// service; this emails them too when votes.alert_email is set.
+	var onVoteAlert func(vote.Alert)
+	if notify := voteAlertMailer(cfg, database, mailSender, smtpUnset); notify != nil {
+		onVoteAlert = func(a vote.Alert) { go notify(a) }
+	}
+	voteSvc := vote.NewService(database, cfg.Votes, onVoteAlert)
 	newsletterSvc := side.newsletter
 	// With no SMTP, the weekly send is skipped (a warning, not a failure)
 	// and the admin's Send says why, rather than dialling a relay that is
