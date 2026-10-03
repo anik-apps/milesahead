@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -194,5 +195,24 @@ func TestExtractDetails_DropsNumberedSourceRefs(t *testing.T) {
 	c.response = `{"key_details": [{"Label": "Bonus", "Value": "per Source 2"}], "links": []}`
 	if _, _, err := ExtractDetails(c, []string{"m"}, "T", "body"); err == nil {
 		t.Error("want an error when every detail refers to a numbered source, so the field is retried")
+	}
+}
+
+func TestGenerateInfographic_RefusesNumberedSourceRefs(t *testing.T) {
+	chart := func(label string) string {
+		return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360"><title>Fee</title>` +
+			`<text x="1" y="20">` + label + `</text></svg>`
+	}
+	c := &mockHFClient{response: chart("$895 (Source 1)")}
+	if _, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]"); err == nil {
+		t.Error("a chart that refers to Source 1 was accepted")
+	}
+	c.response = chart("Annual fee $895")
+	if got, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]"); err != nil || !strings.Contains(got, "Annual fee $895") {
+		t.Errorf("clean chart = %q, %v", got, err)
+	}
+	c.response = "NO_INFOGRAPHIC"
+	if _, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]"); !errors.Is(err, ErrNoInfographic) {
+		t.Errorf("NO_INFOGRAPHIC = %v, want ErrNoInfographic", err)
 	}
 }

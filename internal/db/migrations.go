@@ -259,7 +259,6 @@ func migrate(db *sql.DB) error {
 		// so it would either retry a hopeless article forever or skip a
 		// recoverable one. They also make "how many articles are degraded"
 		// a query rather than a guess.
-		`ALTER TABLE generated_articles ADD COLUMN infographic_svg TEXT DEFAULT ''`,
 		`ALTER TABLE generated_articles ADD COLUMN enrichment_attempts INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE generated_articles ADD COLUMN enrichment_last_at DATETIME DEFAULT NULL`,
 		// Last day of the offer an article describes, "2006-01-02", or NULL.
@@ -293,6 +292,10 @@ func migrate(db *sql.DB) error {
 		// search and anything else built from content. Content is now
 		// stored without them; see package editornote.
 		`ALTER TABLE generated_articles ADD COLUMN editor_notes TEXT NOT NULL DEFAULT ''`,
+		// The article's infographic: SVG the sanitiser wrote, "none" when
+		// enrichment found nothing to chart (db.NoInfographic), or empty
+		// when not drawn yet. Only filled with ai.enrichment_infographics on.
+		`ALTER TABLE generated_articles ADD COLUMN infographic_svg TEXT DEFAULT ''`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)

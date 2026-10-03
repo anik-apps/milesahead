@@ -301,3 +301,44 @@ func TestLoad_EnvExpansionIsWholeValueAndVerbatim(t *testing.T) {
 		t.Errorf("from = %q, want an unset variable left as written", cfg.Mail.SMTP.From)
 	}
 }
+
+// ai.enrichment_infographics: unset is off; the three modes, in any case,
+// and a YAML boolean are accepted; anything else is an error rather than a
+// silent default.
+func TestLoadConfig_EnrichmentInfographics(t *testing.T) {
+	for _, tc := range []struct {
+		name, line string
+		want       string
+		draw, show bool
+		wantErr    bool
+	}{
+		{"absent", "", InfographicsOff, false, false, false},
+		{"off", "  enrichment_infographics: \"off\"\n", InfographicsOff, false, false, false},
+		{"false", "  enrichment_infographics: false\n", InfographicsOff, false, false, false},
+		{"preview", "  enrichment_infographics: preview\n", InfographicsPreview, true, false, false},
+		{"on, any case", "  enrichment_infographics: \" On \"\n", InfographicsOn, true, true, false},
+		{"true", "  enrichment_infographics: true\n", InfographicsOn, true, true, false},
+		{"typo", "  enrichment_infographics: preveiw\n", "", false, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte("ai:\n  enrichment_interval: 15\n"+tc.line), 0644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(path)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("Load accepted %q", tc.line)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.AI.EnrichmentInfographics != tc.want || cfg.AI.DrawInfographics() != tc.draw || cfg.AI.ShowInfographics() != tc.show {
+				t.Errorf("mode %q draw %v show %v; want %q, %v, %v", cfg.AI.EnrichmentInfographics,
+					cfg.AI.DrawInfographics(), cfg.AI.ShowInfographics(), tc.want, tc.draw, tc.show)
+			}
+		})
+	}
+}

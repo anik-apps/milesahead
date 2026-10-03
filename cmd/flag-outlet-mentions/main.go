@@ -34,6 +34,8 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/kumaranik/milesahead/internal/ai"
+	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/svg"
 )
 
 func main() {
@@ -115,11 +117,12 @@ type hit struct {
 	Text string
 }
 
-// scan checks every article's title, TLDR, key details, body, Scout's Take
-// and links.
+// scan checks every article's title, TLDR, key details, body, Scout's Take,
+// links and the words of its infographic.
 func scan(conn *sql.DB, m *ai.OutletMatcher, only map[string]bool) ([]hit, error) {
 	rows, err := conn.Query(`SELECT id, status, COALESCE(title,''), COALESCE(tldr,''),
-		COALESCE(key_details,''), COALESCE(content,''), COALESCE(scouts_take,''), COALESCE(links,'')
+		COALESCE(key_details,''), COALESCE(content,''), COALESCE(scouts_take,''), COALESCE(links,''),
+		COALESCE(infographic_svg,'')
 		FROM generated_articles ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("list articles: %w", err)
@@ -128,8 +131,8 @@ func scan(conn *sql.DB, m *ai.OutletMatcher, only map[string]bool) ([]hit, error
 	var hits []hit
 	for rows.Next() {
 		var id int64
-		var status, title, tldr, details, content, take, links string
-		if err := rows.Scan(&id, &status, &title, &tldr, &details, &content, &take, &links); err != nil {
+		var status, title, tldr, details, content, take, links, chart string
+		if err := rows.Scan(&id, &status, &title, &tldr, &details, &content, &take, &links, &chart); err != nil {
 			return nil, fmt.Errorf("scan article: %w", err)
 		}
 		if len(only) > 0 && !only[status] {
@@ -159,6 +162,15 @@ func scan(conn *sql.DB, m *ai.OutletMatcher, only map[string]bool) ([]hit, error
 			}
 		}
 		check("scouts_take", take)
+		if chart != "" && chart != db.NoInfographic {
+			// A chart that is not well-formed is never shown, so there is
+			// nothing a reader could see to check.
+			if words, err := svg.Text(chart); err == nil {
+				for _, line := range strings.Split(words, "\n") {
+					check("infographic", line)
+				}
+			}
+		}
 		for _, l := range storedLinks(links) {
 			check("links", l.Text)
 			if name, ok := m.OutletForURL(l.URL); ok {

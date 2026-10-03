@@ -201,6 +201,7 @@ func TestPrompts_NeverNameOutlets(t *testing.T) {
 		"critic2":     Critic2Prompt("<p>article</p>", src),
 		"scouts_take": ScoutsTakePrompt("Scout", "T", "tldr", "<p>body</p>"),
 		"details":     ExtractDetailsPrompt("T", "<p>body</p>"),
+		"infographic": InfographicPrompt("T", "tldr", `[{"label":"Fee","value":"$95"}]`),
 	}
 	exception1 := "1. The outlet is itself the subject of the story (e.g. a sale on Thrifty Traveler Premium)."
 	exception2 := `2. An unconfirmed report whose only source is that outlet — then one mention, phrased as a report ("reportedly, according to X").`
@@ -253,6 +254,7 @@ func TestEnrichmentPrompts_ForbidNumberedSources(t *testing.T) {
 	for name, p := range map[string]string{
 		"scouts_take": ScoutsTakePrompt("Scout", "T", "tldr", "<p>Source 1 notes it.</p>"),
 		"details":     ExtractDetailsPrompt("T", "<p>Source 1 notes it.</p>"),
+		"infographic": InfographicPrompt("T", "Source 1 notes it.", "[]"),
 	} {
 		if !strings.Contains(p, "Never refer to sources by number or position") {
 			t.Errorf("%s prompt missing the numbered-source rule", name)

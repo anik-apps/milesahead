@@ -1,28 +1,53 @@
 package web
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 
+	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/svg"
 )
 
-const sanitized = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" class="infographic-svg" role="img" preserveAspectRatio="xMidYMid meet"><title>Fee vs value</title><text x="1" y="1">$895</text></svg>`
+const sanitized = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360" width="560" height="360" color="` + svg.Ink + `" role="img"><title>Fee vs value</title><text x="1" y="1">$895</text></svg>`
 
-func TestInfographicHTML(t *testing.T) {
-	if got := infographicHTML(sanitized); string(got) != sanitized {
-		t.Errorf("sanitised markup was not passed through:\n%s", got)
+// decodeSrc returns the SVG inside a data: URL the page would load.
+func decodeSrc(t *testing.T, g *articleInfographic) string {
+	t.Helper()
+	const prefix = "data:image/svg+xml;base64,"
+	src := string(g.Src)
+	if !strings.HasPrefix(src, prefix) {
+		t.Fatalf("src is not a base64 SVG data: URL: %.60q", src)
 	}
-	if got := infographicTitle(sanitized); got != "Fee vs value" {
-		t.Errorf("title = %q, want %q", got, "Fee vs value")
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(src, prefix))
+	if err != nil {
+		t.Fatalf("decoding src: %v", err)
+	}
+	return string(raw)
+}
+
+func TestInfographicFor(t *testing.T) {
+	g := infographicFor(sanitized)
+	if g == nil {
+		t.Fatal("sanitised markup was not shown")
+	}
+	if got := decodeSrc(t, g); got != sanitized {
+		t.Errorf("image is not the stored chart:\n%s", got)
+	}
+	if g.Alt != "Fee vs value" {
+		t.Errorf("alt = %q, want %q", g.Alt, "Fee vs value")
+	}
+	if g.Width != 560 || g.Height != 360 {
+		t.Errorf("size = %dx%d, want 560x360", g.Width, g.Height)
 	}
 }
 
-// Markup that cannot survive sanitisation must not reach the page. The write
-// path sanitises too, so in normal operation none of these can be stored --
-// this covers the row that was edited by hand, restored from a backup taken
-// before the sanitiser existed, or written by a code path that forgot.
-func TestInfographicHTML_RefusesUnsanitized(t *testing.T) {
+// Markup that cannot survive sanitisation is not shown. The write path
+// sanitises too, so in normal operation none of these can be stored -- this
+// covers a row edited by hand, restored from an old backup, or written by a
+// code path that forgot.
+func TestInfographicFor_RefusesUnsanitized(t *testing.T) {
 	cases := map[string]string{
 		"empty":                 "",
 		"sentinel":              db.NoInfographic,
@@ -32,65 +57,81 @@ func TestInfographicHTML_RefusesUnsanitized(t *testing.T) {
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
-			if got := infographicHTML(in); got != "" {
-				t.Errorf("inlined unsanitised markup: %s", got)
-			}
-			if got := infographicTitle(in); got != "" {
-				t.Errorf("title = %q, want empty", got)
+			if got := infographicFor(in); got != nil {
+				t.Errorf("showed unsanitised markup: %+v", got)
 			}
 		})
 	}
 }
 
-// Leading or trailing whitespace from the column must not defeat the check.
-func TestInfographicHTML_TrimsWhitespace(t *testing.T) {
-	if got := infographicHTML("\n  " + sanitized + "  \n"); !strings.HasPrefix(string(got), "<svg") {
-		t.Errorf("whitespace-padded markup was rejected: %q", got)
+// Re-sanitising at render means junk around a valid chart is stripped rather
+// than shown -- and rather than losing the chart.
+func TestInfographicFor_StripsSurroundingJunk(t *testing.T) {
+	g := infographicFor(`<p onclick="alert(1)">x</p>` + strings.Replace(sanitized, "<text", `<script>alert(1)</script><text`, 1))
+	if g == nil {
+		t.Fatal("a valid chart wrapped in junk was dropped entirely")
 	}
-}
-
-// Re-sanitising at render means junk around a valid diagram is stripped rather
-// than causing the whole thing to be dropped -- the failure mode is "show the
-// safe part", not "show nothing".
-func TestInfographicHTML_StripsSurroundingJunk(t *testing.T) {
-	got := string(infographicHTML(`<p onclick="alert(1)">x</p>` + sanitized + `<script>alert(1)</script>`))
-	if got == "" {
-		t.Fatal("a valid diagram wrapped in junk was dropped entirely")
-	}
+	got := decodeSrc(t, g)
 	for _, banned := range []string{"onclick", "alert", "<p", "<script"} {
 		if strings.Contains(got, banned) {
-			t.Errorf("output still contains %q:\n%s", banned, got)
+			t.Errorf("image still contains %q:\n%s", banned, got)
 		}
 	}
-	if !strings.Contains(got, "Fee vs value") {
-		t.Errorf("the diagram itself was lost:\n%s", got)
+}
+
+// The title and description are stored XML-escaped. html/template escapes
+// alt again on output, so they must be unescaped first or a reader hears
+// "Fees &amp;amp; credits".
+func TestInfographicAlt_UnescapesAndAddsDescription(t *testing.T) {
+	g := infographicFor(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360">` +
+		`<title>Fees &amp; credits</title><desc>Bar chart of the fee against the credits.</desc><text x="1" y="1">a</text></svg>`)
+	if g == nil {
+		t.Fatal("chart not shown")
+	}
+	if want := "Fees & credits. Bar chart of the fee against the credits."; g.Alt != want {
+		t.Errorf("alt = %q, want %q", g.Alt, want)
 	}
 }
 
-// An ampersand is stored XML-escaped inside the SVG. Handed to html/template
-// as-is it would be escaped a second time and read aloud as "&amp;amp;".
-func TestInfographicTitle_UnescapesEntities(t *testing.T) {
-	markup := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450">` +
-		`<title>Fees &amp; credits</title><text x="1" y="1">a</text></svg>`
-	if got := infographicTitle(markup); got != "Fees & credits" {
-		t.Errorf("title = %q, want %q", got, "Fees & credits")
+// Article pages show the chart only with ai.enrichment_infographics "on";
+// "preview" is for the admin preview alone.
+func TestPublicInfographic_FollowsTheMode(t *testing.T) {
+	for mode, want := range map[string]bool{
+		config.InfographicsOff: false, config.InfographicsPreview: false, config.InfographicsOn: true,
+	} {
+		app := &App{cfg: &config.Config{AI: config.AIConfig{EnrichmentInfographics: mode}}}
+		if got := app.publicInfographic(sanitized) != nil; got != want {
+			t.Errorf("mode %q: shown = %v, want %v", mode, got, want)
+		}
 	}
 }
 
-// infographicHTML re-sanitises on every render, and the homepage renders up to
-// twenty cards. This exists to keep the justification in that function honest:
-// it cites ~50us per diagram, and if that ever drifts the comment is wrong.
-func BenchmarkInfographicHTML(b *testing.B) {
-	// A real diagram from the production model, not the short fixture above:
-	// cost scales with the markup, so benchmarking the toy version would
-	// understate it.
+// infographicFor re-sanitises on every article page view. This keeps its
+// "a few kilobytes" claim honest with a realistic chart.
+func BenchmarkInfographicFor(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		if infographicHTML(realDiagram) == "" {
+		if infographicFor(realDiagram) == nil {
 			b.Fatal("sanitisation failed")
 		}
 	}
 }
 
-// realDiagram is verbatim output from nvidia/nemotron-3-ultra-550b-a55b for an
-// Amex Platinum fee article, after sanitisation.
-const realDiagram = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" class="infographic-svg" role="img" preserveAspectRatio="xMidYMid meet"><title>Amex Platinum credit value comparison</title><desc>Horizontal bar chart comparing Amex Platinum annual fee, advertised credits, realistic value, and net result.</desc><g font-family="sans-serif"><text x="400" y="40" font-size="24" font-weight="bold" text-anchor="middle">Amex Platinum: Paper Credits vs. Real Value</text><line x1="200" y1="60" x2="200" y2="380" stroke="currentColor" stroke-width="1"></line><rect x="200" y="80" width="500" height="50" fill="#1f6feb"></rect><text x="190" y="105" font-size="14" text-anchor="end">Credits on paper</text><text x="710" y="105" font-size="14" font-weight="bold" text-anchor="start">$3,024</text><rect x="200" y="160" width="200.9" height="50" fill="#28a745"></rect><text x="190" y="185" font-size="14" text-anchor="end">Realistic value</text><text x="410.9" y="185" font-size="14" font-weight="bold" text-anchor="start">$1,215</text><rect x="200" y="240" width="148.0" height="50" fill="#dc3545"></rect><text x="190" y="265" font-size="14" text-anchor="end">Annual fee</text><text x="358" y="265" font-size="14" font-weight="bold" text-anchor="start">$895</text><rect x="200" y="320" width="52.9" height="50" fill="#6f42c1"></rect><text x="190" y="345" font-size="14" text-anchor="end">Net result</text><text x="262.9" y="345" font-size="14" font-weight="bold" text-anchor="start">+$320</text><text x="400" y="420" font-size="16" text-anchor="middle">Real-world credits cover the fee with $320 to spare, but fall far short of the $3,024 advertised.</text></g></svg>`
+// realDiagram is the shape of a real model chart: a horizontal bar chart of
+// an Amex Platinum fee article, on the 560x360 canvas the prompt asks for.
+const realDiagram = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360">` +
+	`<title>Amex Platinum: credits vs the fee</title>` +
+	`<desc>Horizontal bar chart comparing the advertised credits, a realistic value of them and the annual fee.</desc>` +
+	`<g font-family="sans-serif">` +
+	`<text x="280" y="32" font-size="22" font-weight="bold" text-anchor="middle" fill="currentColor">Paper credits vs real value</text>` +
+	`<line x1="180" y1="56" x2="180" y2="290" stroke="currentColor" stroke-width="1"/>` +
+	`<text x="170" y="96" font-size="18" text-anchor="end" fill="currentColor">Credits on paper</text>` +
+	`<rect x="180" y="74" width="260" height="34" fill="#1f6feb"/>` +
+	`<text x="448" y="96" font-size="18" font-weight="bold" fill="currentColor">$3,024</text>` +
+	`<text x="170" y="166" font-size="18" text-anchor="end" fill="currentColor">Realistic value</text>` +
+	`<rect x="180" y="144" width="104" height="34" fill="#2da44e"/>` +
+	`<text x="292" y="166" font-size="18" font-weight="bold" fill="currentColor">$1,215</text>` +
+	`<text x="170" y="236" font-size="18" text-anchor="end" fill="currentColor">Annual fee</text>` +
+	`<rect x="180" y="214" width="77" height="34" fill="#cf222e"/>` +
+	`<text x="265" y="236" font-size="18" font-weight="bold" fill="currentColor">$895</text>` +
+	`<text x="280" y="336" font-size="16" text-anchor="middle" fill="currentColor">Real-world credits cover the fee with $320 to spare.</text>` +
+	`</g></svg>`

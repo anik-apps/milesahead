@@ -28,6 +28,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/images"
 	"github.com/kumaranik/milesahead/internal/metrics"
+	"github.com/kumaranik/milesahead/internal/svg"
 )
 
 // MinImageScore is the relevance score below which a candidate image is
@@ -76,6 +77,16 @@ type Service struct {
 	Outlets func() []ai.Outlet
 	// outlets is this pass's check, built from Outlets in Run.
 	outlets *ai.OutletMatcher
+
+	// Infographics turns on the infographic step (ai.enrichment_infographics
+	// "preview" or "on"). Off, an article missing only its chart is complete:
+	// it is not listed, charged an attempt or charted.
+	Infographics bool
+	// InfographicClient is what the infographic call goes through; nil uses
+	// the enrichment client. main gives it ai.InfographicCallTimeout and no
+	// retries, since the answer is far longer than any other enrichment call
+	// and would otherwise inherit the generator's timeout.
+	InfographicClient ai.HFClientInterface
 
 	// startedAt records when the in-flight pass began, so a skip can report how
 	// long the pass it is yielding to has been running.
@@ -166,7 +177,11 @@ func (s *Service) Run() {
 	}
 	s.resizeStoredImages(resizeDeadline)
 
-	articles, err := s.db.ListArticlesNeedingEnrichment(s.MaxAttempts, s.BatchSize)
+	list := s.db.ListArticlesNeedingEnrichment
+	if s.Infographics {
+		list = s.db.ListArticlesNeedingEnrichmentWithInfographics
+	}
+	articles, err := list(s.MaxAttempts, s.BatchSize)
 	if err != nil {
 		metrics.EnrichmentPassesTotal.WithLabelValues("error").Inc()
 		slog.Error("enrichment: could not list articles", "error", err)
@@ -252,8 +267,8 @@ func (s *Service) refreshDegradedGauge() {
 // failing step does not discard the others. deadline is the pass's: the image
 // checks stop at it (see findImage).
 //
-// putOff reports that the image search was put off because the deadline had
-// passed; whatever else was filled is still saved.
+// putOff reports that the image search or the infographic was put off
+// because the deadline had passed; whatever else was filled is still saved.
 func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (filled, failed int, putOff bool) {
 	var u db.EnrichmentUpdate
 
@@ -304,18 +319,6 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 		}
 	}
 
-	if a.MissingInfographic {
-		switch ok, err := s.drawInfographic(&u, a); {
-		case err != nil:
-			s.recordFailure("infographic", a.ID, err)
-			failed++
-		case ok:
-			filled++
-		}
-		// Neither filled nor failed when the article simply has nothing to
-		// chart: a sentinel was written, so it will not be asked again.
-	}
-
 	var imageWhy string // why no image was found, for an admin's request
 	if a.MissingImage {
 		var res imageResult
@@ -338,8 +341,31 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 		}
 	}
 
-	// An image search put off for lack of time was not tried, so it is not
-	// charged: if nothing else failed, the attempt is not counted, and an
+	// After the image, which matters more to the page: a chart is a few
+	// seconds to a couple of minutes of model time, and should not be what
+	// leaves an article without its picture when the pass is short of time.
+	if a.MissingInfographic && s.Infographics {
+		switch {
+		case !time.Now().Before(deadline):
+			// Not tried, so not charged; it waits for the next pass like an
+			// image search would.
+			putOff = true
+		default:
+			switch ok, err := s.drawInfographic(&u, a); {
+			case err != nil:
+				s.recordFailure("infographic", a.ID, err)
+				failed++
+			case ok:
+				filled++
+			}
+			// Neither filled nor failed when the article has nothing to
+			// chart (a sentinel was written, so it is not asked again) or
+			// has no key details yet (it comes back once it does).
+		}
+	}
+
+	// An image search or chart put off for lack of time was not tried, so it
+	// is not charged: if nothing else failed, the attempt is not counted, and an
 	// article with nothing to write is not touched at all.
 	if putOff && failed == 0 {
 		if filled == 0 {
@@ -524,7 +550,11 @@ func (s *Service) drawInfographic(u *db.EnrichmentUpdate, a db.ArticleNeedingEnr
 		return false, nil
 	}
 
-	markup, err := ai.GenerateInfographic(s.client, s.models, a.Title, a.TLDR, details)
+	client := s.InfographicClient
+	if client == nil {
+		client = s.client
+	}
+	markup, err := ai.GenerateInfographic(client, s.models, a.Title, a.TLDR, details)
 	if errors.Is(err, ai.ErrNoInfographic) {
 		slog.Info("enrichment: article has nothing chartable",
 			"article_id", a.ID)
@@ -534,6 +564,16 @@ func (s *Service) drawInfographic(u *db.EnrichmentUpdate, a db.ArticleNeedingEnr
 	}
 	if err != nil {
 		return false, err
+	}
+	// The chart's words are public text derived from the article, like
+	// Scout's Take, and nothing revises them after this point: one that
+	// names a news site is refused and tried again on a later pass.
+	words, err := svg.Text(markup)
+	if err != nil {
+		return false, err
+	}
+	if ms := s.outletMatcher().DerivedTextMentions(words, a.Title); len(ms) > 0 {
+		return false, fmt.Errorf("infographic names a news site (%s): %q", ms[0].Outlet, ms[0].Text)
 	}
 	u.InfographicSVG = &markup
 	return true, nil

@@ -153,6 +153,18 @@ func (c *HFClient) WithMaxRetries(n int) *HFClient {
 	return &cp
 }
 
+// WithRequestTimeout returns a copy of the client whose calls above the
+// short-call threshold are bounded by d rather than the client's own timeout.
+// Short calls keep ShortCallTimeout as their ceiling. A non-positive d
+// returns an unchanged copy. The original client is unchanged.
+func (c *HFClient) WithRequestTimeout(d time.Duration) *HFClient {
+	cp := *c
+	if d > 0 {
+		cp.requestTimeout = d
+	}
+	return &cp
+}
+
 // chatRequest is the OpenAI-compatible request format.
 type chatRequest struct {
 	Model       string        `json:"model"`

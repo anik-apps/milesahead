@@ -3,8 +3,9 @@
 {{/* Order: what the story is (headline, whether the offer is still on, a
      one-paragraph summary), then the photo, then the story with its key
      details beside it, then Scout's Take, the cards it names and where to
-     go next. Source outlets are not named or linked on public pages; the
-     admin preview lists them. */}}
+     go next. The infographic, when there is one, opens the story. Source
+     outlets are not named or linked on public pages; the admin preview
+     lists them. */}}
 <article class="article-detail">
     <a href="/" class="back-link">&larr; Back to all articles</a>
 
@@ -66,12 +67,7 @@
         </aside>
         {{end}}
         <div class="article-main">
-            {{if .Infographic}}
-            <figure class="infographic" role="group" aria-label="Infographic: {{.InfographicTitle}}">
-                {{.Infographic}}
-                <figcaption>{{.InfographicTitle}} &middot; generated from this article's key details</figcaption>
-            </figure>
-            {{end}}
+            {{with .Infographic}}{{template "article-infographic" .}}{{end}}
             <div class="article-content">
                 {{.Content | safeHTML}}
             </div>
@@ -157,6 +153,16 @@
         </div>
     </div>
 </article>
+{{end}}
+
+{{/* A model-drawn chart of the key details, at the top of the story, beside
+     the Key Details list on desktop. It is an <img> of a data: URL, never
+     inline SVG; see internal/web/infographic.go. */}}
+{{define "article-infographic"}}
+<figure class="article-infographic">
+    <img src="{{.Src}}" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}} decoding="async">
+    <figcaption>Chart drawn automatically from this article&rsquo;s key details.</figcaption>
+</figure>
 {{end}}
 
 {{define "article-key-details"}}

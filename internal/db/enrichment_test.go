@@ -34,11 +34,11 @@ func TestListArticlesNeedingEnrichment_DetectsNullKeyDetails(t *testing.T) {
 
 	complete := makeArticle(t, d, "complete")
 	setFields(t, d, complete,
-		"scouts_take = 'take', key_details = '[{\"Label\":\"a\"}]', image_url = 'u', tags_json = '[\"deals\"]', infographic_svg = '<svg/>'")
+		"scouts_take = 'take', key_details = '[{\"Label\":\"a\"}]', image_url = 'u', tags_json = '[\"deals\"]'")
 
 	nullDetails := makeArticle(t, d, "null-details")
 	setFields(t, d, nullDetails,
-		"scouts_take = 'take', key_details = 'null', image_url = 'u', tags_json = '[\"deals\"]', infographic_svg = '<svg/>'")
+		"scouts_take = 'take', key_details = 'null', image_url = 'u', tags_json = '[\"deals\"]'")
 
 	got, err := d.ListArticlesNeedingEnrichment(3, 10)
 	if err != nil {
@@ -154,5 +154,45 @@ func TestApplyEnrichment_KeepsPartialSuccessAndCountsAttempt(t *testing.T) {
 	}
 	if gotTags != tags || attempts != 2 {
 		t.Errorf("uncounted update: tags %q, attempts %d; want %q and 2", gotTags, attempts, tags)
+	}
+}
+
+// The infographic is a gap only when the caller asks for it, and the sentinel
+// counts as filled. InfographicsFor returns what is stored, sentinel included,
+// and nothing for an article without a chart.
+func TestInfographics_ListingAndLoading(t *testing.T) {
+	d := openTestDB(t)
+	complete := "scouts_take = 'take', key_details = '[{\"Label\":\"a\"}]', image_url = 'u', tags_json = '[\"deals\"]'"
+
+	none := makeArticle(t, d, "no-chart")
+	setFields(t, d, none, complete)
+	drawn := makeArticle(t, d, "drawn")
+	setFields(t, d, drawn, complete+", infographic_svg = '<svg>chart</svg>'")
+	nothing := makeArticle(t, d, "nothing-to-chart")
+	setFields(t, d, nothing, complete+", infographic_svg = ?", NoInfographic)
+
+	if got, err := d.ListArticlesNeedingEnrichment(3, 10); err != nil || len(got) != 0 {
+		t.Errorf("without infographics listed %d (%v); a missing chart is not a gap", len(got), err)
+	}
+	got, err := d.ListArticlesNeedingEnrichmentWithInfographics(3, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != none || !got[0].MissingInfographic || got[0].Missing() != "infographic" {
+		t.Errorf("with infographics listed %+v; want only the article with no chart", got)
+	}
+	if len(got) == 1 && got[0].KeyDetails != `[{"Label":"a"}]` {
+		t.Errorf("KeyDetails = %q; the chart is drawn from them", got[0].KeyDetails)
+	}
+
+	charts, err := d.InfographicsFor([]int64{none, drawn, nothing})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(charts) != 2 || charts[drawn] != "<svg>chart</svg>" || charts[nothing] != NoInfographic {
+		t.Errorf("InfographicsFor = %v", charts)
+	}
+	if empty, err := d.InfographicsFor(nil); err != nil || len(empty) != 0 {
+		t.Errorf("InfographicsFor(nil) = %v, %v", empty, err)
 	}
 }

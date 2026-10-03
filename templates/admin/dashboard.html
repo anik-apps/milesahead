@@ -198,6 +198,18 @@
                             {{range .EditorNotes}}
                             <div class="editor-note"><strong>Editor note (not published):</strong> {{.}}</div>
                             {{end}}
+                            {{/* The chart is shown here whatever ai.enrichment_infographics
+                                 is, so it can be reviewed before it is published. */}}
+                            {{with .Infographic}}
+                            <figure class="article-infographic">
+                                <img src="{{.Src}}" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}} decoding="async">
+                                <figcaption>Chart drawn automatically from this article&rsquo;s key details.{{if not $.Infographics.Shown}} <span class="dim">Not shown on the site: ai.enrichment_infographics is not &ldquo;on&rdquo;.</span>{{end}}</figcaption>
+                            </figure>
+                            {{else}}{{if .InfographicNone}}
+                            <p class="preview-missing">No infographic: enrichment found nothing in the key details to chart.</p>
+                            {{else if $.Infographics.Drawn}}
+                            <p class="preview-missing">No infographic yet. Enrichment draws one once the key details are in.</p>
+                            {{end}}{{end}}
                             <div class="article-content">
                                 {{.Content | safeHTML}}
                             </div>

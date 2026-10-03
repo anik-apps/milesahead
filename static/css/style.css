@@ -3887,28 +3887,34 @@ figure.article-hero, .article-detail .article-hero, .preview-body .article-hero 
     .card-embed-actions a { flex: 1; }
 }
 
-/* ---- Article infographic (model-drawn, inline SVG) ---------------------- */
-/* The SVG carries no width or height -- the sanitiser strips them -- so the
-   viewBox plus these rules decide the size. currentColor inside the diagram
-   picks up the surrounding text colour, which is what makes one diagram work
-   in both themes without generating two. */
-.infographic {
-    margin: 0 0 24px;
-    padding: 16px;
+/* ---- Article infographic ------------------------------------------------ */
+/* A model-drawn chart of the key details, shown as an <img> of a data: URL
+   (never inline SVG; see internal/web/infographic.go). It is drawn on a
+   560-unit canvas and shown at that size at most, so its 18px labels stay
+   18px on desktop; phones scale it down with the column. */
+.article-infographic {
+    margin: 0 0 1.75rem;
+    padding: 12px;
     border: 1px solid var(--border);
     border-radius: 12px;
-    background: var(--card-bg);
-    color: var(--text);
+    background: var(--bg);
 }
-.infographic .infographic-svg {
+.article-infographic img {
     display: block;
     width: 100%;
+    max-width: 560px;
     height: auto;
-    max-height: 60vh;
+    margin: 0 auto;
 }
-.infographic figcaption {
-    margin-top: 10px;
+.article-infographic figcaption {
+    margin-top: 8px;
     color: var(--text-muted);
     font-size: 0.8rem;
     text-align: center;
+}
+/* An image cannot inherit the page's colours: its text is a fixed dark ink.
+   For the dark theme the whole chart is inverted and its hues turned back,
+   which keeps each bar's colour family and makes the ink light. */
+[data-theme="dark"] .article-infographic img {
+    filter: invert(1) hue-rotate(180deg);
 }

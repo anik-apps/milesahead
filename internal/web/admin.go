@@ -85,6 +85,12 @@ type adminArticleRow struct {
 	// ImageRequest is the admin's "Find a new image", pending or failed;
 	// the zero value when there is none (see newimage.go).
 	ImageRequest db.ImageRequest
+	// Infographic is the article's chart, nil when it has none; and
+	// InfographicNone says enrichment looked and found nothing to chart.
+	// The preview shows either whatever ai.enrichment_infographics is, so
+	// charts can be reviewed before they are published.
+	Infographic     *articleInfographic
+	InfographicNone bool
 
 	// Queue row extras (dashboard.go).
 	Group        string // groupDecide, groupReady or groupRewriting

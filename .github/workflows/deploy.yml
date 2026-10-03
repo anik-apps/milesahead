@@ -231,6 +231,9 @@ jobs:
             enrichment_interval: 15
             enrichment_max_attempts: 3
             enrichment_max_duration: 10
+            # "preview" draws charts for the admin preview only; "on" also
+            # publishes them. Off until the owner decides.
+            enrichment_infographics: "off"
             critic2_model: ""
             hf_api_token: ${NVIDIA_API_KEY_Q}
             hf_base_url: "https://integrate.api.nvidia.com/v1"

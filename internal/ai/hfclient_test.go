@@ -175,6 +175,8 @@ func TestTimeoutFor_ClassifiesEveryRealCallSite(t *testing.T) {
 		{"newsletter pick (newsletter/newsletter.go)", 512, true},
 		{"critic verify (ai/critic.go)", 4096, false},
 		{"article generation (ai/generator.go)", 4096, false},
+		// Not short: it gets its own bounded client instead (see below).
+		{"infographic (ai/enrichment.go)", InfographicTokens, false},
 	}
 	for _, tc := range cases {
 		got := c.timeoutFor(tc.maxTokens)
@@ -384,5 +386,31 @@ func TestHFClient_WithThinkingDisabled(t *testing.T) {
 	}
 	if base.disableThinking {
 		t.Error("WithThinkingDisabled modified the original client")
+	}
+}
+
+// TestWithRequestTimeout_BoundsTheInfographicCall: the infographic asks for
+// more than a short call, so through the shared client it would wait the
+// generator's timeout. Its own client must bound it at InfographicCallTimeout
+// while leaving the original client, and short calls, alone.
+func TestWithRequestTimeout_BoundsTheInfographicCall(t *testing.T) {
+	shared := NewHFClient("token", 3)
+	shared.SetRequestTimeout(900 * time.Second)
+	own := shared.WithRequestTimeout(InfographicCallTimeout).WithMaxRetries(0)
+
+	if got := own.timeoutFor(InfographicTokens); got != InfographicCallTimeout {
+		t.Errorf("infographic call timeout = %v, want %v", got, InfographicCallTimeout)
+	}
+	if got := own.timeoutFor(KeyDetailTokens); got != ShortCallTimeout {
+		t.Errorf("a short call on the copy = %v, want %v", got, ShortCallTimeout)
+	}
+	if own.maxRetries != 0 {
+		t.Errorf("copy retries %d times, want 0", own.maxRetries)
+	}
+	if got := shared.timeoutFor(InfographicTokens); got != 900*time.Second || shared.maxRetries != 3 {
+		t.Errorf("the shared client changed: timeout %v, retries %d", got, shared.maxRetries)
+	}
+	if got := shared.WithRequestTimeout(0).timeoutFor(InfographicTokens); got != 900*time.Second {
+		t.Errorf("a zero timeout changed the copy: %v", got)
 	}
 }

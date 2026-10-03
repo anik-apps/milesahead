@@ -24,7 +24,7 @@ type ArticleNeedingEnrichment struct {
 	MissingImage      bool
 	MissingTags       bool
 	// MissingInfographic is only ever set when the caller asked for
-	// infographics (see ListArticlesNeedingEnrichment).
+	// infographics (see ListArticlesNeedingEnrichmentWithInfographics).
 	MissingInfographic bool
 
 	// KeyDetails is the chart's only source of numbers, so an article that
@@ -85,12 +85,29 @@ const NoInfographic = "none"
 
 const emptyInfographic = `(g.infographic_svg IS NULL OR g.infographic_svg = '')`
 
+// ListArticlesNeedingEnrichmentWithInfographics is ListArticlesNeedingEnrichment
+// with a missing infographic counted as a gap. It is separate because the
+// infographic is opt-in (ai.enrichment_infographics): with it off, an article
+// that lacks only a chart is complete and must not be picked up, charged an
+// attempt or held out of the image pass.
+func (d *Database) ListArticlesNeedingEnrichmentWithInfographics(maxAttempts, limit int) ([]ArticleNeedingEnrichment, error) {
+	return d.listArticlesNeedingEnrichment(maxAttempts, limit, true)
+}
+
 // ListArticlesNeedingEnrichment returns articles with at least one enrichment
 // field missing that have not yet exhausted their attempts.
 //
 // Rejected articles are skipped: spending model calls to enrich something an
 // editor has already thrown out is pure waste.
 func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]ArticleNeedingEnrichment, error) {
+	return d.listArticlesNeedingEnrichment(maxAttempts, limit, false)
+}
+
+func (d *Database) listArticlesNeedingEnrichment(maxAttempts, limit int, infographics bool) ([]ArticleNeedingEnrichment, error) {
+	needInfographic := "0"
+	if infographics {
+		needInfographic = emptyInfographic
+	}
 	// An admin's pending request for a new image counts as a missing image,
 	// and is served first: someone is waiting on it.
 	query := fmt.Sprintf(`
@@ -115,8 +132,8 @@ func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]Arti
 		     OR %s
 		  )
 		ORDER BY (r.article_id IS NOT NULL) DESC, g.created_at DESC
-		LIMIT ?`, emptyKeyDetails, emptyTags, emptyInfographic,
-		emptyKeyDetails, emptyTags, emptyInfographic)
+		LIMIT ?`, emptyKeyDetails, emptyTags, needInfographic,
+		emptyKeyDetails, emptyTags, needInfographic)
 
 	rows, err := d.db.Query(query, ImageRequestPending, StatusRejected, maxAttempts, limit)
 	if err != nil {
@@ -290,4 +307,31 @@ func (d *Database) CountDegradedArticles(maxAttempts int) (pending, exhausted in
 		return 0, 0, fmt.Errorf("counting degraded articles: %w", err)
 	}
 	return int(p.Int64), int(e.Int64), nil
+}
+
+// InfographicsFor returns the stored infographic_svg of each of ids that has
+// one, sentinel included. The list queries do not carry the column -- a chart
+// is a few kilobytes and only single-article views show it -- so the review
+// queue loads it for its rows in one query.
+func (d *Database) InfographicsFor(ids []int64) (map[int64]string, error) {
+	out := map[int64]string{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	in, args := idPlaceholders(ids)
+	rows, err := d.db.Query(`SELECT id, infographic_svg FROM generated_articles
+		WHERE id IN (`+in+`) AND infographic_svg IS NOT NULL AND infographic_svg != ''`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("listing infographics: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var svg string
+		if err := rows.Scan(&id, &svg); err != nil {
+			return nil, err
+		}
+		out[id] = svg
+	}
+	return out, rows.Err()
 }

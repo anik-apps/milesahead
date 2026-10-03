@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/svg"
 )
@@ -30,6 +31,17 @@ const (
 	// unterminated document outright -- so the ceiling is set well clear.
 	InfographicTokens = 6144
 )
+
+// InfographicCallTimeout bounds one infographic call.
+//
+// InfographicTokens is above the short-call threshold, so through the shared
+// client it would get the generator's timeout (900s in production) and its
+// retries -- one hung call could hold an enrichment pass for most of an hour.
+// The infographic gets its own client instead (HFClient.WithRequestTimeout,
+// no retries): a fast model writes a 2-4 KB chart well inside two minutes,
+// the model chain is the retry within a pass, and the reconciler is the retry
+// across passes. Nothing waits on a chart.
+const InfographicCallTimeout = 120 * time.Second
 
 // ErrNoInfographic means the model judged the article to have nothing worth
 // charting. That is a legitimate answer for a story with no numbers in it, and
@@ -197,8 +209,10 @@ func GenerateImageQueries(client HFClientInterface, models []string, title, tldr
 // GenerateInfographic asks a model to draw the article's numbers, and returns
 // markup that has been through the allowlist sanitiser.
 //
-// Nothing here trusts the model's output: it is generated markup that will be
-// inlined into a page, so svg.Sanitize is the boundary, not a tidy-up step.
+// Nothing here trusts the model's output. svg.Sanitize bounds and rewrites
+// it, and, as with Scout's Take, a chart whose words refer to a source by
+// number is refused so a later pass can try again. Outlet names are checked
+// by the caller, which holds the outlet table.
 func GenerateInfographic(client HFClientInterface, models []string, title, tldr, keyDetailsJSON string) (string, error) {
 	raw, err := TryModels(client, models,
 		InfographicPrompt(title, tldr, keyDetailsJSON), InfographicTokens)
@@ -211,6 +225,13 @@ func GenerateInfographic(client HFClientInterface, models []string, title, tldr,
 	clean, err := svg.Sanitize(raw)
 	if err != nil {
 		return "", fmt.Errorf("sanitising infographic: %w", err)
+	}
+	words, err := svg.Text(clean)
+	if err != nil {
+		return "", fmt.Errorf("reading infographic text: %w", err)
+	}
+	if refs := FindSourceRefs(words); len(refs) > 0 {
+		return "", fmt.Errorf("infographic refers to a source by number: %q", refs)
 	}
 	return clean, nil
 }

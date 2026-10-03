@@ -552,6 +552,10 @@ Write the revised article now.`, feedback, writingStyle, htmlFormat, sourceRefer
 // grey boxes. Well-formed XML is demanded explicitly because the sanitiser
 // parses strictly and rejects the whole document on a single unquoted
 // attribute, which HTML habits produce constantly.
+//
+// The chart is public text derived from a finished article with no revision
+// pass after it, like Scout's Take, so it carries the same outlet rule; the
+// enrichment step checks its words as well (see enrich.drawInfographic).
 func InfographicPrompt(title, tldr, keyDetailsJSON string) string {
 	return fmt.Sprintf(`You are an information designer. Produce a single SVG infographic that lets a reader grasp this article's numbers at a glance.
 
@@ -567,17 +571,23 @@ Pick the one comparison that carries the article and draw it. Usually that is a 
 - Include a short headline at the top and a one-line takeaway at the bottom.
 - If the article has no comparable numbers at all, output exactly: NO_INFOGRAPHIC
 
+WORDS IN THE CHART
+`+noOutletsRule+`
+If the article itself names a news site or blog outside those exceptions, do not repeat it. Never refer to sources by number or position ("Source 1", "the second source") either. Label things by what they are: the card, the airline, the hotel program, the fee.
+
 STRICT OUTPUT RULES
 - Output ONLY the SVG. No prose, no markdown fences, no explanation.
-- Root element: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450"> with no width or height attributes.
+- Root element: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360"> with no width or height attributes.
 - The first child must be <title>…</title> giving the diagram an accessible name.
 - Allowed elements ONLY: svg, title, desc, g, rect, circle, ellipse, line, polyline, polygon, path, text, tspan.
 - Allowed styling ONLY via presentation attributes: fill, stroke, stroke-width, opacity, font-family, font-size, font-weight, text-anchor, transform.
 - Forbidden and silently discarded: style attributes, <style>, <defs>, gradients, filters, <image>, <use>, <script>, <foreignObject>, class-based CSS, external fonts, url(...) values of any kind.
-- Colours must be literal hex (#1f6feb) or the keyword currentColor. Use currentColor for all body text and axis lines so the diagram follows the reader's light or dark theme; use hex only for the data marks themselves.
+- Colours must be literal hex (#1f6feb) or the keyword currentColor. Use currentColor for all text and axis lines; use hex only for the data marks themselves. The background is transparent: do not draw a full-size background rectangle.
+- Pick mid-tone data colours (for example #1f6feb, #2da44e, #cf222e, #8250df, #bf8700) that read on both a white and a near-black page.
 - font-family must be: sans-serif
 - Must be well-formed XML: quote every attribute value, close every tag (<rect ... /> or <text ...>…</text>), and escape & as &amp;.
-- Keep it under 60 elements and stay inside the 800x450 viewBox. Nothing outside it is rendered.
-- Leave a 60px margin inside the right edge: end the longest bar at x=700 at most, so the value label that follows it still fits. A label starting past x=740 is clipped and its number is lost -- which defeats the diagram.
-- Left-hand row labels need room too: start the bars at x=200 or further right, and right-align those labels against the axis.`, title, tldr, keyDetailsJSON)
+- Keep it under 60 elements and stay inside the 560x360 viewBox. Nothing outside it is rendered.
+- The chart is shown 560 wide on a computer and about 340 wide on a phone, so text must be large: font-size 22 for the headline, 18 for every label and value, never below 16. Use short labels (at most about 16 characters) and at most five rows.
+- Leave room for the value labels: end the longest bar at x=440 at most, so the value that follows it still fits. A label running past x=550 is clipped and its number is lost -- which defeats the diagram.
+- Left-hand row labels need room too: start the bars at x=180 or further right, and right-align those labels (text-anchor="end") just left of the bars.`, title, tldr, keyDetailsJSON)
 }

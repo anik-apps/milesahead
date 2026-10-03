@@ -46,6 +46,12 @@ func seed(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
+	// The first article's chart names an outlet in a label.
+	if _, err := database.DB().Exec(`UPDATE generated_articles SET infographic_svg = ? WHERE slug = 'a'`,
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360"><title>Upgrade odds</title>`+
+			`<text x="1" y="20">Odds per View from the <tspan>Wing</tspan></text></svg>`); err != nil {
+		t.Fatal(err)
+	}
 	return path
 }
 
@@ -70,6 +76,7 @@ func TestRun_ListsEveryMention(t *testing.T) {
 		`id=1 status=approved title="American Changes Upgrades"`,
 		"content [The Points Guy]: American confirmed to The Points Guy: the change is permanent.",
 		"key_details [One Mile at a Time]: Value: ~1.41 cents according to One Mile at a Time",
+		"infographic [View from the Wing]: Odds per View from the Wing",
 		`id=2 status=pending title="OMAAT: Hyatt Sale"`,
 		"title [One Mile at a Time]: OMAAT: Hyatt Sale",
 		"content link [Some Travel Blog]: the sale page -> https://sometravelblog.net/x",
