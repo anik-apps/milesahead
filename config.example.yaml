@@ -184,6 +184,9 @@ newsletter:
   unsubscribe_mailbox: ""
 
 votes:
+  # An article alerts when, among the votes cast in the last alert_window
+  # hours (0: all of its votes), at least alert_threshold are downvotes and
+  # they make up at least alert_ratio of them.
   alert_threshold: 10
   alert_ratio: 0.4
   alert_window: 24

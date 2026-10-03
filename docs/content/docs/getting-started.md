@@ -74,9 +74,9 @@ All settings live in a single `config.yaml` file. `config.example.yaml` document
 | `newsletter` | `timezone` | IANA zone for `send_day` and `send_time`, and for which day counts as "today" for issue dates (default `America/New_York`). The sign-up page, confirmation email and admin pages say the schedule in words ("every Saturday at 8:00 AM ET"). A value that cannot be read fails the config check |
 | `newsletter` | `signup_enabled` | Opens newsletter sign-up (default `false`; on in production). See [Newsletter](../features/newsletter/#the-sign-up-switch) |
 | `newsletter` | `unsubscribe_mailbox` | Adds a `mailto:` to `List-Unsubscribe`; leave empty unless someone reads that mailbox |
-| `votes` | `alert_threshold` | Minimum downvotes before alerting |
-| `votes` | `alert_ratio` | Downvote ratio that triggers an alert |
-| `votes` | `alert_window` | Alert window in hours (loaded, not yet used by the check) |
+| `votes` | `alert_threshold` | Minimum downvotes in the window before alerting |
+| `votes` | `alert_ratio` | Share of the window's votes that must be downvotes |
+| `votes` | `alert_window` | Hours of votes the alert check counts (production 24; 0 counts all votes) |
 | `site` | `persona_name` | AI persona name (default `Scout`) |
 
 ## Admin Password Hash

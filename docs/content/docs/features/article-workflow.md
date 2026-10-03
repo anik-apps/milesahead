@@ -243,8 +243,8 @@ Published articles include an upvote/downvote widget. Votes are:
 
 | Config | Default | Purpose |
 |--------|---------|---------|
-| `votes.alert_threshold` | 10 | Minimum votes before alerting |
-| `votes.alert_ratio` | 0.4 | Downvote ratio that triggers alert |
-| `votes.alert_window` | 24 | Window in hours for ratio calculation |
+| `votes.alert_threshold` | 10 | Minimum downvotes in the window before alerting |
+| `votes.alert_ratio` | 0.4 | Share of the window's votes that must be downvotes |
+| `votes.alert_window` | 24 | Hours of votes the check counts; 0 counts all of an article's votes |
 
-When an article has at least `alert_threshold` downvotes and downvotes are at least `alert_ratio` of its votes, the app logs `vote threshold exceeded` and emails a vote alert to the `mail.smtp.from` address. Nothing else changes: the article stays published. `alert_window` is loaded but the check currently counts all of an article's votes. `milesahead_votes_total{direction}` counts votes.
+When an article has at least `alert_threshold` downvotes cast in the last `alert_window` hours, and they are at least `alert_ratio` of its votes in those hours, the app logs `vote threshold exceeded` and emails a vote alert to the `mail.smtp.from` address. Nothing else changes: the article stays published. Counting only the window means a burst of complaints alerts, while an article that drew a few downvotes long ago does not alert again on the next single one. `milesahead_votes_total{direction}` counts votes.

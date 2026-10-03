@@ -24,8 +24,12 @@ type Service struct {
 	db             *db.Database
 	alertThreshold int
 	alertRatio     float64
-	alertWindow    time.Duration
-	OnAlert        func(articleID int64)
+	// alertWindow is how far back CheckThreshold counts votes; 0 counts
+	// all of an article's votes.
+	alertWindow time.Duration
+	OnAlert     func(articleID int64)
+	// now is the clock; tests replace it.
+	now func() time.Time
 }
 
 // NewService creates a new vote Service.
@@ -36,6 +40,7 @@ func NewService(database *db.Database, cfg config.VotesConfig, onAlert func(int6
 		alertRatio:     cfg.AlertRatio,
 		alertWindow:    time.Duration(cfg.AlertWindow) * time.Hour,
 		OnAlert:        onAlert,
+		now:            time.Now,
 	}
 }
 
@@ -99,23 +104,32 @@ func (s *Service) GetCounts(articleID int64) (*VoteCounts, error) {
 	}, nil
 }
 
-// CheckThreshold checks whether the downvote count within the alert window
-// exceeds the configured threshold and ratio. Returns true if an alert should fire.
+// CheckThreshold reports whether an article's recent votes call for an
+// alert: at least alert_threshold downvotes, making up at least alert_ratio
+// of its votes, counting only votes cast in the last alert_window hours (all
+// of them when alert_window is 0). Windowed, an article that drew a few
+// complaints long ago and has been read quietly since does not alert on the
+// next single downvote; what alerts is a burst of them.
 func (s *Service) CheckThreshold(articleID int64) (bool, error) {
-	vc, err := s.db.GetVoteCounts(articleID)
+	vc, err := s.db.GetVoteCountsSince(articleID, s.windowStart())
 	if err != nil {
 		return false, err
 	}
+	return s.exceeds(vc.Upvotes, vc.Downvotes), nil
+}
 
-	if vc.Downvotes < s.alertThreshold {
-		return false, nil
+// windowStart is the earliest vote CheckThreshold counts; zero for all.
+func (s *Service) windowStart() time.Time {
+	if s.alertWindow <= 0 {
+		return time.Time{}
 	}
+	return s.now().Add(-s.alertWindow)
+}
 
-	total := vc.Upvotes + vc.Downvotes
-	if total == 0 {
-		return false, nil
+// exceeds applies alert_threshold and alert_ratio to a vote count.
+func (s *Service) exceeds(up, down int) bool {
+	if down < s.alertThreshold || up+down == 0 {
+		return false
 	}
-
-	ratio := float64(vc.Downvotes) / float64(total)
-	return ratio >= s.alertRatio, nil
+	return float64(down)/float64(up+down) >= s.alertRatio
 }
