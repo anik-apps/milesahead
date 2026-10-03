@@ -527,6 +527,21 @@ image shipped in #73. Everything else is here, most severe first.
 
 ## Future
 
+- [ ] **Review by email** — reply APPROVE, REJECT, UNPUBLISH or feedback to a review
+      email instead of opening the dashboard. Off today: the startup log says
+      `review by email is off (mail.imap not configured)`, the settings page says
+      "Review by email: off", and the IMAP poller never starts (with a mailbox
+      configured it would only have marked its unread mail as read). Reply parsing
+      and the poller exist in `internal/mail/inbound.go`. It would take:
+      - outbound review notifications: call `SendAdminNotification` when an article
+        lands in Ready to review, to an owner address like `votes.alert_email`, with a
+        per-article reply-to token stored in the DB and expiring;
+      - a real mailbox for the replies. OCI Email Delivery is outbound-only, so this
+        needs an IMAP mailbox (e.g. Gmail with an app password, plus addressing
+        `review+TOKEN@`) or an inbound webhook service (Cloudflare Email Workers,
+        Mailgun or SendGrid inbound parse) posting to the app;
+      - the token resolver (token to article ID and status), replacing the stub that
+        was removed, and checks that the reply comes from the owner.
 - [ ] Multi-user admin with roles
 - [ ] API for third-party consumption
 - [ ] Webhook integrations (Slack, Discord, Telegram)

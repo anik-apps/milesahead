@@ -34,7 +34,7 @@ server's `config.yaml`.
 | Vote alert | `cmd/milesahead/votealerts.go` through `mail.Sender.SendVoteAlert`, when an article's recent downvotes cross the alert line | `votes.alert_email` (the `ALERT_EMAIL` secret); not sent when it is empty or SMTP is unset. The admin Published page lists every alert either way |
 
 Review emails with a reply address exist in the code (`SendAdminNotification`) but
-nothing sends them; see [Inbound mail](#inbound-mail).
+nothing sends them, and review by email is off; see [Inbound mail](#inbound-mail).
 
 Every reader email (confirmation, newsletter, digest) carries the reader's own
 `https://milesahead.kumaranik.com/unsubscribe?token=...` link, in the body and in
@@ -153,16 +153,21 @@ OCI and still count as sent in the app's metric.
 
 ## Inbound Mail
 
-The code has a review-by-email loop: a review email with a `review+TOKEN@` reply
-address (`SendAdminNotification`), and an IMAP poller (`internal/mail/inbound.go`)
-that reads replies and treats `APPROVE`, `REJECT`, `UNPUBLISH` or anything else
-as rewrite feedback. **It is not running in production:**
+The code has half of a review-by-email loop: a review email with a `review+TOKEN@`
+reply address (`SendAdminNotification`), and an IMAP poller
+(`internal/mail/inbound.go`) that reads replies and treats `APPROVE`, `REJECT`,
+`UNPUBLISH` or anything else as rewrite feedback. **It is off:**
 
-- the deploy config sets `mail.imap` to `localhost` with placeholder credentials,
-  so startup logs `mail polling disabled`;
-- the token resolver in `cmd/milesahead/main.go` is a placeholder that resolves
-  nothing;
-- nothing calls `SendAdminNotification`, so no review emails go out.
+- nothing calls `SendAdminNotification`, so no review emails go out;
+- nothing resolves a reply's token to its article;
+- so the poller never starts, even with a mailbox configured (it would only mark
+  that mailbox's unread mail as read). The deploy config sets `mail.imap` to
+  `localhost` with placeholder credentials, and startup logs
+  `review by email is off (mail.imap not configured)`; the admin settings page
+  shows "Review by email: off".
+
+OCI Email Delivery only sends, so replies would need a real mailbox (IMAP, e.g.
+Gmail) or an inbound webhook service. ROADMAP.md (Future) lists what it would take.
 
 Articles are reviewed in the admin dashboard. Mail sent to
 `noreply@milesahead.kumaranik.com` is not read by the app.

@@ -136,13 +136,14 @@ new image instead.
 
 ### Revisions
 
-Feedback from the dashboard or an email reply puts an article in
+Feedback from the dashboard puts an article in
 `revision_requested` and starts the AI rewrite straight away. A revision
 reconciler (`article.Manager.ProcessPendingRevisions`) also sweeps every 5
 minutes and shortly after startup, so a rewrite that failed or was cut off by a
 deploy is retried rather than left "Revising" forever. Retries back off and stop
 after 5 failures, at which point the dashboard shows "Revision failed N times"
-and `milesahead_revisions_waiting{state="exhausted"}` counts it.
+and `milesahead_revisions_waiting{state="exhausted"}` counts it. (Review by email is not built: the IMAP poller in `internal/mail` never
+starts, and the settings page says "Review by email: off"; see ROADMAP.md.)
 
 ### Source references
 

@@ -81,3 +81,14 @@ func TestDeployConfig_AlertEmailFromSecret(t *testing.T) {
 		t.Errorf("with the secret, votes.alert_email = %q", cfg.Votes.AlertEmail)
 	}
 }
+
+// Startup says review by email is off, and why, once; the deploy config's
+// placeholders count as not configured.
+func TestLogReviewByEmail(t *testing.T) {
+	stubReachable(t, false)
+	logs := captureLog(t)
+	logReviewByEmail(deployConfig(t, nil).Mail.IMAP)
+	if got := logs.String(); strings.Count(got, "review by email is off (mail.imap not configured)") != 1 {
+		t.Errorf("startup log:\n%s", got)
+	}
+}

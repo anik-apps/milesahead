@@ -14,8 +14,10 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/article"
+	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/linker"
+	"github.com/kumaranik/milesahead/internal/mail"
 	"github.com/kumaranik/milesahead/internal/newsletter"
 	"github.com/kumaranik/milesahead/internal/offer"
 	"github.com/kumaranik/milesahead/internal/vote"
@@ -622,6 +624,7 @@ func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 			"IMAP user":          app.cfg.Mail.IMAP.User,
 			"IMAP password":      maskString(app.cfg.Mail.IMAP.Password),
 			"IMAP poll interval": app.cfg.Mail.IMAP.PollInterval,
+			"Review by email":    reviewByEmailSetting(app.cfg.Mail.IMAP),
 		},
 		"Newsletter": map[string]interface{}{
 			"SendDay":  app.cfg.Newsletter.SendDay,
@@ -1836,4 +1839,13 @@ func voteAlertEmailSetting(addr string) string {
 		return "not set: vote alerts are shown on the Published page only"
 	}
 	return addr
+}
+
+// reviewByEmailSetting says whether review by email runs, for the settings
+// page: it does not yet (mail.ReviewByEmail).
+func reviewByEmailSetting(c config.IMAPConfig) string {
+	if on, why := mail.ReviewByEmail(c); !on {
+		return "off (" + why + ")"
+	}
+	return "on"
 }

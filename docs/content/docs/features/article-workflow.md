@@ -52,11 +52,12 @@ row's actions menu, or **Unpublish and request a rewrite…** on a published
 article. Each stores the feedback, sets `revision_requested`, and immediately
 starts the AI rewrite in the background.
 
-The code also has an email path (a review email whose reply is read over
-IMAP), but it is not live in production: nothing sends review emails
-(`mail.Sender.SendAdminNotification` has no caller), the deploy config leaves
-IMAP unset so polling is disabled at startup (`mail polling disabled`), and
-the token resolver in `cmd/milesahead` is a placeholder.
+There is no review by email. The code has the reply side (reply parsing and an
+IMAP poller in `internal/mail/inbound.go`), but nothing sends review emails
+(`mail.Sender.SendAdminNotification` has no caller) and nothing matches a reply
+to its article, so the poller never starts, whatever `mail.imap` says. Startup
+logs `review by email is off (mail.imap not configured)` and the admin settings
+page shows "Review by email: off". ROADMAP.md lists what it would take.
 
 That immediate start is only for responsiveness. A **revision reconciler**
 (`article.Manager.ProcessPendingRevisions`) runs every 5 minutes, plus once

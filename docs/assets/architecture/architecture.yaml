@@ -189,7 +189,7 @@ nodes:
       | Revision reconciler | ~45 s after startup, then every 5 min |
       | Newsletter build | Fridays 20:00 New York time |
       | Newsletter send | Saturdays 08:00 New York time |
-      | IMAP poll | only when IMAP is configured (off in production) |
+      | IMAP poll | never: review by email is not built |
 
       Shutdown is bounded to 85 s, inside systemd's 90 s stop timeout: 60 s for
       running jobs, 10 s for HTTP, 15 s for request-started rewrites.
@@ -391,11 +391,12 @@ nodes:
     purpose: |
       Code for reviewing by email: review messages with a `review+TOKEN@`
       Reply-To, and an IMAP poller that reads replies (APPROVE, REJECT, UNPUBLISH,
-      or anything else as rewrite feedback). **Not running in production:** the
-      deploy config sets `mail.imap` to localhost with placeholder credentials, so
-      startup logs `mail polling disabled`; the token resolver is a placeholder;
-      and nothing sends review emails. Reviews happen in the admin dashboard.
-    code: [internal/mail/inbound.go, cmd/milesahead/main.go]
+      or anything else as rewrite feedback). **Off:** nothing sends review emails
+      and nothing matches a reply to its article, so the poller never starts.
+      Startup logs `review by email is off (mail.imap not configured)` and the
+      settings page says so. Reviews happen in the admin dashboard; ROADMAP.md
+      lists what review by email would take.
+    code: [internal/mail/inbound.go, internal/mail/reviewbyemail.go]
     config: [mail.imap.host, mail.imap.user, mail.imap.password, mail.imap.poll_interval]
     docs:
       - {text: "Email", url: "/docs/deployment/email/#inbound-mail"}
