@@ -187,8 +187,8 @@ nodes:
       | Scan, cluster, generate | at startup, then every 3 h (overlapping runs skipped) |
       | Enrichment pass | ~90 s after startup, then every 15 min |
       | Revision reconciler | ~45 s after startup, then every 5 min |
-      | Newsletter build | Fridays 20:00 New York time |
-      | Newsletter send | Saturdays 08:00 New York time |
+      | Newsletter build | 20:00 the day before the send (Fridays, New York time) |
+      | Newsletter send | `newsletter.send_day` at `send_time` (Saturdays 08:00 New York time) |
       | IMAP poll | never: review by email is not built |
 
       Shutdown is bounded to 85 s, inside systemd's 90 s stop timeout: 60 s for
@@ -410,14 +410,14 @@ nodes:
     type: job
     kind: vm
     purpose: |
-      Builds the weekly issue on Friday evening (AI-ranked candidates, Scout's
-      Pick, Card of the Week) and sends it Saturday at 08:00 New York time to
-      confirmed subscribers. The issue is re-rendered at send time and each copy
+      Builds the weekly issue the evening before the send (AI-ranked candidates,
+      Scout's Pick, Card of the Week) and sends it on `newsletter.send_day` at
+      `send_time` (Saturday 08:00 New York time) to confirmed subscribers. The issue is re-rendered at send time and each copy
       gets its reader's own unsubscribe link, in the body and in
       `List-Unsubscribe` with one-click `List-Unsubscribe-Post`.
     code: [internal/newsletter, internal/mail/outbound.go, internal/web/subscribe.go]
     data: Reads `generated_articles`, `reference_pages`, `subscribers`; writes `newsletters`, `newsletter_candidates`.
-    config: [newsletter.timezone, newsletter.signup_enabled, newsletter.unsubscribe_mailbox]
+    config: [newsletter.send_day, newsletter.send_time, newsletter.timezone, newsletter.signup_enabled, newsletter.unsubscribe_mailbox]
     metrics: ["milesahead_emails_sent_total{kind,outcome}", milesahead_subscribers_total]
     docs:
       - {text: "Newsletter", url: "/docs/features/newsletter/"}
@@ -431,9 +431,9 @@ nodes:
     type: mail
     kind: external
     purpose: |
-      The outbound mail relay for confirmation emails and newsletters (and the
-      admin's vote alerts): Oracle Cloud's Email Delivery service, reached over
-      SMTP with STARTTLS.
+      The outbound mail relay for confirmation emails and newsletters (and vote
+      alerts, when `votes.alert_email` is set): Oracle Cloud's Email Delivery
+      service, reached over SMTP with STARTTLS.
     config: [mail.smtp.host, mail.smtp.port, mail.smtp.user, mail.smtp.password, mail.smtp.from]
     metrics: ["milesahead_emails_sent_total{kind,outcome}"]
     more: |
