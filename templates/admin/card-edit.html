@@ -1,202 +1,220 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
+{{/* A field's flags, shown under the field with a Resolve button. Called
+     with (dict-free) the slice from .FlagMap; Resolve posts the card form to
+     the resolve route, which only reads "field". */}}
+{{define "field_flags"}}{{range .}}<div class="field-flag" role="note"><span aria-hidden="true">&#9873;</span> {{if .Note}}{{.Note}}{{else}}Flagged{{end}} <span class="dim">&middot; {{adminTime .FlaggedAt}}</span></div>{{end}}{{end}}
+{{define "resolve_btn"}}<button type="submit" class="btn btn-sm field-flag-resolve" formaction="/admin/cards/{{.ID}}/resolve-flag" formnovalidate name="field" value="{{.Field}}" data-resolve>Resolve</button>{{end}}
 {{define "content"}}
-<div class="admin-nav">
-    <a href="/admin/dashboard">Pending</a>
-    <a href="/admin/published">Published</a>
-    <a href="/admin/sources">Sources</a>
-    <a href="/admin/subscribers">Subscribers</a>
-    <a href="/admin/cards" class="active">Cards</a>
-    <a href="/admin/newsletter">Newsletter</a>
-    <a href="/admin/settings">Settings</a>
-    <form method="POST" action="/admin/logout" class="logout-btn">
-        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
-    </form>
-</div>
 <div class="admin-card-edit">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
-        <h1>{{if .IsNew}}New Card{{else}}Edit: {{.Card.Title}}{{end}}</h1>
-        <a href="/admin/cards" class="btn" style="font-size:0.85rem;">Back to Cards</a>
-    </div>
-
-    <form method="POST" action="{{.FormAction}}">
-        {{template "csrf_field" .}}
-
-        <div class="source-form-grid" style="margin-bottom:1.5rem;">
-            <div class="form-group">
-                <label for="title">Title</label>
-                <input type="text" id="title" name="title" value="{{.Card.Title}}" required placeholder="American Express Platinum Card">
-            </div>
-            <div class="form-group">
-                <label for="slug">Slug</label>
-                <input type="text" id="slug" name="slug" value="{{.Card.Slug}}" required placeholder="amex-platinum">
-            </div>
-            <div class="form-group">
-                <label for="category">Category</label>
-                <input type="text" id="category" name="category" value="{{if .Card.Category}}{{.Card.Category}}{{else}}credit-card{{end}}" placeholder="credit-card">
-            </div>
-            <div class="form-group">
-                <label for="issuer">Issuer</label>
-                <input type="text" id="issuer" name="issuer" value="{{.Card.Issuer}}" required placeholder="Amex">
-            </div>
-            <div class="form-group">
-                <label for="keywords">Keywords (comma-separated)</label>
-                <input type="text" id="keywords" name="keywords" value="{{.Keywords}}" placeholder="Amex Platinum, American Express Platinum">
-            </div>
-            <div class="form-group">
-                <label for="image_url">Image URL</label>
-                <input type="text" id="image_url" name="image_url" value="{{.Card.ImageURL}}" placeholder="https://...">
-            </div>
-            <div class="form-group">
-                <label for="apply_url">Card Details URL</label>
-                <input type="text" id="apply_url" name="apply_url" value="{{.Card.ApplyURL}}" placeholder="https://issuer.com/cards/...">
-            </div>
-            <div class="form-group">
-                <label for="status">Status</label>
-                <select id="status" name="status">
-                    <option value="draft"{{if eq .Card.Status "draft"}} selected{{end}}>Draft</option>
-                    <option value="published"{{if eq .Card.Status "published"}} selected{{end}}>Published</option>
-                </select>
-            </div>
-        </div>
-
-        <h2 style="margin-bottom:1rem;">Structured Data</h2>
-        <div class="source-form-grid" style="margin-bottom:1.5rem;">
-            <div class="form-group">
-                <label for="annual_fee_amount">Annual Fee Amount</label>
-                <input type="number" id="annual_fee_amount" name="annual_fee_amount" value="{{.Card.AnnualFeeAmount}}" placeholder="0">
-            </div>
-            <div class="form-group">
-                <label for="annual_fee_note">Annual Fee Note</label>
-                <input type="text" id="annual_fee_note" name="annual_fee_note" value="{{.Card.AnnualFeeNote}}" placeholder="e.g. Waived first year">
-            </div>
-            <div class="form-group" style="grid-column:1/-1;">
-                <label for="welcome_bonus_text">Welcome Bonus Text</label>
-                <input type="text" id="welcome_bonus_text" name="welcome_bonus_text" value="{{.Card.WelcomeBonusText}}" placeholder="e.g. 75,000 points after $4k spend in 6 months">
-            </div>
-        </div>
-        <div style="margin-bottom:1.5rem;">
-            <div class="form-group" style="margin-bottom:1rem;">
-                <label for="earning_rates_json">Earning Rates JSON</label>
-                <textarea id="earning_rates_json" name="earning_rates_json" rows="8" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"dining": {"rate": "3x", "note": ""}, ...}'>{{.Card.EarningRatesJSON}}</textarea>
-            </div>
-            <div class="form-group" style="margin-bottom:1rem;">
-                <label for="credits_json">Credits JSON</label>
-                <textarea id="credits_json" name="credits_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"airline": {"amount": "$200/yr", "note": ""}, ...}'>{{.Card.CreditsJSON}}</textarea>
-            </div>
-            <div class="form-group" style="margin-bottom:1rem;">
-                <label for="benefits_json">Benefits JSON</label>
-                <textarea id="benefits_json" name="benefits_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"lounge_access": {"value": "Priority Pass", "note": ""}, ...}'>{{.Card.BenefitsJSON}}</textarea>
-            </div>
-            <div class="form-group" style="margin-bottom:1rem;">
-                <label for="protections_json">Protections JSON</label>
-                <textarea id="protections_json" name="protections_json" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;" placeholder='{"purchase_protection": {"amount": "$10,000", "note": "120 days"}, ...}'>{{.Card.ProtectionsJSON}}</textarea>
-            </div>
-        </div>
-
-        <h2 style="margin-bottom:1rem;">Sections</h2>
-        <div id="sections-container">
-            {{range $i, $s := .Sections}}
-            <fieldset class="card-section-fieldset" style="border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1rem;">
-                <legend style="font-weight:600;font-size:0.9rem;">Section {{$i}}</legend>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">
-                    <div class="form-group">
-                        <label>Key</label>
-                        <input type="text" name="section_key[]" value="{{$s.Key}}" placeholder="overview">
-                    </div>
-                    <div class="form-group">
-                        <label>Title</label>
-                        <input type="text" name="section_title[]" value="{{$s.Title}}" placeholder="Overview">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Content (HTML)</label>
-                    <textarea name="section_content[]" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;">{{$s.Content}}</textarea>
-                </div>
-                <button type="button" class="btn btn-reject" style="font-size:0.8rem;margin-top:0.5rem;" onclick="this.closest('fieldset').remove()">Remove Section</button>
-            </fieldset>
+    <div class="editor-bar">
+        <div class="editor-title">
+            <a href="/admin/cards" class="dim editor-back">&larr; Cards</a>
+            <h1>{{if .IsNew}}New card{{else}}{{.Card.Title}}{{end}}</h1>
+            {{if not .IsNew}}
+            <span class="chip {{if eq .Card.Status "published"}}chip-ok{{else}}chip-mute{{end}}">{{statusLabel .Card.Status}}</span>
+            {{if .FlaggedFields}}<a href="#flags" class="chip chip-bad">{{len .FlaggedFields}} {{if eq (len .FlaggedFields) 1}}flag{{else}}flags{{end}}</a>{{end}}
+            {{if .PendingCount}}<a href="/admin/cards/{{.Card.ID}}/updates" class="chip chip-info">{{.PendingCount}} pending {{if eq .PendingCount 1}}update{{else}}updates{{end}} &rarr;</a>{{end}}
             {{end}}
         </div>
-        <button type="button" class="btn" style="margin-bottom:1.5rem;" onclick="addSection()">Add Section</button>
-
-        <h2 style="margin-bottom:1rem;">{{.PersonaName}}'s Verdict</h2>
-        <div class="form-group" style="margin-bottom:1.5rem;">
-            <textarea name="scouts_verdict" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;">{{.Card.ScoutsVerdict}}</textarea>
+        <div class="editor-actions">
+            <span class="editor-dirty dim" hidden>Unsaved changes</span>
+            {{if and (not .IsNew) (eq .Card.Status "published")}}<a href="/cards/{{.Card.Slug}}" class="btn" target="_blank" rel="noopener">View page &#8599;</a>{{end}}
+            <button type="submit" form="card-form" class="btn btn-primary">{{if .IsNew}}Create card{{else}}Save{{end}}</button>
         </div>
+    </div>
 
-        <div style="display:flex;gap:1rem;">
-            <button type="submit" class="btn btn-primary">Save Card</button>
+    {{if .Message}}<div class="message success" role="status">{{.Message}}</div>{{end}}
+    {{if .FormError}}<div class="message error" role="alert">{{.FormError}}</div>{{end}}
+    {{if .OtherFlags}}
+    <div class="message error" role="note">
+        {{range .OtherFlags}}<p><span aria-hidden="true">&#9873;</span> <code>{{.Field}}</code>: {{.Note}} <span class="dim">&middot; {{adminTime .FlaggedAt}}</span></p>{{end}}
+        <p class="dim">These flags name a field the editor has no box for; resolve them below.</p>
+    </div>
+    {{end}}
+
+    <form method="POST" action="{{.FormAction}}" id="card-form" class="card-form" data-dirty-check>
+        {{template "csrf_field" .}}
+
+        <fieldset class="card-fieldset">
+            <legend>Basics</legend>
+            <div class="field-grid">
+                <div class="field{{if index .FlagMap "title"}} flagged{{end}}{{if index .FieldErrors "title"}} has-error{{end}}">
+                    <label for="title">Title</label>
+                    <input type="text" id="title" name="title" value="{{.Card.Title}}" required placeholder="American Express Platinum Card">
+                    {{with index $.FieldErrors "title"}}<p class="field-error">{{.}}</p>{{end}}
+                    {{with index .FlagMap "title"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+                <div class="field{{if index .FlagMap "slug"}} flagged{{end}}{{if index .FieldErrors "slug"}} has-error{{end}}">
+                    <label for="slug">Slug <span class="dim">(the page's address: /cards/slug)</span></label>
+                    <input type="text" id="slug" name="slug" value="{{.Card.Slug}}" required placeholder="amex-platinum">
+                    {{with index $.FieldErrors "slug"}}<p class="field-error">{{.}}</p>{{end}}
+                    {{with index .FlagMap "slug"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+                <div class="field{{if index .FlagMap "issuer"}} flagged{{end}}">
+                    <label for="issuer">Issuer</label>
+                    <input type="text" id="issuer" name="issuer" value="{{.Card.Issuer}}" required placeholder="Amex">
+                    {{with index .FlagMap "issuer"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+                <div class="field{{if index .FlagMap "category"}} flagged{{end}}">
+                    <label for="category">Category</label>
+                    <input type="text" id="category" name="category" value="{{if .Card.Category}}{{.Card.Category}}{{else}}credit-card{{end}}" placeholder="credit-card">
+                    {{with index .FlagMap "category"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+                <div class="field{{if index .FlagMap "status"}} flagged{{end}}">
+                    <label for="status">Status</label>
+                    <select id="status" name="status">
+                        <option value="draft"{{if eq .Card.Status "draft"}} selected{{end}}>Draft (not on the site)</option>
+                        <option value="published"{{if eq .Card.Status "published"}} selected{{end}}>Published</option>
+                    </select>
+                    {{with index .FlagMap "status"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+                <div class="field{{if index .FlagMap "keywords"}} flagged{{end}}">
+                    <label for="keywords">Keywords <span class="dim">(comma-separated; how articles are matched to this card)</span></label>
+                    <input type="text" id="keywords" name="keywords" value="{{.Keywords}}" placeholder="Amex Platinum, American Express Platinum">
+                    {{with index .FlagMap "keywords"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+                <div class="field{{if index .FlagMap "image_url"}} flagged{{end}}">
+                    <label for="image_url">Image URL</label>
+                    <input type="text" id="image_url" name="image_url" value="{{.Card.ImageURL}}" placeholder="/static/img/cards/amex-platinum.png">
+                    {{with index .FlagMap "image_url"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+                <div class="field{{if index .FlagMap "apply_url"}} flagged{{end}}">
+                    <label for="apply_url">Card details URL</label>
+                    <input type="text" id="apply_url" name="apply_url" value="{{.Card.ApplyURL}}" placeholder="https://issuer.com/cards/...">
+                    {{with index .FlagMap "apply_url"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+            </div>
+        </fieldset>
+
+        <fieldset class="card-fieldset">
+            <legend>Fee and bonus</legend>
+            <div class="field-grid">
+                <div class="field{{if index .FlagMap "annual_fee_amount"}} flagged{{end}}{{if index .FieldErrors "annual_fee_amount"}} has-error{{end}}">
+                    <label for="annual_fee_amount">Annual fee ($)</label>
+                    <input type="number" id="annual_fee_amount" name="annual_fee_amount" min="0" value="{{.Card.AnnualFeeAmount}}" placeholder="0">
+                    {{with index $.FieldErrors "annual_fee_amount"}}<p class="field-error">{{.}}</p>{{end}}
+                    {{with index .FlagMap "annual_fee_amount"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+                <div class="field{{if index .FlagMap "annual_fee_note"}} flagged{{end}}">
+                    <label for="annual_fee_note">Annual fee note</label>
+                    <input type="text" id="annual_fee_note" name="annual_fee_note" value="{{.Card.AnnualFeeNote}}" placeholder="e.g. Waived first year">
+                    {{with index .FlagMap "annual_fee_note"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+                <div class="field field-wide{{if index .FlagMap "welcome_bonus_text"}} flagged{{end}}">
+                    <label for="welcome_bonus_text">Welcome bonus</label>
+                    <input type="text" id="welcome_bonus_text" name="welcome_bonus_text" value="{{.Card.WelcomeBonusText}}" placeholder="e.g. 75,000 points after $4k spend in 6 months">
+                    {{with index .FlagMap "welcome_bonus_text"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+                </div>
+            </div>
+        </fieldset>
+
+        <fieldset class="card-fieldset">
+            <legend>Rates, credits, benefits, protections <span class="dim">(JSON; leave a box empty to clear it)</span></legend>
+            {{range $f := .JSONFields}}
+            <div class="field json-field{{if index $.FlagMap $f.Name}} flagged{{end}}{{if index $.FieldErrors $f.Name}} has-error{{end}}">
+                <div class="json-head">
+                    <label for="{{$f.Name}}">{{$f.Label}}</label>
+                    <span class="json-status" aria-live="polite"></span>
+                    <button type="button" class="btn btn-sm json-format" data-for="{{$f.Name}}">Format</button>
+                </div>
+                <textarea id="{{$f.Name}}" name="{{$f.Name}}" rows="5" class="mono" spellcheck="false" data-json placeholder='{{$f.Placeholder}}'>{{$f.Value}}</textarea>
+                {{with index $.FieldErrors $f.Name}}<p class="field-error">{{.}}</p>{{end}}
+                {{with index $.FlagMap $f.Name}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+            </div>
+            {{end}}
+        </fieldset>
+
+        <fieldset class="card-fieldset{{if index .FlagMap "sections"}} flagged{{end}}">
+            <legend>Sections <span class="dim">({{len .Sections}})</span></legend>
+            {{with index .FlagMap "sections"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+            <div id="sections-container" class="sections">
+                {{range $i, $s := .Sections}}
+                <details class="section-item"{{if not $s.Key}} open{{end}}>
+                    <summary>
+                        <span class="section-grip" aria-hidden="true">&#8942;&#8942;</span>
+                        <b class="section-name">{{if $s.Title}}{{$s.Title}}{{else}}Untitled section{{end}}</b>
+                        <code class="section-key">{{$s.Key}}</code>
+                        {{with index $.SectionUpdates $s.Key}}<a class="chip chip-info" href="/admin/cards/{{$.Card.ID}}/updates">{{.}} pending {{if eq . 1}}update{{else}}updates{{end}}</a>{{end}}
+                        <span class="section-tools">
+                            <button type="button" class="btn btn-sm" data-move="-1" aria-label="Move up">&uarr;</button>
+                            <button type="button" class="btn btn-sm" data-move="1" aria-label="Move down">&darr;</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-remove>Remove</button>
+                        </span>
+                    </summary>
+                    <div class="section-body">
+                        <div class="field-grid">
+                            <div class="field"><label>Key <span class="dim">(card updates match on it)</span></label><input type="text" name="section_key[]" value="{{$s.Key}}" placeholder="overview"></div>
+                            <div class="field"><label>Title</label><input type="text" name="section_title[]" value="{{$s.Title}}" placeholder="Overview"></div>
+                        </div>
+                        <div class="field"><label>Content (HTML)</label><textarea name="section_content[]" rows="8" class="mono">{{$s.Content}}</textarea></div>
+                    </div>
+                    <p class="section-removed" hidden>Removed when you save. <button type="button" class="btn btn-sm" data-restore>Undo</button></p>
+                </details>
+                {{end}}
+            </div>
+            <template id="section-template">
+                <details class="section-item" open>
+                    <summary>
+                        <span class="section-grip" aria-hidden="true">&#8942;&#8942;</span>
+                        <b class="section-name">New section</b>
+                        <code class="section-key"></code>
+                        <span class="section-tools">
+                            <button type="button" class="btn btn-sm" data-move="-1" aria-label="Move up">&uarr;</button>
+                            <button type="button" class="btn btn-sm" data-move="1" aria-label="Move down">&darr;</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-remove>Remove</button>
+                        </span>
+                    </summary>
+                    <div class="section-body">
+                        <div class="field-grid">
+                            <div class="field"><label>Key</label><input type="text" name="section_key[]" placeholder="key_name"></div>
+                            <div class="field"><label>Title</label><input type="text" name="section_title[]" placeholder="Section title"></div>
+                        </div>
+                        <div class="field"><label>Content (HTML)</label><textarea name="section_content[]" rows="8" class="mono"></textarea></div>
+                    </div>
+                    <p class="section-removed" hidden>Removed when you save. <button type="button" class="btn btn-sm" data-restore>Undo</button></p>
+                </details>
+            </template>
+            <button type="button" class="btn" id="add-section">Add section</button>
+        </fieldset>
+
+        <fieldset class="card-fieldset{{if index .FlagMap "scouts_verdict"}} flagged{{end}}">
+            <legend>{{.PersonaName}}'s verdict</legend>
+            <div class="field">
+                <textarea name="scouts_verdict" rows="6" aria-label="{{.PersonaName}}'s verdict">{{.Card.ScoutsVerdict}}</textarea>
+                {{with index .FlagMap "scouts_verdict"}}{{template "field_flags" .}}{{template "resolve_btn" (index . 0 | flagRef $.Card.ID)}}{{end}}
+            </div>
+        </fieldset>
+
+        <div class="editor-footer">
+            <button type="submit" class="btn btn-primary">{{if .IsNew}}Create card{{else}}Save{{end}}</button>
             <a href="/admin/cards" class="btn">Cancel</a>
         </div>
+        {{if .OtherFlags}}
+        <div class="other-flag-resolve">
+            {{range .OtherFlags}}{{template "resolve_btn" (flagRef $.Card.ID .)}} <code>{{.Field}}</code>{{end}}
+        </div>
+        {{end}}
     </form>
 
     {{if not .IsNew}}
-    <div style="margin-top:2.5rem;border-top:1px solid var(--border);padding-top:2rem;">
-        <h2 style="margin-bottom:1rem;">Flagged Fields</h2>
-
-        {{if .FlaggedFields}}
-        <table class="admin-table" style="margin-bottom:1.5rem;">
-            <thead>
-                <tr>
-                    <th>Field</th>
-                    <th>Note</th>
-                    <th>Flagged At</th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .FlaggedFields}}
-                <tr>
-                    <td><code style="font-size:0.85rem;">{{.Field}}</code></td>
-                    <td>{{.Note}}</td>
-                    <td style="font-size:0.8rem;color:var(--text-muted);">{{.FlaggedAt}}</td>
-                    <td>
-                        <form method="POST" action="/admin/cards/{{$.Card.ID}}/resolve-flag" class="inline-form">
-                            {{template "csrf_field" $}}
-                            <input type="hidden" name="field" value="{{.Field}}">
-                            <button type="submit" class="btn btn-primary" style="font-size:0.8rem;background:#166534;">Resolve</button>
-                        </form>
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-        {{else}}
-        <p style="color:var(--text-muted);margin-bottom:1.5rem;">No flagged fields.</p>
-        {{end}}
-
-        <h3 style="margin-bottom:0.75rem;font-size:1rem;">Flag an Issue</h3>
-        <form method="POST" action="/admin/cards/{{.Card.ID}}/flag" style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;">
+    <section class="card-flags" id="flags">
+        <h2>Flag an issue</h2>
+        <p class="dim">A flag marks a field as possibly wrong until someone checks it. It shows on the field, here and on the Cards list.</p>
+        <form method="POST" action="/admin/cards/{{.Card.ID}}/flag" class="flag-form">
             {{template "csrf_field" .}}
-            <div class="form-group" style="margin-bottom:0;flex:1;min-width:140px;">
-                <label for="flag_field">Field Name</label>
-                <input type="text" id="flag_field" name="field" placeholder="e.g. annual_fee_amount" required style="width:100%;">
+            <div class="field">
+                <label for="flag_field">Field</label>
+                <select id="flag_field" name="field" required>
+                    {{range .FlagFields}}<option value="{{.Name}}">{{.Label}}</option>{{end}}
+                </select>
             </div>
-            <div class="form-group" style="margin-bottom:0;flex:2;min-width:200px;">
-                <label for="flag_note">Note</label>
-                <input type="text" id="flag_note" name="note" placeholder="Describe the issue..." style="width:100%;">
+            <div class="field flag-note">
+                <label for="flag_note">What looks wrong?</label>
+                <input type="text" id="flag_note" name="note" placeholder="e.g. Issuer site says $895 from January" required>
             </div>
-            <button type="submit" class="btn" style="background:#dc2626;color:#fff;white-space:nowrap;">Flag Field</button>
+            <button type="submit" class="btn btn-danger">Flag</button>
         </form>
-    </div>
+    </section>
     {{end}}
 </div>
-
-<script>
-var sectionIndex = {{len .Sections}};
-function addSection() {
-    var container = document.getElementById('sections-container');
-    var fieldset = document.createElement('fieldset');
-    fieldset.className = 'card-section-fieldset';
-    fieldset.style = 'border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1rem;';
-    fieldset.innerHTML = '<legend style="font-weight:600;font-size:0.9rem;">Section ' + sectionIndex + '</legend>' +
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-bottom:0.75rem;">' +
-        '<div class="form-group"><label>Key</label><input type="text" name="section_key[]" placeholder="key_name"></div>' +
-        '<div class="form-group"><label>Title</label><input type="text" name="section_title[]" placeholder="Section Title"></div></div>' +
-        '<div class="form-group"><label>Content (HTML)</label>' +
-        '<textarea name="section_content[]" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;"></textarea></div>' +
-        '<button type="button" class="btn btn-reject" style="font-size:0.8rem;margin-top:0.5rem;" onclick="this.closest(\'fieldset\').remove()">Remove Section</button>';
-    container.appendChild(fieldset);
-    sectionIndex++;
-}
-</script>
 {{end}}

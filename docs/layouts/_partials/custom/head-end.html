@@ -1,0 +1,20 @@
+{{- /* The architecture diagram's styles, only on pages that use it. Such a
+  page sets toc: false, but Hextra still reserves the table of contents'
+  column; hiding it gives the diagram that width. */ -}}
+{{- if .HasShortcode "architecture" -}}
+{{- $css := resources.Get "architecture/architecture.css" | minify | fingerprint -}}
+<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+{{- if eq .Params.toc false }}
+<style>.hextra-toc{display:none}</style>
+{{- end }}
+{{- end -}}
+{{- /* The flow diagrams' styles (layouts/_shortcodes/flow.html). */ -}}
+{{- if .HasShortcode "flow" -}}
+{{- $css := resources.Get "flows/flow.css" | minify | fingerprint -}}
+<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+{{- end -}}
+{{- /* The home page and the section cards. */ -}}
+{{- if or .IsHome (.HasShortcode "doc-sections") -}}
+{{- $css := resources.Get "home/home.css" | minify | fingerprint -}}
+<link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+{{- end -}}

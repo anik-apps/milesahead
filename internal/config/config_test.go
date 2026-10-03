@@ -205,3 +205,99 @@ mail:
 		t.Errorf("Mail.IMAP.Password = %q, want %q", cfg.Mail.IMAP.Password, "imap-pass-from-env")
 	}
 }
+
+// critic_disable_thinking is opt-in: a config that predates it must keep
+// sending critic requests exactly as before.
+func TestLoadConfig_CriticDisableThinking(t *testing.T) {
+	for _, tc := range []struct {
+		name, line string
+		want       bool
+	}{
+		{"absent", "", false},
+		{"false", "  critic_disable_thinking: false\n", false},
+		{"true", "  critic_disable_thinking: true\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			yaml := "ai:\n  critic_model: \"a, b\"\n" + tc.line
+			if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.AI.CriticDisableThinking != tc.want {
+				t.Errorf("CriticDisableThinking = %v, want %v", cfg.AI.CriticDisableThinking, tc.want)
+			}
+			// The chain is kept verbatim; ai.SplitModels parses it.
+			if cfg.AI.CriticModel != "a, b" {
+				t.Errorf("CriticModel = %q", cfg.AI.CriticModel)
+			}
+		})
+	}
+}
+
+// scanner.story_dedup defaults to shadow, accepts the three modes in any case,
+// and rejects anything else rather than guessing.
+func TestLoadConfig_StoryDedup(t *testing.T) {
+	for _, tc := range []struct {
+		name, line string
+		want       string
+		wantErr    bool
+	}{
+		{"absent", "", StoryDedupShadow, false},
+		{"shadow", "  story_dedup: shadow\n", StoryDedupShadow, false},
+		{"block", "  story_dedup: \"block\"\n", StoryDedupBlock, false},
+		{"off, any case", "  story_dedup: \" Off \"\n", StoryDedupOff, false},
+		{"typo", "  story_dedup: blocked\n", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			yaml := "scanner:\n  default_interval: 180\n" + tc.line
+			if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(path)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("Load accepted story_dedup %q", tc.line)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.Scanner.StoryDedup != tc.want {
+				t.Errorf("StoryDedup = %q, want %q", cfg.Scanner.StoryDedup, tc.want)
+			}
+		})
+	}
+}
+
+// ${NAME} is replaced only when it is the whole value, and the replacement
+// is used verbatim: a secret holding quotes, backslashes or ${...} neither
+// breaks the YAML nor is expanded again. Text that merely contains ${NAME}
+// (a value the deploy workflow wrote from a secret) is left alone.
+func TestLoad_EnvExpansionIsWholeValueAndVerbatim(t *testing.T) {
+	t.Setenv("SMTP_PASSWORD", `pa"ss\word ${HOME} $(id) `+"`id`"+` #x`)
+	t.Setenv("HOME", "/home/should-not-appear")
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	yamlText := "mail:\n  smtp:\n    password: \"${SMTP_PASSWORD}\"\n    user: \"keep ${HOME} literal\"\n    from: \"${UNSET_VAR_FOR_TEST}\"\n"
+	if err := os.WriteFile(path, []byte(yamlText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `pa"ss\word ${HOME} $(id) ` + "`id`" + ` #x`; cfg.Mail.SMTP.Password != want {
+		t.Errorf("password = %q, want %q", cfg.Mail.SMTP.Password, want)
+	}
+	if cfg.Mail.SMTP.User != "keep ${HOME} literal" {
+		t.Errorf("user = %q, want the text left alone", cfg.Mail.SMTP.User)
+	}
+	if cfg.Mail.SMTP.From != "${UNSET_VAR_FOR_TEST}" {
+		t.Errorf("from = %q, want an unset variable left as written", cfg.Mail.SMTP.From)
+	}
+}

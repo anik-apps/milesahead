@@ -1,0 +1,7 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+.lockup { display: flex; align-items: center; gap: 12px; }
+.word { font-weight: 800; letter-spacing: -.035em; line-height: 1; color: #0f1f6e; }
+.tag { display: block; text-transform: uppercase; letter-spacing: .2em; font-weight: 600; color: #1d3f8a; }
+.pillars { text-transform: uppercase; letter-spacing: .24em; font-weight: 600; color: #15307a; white-space: nowrap; }
+.pillars span { margin: 0 .5em; }

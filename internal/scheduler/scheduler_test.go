@@ -37,6 +37,48 @@ func TestAddScanJob(t *testing.T) {
 	}
 }
 
+// A scan still running when the next is due must not run alongside it: two
+// concurrent scans can publish the same story twice. The startup scan blocks
+// here past two cron ticks, so any second call is an overlap.
+func TestAddScanJob_SkipsWhileAScanIsStillRunning(t *testing.T) {
+	s := New()
+	var calls, concurrent, maxConcurrent int32
+	release := make(chan struct{})
+	s.AddScanJob(1*time.Second, func() {
+		atomic.AddInt32(&calls, 1)
+		n := atomic.AddInt32(&concurrent, 1)
+		defer atomic.AddInt32(&concurrent, -1)
+		for {
+			m := atomic.LoadInt32(&maxConcurrent)
+			if n <= m || atomic.CompareAndSwapInt32(&maxConcurrent, m, n) {
+				break
+			}
+		}
+		<-release
+	})
+	s.Start()
+	time.Sleep(2500 * time.Millisecond)
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Errorf("scan ran %d times while the first was still running; want 1", got)
+	}
+	close(release)
+	s.Stop()
+	if got := atomic.LoadInt32(&maxConcurrent); got != 1 {
+		t.Errorf("max concurrent scans = %d; want 1", got)
+	}
+}
+
+// Once a scan finishes, the next tick runs normally.
+func TestSkipIfRunning_RunsAgainAfterTheFirstFinishes(t *testing.T) {
+	var calls int32
+	f := skipIfRunning("test", func() { atomic.AddInt32(&calls, 1) })
+	f()
+	f()
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Errorf("calls = %d; want 2 (sequential calls must both run)", got)
+	}
+}
+
 func TestAddMailPollJob(t *testing.T) {
 	s := New()
 	var called int32
@@ -200,5 +242,43 @@ func TestStartupPass_PanicDoesNotKillProcess(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Stop hung after a panicking startup pass")
+	}
+}
+
+// TestAddRevisionJob_RunsSoonAfterStartup guards the revision startup pass.
+// Deploys restart the service, killing any rewrite in progress and leaving its
+// article in revision_requested; this pass is what resumes it, rather than a
+// full interval after boot.
+func TestAddRevisionJob_RunsSoonAfterStartup(t *testing.T) {
+	if startupRevisionDelay <= 0 || startupRevisionDelay > 5*time.Minute {
+		t.Fatalf("revision startup delay %v should be short but not immediate", startupRevisionDelay)
+	}
+
+	s := New()
+	s.SetStartupDelay(time.Millisecond)
+	ran := make(chan struct{}, 1)
+	s.AddRevisionJob(time.Hour, func() { ran <- struct{}{} }) // cron tick far away
+	s.Start()
+	defer s.Stop()
+
+	select {
+	case <-ran:
+	case <-time.After(2 * time.Second):
+		t.Fatal("revision job did not run after startup")
+	}
+}
+
+// TestStop_CancelsPendingRevisionStartupPass: shutdown before the pass is due
+// must abandon it, not wake it against a closed database.
+func TestStop_CancelsPendingRevisionStartupPass(t *testing.T) {
+	s := New()
+	s.SetStartupDelay(10 * time.Second)
+	var ran atomic.Bool
+	s.AddRevisionJob(time.Hour, func() { ran.Store(true) })
+	s.Start()
+	s.Stop()
+
+	if ran.Load() {
+		t.Error("revision startup pass ran despite shutdown beginning first")
 	}
 }

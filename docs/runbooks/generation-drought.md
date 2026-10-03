@@ -53,13 +53,23 @@ go run ./cmd/ab-models -critic-candidates "model-a,model-b" -generators model-a
 go run ./cmd/ab-models -topics 5 -generators "model-a,model-b" -critic model-c
 ```
 
-Liveness is not capability. `mistralai/mistral-nemotron` passes a trivial probe
-and still returns 500 on the real article prompt, so score candidates on real
-clusters before promoting one.
+Liveness is not capability. `mistralai/mistral-nemotron` (the critic until its
+retirement on 2026-09-28) passed a trivial probe and still returned 500 on the
+real article prompt, so score candidates on real clusters before promoting one.
+
+Latency matters as much as liveness. `deepseek-ai/deepseek-v4.1-flash` scored
+well as critic on 2026-09-29, then its hosted endpoint answered every call with a
+gateway 504 after ~5 minutes — and a critic *error* drops the article from the
+scan (a low score only makes it a draft). The critic is a chain now, and critic
+candidates should be measured with thinking off (`ab-models -critic-no-thinking`),
+since production sends them that way (`critic_disable_thinking`). A critic only
+verifies, with the full `request_timeout`; everything else — enrichment, image text-scoring, the
+newsletter pick, card-update detection — runs on `enrichment_model` under a 30s
+cap. Keep slow models out of that chain.
 
 ## Fix
 
-Update `generator_model` / `fallback_generator_model` / `critic_model` in
+Update `generator_model` / `fallback_generator_model` / `critic_model` (a chain) in
 `.github/workflows/deploy.yml` and `config.example.yaml`, then merge to main.
 The `config` job writes `config.yaml` and `deploy` depends on it, so the restart
 always follows the write.
@@ -69,6 +79,13 @@ Confirm afterwards:
 ```bash
 ssh ubuntu@<host> "journalctl -u milesahead -n30 | grep preflight"   # expect preflight ok
 ```
+
+Article-path models are probed under the full `request_timeout`, so a slow
+critic's `preflight ok` can take several minutes to appear
+(`deepseek-ai/deepseek-v4.1-flash` took about five). The same results are in
+`milesahead_ai_preflight_models_reachable{role}`; for `role="critic"` it counts
+how many critics in the chain answered, and one is enough to publish. Which
+critic scored each article is in the `critic scored` log line (`model`).
 
 Then wait one scan interval (`default_interval`, 180 minutes) for `article created`.
 

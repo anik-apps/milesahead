@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/kumaranik/milesahead/internal/editornote"
 	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
@@ -44,6 +46,10 @@ type PipelineResult struct {
 	ScoutsTake       string
 	RelatedCards     []RelatedCard
 	Tags             []string
+	// EditorNotes are remarks the model addressed to the admin as
+	// <div class="editor-note">, taken out of Content (see package
+	// editornote). One per line; never published.
+	EditorNotes string
 }
 
 // Pipeline orchestrates the generator and two critics to produce verified articles.
@@ -54,6 +60,12 @@ type Pipeline struct {
 	critic    *Critic
 	critic2   *Critic
 	threshold int
+	// detailModels is the chain for the inline key-details call; empty means
+	// the critic chain. See SetDetailModels.
+	detailModels []string
+	// outlets lists the news sites and blogs articles are written from (the
+	// sources table), read once per article. See SetOutlets.
+	outlets func() []Outlet
 }
 
 // NewPipeline creates a new Pipeline with the given quality threshold (0-100).
@@ -67,11 +79,39 @@ func (p *Pipeline) SetCritic2(critic2 *Critic) {
 	p.critic2 = critic2
 }
 
+// SetDetailModels sets the model chain for the key-details call Process makes
+// when the article carries no structured key details.
+//
+// That call used to go to the critic model. It asks for 1024 tokens, so it is
+// bounded by ShortCallTimeout (30s), and a critic whose replies take minutes
+// times out on every attempt -- each article then waited out four 30s
+// attempts before continuing without details. Production passes the fast
+// enrichment chain.
+func (p *Pipeline) SetDetailModels(models []string) {
+	p.detailModels = models
+}
+
+// SetOutlets sets where the pipeline reads the outlets articles must not name
+// or link to: production passes every row of the sources table. The article's
+// own sources and the built-in outlets are checked whether or not it is set.
+func (p *Pipeline) SetOutlets(fn func() []Outlet) {
+	p.outlets = fn
+}
+
+// outletMatcher builds the outlet check for one article.
+func (p *Pipeline) outletMatcher(sources []SourceArticle) *OutletMatcher {
+	var table []Outlet
+	if p.outlets != nil {
+		table = p.outlets()
+	}
+	return NewOutletMatcher(OutletsFor(sources, table))
+}
+
 // ErrNotEnoughSources is returned when a cluster has fewer than 2 unique sources.
 var ErrNotEnoughSources = fmt.Errorf("need at least 2 different sources to generate an article")
 
-// Process generates an article, verifies it, and if the critic finds issues
-// but the score is above threshold, auto-revises once before finalizing.
+// Process generates an article, verifies it, and if the critic left anything
+// to fix (see needsRevision), auto-revises once before finalizing.
 // Requires at least 2 sources from different sites to reduce hallucination risk.
 func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*PipelineResult, error) {
 	// Require multiple sources from different sites
@@ -89,49 +129,74 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 	}
 
 	slog.Info("article generated", "type", articleType, "sources", len(sources))
+	outlets := p.outletMatcher(sources)
 
-	content, err := p.generator.Generate(articleType, sources)
+	raw, err := p.generator.Generate(articleType, sources)
 	if err != nil {
 		return nil, err
 	}
 
-	content = cleanMarkdown(content)
+	// Notes come out first, so neither the key details, the critic nor the
+	// auto-revision ever see them.
+	raw, notes := takeEditorNotes(raw, sources)
+	keyDetails, links := replyDetails(raw, sources)
+	content := cleanMarkdown(raw)
+	content, unresolved := cleanSourceRefs("generation", content, sources)
+	content, mentions := checkOutlets("generation", content, outlets)
 
 	// Critic reviews the article
 	verification, err := p.critic.Verify(content, sources)
 	if err != nil {
 		return nil, err
 	}
+	flagSourceRefs(verification, unresolved, sources)
+	flagOutletMentions(verification, mentions)
 	verification.Score = adjustScore(verification)
 	metrics.CriticScore.Observe(float64(verification.Score))
 
-	slog.Info("critic scored", "score", verification.Score, "passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
+	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
+		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
-	// If issues found, generator revises, then critic reviews again
-	if len(verification.Issues) > 0 {
+	// If there is something to fix, generator revises, then critic reviews again
+	if needsRevision(verification) {
 		slog.Info("auto-revision triggered", "issues_count", len(verification.Issues))
 		issuesStr := strings.Join(verification.Issues, "\n- ")
 		revised, err := p.generator.GenerateWithFeedback(sources, content,
 			"Fix ALL of the following issues. Do not add any information not in the original sources. Only state facts that are directly in the sources.",
 			issuesStr)
 		if err == nil && revised != "" {
+			revised, revisedNotes := takeEditorNotes(revised, sources)
+			revisedDetails, revisedLinks := replyDetails(revised, sources)
 			revised = cleanMarkdown(revised)
+			revised, revisedUnresolved := cleanSourceRefs("auto-revision", revised, sources)
+			revised, revisedMentions := checkOutlets("auto-revision", revised, outlets)
 			v2, err := p.critic.Verify(revised, sources)
 			if err == nil {
+				flagSourceRefs(v2, revisedUnresolved, sources)
+				// One revision only: a mention that survives it stays on the
+				// verdict for the admin, who can judge the exceptions.
+				flagOutletMentions(v2, revisedMentions)
 				v2.Score = adjustScore(v2)
+				slog.Info("critic scored revision", "model", v2.Model, "score", v2.Score,
+					"previous", verification.Score)
 				if v2.Score >= verification.Score {
 					content = revised
 					verification = v2
+					keyDetails, links = revisedDetails, revisedLinks
+					notes = revisedNotes
 				}
 			}
 		}
 	}
 
-	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
+	content, parsedTitle, tldr := p.finalizeContent(content)
 
-	// If structured parsing didn't extract key details, use a separate AI call
+	// Only a reply without usable key details costs a separate call.
 	if len(keyDetails) == 0 {
+		slog.Info("no key details in the generated article, extracting them separately")
 		kd, lk := p.extractDetails(parsedTitle, content)
+		kd = cleanDetailSourceRefs(kd, sources)
+		kd = dropOutletDetails(kd, outlets, parsedTitle)
 		if len(kd) > 0 {
 			keyDetails = kd
 		}
@@ -145,17 +210,37 @@ func (p *Pipeline) Process(articleType string, sources []SourceArticle) (*Pipeli
 		Title:           parsedTitle,
 		TLDR:            tldr,
 		KeyDetails:      keyDetails,
-		Links:           links,
+		Links:           outlets.DropOutletLinks(links),
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
+		EditorNotes:     notes,
 	}, nil
+}
+
+// needsRevision reports whether a verdict leaves anything for the
+// auto-revision to fix: an issue that survived dropPassedChecks, which
+// includes the source-reference and news-site issues flagSourceRefs and
+// flagOutletMentions add.
+//
+// The score and the checks are deliberately not part of the decision. In
+// production (2026-09-21 to 10-01) verdicts with all four checks passing and
+// scores of 85-95 still carried real errors -- a miscalculated per-point
+// price, a wrong joint-venture member, a "202026" typo -- so gating on them
+// would publish fixable mistakes. What wasted revisions was issues that were
+// not problems at all, which the critic prompt and dropPassedChecks remove.
+func needsRevision(v *VerificationResult) bool {
+	return len(v.Issues) > 0
 }
 
 // extractDetails makes a separate AI call to extract key details and links from the article.
 func (p *Pipeline) extractDetails(title, content string) ([]KeyDetail, []ArticleLink) {
 	prompt := ExtractDetailsPrompt(title, content)
-	resp, err := p.critic.client.Generate(p.critic.model, prompt, 1024)
+	models := p.detailModels
+	if len(models) == 0 {
+		models = p.critic.models
+	}
+	resp, err := TryModels(p.critic.client, models, prompt, 1024)
 	if err != nil {
 		slog.Warn("extract details failed", "error", err)
 		return nil, nil
@@ -194,33 +279,213 @@ func (p *Pipeline) ProcessWithFeedback(sources []SourceArticle, previousOutput, 
 	return p.buildResult(content, "", sources)
 }
 
-func (p *Pipeline) buildResult(content, articleType string, sources []SourceArticle) (*PipelineResult, error) {
-	content = cleanMarkdown(content)
+func (p *Pipeline) buildResult(raw, articleType string, sources []SourceArticle) (*PipelineResult, error) {
+	raw, notes := takeEditorNotes(raw, sources)
+	keyDetails, links := replyDetails(raw, sources)
+	content := cleanMarkdown(raw)
+	content, unresolved := cleanSourceRefs("revision", content, sources)
+	outlets := p.outletMatcher(sources)
+	content, mentions := checkOutlets("revision", content, outlets)
 
 	verification, err := p.critic.Verify(content, sources)
 	if err != nil {
 		return nil, err
 	}
+	flagSourceRefs(verification, unresolved, sources)
+	flagOutletMentions(verification, mentions)
 	verification.Score = adjustScore(verification)
 	metrics.CriticScore.Observe(float64(verification.Score))
+	slog.Info("critic scored", "model", verification.Model, "score", verification.Score,
+		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
-	content, parsedTitle, tldr, keyDetails, links := p.finalizeContent(content)
+	content, parsedTitle, tldr := p.finalizeContent(content)
 
 	return &PipelineResult{
 		Content:         content,
 		Title:           parsedTitle,
 		TLDR:            tldr,
 		KeyDetails:      keyDetails,
-		Links:           links,
+		Links:           outlets.DropOutletLinks(links),
 		Type:            articleType,
 		Verification:    verification,
 		PassedThreshold: verification.Score >= p.threshold,
+		EditorNotes:     notes,
 	}, nil
 }
 
-// finalizeContent processes raw generated content through the structured parsing pipeline.
-func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr string, keyDetails []KeyDetail, links []ArticleLink) {
-	parsedTitle, tldr, keyDetails, links, parsedBody := parseStructuredContent(content)
+// takeEditorNotes splits the admin-only editor notes out of a raw generator
+// reply before anything grades or parses it, so the key details, the critic,
+// the auto-revision and the structured parsing see only the article. Notes are
+// never published, so a numbered source reference in them is not flagged; it
+// is spelled out as the outlet's name, which tells the admin which source the
+// note is about.
+func takeEditorNotes(content string, sources []SourceArticle) (clean, notes string) {
+	clean, notes = editornote.Split(content)
+	if notes != "" {
+		notes = nameSourcesInNotes(notes, sources)
+	}
+	return clean, notes
+}
+
+// nameSourcesInNotes replaces "Source N" in admin-only editor notes with the
+// name of the Nth source. Never used on published text: articles must not name
+// the outlets they were written from.
+func nameSourcesInNotes(notes string, sources []SourceArticle) string {
+	return replaceEach(numberedSourceRE, notes, func(g []string, before, after string) string {
+		n, err := strconv.Atoi(g[1])
+		if err != nil || n < 1 || n > len(sources) || notASourceRef(before, after) {
+			return g[0]
+		}
+		name := strings.TrimSpace(sources[n-1].Name)
+		if name == "" {
+			return g[0]
+		}
+		return name
+	})
+}
+
+// cleanSourceRefs removes citation markers ("[1]") from a raw generator reply
+// and returns the numbered source references left in it ("Source 1 notes...")
+// for flagSourceRefs. It runs on the whole reply, so the title, TLDR and
+// structured key details are covered along with the body.
+//
+// A reference is not rewritten to the outlet it stood for: articles must not
+// name the sites they were written from. It is flagged instead -- the
+// attribution check fails, the issue feeds the auto-revision that Process
+// already performs, and an article that still carries one is scored down
+// rather than published looking clean.
+func cleanSourceRefs(stage, content string, _ []SourceArticle) (string, []string) {
+	out, removed := StripCitationMarkers(content)
+	if len(removed) > 0 {
+		slog.Warn("removed citation markers", "stage", stage, "markers", removed)
+	}
+	refs := FindSourceRefs(out)
+	if len(refs) > 0 {
+		slog.Warn("numbered source references left for revision", "stage", stage, "refs", refs)
+	}
+	return out, refs
+}
+
+// flagSourceRefs records numbered references on a critic verdict, before
+// adjustScore, so they cost the score the same way a failed attribution check
+// reported by the critic does.
+func flagSourceRefs(v *VerificationResult, refs []string, _ []SourceArticle) {
+	if len(refs) == 0 {
+		return
+	}
+	v.AttributionCheck = false
+	v.Issues = append(v.Issues, SourceRefIssue(refs))
+}
+
+// replyDetails parses the KEY_DETAILS and LINKS sections out of a raw
+// generator reply.
+//
+// It has to see the reply before cleanMarkdown does: cleanMarkdown turns every
+// "- " line into "<li>...</li>", and the section parser only recognises "- "
+// items, so parsing the cleaned text found no key details in a well-formed
+// reply. Every article then paid for the separate extraction call in
+// extractDetails, and shipped without key details whenever that call failed.
+//
+// The details are taken from the reply, not from the copy cleanSourceRefs
+// checks, so they get the same per-detail treatment as extracted ones. Outlet
+// mentions in them are left to the whole-reply check (checkOutlets), which
+// sends them to the auto-revision.
+func replyDetails(raw string, sources []SourceArticle) ([]KeyDetail, []ArticleLink) {
+	_, _, details, links, _ := parseStructuredContent(raw)
+	for i := range details {
+		// Key details render as plain text, and cleanMarkdown no longer gets
+		// the chance to turn a stray **bold** into tags.
+		details[i].Label = strings.TrimSpace(strings.ReplaceAll(details[i].Label, "**", ""))
+		details[i].Value = strings.TrimSpace(strings.ReplaceAll(details[i].Value, "**", ""))
+	}
+	return cleanDetailSourceRefs(details, sources), links
+}
+
+// cleanDetailSourceRefs removes citation markers from key details and drops
+// any detail that still refers to a source by number: a bullet is public copy
+// and there is no revision pass after this point.
+func cleanDetailSourceRefs(details []KeyDetail, _ []SourceArticle) []KeyDetail {
+	var kept []KeyDetail
+	for _, d := range details {
+		label, _ := StripCitationMarkers(d.Label)
+		value, _ := StripCitationMarkers(d.Value)
+		if refs := FindSourceRefs(label + " " + value); len(refs) > 0 {
+			slog.Warn("dropped key detail with a numbered source reference", "label", d.Label, "refs", refs)
+			continue
+		}
+		kept = append(kept, KeyDetail{Label: label, Value: value})
+	}
+	return kept
+}
+
+// checkOutlets unwraps links to outlet sites in a generator reply (articles
+// link to official pages only; the link text stays) and returns the reply with
+// every place its visible text names an outlet, for flagOutletMentions.
+func checkOutlets(stage, content string, m *OutletMatcher) (string, []OutletMention) {
+	out, unlinked := m.StripOutletLinks(content)
+	if len(unlinked) > 0 {
+		slog.Warn("removed links to news sites", "stage", stage, "outlets", unlinked)
+	}
+	mentions := m.Find(withoutOutletLinkLines(out, m))
+	if len(mentions) > 0 {
+		names := make([]string, len(mentions))
+		for i, mn := range mentions {
+			names[i] = mn.Text
+		}
+		slog.Warn("article names a news site", "stage", stage, "mentions", names)
+	}
+	return out, mentions
+}
+
+// withoutOutletLinkLines removes the entries of a reply's LINKS section that
+// point to an outlet's site. They are dropped from the result anyway (see
+// DropOutletLinks), so their text ("OMAAT post") is not worth a revision.
+func withoutOutletLinkLines(content string, m *OutletMatcher) string {
+	return linksBlockRE.ReplaceAllStringFunc(content, func(block string) string {
+		lines := strings.Split(block, "\n")
+		kept := lines[:0]
+		for _, line := range lines {
+			if i := strings.LastIndex(line, " | "); i >= 0 {
+				u := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(line[i+3:]), "</li>"))
+				if _, ok := m.OutletForURL(u); ok {
+					continue
+				}
+			}
+			kept = append(kept, line)
+		}
+		return strings.Join(kept, "\n")
+	})
+}
+
+// flagOutletMentions records outlet mentions on a critic verdict, before
+// adjustScore, as a failed attribution check with one issue per outlet.
+func flagOutletMentions(v *VerificationResult, mentions []OutletMention) {
+	if len(mentions) == 0 {
+		return
+	}
+	v.AttributionCheck = false
+	v.Issues = append(v.Issues, OutletIssues(mentions)...)
+}
+
+// dropOutletDetails drops key details that name an outlet the title does not.
+// They come from a separate call with no revision pass after it; an outlet the
+// title names is taken to be the subject of the story, which may be named.
+func dropOutletDetails(details []KeyDetail, m *OutletMatcher, title string) []KeyDetail {
+	var kept []KeyDetail
+	for _, d := range details {
+		if ms := m.DerivedTextMentions(d.Label+": "+d.Value, title); len(ms) > 0 {
+			slog.Warn("dropped key detail that names a news site", "label", d.Label, "outlet", ms[0].Outlet)
+			continue
+		}
+		kept = append(kept, d)
+	}
+	return kept
+}
+
+// finalizeContent turns the cleaned reply into the article body, title and
+// TLDR. Key details and links come from the raw reply; see replyDetails.
+func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr string) {
+	parsedTitle, tldr, _, _, parsedBody := parseStructuredContent(content)
 	if parsedTitle == "" {
 		parsedTitle = extractTitle(content)
 	}
@@ -246,7 +511,7 @@ func (p *Pipeline) finalizeContent(content string) (finalContent, title, tldr st
 	} else {
 		content = formatContent(content)
 	}
-	return content, parsedTitle, tldr, keyDetails, links
+	return content, parsedTitle, tldr
 }
 
 // Compiled patterns for structural-marker handling. Resilient to malformed

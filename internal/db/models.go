@@ -1,6 +1,10 @@
 package db
 
-import "time"
+import (
+	"time"
+
+	"github.com/kumaranik/milesahead/internal/editornote"
+)
 
 // Article status constants.
 const (
@@ -58,9 +62,20 @@ type GeneratedArticle struct {
 	LinkedCardsHeading string     `json:"linked_cards_heading"`
 	EnrichmentAttempts int        `json:"enrichment_attempts"`
 	EnrichmentLastAt   *time.Time `json:"enrichment_last_at"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
-	PublishedAt        *time.Time `json:"published_at"`
+	// ExpiresOn is the last day of the offer the article describes, as
+	// "2006-01-02", or "" when its Key Details state none. It is derived from
+	// KeyDetails whenever they are written (see offer.EndDate), so callers
+	// never set it.
+	ExpiresOn string `json:"expires_on"`
+	// EditorNotes are remarks for the admin reviewing the article, one per
+	// line, never shown to readers (see package editornote). They are split
+	// out of Content when an article is stored, and when one is loaded, so
+	// Content never carries them. Kept out of JSON so no serialization of an
+	// article can publish them.
+	EditorNotes string     `json:"-"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	PublishedAt *time.Time `json:"published_at"`
 }
 
 type ArticleSource struct {
@@ -117,6 +132,9 @@ type Newsletter struct {
 	CardOfWeekID        *int64     `json:"card_of_week_id"`
 	ScoutsPickArticleID *int64     `json:"scouts_pick_article_id"`
 	SentAt              *time.Time `json:"sent_at"`
+	// CreatedAt is when the issue was generated. Issues stored before it
+	// was recorded have none.
+	CreatedAt *time.Time `json:"created_at"`
 }
 
 type NewsletterCandidate struct {
@@ -135,6 +153,30 @@ type Subscriber struct {
 	Token        string     `json:"token"`
 	SubscribedAt time.Time  `json:"subscribed_at"`
 	ConfirmedAt  *time.Time `json:"confirmed_at"`
+	// UnsubscribedAt is when the subscriber unsubscribed, or nil. An
+	// unsubscribed row is kept (with Confirmed false) so its token still
+	// resolves and the reader can resubscribe.
+	UnsubscribedAt *time.Time `json:"unsubscribed_at"`
+}
+
+// Subscriber states, as returned by Subscriber.State.
+const (
+	SubscriberPending      = "pending"
+	SubscriberActive       = "active"
+	SubscriberUnsubscribed = "unsubscribed"
+)
+
+// State is "active" (confirmed), "pending" (waiting for the confirmation
+// click) or "unsubscribed".
+func (s Subscriber) State() string {
+	switch {
+	case s.UnsubscribedAt != nil:
+		return SubscriberUnsubscribed
+	case s.Confirmed:
+		return SubscriberActive
+	default:
+		return SubscriberPending
+	}
 }
 
 type AdminSession struct {
@@ -196,4 +238,15 @@ type ReferencePage struct {
 	Status                 string     `json:"status"`
 	CreatedAt              time.Time  `json:"created_at"`
 	UpdatedAt              time.Time  `json:"updated_at"`
+}
+
+// separateEditorNotes moves any editor notes in a's content into EditorNotes.
+// It runs when an article is stored, so content is never written with notes
+// in it, and when one is loaded, so rows stored before that -- or written by
+// anything that bypasses this package -- still reach no page, feed, email,
+// excerpt or prompt with their notes in the content.
+func (a *GeneratedArticle) separateEditorNotes() {
+	clean, notes := editornote.Split(a.Content)
+	a.Content = clean
+	a.EditorNotes = editornote.Join(a.EditorNotes, notes)
 }

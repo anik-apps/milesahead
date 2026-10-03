@@ -3,37 +3,81 @@
 <div class="cards-listing">
     <div class="cards-hero">
         <h1>Credit Card Guide</h1>
-        <p>In-depth reference pages for top credit cards — maintained by {{.PersonaName}}.</p>
+        <p>In-depth reference pages for {{.Total}} credit cards — maintained by {{.PersonaName}}.</p>
     </div>
 
-    {{if .Groups}}
-    {{range .Groups}}
-    <div class="cards-category-group">
-        <h2 class="category-heading">{{.Name}}</h2>
-        <div class="card-grid">
-            {{range .Cards}}
-            <a href="/cards/{{.Slug}}" class="card-grid-item">
-                {{if .ImageURL}}
-                <div class="card-grid-image">
-                    <img src="{{.ImageURL}}" alt="{{.Title}}">
-                </div>
-                {{end}}
-                <div class="card-grid-body">
-                    <span class="issuer-badge">{{.Issuer}}</span>
-                    <h3>{{.Title}}</h3>
-                    {{if .VerdictPreview}}
-                    <p class="card-grid-excerpt">{{.VerdictPreview}}</p>
-                    {{end}}
-                </div>
-            </a>
+    {{with .Index}}
+    {{/* One row of filters: category chips, then the "No annual fee" toggle.
+         All are links that keep the other filter and the sort, so every view
+         has its own URL and nothing needs JavaScript. A <div>, not a <nav>:
+         the site styles every <nav> as the sticky header. */}}
+    <div class="cards-filters" role="group" aria-label="Filter cards">
+        <div class="filter-bar cards-cat-bar" role="group" aria-label="Category">
+            {{range .Categories}}{{if or .Count .Active}}<a href="{{.URL}}" class="filter-chip{{if .Active}} active{{end}}"{{if .Active}} aria-current="true"{{end}}>{{.Label}} <span class="filter-count">{{.Count}}</span></a>{{else}}<span class="filter-chip is-empty" aria-disabled="true">{{.Label}} <span class="filter-count">0</span></span>{{end}}
             {{end}}
         </div>
+        <span class="filter-divider cards-filter-divider" aria-hidden="true"></span>
+        {{with .NoFee}}{{if or .Count .Active}}<a href="{{.URL}}" class="filter-chip filter-toggle{{if .Active}} active{{end}}" role="button" aria-pressed="{{if .Active}}true{{else}}false{{end}}">{{.Label}}</a>{{else}}<span class="filter-chip filter-toggle is-empty" aria-disabled="true">{{.Label}}</span>{{end}}{{end}}
+    </div>
+
+    {{/* The results line: the count and what is applied on the left, the sort
+         on the right. The sort is a menu, not a chip: it changes the order,
+         never which cards show. main.js opens the chosen order on change and
+         hides Go, which is there for browsers without JavaScript. */}}
+    <div class="cards-results">
+        <p class="cards-results-summary" role="status">
+            <span class="cards-results-count">{{if .Count}}{{.CountText}}{{else if .Filtered}}No cards match{{else}}No cards yet{{end}}</span>
+            {{range .Applied}}<span class="cards-results-item"><span class="active-filters-sep" aria-hidden="true">·</span> <span class="cards-results-applied">{{.}}</span></span>
+            {{end}}{{range .Legacy}}<span class="cards-results-item"><span class="active-filters-sep" aria-hidden="true">·</span> <a href="{{.RemoveURL}}" class="filter-remove" aria-label="Remove filter: {{.Label}}">{{.Label}}<span class="filter-remove-x" aria-hidden="true">✕</span></a></span>
+            {{end}}{{if .Filtered}}<span class="cards-results-item"><span class="active-filters-sep" aria-hidden="true">·</span> <a href="{{.ClearURL}}" class="filter-clear">Clear</a></span>{{end}}
+        </p>
+        <form class="cards-sort" method="get" action="/cards/">
+            {{if .Query.Cat}}<input type="hidden" name="cat" value="{{.Query.Cat}}">{{end}}
+            {{if .Query.Fee}}<input type="hidden" name="fee" value="{{.Query.Fee}}">{{end}}
+            {{if .Query.Issuer}}<input type="hidden" name="issuer" value="{{.Query.Issuer}}">{{end}}
+            <label for="cards-sort-select">Sort</label>
+            <select id="cards-sort-select" name="sort" data-sort-menu>{{range .Sorts}}<option value="{{.Value}}" data-url="{{.URL}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select>
+            <button type="submit" class="cards-sort-go">Go</button>
+        </form>
+    </div>
+
+    {{if .Grouped}}
+    {{range .Groups}}
+    <section class="cards-category-group">
+        <h2 class="category-heading">{{.Name}}</h2>
+        <div class="card-tiles">{{range .Cards}}{{template "card-tile" .}}{{end}}</div>
+    </section>
+    {{end}}
+    {{else if .Cards}}
+    <h2 class="cards-sr-only">Matching cards</h2>
+    <div class="card-tiles">{{range .Cards}}{{template "card-tile" .}}{{end}}</div>
+    {{end}}
+
+    {{if not .Count}}
+    <div class="empty-state">
+        {{if .Filtered}}<p>No cards match these filters. <a href="{{.ClearURL}}">Show all cards</a></p>{{else}}<p>No cards published yet. Check back soon!</p>{{end}}
     </div>
     {{end}}
-    {{else}}
-    <div class="empty-state">
-        <p>No cards published yet. Check back soon!</p>
-    </div>
     {{end}}
 </div>
+{{end}}
+
+{{/* A compact tile: art, name, then the facts people choose a card by. The
+     art has a fixed box so nothing shifts as it loads, and only the first rows
+     load it straight away. Its alt is empty because the link names the card. */}}
+{{define "card-tile"}}
+<a href="/cards/{{.Slug}}" class="card-tile">
+    <span class="card-tile-art">{{if .ImageURL}}<img src="{{.ImageURL}}" alt="" width="96" height="61" decoding="async"{{if not .Eager}} loading="lazy"{{end}}>{{end}}</span>
+    <div class="card-tile-body">
+        <span class="issuer-badge">{{.Issuer}}</span>
+        <h3 class="card-tile-title">{{.Title}}</h3>
+        {{if .HasFacts}}
+        <p class="card-tile-facts">
+            {{if .FeeKnown}}<span class="card-tile-fact">{{if .FeeAmount}}<b>{{.Fee}}</b> annual fee{{else}}<b>No</b> annual fee{{end}}</span>{{end}}
+            {{if .Earn.Rate}}<span class="card-tile-fact"><b>{{.Earn.Rate}}</b> {{.Earn.Rest}}{{with .Earn.Qualifier}} ({{.}}){{end}}</span>{{end}}
+            {{if .Offer.Short}}<span class="card-tile-fact">{{if .Offer.Available}}Offer <b>{{.Offer.Short}}</b>{{else}}{{.Offer.Short}}{{end}}</span>{{end}}
+        </p>
+        {{end}}
+    </div>
+</a>
 {{end}}

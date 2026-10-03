@@ -1,110 +1,180 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
 {{define "content"}}
-<div class="admin-nav">
-    <a href="/admin/dashboard" class="active">Pending</a>
-    <a href="/admin/published">Published</a>
-    <a href="/admin/sources">Sources</a>
-    <a href="/admin/subscribers">Subscribers</a>
-    <a href="/admin/cards">Cards</a>
-    <a href="/admin/newsletter">Newsletter</a>
-    <a href="/admin/settings">Settings</a>
-    <form method="POST" action="/admin/logout" class="logout-btn">
-        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
-    </form>
-</div>
-<div class="admin-dashboard">
-    {{if eq .Message "revision_submitted"}}
-    <div class="message success">Revision feedback submitted. The AI is regenerating the article — refresh in about 30 seconds to see the updated version.</div>
+<div class="admin-dashboard" data-state="{{.StateVersion}}" data-open="{{if .OpenID}}preview-{{.OpenID}}{{end}}">
+    <div class="page-head">
+        <h1>Review <span class="page-count">{{.Total}}</span></h1>
+        <div class="page-head-tools">
+            <form method="get" action="/admin/dashboard" class="sort-form">
+                {{if .All}}<input type="hidden" name="all" value="1">{{end}}
+                <label for="q-sort">Sort</label>
+                <select id="q-sort" name="sort" data-autosubmit>
+                    {{range .Sorts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+                </select>
+                <noscript><button type="submit" class="btn btn-sm">Sort</button></noscript>
+            </form>
+            <button type="button" class="btn kbd-help-btn" aria-expanded="false" aria-controls="kbd-help">Keyboard shortcuts <kbd>?</kbd></button>
+        <div id="kbd-help" class="kbd-help" role="dialog" aria-label="Keyboard shortcuts" hidden>
+            <dl>
+                <dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next / previous article (in the list or the preview)</dd>
+                <dt><kbd>Enter</kbd> <kbd>o</kbd></dt><dd>Open the selected article</dd>
+                <dt><kbd>a</kbd></dt><dd>Approve the revision shown, then open the next</dd>
+                <dt><kbd>x</kbd></dt><dd>Reject (asks first)</dd>
+                <dt><kbd>r</kbd></dt><dd>Write a rewrite request</dd>
+                <dt><kbd>Esc</kbd></dt><dd>Close the preview, or leave the text box</dd>
+                <dt><kbd>?</kbd></dt><dd>Show or hide this list</dd>
+            </dl>
+            <p class="dim">Shortcuts never fire while you are typing in a box or a row's actions menu is open.</p>
+        </div>
+        </div>
+    </div>
+
+    <div class="q-refresh" role="status" hidden>The queue has changed since this page loaded. <a href="/admin/dashboard" class="q-refresh-link">Refresh</a> <span class="dim">(anything you typed is kept)</span></div>
+
+    {{if .MessageText}}<div class="message success" role="status">{{.MessageText}}</div>{{end}}
+    {{if eq .Message "changed"}}
+    <div class="message error" role="alert">Article #{{.MessageID}} changed after you opened it: it is now revision {{.MessageRev}}. Nothing was approved or rejected. Review the new version first.</div>
     {{end}}
-    {{if eq .Message "approved"}}
-    <div class="message success">Article approved and published.</div>
+    {{if eq .Message "status_changed"}}
+    <div class="message error" role="alert">Article #{{.MessageID}} changed status after you opened it, so nothing was done. Check its current state below.</div>
     {{end}}
-    {{if eq .Message "rejected"}}
-    <div class="message success">Article rejected.</div>
-    {{end}}
-    <h1>Pending Articles</h1>
-    {{if .Articles}}
-    <table class="admin-table">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Score</th>
-                <th title="Revision number">Rev</th>
-                <th>Date</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Articles}}
-            <tr{{if eq .Status "revision_requested"}} class="row-revising"{{end}}>
-                <td>
-                    <span class="badge badge-{{.Type}}">{{.Type}}</span>
-                    <a href="#" class="preview-link" onclick="openPreview('preview-{{.ID}}'); return false;">{{.Title}}</a>
-                    {{if eq .Status "pending"}}<span class="status-badge pending">Pending</span>{{end}}
-                    {{if eq .Status "revision_requested"}}<span class="status-badge revising">Revising...</span>{{end}}
-                    {{if eq .Status "unpublished"}}<span class="status-badge unpublished">Unpublished</span>{{end}}
-                    {{if eq .Status "draft"}}<span class="status-badge draft">Draft</span>{{end}}
-                    {{if .Tags}}
-                    <div class="article-tags" style="margin-top:0.25rem;">
-                        {{range .Tags}}<span class="tag-badge">{{.}}</span>{{end}}
+
+    {{range .Groups}}
+    <section class="q-group q-{{.Key}}" aria-labelledby="q-{{.Key}}-head">
+        <h2 class="q-head" id="q-{{.Key}}-head">{{.Title}} <span class="tab-n{{if and (eq .Key "decide") .Total}} alert{{end}}">{{.Total}}</span></h2>
+        <p class="q-note">{{.Note}}</p>
+        {{if .Rows}}
+        <ol class="q-list">
+            {{range .Rows}}
+            <li class="q-item">
+                <a class="q-row{{if eq .Group "decide"}} q-alert{{end}}{{if eq .Group "rewriting"}} q-quiet{{end}}" href="#preview-{{.ID}}" data-preview="preview-{{.ID}}">
+                    <span class="type-pill type-pill-{{.Type}} q-type">{{typeBadge .Type}}</span>
+                    <span class="q-main">
+                        <span class="q-title">{{.Title}}</span>
+                        <span class="q-meta">
+                            {{if .RevisionGaveUp}}<span class="chip chip-bad" title="{{.RevisionLastError}}">Rewrite gave up after {{.RevisionFailures}} tries</span>{{end}}
+                            {{if .RetryNote}}<span class="chip {{if .RevisionFailures}}chip-warn{{else}}chip-info{{end}}"{{if .RevisionLastError}} title="{{.RevisionLastError}}"{{end}}>{{.RetryNote}}</span>{{end}}
+                            {{if eq .Status "unpublished"}}<span class="chip chip-warn">Unpublished</span>{{end}}
+                            {{if eq .Status "draft"}}<span class="chip chip-mute" title="Below the critic's threshold">Draft</span>{{end}}
+                            {{if .FailedChecks}}<span class="chip chip-bad">{{.FailedChecks}} critic {{if eq .FailedChecks 1}}check{{else}}checks{{end}} failed</span>{{end}}
+                            {{if .ImageRequest.Pending}}<span class="chip chip-info"{{if .ImageRequest.Hint}} title="Searching for &ldquo;{{.ImageRequest.Hint}}&rdquo;"{{end}}>Finding a new image&hellip;</span>{{else if .ImageRequest.Failed}}<span class="chip chip-bad" title="{{.ImageRequest.LastError}}">No new image found &mdash; try other search words</span>{{end}}
+                            {{if not .Enriched}}<span class="chip chip-warn" title="Enrichment adds the photo and {{$.PersonaName}}'s Take within about 15 minutes">{{if .ImageURL}}No {{$.PersonaName}}'s Take yet{{else if .ScoutsTake}}No image yet{{else}}No image or take yet{{end}}</span>{{end}}
+                            {{if and (eq .Group "ready") .Enriched (not .FailedChecks)}}<span class="chip chip-ok">Ready</span>{{end}}
+                            {{if gt .RevisionNumber 1}}<span class="chip chip-mute">Rev {{.RevisionNumber}}</span>{{end}}
+                            <span class="q-sub">{{.SourceCount}} {{if eq .SourceCount 1}}source{{else}}sources{{end}} &middot; {{.Age}}</span>
+                        </span>
+                    </span>
+                    <span class="q-score score-{{.ScoreClass}}" title="Critic score">{{if .HasScore}}{{.VerificationScore}}{{else}}&ndash;{{end}}</span>
+                    <span class="q-cta">{{if eq .Group "decide"}}Decide{{else if eq .Group "rewriting"}}View{{else}}Review{{end}}</span>
+                </a>
+                {{/* Decide from the list. Only the actions the server allows
+                     for the article's status; approve and reject post the
+                     revision on the row, so the same guard as the preview's
+                     applies, and without "next" the list stays put. */}}
+                <div class="row-menu">
+                    <button type="button" class="row-menu-btn" id="menu-btn-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-{{.ID}}" title="Actions"><span aria-hidden="true">&#8943;</span><span class="visually-hidden">Actions for article #{{.ID}}: {{.Title}}</span></button>
+                    <div class="row-menu-list" id="menu-{{.ID}}" role="menu" aria-labelledby="menu-btn-{{.ID}}" hidden>
+                        <a role="menuitem" tabindex="-1" href="#preview-{{.ID}}" data-preview="preview-{{.ID}}">Open preview</a>
+                        {{if .CanDecide}}
+                        <form method="POST" action="/admin/articles/{{.ID}}/approve" class="row-menu-form">
+                            {{template "csrf_field" $}}
+                            <input type="hidden" name="revision" value="{{.RevisionNumber}}">
+                            <input type="hidden" name="sort" value="{{$.Sort}}">
+                            <button type="submit" role="menuitem" tabindex="-1" class="row-menu-approve">{{if eq .Status "unpublished"}}Republish{{else}}Approve{{end}} rev {{.RevisionNumber}}</button>
+                        </form>
+                        {{end}}
+                        <a role="menuitem" tabindex="-1" href="#preview-{{.ID}}" data-preview="preview-{{.ID}}" data-focus="new-image">{{if .ImageURL}}Find a new image&hellip;{{else}}Find an image&hellip;{{end}}</a>
+                        {{if .CanRequestRevision}}
+                        <a role="menuitem" tabindex="-1" href="#preview-{{.ID}}" data-preview="preview-{{.ID}}" data-focus="rewrite">{{if .RevisionGaveUp}}Request the rewrite again&hellip;{{else}}Request rewrite&hellip;{{end}}</a>
+                        {{end}}
+                        {{if .CanDecide}}
+                        <form method="POST" action="/admin/articles/{{.ID}}/reject" class="row-menu-form" data-confirm="Reject article #{{.ID}}? This cannot be undone.">
+                            {{template "csrf_field" $}}
+                            <input type="hidden" name="revision" value="{{.RevisionNumber}}">
+                            <input type="hidden" name="sort" value="{{$.Sort}}">
+                            <button type="submit" role="menuitem" tabindex="-1" class="row-menu-danger">Reject&hellip;</button>
+                        </form>
+                        {{end}}
                     </div>
-                    {{end}}
-                </td>
-                <td>{{.VerificationScore}}</td>
-                <td>{{.RevisionNumber}}</td>
-                <td><span class="dim">{{.CreatedAt}}</span><br><span class="dim">Updated: {{.UpdatedAt}}</span></td>
-                <td class="actions">
-                    <a href="/admin/articles/{{.ID}}/cards" class="btn btn-primary">Linked cards</a>
-                    <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
-                        {{template "csrf_field" $}}
-                        <button type="submit" class="btn btn-approve" onclick="return confirm('Are you sure you want to approve this article for publishing?')">Approve</button>
-                    </form>
-                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form">
-                        {{template "csrf_field" $}}
-                        <button type="submit" class="btn btn-reject" onclick="return confirm('Are you sure you want to reject this article?')">Reject</button>
-                    </form>
-                    <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form revision-form">
-                        {{template "csrf_field" $}}
-                        <textarea name="feedback" placeholder="Revision feedback..." required></textarea>
-                        <button type="submit" class="btn btn-primary">Request Revision</button>
-                    </form>
-                </td>
-            </tr>
+                </div>
+            </li>
             {{end}}
-        </tbody>
-    </table>
+        </ol>
+        {{if .Capped}}<p class="q-more">Showing {{len .Rows}} of {{.Total}}, {{$.SortLabel}}. <a href="{{$.ShowAllURL}}">Show all {{.Total}}</a></p>{{end}}
+        {{else}}
+        <p class="q-empty">{{if eq .Key "ready"}}Nothing waiting for review.{{else}}None.{{end}}</p>
+        {{end}}
+    </section>
+    {{end}}
 
     <!-- Preview modals -->
-    {{range .Articles}}
-    <div id="preview-{{.ID}}" class="preview-overlay" onclick="if(event.target===this)closePreview(this)">
-        <div class="preview-modal">
+    {{range .Groups}}{{range .Rows}}
+    <div id="preview-{{.ID}}" class="preview-overlay" data-id="{{.ID}}" data-next="{{if .NextID}}preview-{{.NextID}}{{end}}" data-prev="{{if .PrevID}}preview-{{.PrevID}}{{end}}">
+        <div class="preview-modal" role="dialog" aria-modal="true" aria-label="Article #{{.ID}} preview">
             <div class="preview-header">
-                <span class="preview-label">Article Preview</span>
-                <button class="preview-close" onclick="closePreview(document.getElementById('preview-{{.ID}}'))">&times;</button>
+                <span class="preview-label"><span class="hide-sm">Article </span><span class="preview-id">#{{.ID}}</span></span>
+                <span class="preview-chips">
+                    <span class="chip chip-mute">Rev {{.RevisionNumber}}</span>
+                    {{if .HasScore}}<span class="chip score-{{.ScoreClass}}">Critic {{.VerificationScore}}</span>{{end}}
+                    {{if .RevisionGaveUp}}<span class="chip chip-bad">Rewrite gave up</span>{{else if .RetryNote}}<span class="chip chip-warn">{{.RetryNote}}</span>{{end}}
+                    {{if eq .Status "unpublished"}}<span class="chip chip-warn">Unpublished</span>{{end}}
+                    {{if eq .Status "draft"}}<span class="chip chip-mute">Draft</span>{{end}}
+                    {{if .ImageRequest.Pending}}<span class="chip chip-info">Finding a new image&hellip;</span>{{else if .ImageRequest.Failed}}<span class="chip chip-bad">No new image found</span>{{end}}
+                </span>
+                <span class="preview-nav">
+                    {{if .PrevID}}<a class="btn btn-sm" href="#preview-{{.PrevID}}" data-preview="preview-{{.PrevID}}" aria-label="Previous article" title="Previous (k)">&larr;</a>{{else}}<span class="btn btn-sm is-disabled" aria-hidden="true">&larr;</span>{{end}}
+                    <span class="dim">{{.Position}} of {{.QueueLen}}</span>
+                    {{if .NextID}}<a class="btn btn-sm" href="#preview-{{.NextID}}" data-preview="preview-{{.NextID}}" aria-label="Next article" title="Next (j)">&rarr;</a>{{else}}<span class="btn btn-sm is-disabled" aria-hidden="true">&rarr;</span>{{end}}
+                </span>
+                <a class="btn btn-sm" href="/admin/articles/{{.ID}}/cards">Linked cards</a>
+                <button type="button" class="preview-close" aria-label="Close preview" title="Close (Esc)">&times;</button>
             </div>
             <div class="preview-body">
-                {{if .ImageURL}}
-                <div class="article-hero">
-                    <img src="{{.ImageURL}}" alt="{{.Title}}">
-                </div>
-                {{end}}
+                {{/* The same order as the public article page: headline and
+                     summary, the photo, then the story with its key details
+                     and Scout's Take after it. */}}
                 <article class="article-detail">
                     <header class="article-header">
-                        <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+                        <div class="article-badges"><span class="type-badge badge-{{.Type}}">{{typeBadge .Type}}</span></div>
                         <h1>{{.Title}}</h1>
                         <span class="dim">Created: {{.CreatedAt}} | Updated: {{.UpdatedAt}} | Rev {{.RevisionNumber}}</span>
+                        {{if .TLDR}}<p class="article-standfirst">{{.TLDR}}</p>{{end}}
                     </header>
-                    <div class="article-layout">
-                        <aside class="article-sidebar">
-                            {{if .TLDR}}
-                            <div class="sidebar-section">
-                                <h4>TL;DR</h4>
-                                <p>{{.TLDR}}</p>
-                            </div>
-                            {{end}}
+                    {{if or .KeyDetails .ArticleLinks}}
+                    <details class="article-facts">
+                        <summary>{{if .KeyDetails}}Key details ({{len .KeyDetails}}){{else}}Links ({{len .ArticleLinks}}){{end}}</summary>
+                        {{if .KeyDetails}}<ul class="key-details">{{range .KeyDetails}}<li><strong>{{.Label}}:</strong> {{.Value}}</li>{{end}}</ul>{{end}}
+                        {{if .ArticleLinks}}<ul class="article-links">{{range .ArticleLinks}}<li><a href="{{.URL}}" target="_blank" rel="noopener">→ {{.Text}}</a></li>{{end}}</ul>{{end}}
+                    </details>
+                    {{end}}
+                    {{if .ImageURL}}
+                    <figure class="article-hero">
+                        <img src="{{.ImageURL}}" alt="" width="1100" height="280">
+                    </figure>
+                    {{else}}
+                    <p class="preview-missing">No image yet. Enrichment adds one within about 15 minutes of the article being created.</p>
+                    {{end}}
+                    {{/* A rewrite never changes the picture; this does. The
+                         current image stays until a replacement is found. */}}
+                    <div class="image-tools" id="image-tools-{{.ID}}">
+                        {{if .ImageRequest.Pending}}
+                        <p class="image-status" role="status"><span class="chip chip-info">Finding a new image&hellip;</span> {{if .ImageRequest.Hint}}Searching for &ldquo;{{.ImageRequest.Hint}}&rdquo;. {{end}}{{if .ImageURL}}This image stays until a new one is found, usually within 15 minutes.{{else}}Usually within 15 minutes.{{end}}</p>
+                        {{else if .ImageRequest.Failed}}
+                        <p class="image-status image-status-failed" role="status"><span class="chip chip-bad">No new image found</span> Try other search words{{if .ImageURL}}; the image above stays{{end}}.{{if .ImageRequest.LastError}} <span class="dim">({{.ImageRequest.LastError}}{{if .ImageRequest.Hint}}, searched for &ldquo;{{.ImageRequest.Hint}}&rdquo;{{end}})</span>{{end}}</p>
+                        {{end}}
+                        <form method="POST" action="/admin/articles/{{.ID}}/new-image" class="image-form">
+                            {{template "csrf_field" $}}
+                            <input type="hidden" name="sort" value="{{$.Sort}}">
+                            <label class="visually-hidden" for="image-hint-{{.ID}}">Search for (optional)</label>
+                            <input type="text" id="image-hint-{{.ID}}" name="hint" maxlength="100" autocomplete="off" placeholder="Search for&hellip; (optional, e.g. Hyatt Regency lobby)" data-draft="image-{{.ID}}">
+                            <button type="submit" class="btn btn-sm">{{if .ImageURL}}Find a new image{{else}}Find an image{{end}}</button>
+                        </form>
+                    </div>
+                    <div class="article-layout{{if not (or .KeyDetails .ArticleLinks)}} no-sidebar{{end}}">
+                        {{if or .KeyDetails .ArticleLinks}}
+                        <aside class="article-sidebar" aria-label="Key details">
                             {{if .KeyDetails}}
                             <div class="sidebar-section">
-                                <h4>Key Details</h4>
+                                <h2>Key Details</h2>
                                 <ul class="key-details">
                                     {{range .KeyDetails}}
                                     <li><strong>{{.Label}}:</strong> {{.Value}}</li>
@@ -114,7 +184,7 @@
                             {{end}}
                             {{if .ArticleLinks}}
                             <div class="sidebar-section">
-                                <h4>Links</h4>
+                                <h2>Links</h2>
                                 <ul class="article-links">
                                     {{range .ArticleLinks}}
                                     <li><a href="{{.URL}}" target="_blank" rel="noopener">→ {{.Text}}</a></li>
@@ -123,32 +193,25 @@
                             </div>
                             {{end}}
                         </aside>
+                        {{end}}
                         <div class="article-main">
+                            {{range .EditorNotes}}
+                            <div class="editor-note"><strong>Editor note (not published):</strong> {{.}}</div>
+                            {{end}}
                             <div class="article-content">
                                 {{.Content | safeHTML}}
                             </div>
+                            {{if .ScoutsTake}}
+                            <section class="scouts-take" aria-labelledby="scouts-take-{{.ID}}">
+                                <h2 class="scout-label" id="scouts-take-{{.ID}}">{{$.PersonaName}}'s Take</h2>
+                                <p>{{.ScoutsTake}}</p>
+                            </section>
+                            {{else}}
+                            <p class="preview-missing">No {{$.PersonaName}}'s Take yet. Enrichment adds it within about 15 minutes of the article being created.</p>
+                            {{end}}
                         </div>
                     </div>
                 </article>
-
-                <!-- Actions inside preview -->
-                <div class="preview-actions">
-                    <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
-                        {{template "csrf_field" $}}
-                        <button type="submit" class="btn btn-approve" onclick="return confirm('Approve this article for publishing?')">Approve</button>
-                    </form>
-                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form">
-                        {{template "csrf_field" $}}
-                        <button type="submit" class="btn btn-reject" onclick="return confirm('Reject this article?')">Reject</button>
-                    </form>
-                    <form method="POST" action="/admin/articles/{{.ID}}/revise" class="inline-form" style="flex:1">
-                        {{template "csrf_field" $}}
-                        <div style="display:flex;gap:8px">
-                            <textarea name="feedback" placeholder="Revision feedback..." required style="flex:1;min-height:36px"></textarea>
-                            <button type="submit" class="btn btn-primary">Revise</button>
-                        </div>
-                    </form>
-                </div>
             </div>
 
             <!-- Admin-only sections below the preview -->
@@ -171,6 +234,48 @@
                     {{end}}
                 </div>
                 {{end}}
+                {{if .RevisionThread}}
+                {{/* Collapsed by default: the critic report and sources matter more
+                     at a glance, and a long thread would push them off screen. */}}
+                <details class="admin-revision-section">
+                    <summary><h4>Revision history</h4><span class="revision-count">{{len .RevisionThread}} {{if eq (len .RevisionThread) 1}}request{{else}}requests{{end}}</span></summary>
+                    <p class="revision-thread-note">Shows the request text as sent. The full prompt given to the model is not stored.</p>
+                    <ol class="revision-thread">
+                        {{range .RevisionThread}}
+                        <li class="revision-msg revision-msg--request">
+                            <div class="revision-msg-meta"><span class="revision-msg-who">{{.Source}}</span> &middot; {{.CreatedAt}}</div>
+                            <div class="revision-msg-text">{{.Text}}</div>
+                        </li>
+                        {{range .Responses}}
+                        <li class="revision-msg revision-msg--response">
+                            <div class="revision-msg-meta"><span class="revision-msg-who">Revision {{.Number}}</span> &middot; {{.CreatedAt}}{{if .HasScore}} &middot; <span class="revision-score">Critic {{.Score}}/100</span>{{end}}</div>
+                            <div class="revision-msg-text">{{.WordsBefore}} &rarr; {{.WordsAfter}} words{{if .FailedCheck}} &middot; failed checks: {{range $i, $c := .FailedCheck}}{{if $i}}, {{end}}{{$c}}{{end}}{{end}}</div>
+                            <details class="revision-content">
+                                <summary>Revised article</summary>
+                                <div class="article-content">{{.NewContent | safeHTML}}</div>
+                            </details>
+                            <details class="revision-content">
+                                <summary>Previous version</summary>
+                                <div class="article-content">{{.OldContent | safeHTML}}</div>
+                            </details>
+                        </li>
+                        {{else}}
+                        {{if eq .Pending "rewriting"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status">Rewriting&hellip;</li>
+                        {{else if eq .Pending "retrying"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status revision-msg--failed">Failed {{.Failures}}&times;: {{.LastError}} &mdash; retrying</li>
+                        {{else if eq .Pending "gave_up"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status revision-msg--failed">Gave up after {{.Failures}} tries &mdash; request it again{{if .LastError}}<span class="revision-msg-error">Last error: {{.LastError}}</span>{{end}}</li>
+                        {{else if eq .Pending "superseded"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status">Superseded by a later request</li>
+                        {{else if eq .Pending "none"}}
+                        <li class="revision-msg revision-msg--response revision-msg--status">No revision was made for this request</li>
+                        {{end}}
+                        {{end}}
+                        {{end}}
+                    </ol>
+                </details>
+                {{end}}
                 {{if .Sources}}
                 <div class="admin-sources-section">
                     <h4>Sources</h4>
@@ -182,33 +287,53 @@
                 </div>
                 {{end}}
             </div>
+
+            <!-- Actions: always in view at the bottom of the preview -->
+            <div class="preview-actionbar">
+                {{if eq .Group "rewriting"}}<p class="actionbar-note">A rewrite is pending. Approving or rejecting decides on revision {{.RevisionNumber}}, shown above, and drops the pending request.</p>{{end}}
+                <form method="POST" action="/admin/articles/{{.ID}}/revise" class="actionbar-rewrite">
+                    {{template "csrf_field" $}}
+                    <input type="hidden" name="next" value="{{.NextID}}">
+                    <input type="hidden" name="sort" value="{{$.Sort}}">
+                    <label class="visually-hidden" for="feedback-{{.ID}}">What should change?</label>
+                    <textarea id="feedback-{{.ID}}" name="feedback" rows="1" placeholder="{{if .RevisionGaveUp}}Ask for the rewrite again{{else}}What should change?{{end}} (r)" required data-draft="revise-{{.ID}}" data-image-hint="rewrite-image-hint-{{.ID}}"></textarea>
+                    <button type="submit" class="btn">{{if .RevisionGaveUp}}Request again{{else}}Request rewrite{{end}}</button>
+                    <button type="button" class="btn btn-quiet actionbar-image" data-jump-image="image-hint-{{.ID}}" title="Change the picture: rewrites only change the text">New image&hellip;</button>
+                    <p class="rewrite-image-hint" id="rewrite-image-hint-{{.ID}}" role="status" hidden>Rewrites only change the text &mdash; use <button type="button" class="link-button" data-jump-image="image-hint-{{.ID}}">Find a new image</button> to change the picture.</p>
+                </form>
+                <div class="actionbar-decide">
+                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form" data-confirm="Reject article #{{.ID}}? This cannot be undone.">
+                        {{template "csrf_field" $}}
+                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
+                        <input type="hidden" name="next" value="{{.NextID}}">
+                        <input type="hidden" name="sort" value="{{$.Sort}}">
+                        <button type="submit" class="btn btn-outline-danger" title="Reject (x)">Reject</button>
+                    </form>
+                    <form method="POST" action="/admin/articles/{{.ID}}/approve" class="inline-form">
+                        {{template "csrf_field" $}}
+                        <input type="hidden" name="revision" value="{{.RevisionNumber}}">
+                        <input type="hidden" name="next" value="{{.NextID}}">
+                        <input type="hidden" name="sort" value="{{$.Sort}}">
+                        <button type="submit" class="btn btn-approve" title="Approve (a)">{{if eq .Status "unpublished"}}Republish rev {{.RevisionNumber}}{{else}}Approve rev {{.RevisionNumber}}{{end}}{{if .NextID}} &amp; next{{end}}</button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
-    {{end}}
+    {{end}}{{end}}
 
-    {{else}}
-    <div class="empty-state">
-        <p>No pending articles to review.</p>
-        <p style="margin-top: 0.5rem;"><a href="/admin/published">View published articles</a> &middot; <a href="/admin/sources">Manage sources</a></p>
+    {{if and (eq .Message "approved") .MessageID}}
+    <div class="toast" role="status" data-autohide="15000">
+        <span>Approved {{if .ApprovedTitle}}&ldquo;{{.ApprovedTitle}}&rdquo;{{else}}article #{{.MessageID}}{{end}} and published{{if .ApprovedSlug}} (<a href="/article/{{.ApprovedSlug}}" target="_blank" rel="noopener">view</a>){{end}}.</span>
+        {{if .CanUndo}}
+        <form method="POST" action="/admin/articles/{{.MessageID}}/undo-approve" class="inline-form">
+            {{template "csrf_field" $}}
+            <input type="hidden" name="sort" value="{{.Sort}}">
+            <button type="submit" class="toast-action">Undo</button>
+        </form>
+        {{end}}
+        <button type="button" class="toast-close" aria-label="Dismiss">&times;</button>
     </div>
     {{end}}
 </div>
-
-<script>
-function openPreview(id) {
-    document.getElementById(id).classList.add('active');
-    document.body.style.overflow = 'hidden';
-}
-function closePreview(el) {
-    el.classList.remove('active');
-    document.body.style.overflow = '';
-}
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        document.querySelectorAll('.preview-overlay.active').forEach(function(el) {
-            closePreview(el);
-        });
-    }
-});
-</script>
 {{end}}

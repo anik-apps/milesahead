@@ -43,31 +43,44 @@ var ErrNoInfographic = errors.New("article has no chartable numbers")
 // model's backend degraded every article in the window lost the field
 // permanently. Measured during one such window, the configured critic answered
 // 6 of 24 raw attempts while two other models stayed healthy throughout.
+//
+// It is the one fallback helper for every short call, not only enrichment:
+// image text-scoring, the newsletter pick and card-update detection run
+// through it too, against the same enrichment_model chain.
+//
+// The critic chain runs through it as well, via tryModels, which also reports
+// which model answered.
 func TryModels(client HFClientInterface, models []string, prompt string, maxTokens int) (string, error) {
+	result, _, err := tryModels(client, models, prompt, maxTokens)
+	return result, err
+}
+
+// tryModels is TryModels, also returning the model that answered.
+func tryModels(client HFClientInterface, models []string, prompt string, maxTokens int) (string, string, error) {
 	if len(models) == 0 {
-		return "", fmt.Errorf("no models configured")
+		return "", "", fmt.Errorf("no models configured")
 	}
 	var firstErr error
 	for i, m := range models {
 		result, err := client.Generate(m, prompt, maxTokens)
 		if err == nil {
 			if i > 0 {
-				slog.Info("enrichment fallback succeeded", "model", m, "primary", models[0])
+				slog.Info("model fallback succeeded", "model", m, "primary", models[0])
 			}
-			return result, nil
+			return result, m, nil
 		}
 		if firstErr == nil {
 			firstErr = err
 		}
 		if !shouldTryAnotherModel(err) {
-			return "", err
+			return "", "", err
 		}
 		if i < len(models)-1 {
-			slog.Warn("enrichment model failed, trying next",
+			slog.Warn("model failed, trying next in chain",
 				"failed", m, "next", models[i+1], "err", err)
 		}
 	}
-	return "", fmt.Errorf("all %d model(s) failed, first error: %w", len(models), firstErr)
+	return "", "", fmt.Errorf("all %d model(s) failed, first error: %w", len(models), firstErr)
 }
 
 // GenerateScoutsTake produces the persona commentary for an article.
@@ -80,6 +93,12 @@ func GenerateScoutsTake(client HFClientInterface, models []string, persona, titl
 	out = strings.TrimSpace(out)
 	if out == "" {
 		return "", fmt.Errorf("scouts take came back empty")
+	}
+	// Enrichment works from the article alone, with no sources to map a
+	// number to, so a take that echoes "Source 1" is refused rather than
+	// published; the reconciler retries it on a later pass.
+	if refs := FindSourceRefs(out); len(refs) > 0 {
+		return "", fmt.Errorf("scouts take refers to a source by number: %q", refs)
 	}
 	return out, nil
 }
@@ -101,12 +120,22 @@ func ExtractDetails(client HFClientInterface, models []string, title, content st
 	if err := json.Unmarshal([]byte(jsonStr), &parsed); err != nil {
 		return nil, nil, fmt.Errorf("parsing details response: %w", err)
 	}
-	if len(parsed.KeyDetails) == 0 {
+	// As with Scout's Take there are no sources here to map a "Source 1" to,
+	// so a detail that carries one is dropped.
+	details := parsed.KeyDetails[:0]
+	for _, d := range parsed.KeyDetails {
+		if refs := FindSourceRefs(d.Label + " " + d.Value); len(refs) > 0 {
+			slog.Warn("dropped key detail that refers to a source by number", "label", d.Label, "refs", refs)
+			continue
+		}
+		details = append(details, d)
+	}
+	if len(details) == 0 {
 		// Storing an empty list looks identical to a successful extraction that
 		// found nothing, and the article would never be retried.
-		return nil, nil, fmt.Errorf("details response contained no key details")
+		return nil, nil, fmt.Errorf("details response contained no usable key details")
 	}
-	return parsed.KeyDetails, parsed.Links, nil
+	return details, parsed.Links, nil
 }
 
 // ExtractTags picks topic tags, keeping only ones on the approved list.

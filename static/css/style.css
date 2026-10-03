@@ -9,6 +9,9 @@
     --text-muted: #64748b;
     --nav-bg: #ffffff;
     --shadow: rgba(0, 0, 0, 0.08);
+    /* Text on an accent-coloured fill: white on #2563eb is 5.2:1. */
+    --on-accent: #ffffff;
+    --nav-link: #334155;
 }
 
 /* Dark theme overrides */
@@ -22,6 +25,9 @@
     --text-muted: #8b949e;
     --nav-bg: #161b22;
     --shadow: rgba(0, 0, 0, 0.3);
+    /* White on the dark theme's #58a6ff is 2.5:1; near-black is 7.5:1. */
+    --on-accent: #0d1117;
+    --nav-link: #c9d1d9;
 }
 
 /* Reset & Base */
@@ -45,6 +51,60 @@ body {
 img {
     max-width: 100%;
     height: auto;
+}
+
+/* The sticky site header's height (nav.site-nav: 84px, 68px on phones).
+   Sticky elements sit this far down, and in-page anchors land 1rem below
+   it; an element's own scroll-margin-top adds to that. Change it here if the
+   header's height changes. */
+:root { --sticky-offset: 84px; }
+@media (max-width: 768px) { :root { --sticky-offset: 68px; } }
+html {
+    scroll-padding-top: calc(var(--sticky-offset) + 1rem);
+}
+
+/* One visible focus ring for everything a keyboard can reach. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+}
+/* The skip link moves focus to <main>; it needs no ring of its own. */
+#main:focus, #main:focus-visible { outline: none; }
+
+/* First thing a keyboard reaches: jumps past the header. Hidden until focused. */
+.skip-link {
+    position: absolute;
+    left: 0.75rem;
+    top: -4rem;
+    z-index: 1000;
+    padding: 0.7rem 1rem;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 700;
+}
+.skip-link:focus {
+    top: 0.75rem;
+    text-decoration: none;
+}
+
+/* Read by screen readers, not shown. */
+.visually-hidden {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 a {
@@ -82,69 +142,13 @@ nav .nav-links {
 }
 
 nav .nav-links a {
-    color: var(--text-muted);
-    font-weight: 500;
+    color: var(--nav-link);
+    font-weight: 600;
 }
 
 nav .nav-links a:hover {
     color: var(--text);
     text-decoration: none;
-}
-
-/* Nav dropdown */
-.nav-dropdown {
-    position: relative;
-}
-.nav-dropdown-btn {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-weight: 500;
-    font-size: inherit;
-    cursor: pointer;
-    padding: 0;
-    font-family: inherit;
-}
-.nav-dropdown-btn:hover {
-    color: var(--text);
-}
-.nav-dropdown-menu {
-    display: none;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.4rem 0;
-    min-width: 160px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    z-index: 200;
-    padding-top: 0.6rem;
-}
-/* Invisible bridge between button and menu to prevent hover gap */
-.nav-dropdown::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 0;
-    width: 100%;
-    height: 0.5rem;
-}
-.nav-dropdown:hover .nav-dropdown-menu,
-.nav-dropdown.open .nav-dropdown-menu {
-    display: block;
-}
-.nav-dropdown-menu a {
-    display: block;
-    padding: 0.5rem 1rem;
-    color: var(--text);
-    font-size: 0.9rem;
-    font-weight: 400;
-}
-.nav-dropdown-menu a:hover {
-    background: var(--accent-subtle, rgba(88,166,255,0.1));
-    color: var(--accent);
 }
 
 #theme-toggle {
@@ -166,34 +170,110 @@ main {
     flex: 1;
 }
 
-/* Category Tabs */
-.category-tabs {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 2rem;
-    flex-wrap: wrap;
+/* --- Homepage filter bar ---
+   One row: a segmented type switch, a divider, then topic chips. It never
+   wraps: if it does not fit (always on phones), it scrolls sideways with a
+   fade at the right edge. Below it, when filtered, a strip lists the applied
+   filters with links that remove each. All text meets WCAG AA (4.5:1) in
+   both themes; TestHomeFilterStyles_MeetContrast checks the pairs. */
+:root {
+    --filter-track: #eef2f7;
+    --filter-text: #475569;
+    --filter-on-bg: #ffffff;
+    --filter-on-text: #0f172a;
+    --filter-chip-on-bg: #2563eb;
+    --filter-chip-on-fg: #ffffff;
+    --filter-pill-bg: #e8f0fe;
+    --filter-pill-fg: #1e40af;
+}
+[data-theme="dark"] {
+    --filter-track: #161b22;
+    --filter-text: #b1bac4;
+    --filter-on-bg: #30363d;
+    --filter-on-text: #f0f6fc;
+    --filter-chip-on-bg: #58a6ff;
+    --filter-chip-on-fg: #0d1117;
+    --filter-pill-bg: #172a45;
+    --filter-pill-fg: #a5cdff;
 }
 
-.tab {
-    padding: 0.5rem 1.2rem;
-    border-radius: 20px;
-    background: var(--card-bg);
-    color: var(--text-muted);
-    font-weight: 500;
-    border: 1px solid var(--border);
-    transition: all 0.2s;
+nav.home-filters { /* a <nav>, so undo the sticky header styles */
+    position: static; z-index: auto; display: block;
+    padding: 0; background: none; border: 0;
+    margin: 0 0 1.75rem;
 }
-
-.tab:hover {
-    color: var(--text);
-    text-decoration: none;
-    border-color: var(--accent);
+.filter-bar {
+    display: flex; align-items: center; gap: 0.5rem;
+    flex-wrap: nowrap; overflow-x: auto;
+    /* Room for focus rings, which the scroll box would otherwise clip. */
+    padding: 0.25rem 0.125rem;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
 }
+.filter-bar::-webkit-scrollbar { display: none; }
+.filter-switch {
+    display: inline-flex; flex-shrink: 0; gap: 2px; padding: 3px;
+    background: var(--filter-track); border: 1px solid var(--border); border-radius: 999px;
+}
+.filter-switch-item {
+    display: inline-flex; align-items: center; min-height: 34px;
+    padding: 0 0.95rem; border-radius: 999px;
+    color: var(--filter-text); font-size: 0.875rem; font-weight: 500; white-space: nowrap;
+}
+.filter-switch-item:hover { color: var(--filter-on-text); text-decoration: none; }
+.filter-switch-item.active {
+    background: var(--filter-on-bg); color: var(--filter-on-text); font-weight: 600;
+    box-shadow: 0 1px 2px var(--shadow);
+}
+.filter-divider {
+    flex-shrink: 0; width: 1px; height: 26px; margin: 0 0.25rem;
+    background: var(--border);
+}
+.filter-topics { display: flex; flex-shrink: 0; gap: 0.5rem; }
+.filter-chip {
+    display: inline-flex; align-items: center; min-height: 38px;
+    padding: 0 0.95rem; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--filter-text); font-size: 0.875rem; white-space: nowrap;
+}
+.filter-chip:hover { border-color: var(--accent); color: var(--filter-on-text); text-decoration: none; }
+.filter-chip.active, .filter-chip.active:hover {
+    background: var(--filter-chip-on-bg); border-color: var(--filter-chip-on-bg);
+    color: var(--filter-chip-on-fg); font-weight: 600;
+}
+.filter-switch-item:focus-visible, .filter-chip:focus-visible,
+.filter-remove:focus-visible, .filter-clear:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.active-filters {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+    margin-top: 0.75rem; font-size: 0.875rem; color: var(--text-muted);
+}
+.filter-remove {
+    display: inline-flex; align-items: center; gap: 0.4rem; min-height: 30px;
+    padding: 0 0.4rem 0 0.75rem; border-radius: 999px;
+    background: var(--filter-pill-bg); color: var(--filter-pill-fg);
+    font-size: 0.8rem; font-weight: 600; white-space: nowrap;
+}
+.filter-remove:hover { text-decoration: none; box-shadow: inset 0 0 0 1px var(--filter-pill-fg); }
+.filter-remove-x {
+    display: inline-grid; place-items: center; width: 18px; height: 18px;
+    border-radius: 50%; background: var(--bg); font-size: 0.65rem; line-height: 1;
+}
+.filter-clear { font-weight: 600; }
 
-.tab.active {
-    background: var(--accent);
-    color: #ffffff;
-    border-color: var(--accent);
+@media (max-width: 768px) {
+    /* Bleed to the screen edge so the row scrolls under the fade, and pad
+       the end so the last chip can scroll clear of it. */
+    .filter-bar {
+        margin: 0 -1rem;
+        padding: 0.25rem 2.5rem 0.25rem 1rem;
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+    }
+    .filter-switch-item { min-height: 36px; }
+    .filter-chip { min-height: 40px; }
+    .filter-remove { min-height: 36px; }
+    .filter-clear { display: inline-flex; align-items: center; min-height: 36px; }
 }
 
 /* Magazine Grid */
@@ -234,17 +314,33 @@ main {
     justify-content: flex-end;
     min-height: 400px;
     color: #ffffff;
+    position: relative; /* paints over .featured-image */
+}
+
+/* Covers the whole card (cover, centred) without taking part in layout, so
+   the card is still sized by its text, as it was with a background image. */
+.featured-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
 }
 
 .featured-card a:hover {
     text-decoration: none;
 }
 
+/* The scrim fades in over the overlay's top padding only, so every line of
+   text sits on at least 72% black: white text then stays above 9:1 even on
+   a white photo (it measured 2.7:1 at the title's first line before). */
 .featured-overlay {
     padding: 2rem;
-    background: linear-gradient(transparent 0%, rgba(0, 0, 0, 0.7) 15%, rgba(0, 0, 0, 0.85) 100%);
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0.72) 3rem, rgba(0, 0, 0, 0.85) 100%);
     margin-top: auto;
     padding-top: 3rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .featured-title {
@@ -334,7 +430,7 @@ main {
     color: #ffffff;
 }
 
-.badge-deal { background: #e94560; }
+.badge-deal { background: #c81e3a; } /* white text 5.7:1 */
 .badge-roundup { background: #4ecdc4; }
 .badge-alert { background: #f9a826; color: #1a1a2e; }
 .badge-summary { background: #2563eb; }
@@ -390,14 +486,20 @@ main {
     display: block;
 }
 
+/* The grid wraps its thumbnails in <picture> for a srcset; lay the <img> out
+   as if it were not there. */
+.card-thumb picture {
+    display: contents;
+}
+
 .card-body {
     flex: 1;
     min-width: 0;
 }
 
-/* Featured card with image */
+/* Featured card with image: the photo covers the card, so drop the gradient. */
 .featured-card.has-image {
-    background-image: none; /* override the gradient when image is set via inline style */
+    background-image: none;
 }
 
 /* Bottom grid thumbnail layout */
@@ -532,7 +634,7 @@ main {
 .vote-btn.active {
     border-color: var(--accent);
     background: var(--accent);
-    color: #ffffff;
+    color: var(--on-accent);
 }
 
 .vote-btn:disabled {
@@ -542,68 +644,6 @@ main {
 
 .vote-count {
     font-weight: 600;
-}
-
-/* Under Review */
-.under-review {
-    text-align: center;
-    padding: 4rem 2rem;
-    max-width: 600px;
-    margin: 0 auto;
-}
-
-.under-review h1 {
-    margin-bottom: 1rem;
-    color: var(--text-muted);
-}
-
-/* Subscribe Page */
-.subscribe-page {
-    max-width: 500px;
-    margin: 2rem auto;
-    text-align: center;
-}
-
-.subscribe-page h1 {
-    margin-bottom: 0.5rem;
-}
-
-.subscribe-page > p {
-    color: var(--text-muted);
-    margin-bottom: 2rem;
-}
-
-.subscribe-form {
-    display: flex;
-    gap: 0.75rem;
-    justify-content: center;
-}
-
-.subscribe-form input[type="email"] {
-    padding: 0.75rem 1rem;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--card-bg);
-    color: var(--text);
-    font-size: 1rem;
-    flex: 1;
-    max-width: 300px;
-}
-
-.subscribe-form button {
-    padding: 0.75rem 1.5rem;
-    background: var(--accent);
-    color: #ffffff;
-    border: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s;
-}
-
-.subscribe-form button:hover {
-    opacity: 0.9;
 }
 
 /* Messages */
@@ -616,13 +656,13 @@ main {
 
 .message.error {
     background: #fef2f2;
-    color: #dc2626;
+    color: #b91c1c; /* 5.9:1 */
     border: 1px solid #fecaca;
 }
 
 .message.success {
     background: #f0fdf4;
-    color: #16a34a;
+    color: #15803d; /* 4.8:1 */
     border: 1px solid #bbf7d0;
 }
 
@@ -638,6 +678,16 @@ main {
     border-color: #14532d;
 }
 
+/* A form field's own error, under the field. */
+.field-error {
+    color: #dc2626;
+    font-size: 0.85rem;
+    margin: 0.3rem 0 0;
+}
+[data-theme="dark"] .field-error {
+    color: #f87171;
+}
+
 /* Empty State */
 .empty-state {
     text-align: center;
@@ -646,13 +696,6 @@ main {
 }
 
 /* Footer */
-footer {
-    text-align: center;
-    padding: 2rem;
-    color: var(--text-muted);
-    border-top: 1px solid var(--border);
-    margin-top: 2rem;
-}
 
 /* Login Form */
 .login-form {
@@ -722,6 +765,20 @@ footer {
     font-size: 0.9rem;
 }
 
+.login-form .login-note {
+    background: var(--accent-subtle);
+    color: var(--text);
+    padding: 0.75rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+.draft-restored {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
 [data-theme="dark"] .login-form .error {
     background: #3b1114;
     color: #f87171;
@@ -775,20 +832,32 @@ footer {
     display: inline;
 }
 
+/* A plain .btn is a neutral, bordered button readable in both themes; the
+   coloured variants below fill it. Without the default, buttons with only
+   .btn (or an unstyled modifier like .btn-edit) were white text on white. */
 .btn {
+    display: inline-block;
     padding: 0.4rem 0.8rem;
-    border: none;
+    border: 1px solid var(--border);
     border-radius: 6px;
     font-size: 0.85rem;
     font-weight: 600;
+    line-height: 1.3;
     cursor: pointer;
-    color: #ffffff;
+    background: var(--card-bg);
+    color: var(--text);
+    text-decoration: none;
     transition: opacity 0.2s;
 }
 
-.btn:hover { opacity: 0.85; }
+.btn:hover { opacity: 0.85; text-decoration: none; }
 
+.btn-primary, .btn-approve, .btn-reject, .btn-revise, .btn-unpublish, .btn-warn, .btn-danger {
+    color: #ffffff;
+    border-color: transparent;
+}
 .btn-primary { background: var(--accent); }
+[data-theme="dark"] .btn-primary { color: #0d1117; }
 .btn-approve { background: #16a34a; }
 .btn-reject { background: #dc2626; }
 .btn-revise { background: #f59e0b; }
@@ -817,12 +886,37 @@ footer {
     font-weight: 600;
     text-transform: uppercase;
     color: #ffffff;
+    background: #64748b;
 }
 
-.badge-deal { background: #e94560; }
+.badge-deal { background: #c81e3a; } /* white text 5.7:1 */
 .badge-roundup { background: #4ecdc4; }
 .badge-alert { background: #f9a826; color: #1a1a2e; }
 .badge-summary { background: #2563eb; }
+
+/* .badge defaults to slate, so one with no colour of its own (a card's
+   category, a type the site does not style) is never white text on nothing.
+   Newsletter statuses get their own. */
+.badge-draft, .badge-hold, .badge-skipped {
+    background: var(--border);
+    color: var(--text);
+}
+.badge-auto_approved, .badge-approved {
+    background: #dcfce7;
+    color: #166534;
+}
+.badge-sent {
+    background: #dbeafe;
+    color: #1e40af;
+}
+[data-theme="dark"] .badge-auto_approved, [data-theme="dark"] .badge-approved {
+    background: #0f2e1a;
+    color: #7ee2a8;
+}
+[data-theme="dark"] .badge-sent {
+    background: #172a45;
+    color: #a5cdff;
+}
 
 /* Admin Tables */
 table {
@@ -901,6 +995,24 @@ tr:hover {
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+/* Admin-only: the article's database id, for matching logs and revisions. */
+.preview-id {
+    margin-left: 0.4rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* Admin-only note for a field enrichment has not filled yet. */
+.preview-missing {
+    margin: 0.75rem 0;
+    padding: 0.5rem 0.75rem;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
 }
 
 .preview-close {
@@ -1021,6 +1133,18 @@ tr:hover {
     color: #991b1b;
 }
 
+/* A revision the reconciler has stopped retrying. Deliberately not pulsing:
+   nothing is happening until the admin acts. */
+.status-badge.revision-failed {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+[data-theme="dark"] .status-badge.revision-failed {
+    background: #450a0a;
+    color: #fca5a5;
+}
+
 .status-badge.draft {
     background: #e5e7eb;
     color: #6b7280;
@@ -1133,34 +1257,237 @@ tr:hover {
     padding: 0.25rem 0;
 }
 
-/* Admin Navigation */
-.admin-nav {
-    display: flex;
-    gap: 1rem;
-    padding: 0.75rem 0;
-    margin-bottom: 1.5rem;
-    border-bottom: 1px solid var(--border);
-    flex-wrap: wrap;
+/* Admin preview: revision history as a conversation. Requests (the admin's
+   feedback) sit on the right, the rewrites that answered them on the left. */
+.admin-revision-section {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
 }
-.admin-nav a {
+
+.admin-revision-section > summary {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+/* A flex summary loses the browser's disclosure triangle, so draw one. */
+.admin-revision-section > summary::-webkit-details-marker {
+    display: none;
+}
+
+.admin-revision-section > summary::before {
+    content: "\25B8";
     color: var(--text-muted);
+    font-size: 1rem;
+}
+
+.admin-revision-section[open] > summary::before {
+    content: "\25BE";
+}
+
+.admin-revision-section[open] > summary {
+    margin-bottom: 0.5rem;
+}
+
+.revision-count {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.admin-revision-section h4 {
+    display: inline;
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.revision-thread-note {
+    margin-bottom: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.revision-thread {
+    list-style: none;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.revision-msg {
+    max-width: 85%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.revision-msg--request {
+    align-self: flex-end;
+    background: var(--accent-subtle);
+    border-color: transparent;
+    border-bottom-right-radius: 3px;
+}
+
+.revision-msg--response {
+    align-self: flex-start;
+    background: var(--bg);
+    border-bottom-left-radius: 3px;
+}
+
+/* A rewrite with its content gets room to read it once expanded. */
+.revision-msg--response:has(details) {
+    width: 85%;
+}
+
+.revision-msg--status {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.revision-msg--failed {
+    font-style: normal;
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
+[data-theme="dark"] .revision-msg--failed {
+    color: #f87171;
+    border-color: #7f1d1d;
+}
+
+.revision-msg-meta {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: 0.15rem;
+}
+
+.revision-msg-who {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.revision-msg-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.revision-msg-error {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.8rem;
+    font-style: normal;
+    overflow-wrap: anywhere;
+}
+
+.revision-score {
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.revision-content {
+    margin-top: 0.4rem;
+}
+
+.revision-content summary {
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.revision-content .article-content {
+    margin-top: 0.4rem;
+    padding: 0.75rem 1rem;
+    max-height: 420px;
+    overflow-y: auto;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    margin-bottom: 0;
+}
+
+.revision-content .article-content p {
+    margin-bottom: 0.75rem;
+}
+
+.revision-content .article-content h3 {
+    margin-top: 1rem;
+    font-size: 1rem;
+}
+
+/* Admin newsletter page: theme colours only, so it reads in both themes. */
+.nl-section { margin-bottom: 2rem; }
+.nl-section h2 { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.5rem; }
+.nl-when { font-weight: 600; margin-bottom: 0.25rem; }
+.nl-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.9rem; }
+.nl-help { margin-top: 0.5rem; }
+.nl-candidates { display: flex; flex-direction: column; gap: 0.6rem; }
+.nl-candidate {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.7rem 1rem;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; cursor: pointer;
+}
+.nl-candidate.featured { border-color: var(--accent); background: var(--accent-subtle); }
+.nl-candidate .dim, .nl-candidate .badge { margin-left: 0.4rem; }
+.nl-submit { margin-top: 0.9rem; }
+.nl-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+.nl-current { padding: 0.4rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); }
+.admin-select {
+    padding: 0.45rem 0.6rem; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 0.9rem;
+}
+.admin-newsletter .preview-note {
+    margin: 0 0 0.75rem; padding: 0.6rem 0.9rem; border-left: 4px solid #b45309;
+    background: #fef3c7; color: #78350f; border-radius: 4px;
+}
+[data-theme="dark"] .admin-newsletter .preview-note { background: #2a2110; color: #fde68a; }
+/* The email is designed on white, so its preview stays on white. */
+.nl-preview { width: 100%; min-height: 600px; border: 1px solid var(--border); border-radius: 8px; background: #ffffff; }
+.nl-manual summary { cursor: pointer; font-weight: 600; color: var(--text-muted); }
+.nl-manual p { margin: 0.5rem 0 0.75rem; }
+
+/* Sources: a source's edit form is a row under it, shown when targeted
+   (#edit-N), so it needs no script. */
+.source-edit-row:not(:target) { display: none; }
+.source-edit-row > td { background: var(--card-bg); }
+.source-edit-row .source-form { margin: 0; }
+.row-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; }
+.health-cell { white-space: nowrap; }
+.add-source { margin-top: 2rem; }
+.add-source > summary { cursor: pointer; font-weight: 650; font-size: 1.05rem; margin-bottom: 0.75rem; }
+.source-stale > td { background: #fef2f2; }
+[data-theme="dark"] .source-stale > td { background: #3b1114; }
+.health-flag { color: #b91c1c; font-weight: 600; }
+[data-theme="dark"] .health-flag { color: #f87171; }
+
+/* An admin page's title with its main action on the right. */
+.page-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+}
+
+.logout-link {
+    background: none;
+    border: none;
+    color: #dc2626;
+    cursor: pointer;
     font-weight: 500;
     font-size: 0.9rem;
-    padding: 0.3rem 0.6rem;
-    border-radius: 4px;
-}
-.admin-nav a:hover {
-    color: var(--accent);
-    background: var(--card-bg);
-    text-decoration: none;
-}
-.admin-nav a.active {
-    color: var(--accent);
-    font-weight: 600;
-}
-.admin-nav .logout-btn {
-    margin-left: auto;
-    color: #dc2626;
 }
 
 /* Back Link */
@@ -1257,6 +1584,9 @@ tr:hover {
         grid-template-columns: 1fr;
     }
 
+    /* The card and its link share one height, so no unlinked strip of
+       photo is left below the text. */
+    .featured-card,
     .featured-card a {
         min-height: 280px;
     }
@@ -1297,55 +1627,9 @@ tr:hover {
         border-radius: 6px;
     }
 
-    .subscribe-form {
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .subscribe-form input[type="email"] {
-        max-width: 100%;
-        width: 100%;
-    }
-
-    .category-tabs {
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        -webkit-overflow-scrolling: touch;
-        mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        padding-right: 2rem;
-    }
-
     .source-form-grid {
         grid-template-columns: 1fr;
     }
-}
-
-/* Hero Banner */
-.hero-banner {
-    text-align: center;
-    padding: 3rem 1rem;
-    margin-bottom: 2rem;
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-    border-radius: 12px;
-    color: #ffffff;
-}
-
-.hero-banner h1 {
-    font-size: 2.5rem;
-    font-weight: 800;
-    margin-bottom: 0.5rem;
-    letter-spacing: -0.5px;
-}
-
-.hero-banner p {
-    font-size: 1.1rem;
-    opacity: 0.85;
-}
-
-[data-theme="dark"] .hero-banner {
-    background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1a2332 100%);
-    border: 1px solid var(--border);
 }
 
 /* Vote Card */
@@ -1386,7 +1670,7 @@ tr:hover {
 
 .article-sidebar {
     position: sticky;
-    top: 80px;
+    top: calc(var(--sticky-offset) + 1rem);
     align-self: start;
 }
 
@@ -1468,11 +1752,15 @@ tr:hover {
     margin-top: 16px;
 }
 
-/* Editor notes - hidden on public site, visible in admin preview */
+/* Editor notes: admin-only remarks. Stored apart from article content and
+   shown by the admin preview; the old revision history still has some inline.
+   Hidden everywhere else as a fallback only -- the server never sends them to
+   public pages. */
 .editor-note {
     display: none;
 }
-.preview-body .editor-note {
+.preview-body .editor-note,
+.revision-content .editor-note {
     display: block;
     background: #fef3c7;
     color: #92400e;
@@ -1482,13 +1770,15 @@ tr:hover {
     margin-top: 12px;
     border-left: 3px solid #f59e0b;
 }
-[data-theme="dark"] .preview-body .editor-note {
+[data-theme="dark"] .preview-body .editor-note,
+[data-theme="dark"] .revision-content .editor-note {
     background: #451a03;
     color: #fbbf24;
 }
 
-/* Issue 12: Sources URLs truncation */
-.admin-table td a[href] {
+/* Issue 12: Sources URLs truncation. Only the URL cells: matching every
+   link in an admin table also cut article titles to ~35 characters. */
+.admin-table .url-cell a[href] {
     display: inline-block;
     max-width: 300px;
     overflow: hidden;
@@ -1504,7 +1794,7 @@ tr:hover {
     overflow-wrap: break-word;
 }
 
-.admin-table td:first-child a {
+.admin-table td:first-child a:not(.btn) {
     display: block;
     line-height: 1.4;
 }
@@ -1513,7 +1803,7 @@ tr:hover {
     .admin-table td:first-child {
         max-width: 250px;
     }
-    .admin-table td a[href] {
+    .admin-table .url-cell a[href] {
         max-width: 180px;
     }
 }
@@ -1538,13 +1828,8 @@ tr:hover {
     }
 
     /* Issue 12: Sources table URL cells - mobile override */
-    .admin-table td a[href] {
+    .admin-table .url-cell a[href] {
         max-width: 120px;
-    }
-
-    /* Issue 6: Hero card title readability */
-    .featured-overlay {
-        background: linear-gradient(transparent 20%, rgba(0,0,0,0.85));
     }
 
     /* Issue N2: Hide columns on mobile */
@@ -1569,26 +1854,6 @@ tr:hover {
         padding: 0.25rem 0;
     }
 
-    /* Issue 9 + 14: Admin nav horizontal scroll with fade hint */
-    .admin-nav {
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        white-space: nowrap;
-        -webkit-overflow-scrolling: touch;
-        padding-bottom: 8px;
-        position: relative;
-        mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        padding-right: 2rem;
-    }
-
-    /* Issue 10: Category filter pills touch-friendly */
-    .tab {
-        min-height: 44px;
-        display: flex;
-        align-items: center;
-        padding: 0.5rem 1rem;
-    }
 }
 
 /* Issue 4: Dashboard table at tablet */
@@ -1643,80 +1908,122 @@ tr.flagged { background: #fef2f2; }
 
 /* ========== Card Pages ========== */
 
-/* Cards listing hero */
+/* Cards index: one row of filters (category chips, a divider, the "No
+   annual fee" toggle), a results line with the count and the sort menu, then
+   compact tiles with each card's fee, best earning rate and offer. The chips
+   reuse the homepage filter styles above. */
 .cards-hero {
     text-align: center;
-    padding: 3rem 1rem 2rem;
+    padding: 1.75rem 1rem 1.25rem;
 }
 .cards-hero h1 {
     font-size: 2rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.4rem;
 }
 .cards-hero p {
     color: var(--text-muted);
-    font-size: 1.1rem;
+    font-size: 1.05rem;
+}
+.filter-count { margin-left: 0.35rem; font-size: 0.75rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.filter-chip.is-empty { opacity: 0.5; cursor: default; }
+.cards-filters { display: flex; align-items: center; gap: 0 0.25rem; }
+/* The chips scroll if they ever outgrow the row; the toggle stays put. */
+.cards-cat-bar { flex: 0 1 auto; min-width: 0; }
+.filter-toggle { flex-shrink: 0; gap: 0.5rem; }
+/* A checkbox drawn in the chip, ticked when the toggle is on. The tick has
+   empty alt text: aria-pressed already says the toggle is on. */
+.filter-toggle::before {
+    content: ""; flex: none; display: inline-grid; place-items: center;
+    width: 15px; height: 15px; box-sizing: border-box;
+    border: 1.5px solid currentColor; border-radius: 4px;
+    font-size: 11px; font-weight: 700; line-height: 1;
+}
+.filter-toggle.active::before {
+    content: "✓"; content: "✓" / "";
+    background: var(--filter-chip-on-fg); border-color: var(--filter-chip-on-fg); color: var(--filter-chip-on-bg);
+}
+/* The summary wraps within its side, so the sort stays on the first line. */
+.cards-results {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.5rem 1rem; margin: 0.6rem 0 1.25rem; padding-top: 0.6rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.875rem; color: var(--text-muted);
+}
+.cards-results-summary {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; min-width: 0; margin: 0;
+}
+/* Each separator stays with the item after it when the line wraps. */
+.cards-results-item { display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
+.cards-results-count, .cards-results-applied { color: var(--text); }
+.cards-results-count { font-weight: 600; }
+.cards-sort { flex: none; display: flex; align-items: center; gap: 0.4rem; margin-left: auto; white-space: nowrap; }
+.cards-sort select {
+    min-height: 34px; padding: 0 0.5rem; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; font-size: 0.875rem;
+}
+.cards-sort-go {
+    min-height: 34px; padding: 0 0.75rem; border: 1px solid var(--accent); border-radius: 8px;
+    background: var(--bg); color: var(--accent); font: inherit; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+}
+.cards-sort-go[hidden] { display: none; }
+.cards-sort-go:hover { background: var(--accent-subtle); }
+.cards-sort select:focus-visible, .cards-sort-go:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.cards-sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
-/* Issuer groups */
 .cards-category-group {
-    margin-bottom: 2.5rem;
+    margin-bottom: 2rem;
 }
 .category-heading {
     font-size: 1.25rem;
     font-weight: 700;
-    margin-bottom: 1rem;
+    margin-bottom: 0.9rem;
     padding-bottom: 0.5rem;
     border-bottom: 2px solid var(--border);
 }
 
-/* Card grid */
-.card-grid {
+.card-tiles {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 0.75rem;
 }
-.card-grid-item {
-    display: block;
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    color: var(--text);
-    text-decoration: none;
+.card-tile {
+    display: flex; align-items: flex-start; gap: 0.9rem;
+    padding: 0.85rem; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--card-bg); color: var(--text); text-decoration: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.card-grid-item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px var(--shadow);
+.card-tile:hover { border-color: var(--accent); box-shadow: 0 4px 12px var(--shadow); text-decoration: none; }
+.card-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* A fixed box, so tiles don't jump as lazy art arrives. */
+.card-tile-art { flex: none; display: grid; place-items: center; width: 96px; height: 61px; }
+.card-tile-art img { width: 96px; height: 61px; object-fit: contain; border-radius: 5px; }
+.card-tile-body { min-width: 0; }
+.card-tile-title { margin: 0.1rem 0 0.35rem; font-size: 1rem; line-height: 1.3; color: var(--text); }
+.card-tile-facts {
+    display: flex; flex-wrap: wrap; gap: 0.15rem 0.75rem; margin: 0;
+    font-size: 0.84rem; line-height: 1.4; color: var(--text-muted);
 }
-.card-grid-image {
-    padding: 1.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--border);
-}
-.card-grid-image img {
-    max-width: 200px;
-    width: 100%;
-    height: auto;
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-.card-grid-body {
-    padding: 1rem;
-}
-.card-grid-body h3 {
-    font-size: 1.05rem;
-    margin-bottom: 0.5rem;
-    line-height: 1.3;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
-.card-grid-excerpt {
-    font-size: 0.9rem;
-    color: var(--text-muted);
-    line-height: 1.5;
+.card-tile-fact b { color: var(--text); font-weight: 600; }
+
+@media (max-width: 768px) {
+    .cards-hero { padding: 1rem 0.5rem 0.75rem; }
+    .cards-hero h1 { font-size: 1.6rem; }
+    .cards-hero p { font-size: 0.95rem; }
+    /* The chips scroll sideways under the edge fade; the toggle sits on its
+       own line below them. */
+    .cards-filters { display: block; }
+    .cards-filter-divider { display: none; }
+    .filter-toggle { margin-top: 0.4rem; }
+    .cards-sort select, .cards-sort-go { min-height: 40px; }
+    .card-tiles { grid-template-columns: 1fr; gap: 0.5rem; }
+    .card-tile { gap: 0.75rem; padding: 0.65rem 0.7rem; }
+    .card-tile-title { margin-bottom: 0.25rem; }
+    .card-tile-art, .card-tile-art img { width: 80px; height: 51px; }
 }
 
 /* Issuer badge */
@@ -1743,77 +2050,168 @@ tr.flagged { background: #fef2f2; }
     color: var(--text-muted);
 }
 
-/* Card detail page */
+/* Card detail page: title, a summary panel (art and infographic; fee, offer
+   and earning rates; the verdict's first sentence; Apply and Compare), then a
+   sticky table of contents beside the sections, and a "Next steps" block at
+   the end. */
+
+
 .card-page {
-    max-width: 800px;
+    max-width: 1100px;
     margin: 0 auto;
     padding: 1rem;
 }
 
-/* Card detail — sidebar layout */
-.card-layout {
+/* Summary panel */
+.card-summary {
     display: grid;
-    grid-template-columns: 260px 1fr;
-    gap: 2rem;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 1.5rem;
     align-items: start;
-}
-.card-sidebar {
-    position: sticky;
-    top: 5rem;
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    margin-bottom: 1.75rem;
     padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card-bg);
 }
-.card-sidebar-image {
-    margin-bottom: 1rem;
-}
-.card-sidebar-image img {
+.card-summary-art img {
+    display: block;
     width: 100%;
     height: auto;
-    border-radius: 8px;
+    border-radius: 10px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
-
-/* Apply/Details button */
-.card-apply-btn {
+.card-summary-body, .card-summary-media { min-width: 0; }
+.card-summary-media .ig-bar { margin: 0.9rem 0 0; }
+/* One column per fact present (a card may lack a known fee, an offer or
+   rates), sharing the width evenly. */
+.card-facts {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    margin: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg);
+}
+.card-fact { min-width: 0; padding: 0.75rem 1rem; border-left: 1px solid var(--border); }
+.card-fact:first-child { border-left: 0; }
+.card-fact dt {
+    font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
+.card-fact dd { margin: 0.2rem 0 0; }
+.card-fact-value { display: block; font-size: 1.15rem; font-weight: 700; line-height: 1.3; }
+.card-fact-detail { display: block; margin-top: 0.2rem; font-size: 0.82rem; line-height: 1.4; color: var(--text-muted); }
+.card-summary-verdict {
+    margin: 0.9rem 0 0;
+    padding: 0.6rem 0.9rem;
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    background: var(--bg);
+    font-size: 0.95rem;
+    line-height: 1.55;
+}
+.card-summary-verdict-label {
     display: block;
-    text-align: center;
-    padding: 0.6rem 1rem;
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--accent);
+}
+.card-summary-verdict a { white-space: nowrap; }
+.card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem 1rem;
     margin-top: 1rem;
+}
+
+/* Apply: leaves for the issuer in a new tab, and says so (the arrow, plus
+   hidden text for screen readers). */
+.card-apply-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    min-height: 42px;
+    padding: 0 1.1rem;
     background: var(--accent);
     color: var(--bg);
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     border-radius: 8px;
     text-decoration: none;
     transition: opacity 0.15s;
 }
-.card-apply-btn:hover {
-    opacity: 0.85;
-}
+.card-apply-btn:hover { opacity: 0.88; text-decoration: none; }
+.card-apply-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-/* TOC in sidebar */
+/* Compare: a labelled GET form; the button submits, choosing doesn't. */
+.card-compare { flex: 1 1 280px; max-width: 440px; }
+/* "Compare with any of N cards" at the page end jumps here. */
+.card-compare select { scroll-margin-top: 2rem; }
+.card-compare label { display: block; margin-bottom: 0.3rem; font-size: 0.82rem; font-weight: 600; }
+.card-compare-row { display: flex; gap: 0.5rem; }
+.card-compare select {
+    flex: 1; min-width: 0; width: 100%; min-height: 42px; padding: 0 0.6rem;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; font-size: 0.9rem;
+}
+.card-compare button {
+    min-height: 42px; padding: 0 1rem;
+    border: 1px solid var(--accent); border-radius: 8px;
+    background: var(--bg); color: var(--accent); font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+}
+.card-compare button:hover { background: var(--accent-subtle); }
+.card-compare select:focus-visible, .card-compare button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Sections beside a sticky table of contents */
+.card-layout {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 760px);
+    gap: 3rem;
+    align-items: start;
+}
+.card-layout.no-toc { grid-template-columns: minmax(0, 760px); }
+.card-sidebar {
+    position: sticky;
+    top: calc(var(--sticky-offset) + 1rem);
+    max-height: calc(100vh - var(--sticky-offset) - 2rem);
+    overflow-y: auto;
+}
+/* A <nav>, so undo the site header's nav styles (sticky, padded, boxed). */
+nav.card-toc {
+    position: static; z-index: auto; display: block;
+    padding: 0; background: none; border: 0;
+}
+.card-toc-title {
+    margin: 0 0 0.4rem 0.5rem;
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-muted);
+}
 .card-toc ul {
     list-style: none;
     padding: 0;
     margin: 0;
 }
-.card-toc li { padding: 0.2rem 0; }
+.card-toc li { padding: 0.1rem 0; }
 .card-toc li a {
+    display: block;
+    padding: 0.3rem 0.5rem;
+    border-radius: 6px;
     font-size: 0.88rem;
     color: var(--accent);
     text-decoration: none;
-    display: block;
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
     transition: background 0.15s;
 }
-.card-toc li a:hover {
-    background: rgba(88,166,255,0.1);
+.card-toc li a:hover { background: var(--accent-subtle); }
+.card-toc li a[aria-current] {
+    background: var(--accent-subtle);
+    box-shadow: inset 3px 0 0 var(--accent);
+    font-weight: 600;
 }
 
-/* Page title — single H1, above the video hero, shared by both breakpoints */
+/* Page title — single H1, above the video hero */
 .card-title-block {
     margin-bottom: 1rem;
 }
@@ -1823,11 +2221,8 @@ tr.flagged { background: #fef2f2; }
     line-height: 1.2;
 }
 
-/* Mobile header + pills (hidden on desktop) */
-.card-mobile-header {
-    display: none;
-}
-.card-mobile-pills {
+/* Phone section pills (hidden on desktop) */
+.card-pills-wrap {
     display: none;
 }
 
@@ -1836,7 +2231,6 @@ tr.flagged { background: #fef2f2; }
     margin-bottom: 2rem;
     padding-bottom: 1.5rem;
     border-bottom: 1px solid var(--border);
-    scroll-margin-top: 5rem;
 }
 .card-section:last-child {
     border-bottom: none;
@@ -1860,6 +2254,12 @@ tr.flagged { background: #fef2f2; }
 .card-section-content li {
     margin-bottom: 0.35rem;
 }
+/* Links in the card's text are underlined: colour alone doesn't set them
+   apart (2.14:1 against the body text in dark mode). */
+.card-section-content a, .scouts-verdict-content a, .card-next-more a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
 
 /* Scout's Verdict (card detail page) */
 .scouts-verdict {
@@ -1868,7 +2268,6 @@ tr.flagged { background: #fef2f2; }
     padding: 1.25rem 1.5rem;
     margin: 2rem 0;
     border-radius: 0 8px 8px 0;
-    scroll-margin-top: 5rem;
 }
 .scouts-verdict-content {
     line-height: 1.7;
@@ -1881,7 +2280,6 @@ tr.flagged { background: #fef2f2; }
 /* Recent changes */
 .recent-changes {
     margin-top: 2rem;
-    scroll-margin-top: 5rem;
 }
 .recent-changes h2 {
     font-size: 1.3rem;
@@ -1916,23 +2314,59 @@ tr.flagged { background: #fef2f2; }
     white-space: nowrap;
 }
 
+/* Next steps: on every card page, after the verdict */
+.card-next-steps {
+    margin-top: 2rem;
+    padding: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--card-bg);
+}
+.card-next-steps h2 { margin: 0 0 0.75rem; font-size: 1.3rem; }
+.card-next-apply { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; }
+.card-next-note { font-size: 0.85rem; color: var(--text-muted); }
+.card-next-sub {
+    margin: 1.1rem 0 0.5rem;
+    font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+.card-rivals {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.card-rival {
+    display: flex; align-items: center; gap: 0.6rem; height: 100%;
+    padding: 0.55rem 0.65rem; border: 1px solid var(--border); border-radius: 10px;
+    background: var(--bg); color: var(--text); text-decoration: none;
+}
+.card-rival:hover { border-color: var(--accent); text-decoration: none; }
+.card-rival:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card-rival img { flex: none; width: 52px; height: 33px; object-fit: contain; }
+.card-rival-name { display: block; font-size: 0.9rem; font-weight: 600; line-height: 1.3; }
+.card-rival-cta { display: block; font-size: 0.8rem; font-weight: 600; color: var(--accent); }
+.card-next-more { margin: 1rem 0 0; font-size: 0.9rem; line-height: 1.6; color: var(--text-muted); }
+
 /* Cards listing page */
 .cards-listing {
-    max-width: 1000px;
+    max-width: 1100px;
     margin: 0 auto;
     padding: 0 1rem;
 }
 
 /* Card pages responsive — tablet */
 @media (max-width: 900px) {
-    .card-layout {
-        grid-template-columns: 200px 1fr;
-        gap: 1.25rem;
-    }
+    .card-summary { grid-template-columns: 200px minmax(0, 1fr); gap: 1.1rem; }
+    .card-layout { grid-template-columns: 180px minmax(0, 1fr); gap: 1.5rem; }
     .card-toc li a { font-size: 0.82rem; }
+    .card-fact { padding: 0.65rem 0.75rem; }
 }
 
-/* Card pages responsive — mobile */
+/* Card pages responsive — mobile: one column; the table of contents becomes
+   a row of pills that sticks under the header. */
 @media (max-width: 768px) {
     .card-layout {
         display: block;
@@ -1946,59 +2380,167 @@ tr.flagged { background: #fef2f2; }
     .card-title-block h1 {
         font-size: 1.35rem;
     }
-    .card-mobile-header {
+    .card-summary { grid-template-columns: minmax(0, 1fr); gap: 0.9rem; padding: 0.9rem; margin-bottom: 0.75rem; }
+    /* Art and infographic bar side by side; art alone keeps the full width. */
+    .card-summary-media.has-teaser { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 0.75rem; align-items: center; }
+    .card-summary-art { max-width: 320px; margin: 0 auto; }
+    .card-summary-media.has-teaser .card-summary-art { max-width: none; margin: 0; }
+    .card-summary-media .ig-bar { margin: 0; }
+    .card-summary-media .ig-bar-link img { width: 56px; }
+    .card-summary-media .ig-bar-meta { font-size: 0.72rem; }
+    /* The actions come straight after the facts, so they are on the first
+       screen; the verdict line follows them. */
+    .card-summary-body { display: flex; flex-direction: column; }
+    .card-facts { order: 1; }
+    .card-actions { order: 2; }
+    .card-summary-verdict { order: 3; }
+    .card-facts { grid-auto-flow: row; grid-template-columns: 1fr 1fr; }
+    /* An odd last fact (the third, or a lone one) takes the full row. */
+    .card-fact:last-child:nth-child(odd) { grid-column: 1 / -1; border-left: 0; }
+    .card-fact:nth-child(n+3) { border-top: 1px solid var(--border); }
+    .card-fact-value { font-size: 1.05rem; }
+    .card-actions { display: block; margin-top: 0.9rem; }
+    .card-apply-btn { display: flex; width: 100%; }
+    .card-compare { max-width: none; margin-top: 0.75rem; }
+    .card-pills-wrap {
         display: block;
-        background: var(--card-bg);
-        border: 1px solid var(--border);
-        border-radius: 10px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        text-align: center;
+        position: sticky;
+        top: var(--sticky-offset);
+        z-index: 50;
+        margin: 0 -1rem 1rem;
+        background: var(--bg);
+        border-bottom: 1px solid var(--border);
     }
-    .card-mobile-image {
-        width: 180px;
-        margin: 0 auto 0.75rem;
-    }
-    .card-mobile-image img {
-        width: 100%;
-        height: auto;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    }
+    /* Scrolls sideways under a fade at the right edge, padded so the last
+       pill can scroll clear of it. */
     .card-mobile-pills {
         display: flex;
         gap: 0.35rem;
         overflow-x: auto;
-        padding: 0.6rem 0;
-        margin-bottom: 1rem;
+        padding: 0.5rem 2.5rem 0.5rem 1rem;
         scrollbar-width: none;
         -webkit-overflow-scrolling: touch;
+        -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+        mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
     }
     .card-mobile-pills::-webkit-scrollbar { display: none; }
     .card-mobile-pills a {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
         flex-shrink: 0;
-        padding: 0.3rem 0.7rem;
+        min-height: 34px;
+        padding: 0 0.8rem;
         background: var(--card-bg);
         color: var(--text-muted);
         border: 1px solid var(--border);
-        border-radius: 16px;
-        font-size: 0.78rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
         text-decoration: none;
         white-space: nowrap;
     }
-    .card-mobile-pills a:hover {
-        background: rgba(88,166,255,0.1);
+    .card-mobile-pills a:hover, .card-mobile-pills a[aria-current] {
+        background: var(--accent-subtle);
         color: var(--accent);
         border-color: var(--accent);
     }
+    .card-mobile-pills a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    /* Anchors land below the header and the pills. */
+    .card-section, .scouts-verdict, .recent-changes, .card-next-steps, .card-video {
+        scroll-margin-top: 2.75rem;
+    }
+    .card-next-steps { padding: 1rem; }
+    .card-rivals { grid-template-columns: 1fr; }
     .changes-list li {
         flex-direction: column;
         gap: 0.25rem;
     }
-    .cards-hero h1 {
-        font-size: 1.5rem;
-    }
+}
+
+/* --- Ended offers ---
+   An article whose offer has passed its end date stays listed in filtered
+   views, search and card pages, marked "Ended" and toned down. Only the
+   image is faded: the badge and title keep WCAG AA contrast (4.5:1+) in
+   both themes. Contrast, light / dark: badge 10.3 / 12.3, title 7.6 / 8.7,
+   article banner 8.8 / 12.7. */
+:root {
+    --ended-badge-bg: #374151;
+    --ended-badge-fg: #ffffff;
+    --ended-text: #4b5563;
+    --ended-banner-bg: #fffbeb;
+    --ended-banner-fg: #78350f;
+    --ended-banner-border: #d97706;
+}
+[data-theme="dark"] {
+    --ended-badge-bg: #c9d1d9;
+    --ended-badge-fg: #0d1117;
+    --ended-text: #a8b1bb;
+    --ended-banner-bg: #2a2110;
+    --ended-banner-fg: #fde68a;
+    --ended-banner-border: #b45309;
+}
+
+.ended-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--ended-badge-bg);
+    color: var(--ended-badge-fg);
+}
+
+.article-card.is-ended {
+    background: var(--bg);
+    border-style: dashed;
+}
+.article-card.is-ended h3,
+.search-item.is-ended .search-item-title,
+.changes-list li.is-ended .change-summary {
+    color: var(--ended-text);
+}
+/* A muted search title loses the accent colour that marks it as a link, so
+   it keeps an underline instead -- on the title text only, not the badge or
+   the space after it. */
+.search-item.is-ended .search-item-title,
+.search-item.is-ended .search-item-title:hover {
+    text-decoration: none;
+}
+.search-item.is-ended .ended-title {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.search-item.is-ended .search-item-title:hover .ended-title {
+    text-decoration-thickness: 2px;
+}
+.article-card.is-ended .card-thumb img {
+    opacity: 0.45;
+    filter: grayscale(100%);
+}
+/* The featured slot only holds an ended offer when every article in the view
+   has ended. Grey the photo without touching the overlay text; the photo is
+   its own <img>, so the filter reaches nothing else. */
+.featured-card.is-ended .featured-image {
+    filter: grayscale(100%);
+}
+/* The featured overlay is dark in both themes, so its badge is always the
+   light chip (#111827 on #e5e7eb, 14.3:1). */
+.featured-card .ended-badge {
+    background: #e5e7eb;
+    color: #111827;
+}
+
+.offer-ended-banner {
+    margin: 0 0 1.25rem;
+    padding: 0.85rem 1.1rem;
+    border: 1px solid var(--ended-banner-border);
+    border-left-width: 5px;
+    border-radius: 8px;
+    background: var(--ended-banner-bg);
+    color: var(--ended-banner-fg);
+    font-weight: 600;
+    line-height: 1.5;
 }
 
 /* --- Search --- */
@@ -2076,16 +2618,117 @@ tr.flagged { background: #fef2f2; }
     border: none;
     border-radius: 6px;
     background: var(--accent);
-    color: #fff;
+    color: var(--on-accent);
     font-size: 1rem;
     cursor: pointer;
 }
 .search-form button:hover {
     opacity: 0.9;
 }
-.search-empty {
+.search-summary {
     color: var(--text-muted);
-    font-size: 1.05rem;
+    font-size: 0.95rem;
+    margin: -1rem 0 1.5rem;
+}
+.search-summary strong {
+    color: var(--text);
+}
+.search-empty {
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 1.1rem 1.25rem;
+    color: var(--text-muted);
+}
+.search-empty h2 {
+    font-size: 1.15rem;
+    color: var(--text);
+    margin: 0 0 0.35rem;
+}
+.search-empty a {
+    color: var(--accent);
+}
+.search-empty-links {
+    list-style: none;
+    padding: 0;
+    margin: 0.85rem 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.search-empty-links a {
+    display: inline-block;
+    padding: 0.35rem 0.85rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 0.9rem;
+    text-decoration: none;
+    background: var(--card-bg);
+}
+.search-empty-links a:hover {
+    border-color: var(--accent);
+}
+/* Cards whose title holds every word of the query, above the articles. */
+.search-card-tiles {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+}
+.search-card-tile {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    height: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card-bg);
+    text-decoration: none;
+    color: var(--text);
+}
+.search-card-tile:hover {
+    border-color: var(--accent);
+}
+.search-card-tile img {
+    width: 64px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 4px;
+    flex: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.search-card-name {
+    display: block;
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 1.3;
+}
+.search-card-meta {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+}
+.search-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.3rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.search-item-meta .type-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.45rem;
+}
+.search-more-cards summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.92rem;
+    padding: 0.6rem 0;
 }
 .search-section {
     margin-bottom: 2rem;
@@ -2130,8 +2773,18 @@ tr.flagged { background: #fef2f2; }
 }
 .search-pagination {
     display: flex;
-    gap: 0.75rem;
-    margin-top: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+.btn-page.is-current {
+    background: var(--accent-subtle);
+    color: var(--text);
+    font-weight: 600;
+}
+.page-gap {
+    color: var(--text-muted);
 }
 .btn-page {
     padding: 0.35rem 0.85rem;
@@ -2144,14 +2797,10 @@ tr.flagged { background: #fef2f2; }
 .btn-page:hover {
     background: rgba(37, 99, 235, 0.08);
 }
-.tag-filters { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0 1.5rem; }
-.tag-pill { padding: 0.4rem 0.8rem; border-radius: 20px; border: 1px solid var(--border);
-            color: var(--text-muted); font-size: 0.85rem; text-decoration: none; transition: all 0.15s; }
-.tag-pill.active, .tag-pill:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 .article-tags { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0.5rem 0; }
 .tag-badge { padding: 0.15rem 0.5rem; border-radius: 4px; background: var(--accent-subtle);
              color: var(--accent); font-size: 0.75rem; text-decoration: none; font-weight: 500; }
-.tag-badge:hover { background: var(--accent); color: #fff; }
+.tag-badge:hover { background: var(--accent); color: var(--on-accent); }
 
 /* ========== Compare Page ========== */
 .compare-page {
@@ -2165,11 +2814,21 @@ tr.flagged { background: #fef2f2; }
 }
 .compare-intro {
     color: var(--text-muted);
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
+}
+.compare-notice {
+    margin: 0 0 1.25rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--ended-banner-border);
+    border-left-width: 5px;
+    border-radius: 8px;
+    background: var(--ended-banner-bg);
+    color: var(--ended-banner-fg);
+    font-weight: 600;
 }
 
-/* Selector form */
-.compare-selector-form {
+/* Picker */
+.compare-picker {
     max-width: 900px;
 }
 .compare-selector-row {
@@ -2179,7 +2838,7 @@ tr.flagged { background: #fef2f2; }
 }
 .compare-selector-row label {
     flex: 1;
-    min-width: 250px;
+    min-width: 220px;
     font-weight: 600;
     font-size: 0.9rem;
     display: flex;
@@ -2200,20 +2859,117 @@ tr.flagged { background: #fef2f2; }
     border-color: var(--accent);
     box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
 }
-
-/* Table wrapper */
-.compare-table-wrap {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+.compare-submit {
     margin-top: 1rem;
+    padding: 0.6rem 1.5rem;
+    border: 0;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+[data-theme="dark"] .compare-submit {
+    color: #0d1117;
+}
+.compare-submit:hover {
+    opacity: 0.9;
+}
+.compare-popular {
+    margin-top: 2.5rem;
+}
+.compare-popular h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.6rem;
+}
+.compare-popular ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+.compare-popular a {
+    display: inline-block;
+    padding: 0.4rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--card-bg);
+    font-size: 0.9rem;
+    text-decoration: none;
+}
+.compare-popular a:hover {
+    border-color: var(--accent);
+}
+
+/* Legend and tools above the table */
+.compare-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 1.25rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0.25rem 0 0.75rem;
+}
+.compare-legend strong {
+    color: var(--text);
+}
+.compare-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+}
+.compare-diff-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.9rem;
+    padding: 0.35rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+}
+.compare-diff-toggle[hidden] {
+    display: none;
+}
+.compare-change summary {
+    display: inline-block;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent);
+    padding: 0.35rem 0;
+}
+.compare-change[open] {
+    flex-basis: 100%;
+}
+.compare-change .compare-picker {
+    margin: 0.5rem 0 0.5rem;
 }
 
 /* Table */
 .compare-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     table-layout: fixed;
-    min-width: 600px;
+}
+.compare-table [hidden] {
+    display: none !important;
+}
+/* The site's generic th style is upper case; here th holds card names and
+   row labels. */
+.compare-table th {
+    text-transform: none;
+    letter-spacing: normal;
+}
+.compare-table .compare-section-head tr:hover,
+.compare-table thead tr:hover {
+    background: none;
 }
 .compare-table th,
 .compare-table td {
@@ -2222,84 +2978,144 @@ tr.flagged { background: #fef2f2; }
     vertical-align: top;
     border-bottom: 1px solid var(--border);
     font-size: 0.92rem;
+    overflow-wrap: anywhere;
 }
-
-/* Zebra striping */
-.compare-table tbody tr:nth-child(even) {
-    background: var(--card-bg);
-}
-
-/* Column tinting for 2nd and 3rd card columns */
-.compare-table th.compare-card-col:nth-child(3),
 .compare-table td:nth-child(3) {
-    background: rgba(37, 99, 235, 0.03);
+    background: rgba(37, 99, 235, 0.035);
 }
-[data-theme="dark"] .compare-table th.compare-card-col:nth-child(3),
 [data-theme="dark"] .compare-table td:nth-child(3) {
-    background: rgba(88, 166, 255, 0.04);
+    background: rgba(88, 166, 255, 0.07);
 }
 
-/* Label column — fixed narrow width, card columns share remaining space equally */
-.compare-label-col {
-    font-weight: 600;
-    white-space: nowrap;
-    width: 18%;
-    color: var(--text-muted);
-    font-size: 0.88rem;
+/* The card header stays in view under the site header. */
+.compare-table thead th,
+.compare-table thead td {
+    position: sticky;
+    top: var(--sticky-offset); /* below the sticky site header */
+    z-index: 3;
+    background: var(--bg);
+    border-bottom: 2px solid var(--border);
+    box-shadow: 0 6px 8px -8px var(--shadow);
 }
-
-/* Card column header */
+.compare-corner {
+    width: 180px;
+}
 .compare-card-col {
-    text-align: center;
-    min-width: 180px;
+    text-align: left;
+}
+.compare-card-link {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    text-decoration: none;
+}
+.compare-card-link:hover .compare-card-name {
+    text-decoration: underline;
 }
 .compare-card-img {
-    max-width: 140px;
-    width: 100%;
+    width: 72px;
     height: auto;
-    border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
-    margin-bottom: 0.5rem;
+    flex: none;
+    border-radius: 5px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
 }
-.compare-header-select {
-    font-weight: 600;
-    font-size: 0.82rem;
-    width: 100%;
-    display: block;
-}
-.compare-fee {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    margin-top: 0.35rem;
-}
-
-/* Winner star */
-.compare-winner {
-    color: var(--accent);
-    font-weight: 600;
-}
-
-/* Section headers (collapsible) */
-.compare-section-header td {
+.compare-card-name {
     font-weight: 700;
     font-size: 0.95rem;
-    background: var(--card-bg);
-    border-bottom: 2px solid var(--border);
-    padding: 0.75rem 0.85rem;
+    line-height: 1.25;
+    color: var(--accent);
 }
-.compare-section-header:hover td {
-    background: var(--accent-subtle);
-}
-.compare-toggle-icon {
-    display: inline-block;
-    width: 1em;
-    font-size: 0.75rem;
-    margin-right: 0.35rem;
-    vertical-align: middle;
+.compare-fee {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
 }
 
-/* Scout's Take row */
-.compare-scouts-take td {
+/* Row labels: a fixed column that wraps (labels used to spill into the
+   first card's column). */
+.compare-label-col {
+    width: 180px;
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.86rem;
+}
+.compare-value {
+    font-weight: 600;
+}
+.compare-value.is-winner {
+    color: var(--accent);
+}
+.compare-winner {
+    color: var(--accent);
+}
+.compare-note {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+.compare-none {
+    color: var(--text-muted);
+}
+.compare-list {
+    margin: 0;
+    padding-left: 1.05rem;
+}
+.compare-list li + li {
+    margin-top: 0.3rem;
+}
+
+/* Section headers: a button that shows and hides the rows below. */
+.compare-section-head th {
+    background: var(--card-bg);
+    border-bottom: 2px solid var(--border);
+    padding: 0;
+}
+.compare-section-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 0.85rem;
+    background: none;
+    border: 0;
+    color: var(--text);
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.98rem;
+    cursor: pointer;
+}
+.compare-section-toggle:hover {
+    color: var(--accent);
+}
+.compare-section-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+.compare-toggle-icon::before {
+    content: "\25BE"; /* down: open */
+    display: inline-block;
+    width: 1em;
+    font-size: 0.85rem;
+}
+.compare-section-toggle[aria-expanded="false"] .compare-toggle-icon::before {
+    content: "\25B8"; /* right: closed */
+}
+.compare-section-note {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: var(--text-muted);
+}
+.compare-table.only-differences tr[data-same] {
+    display: none;
+}
+
+/* Closing rows */
+.compare-scouts-take td,
+.compare-scouts-take th {
     border-top: 2px solid var(--border);
     padding-top: 1rem;
 }
@@ -2307,90 +3123,109 @@ tr.flagged { background: #fef2f2; }
     font-size: 0.9rem;
     line-height: 1.5;
     color: var(--text-muted);
-    word-wrap: break-word;
-    overflow-wrap: break-word;
+}
+.compare-links td,
+.compare-links th {
+    border-bottom: 0;
+}
+.compare-review-link {
+    font-size: 0.88rem;
+    font-weight: 600;
 }
 
-/* Responsive: sticky first column on mobile */
+/* Phones and small tablets: each row's label goes on its own line above the
+   values, so every card gets a full column and all of them fit without
+   scrolling sideways. Roles in the markup keep the table semantics. */
 @media (max-width: 768px) {
     .compare-page {
         padding: 0.5rem;
     }
-
-    /* Make the table wrapper show a right-edge shadow as a scroll hint */
-    .compare-table-wrap {
-        position: relative;
+    .compare-table,
+    .compare-table thead,
+    .compare-table tbody {
+        display: block;
     }
-    .compare-table-wrap::after {
-        content: "";
-        position: absolute;
-        top: 0;
-        right: 0;
-        width: 24px;
-        height: 100%;
-        background: linear-gradient(to right, transparent, rgba(0,0,0,0.08));
-        pointer-events: none;
+    .compare-table tr {
+        display: grid;
+        grid-template-columns: repeat(var(--compare-cols, 2), minmax(0, 1fr));
+        column-gap: 0.5rem;
+        border-bottom: 1px solid var(--border);
     }
-
-    .compare-table .compare-label-col {
-        position: sticky;
-        left: 0;
-        background: var(--bg);
-        z-index: 1;
-        min-width: 90px;
-        max-width: 110px;
-        font-size: 0.78rem;
-        white-space: normal;
-        word-break: break-word;
-        padding: 0.5rem 0.5rem;
-    }
-    .compare-table tbody tr:nth-child(even) .compare-label-col {
-        background: var(--card-bg);
+    .compare-cols-3 tr {
+        --compare-cols: 3;
     }
     .compare-table th,
     .compare-table td {
-        padding: 0.5rem 0.5rem;
+        padding: 0.35rem 0.15rem 0.55rem;
+        border-bottom: 0;
         font-size: 0.82rem;
     }
-    .compare-table td {
-        word-wrap: break-word;
-        overflow-wrap: break-word;
+    .compare-table td:nth-child(3),
+    [data-theme="dark"] .compare-table td:nth-child(3) {
+        background: none;
     }
-    .compare-card-col {
-        min-width: 150px;
-        text-align: center;
+    .compare-table .compare-label-col {
+        grid-column: 1 / -1;
+        width: auto;
+        padding: 0.6rem 0.15rem 0;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
     }
-
-    /* Stack card image and select vertically; make select full-width of its column */
-    .compare-card-col {
-        display: table-cell; /* keep table cell layout */
+    .compare-corner {
+        display: none;
+    }
+    .compare-table thead {
+        position: sticky;
+        top: var(--sticky-offset); /* below the sticky site header */
+        z-index: 3;
+        background: var(--bg);
+        box-shadow: 0 6px 8px -8px var(--shadow);
+    }
+    .compare-table thead th {
+        position: static;
+        box-shadow: none;
+        border-bottom: 0;
+        padding: 0.5rem 0.15rem;
+    }
+    .compare-table thead tr {
+        border-bottom: 2px solid var(--border);
+    }
+    .compare-card-link {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.3rem;
     }
     .compare-card-img {
-        max-width: 90px;
-        display: block;
-        margin: 0 auto 0.4rem;
-    }
-    .compare-header-select {
-        font-size: 0.7rem;
-        min-width: 0;
-        max-width: none;
         width: 100%;
-        box-sizing: border-box;
+        max-width: 52px;
     }
-
-    /* Verdict text smaller on mobile */
+    .compare-card-name {
+        font-size: 0.78rem;
+        line-height: 1.2;
+    }
+    .compare-fee {
+        font-size: 0.72rem;
+        margin-top: 0.15rem;
+    }
+    .compare-section-head tr {
+        display: block;
+    }
+    .compare-section-head th {
+        display: block;
+    }
+    .compare-note {
+        font-size: 0.72rem;
+    }
+    .compare-list {
+        padding-left: 0.9rem;
+    }
     .compare-verdict {
-        font-size: 0.8rem;
+        font-size: 0.78rem;
     }
-
-    /* Welcome bonus cells: prevent overflow */
-    .compare-table td {
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-        hyphens: auto;
+    .compare-legend {
+        font-size: 0.78rem;
     }
-
-    /* Selector page: make dropdowns full-width on mobile */
     .compare-selector-row {
         flex-direction: column;
     }
@@ -2398,50 +3233,9 @@ tr.flagged { background: #fef2f2; }
         min-width: 0;
         width: 100%;
     }
-    .compare-select {
-        min-width: 0;
-        width: 100%;
-    }
 }
 
-/* === Card embeds at bottom of article === */
-.card-embeds { margin-top: 32px; }
-.card-embeds-heading {
-    margin: 0 0 4px;
-    color: var(--text-muted);
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 6px;
-    font-weight: 600;
-}
-.card-embed {
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin: 16px 0;
-    box-shadow: 0 2px 6px var(--shadow);
-}
-.card-embed-top { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
-.card-embed-logo { width: 96px; height: 60px; border-radius: 6px; flex-shrink: 0;
-    object-fit: contain; background: var(--bg); border: 1px solid var(--border); }
-.card-embed-name { font-size: 18px; font-weight: 600; margin: 0; }
-.card-embed-name a { color: var(--text); text-decoration: none; }
-.card-embed-name a:hover { color: var(--accent); }
-.card-embed-issuer { color: var(--text-muted); font-size: 12px; }
-.card-embed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
-    padding: 12px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
-    margin-bottom: 12px; }
-.card-embed-grid .stat b { display: block; color: var(--text-muted); font-weight: 500;
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
-.card-embed-grid .stat span { font-size: 14px; font-weight: 500; color: var(--text); }
-.card-embed-verdict { font-size: 13px; color: var(--text); border-left: 3px solid var(--accent);
-    padding: 2px 12px; margin: 0 0 12px; font-style: italic; }
-.card-embed-cta { display: inline-block; background: var(--accent); color: var(--bg);
-    padding: 8px 16px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; }
-.card-embed-cta:hover { filter: brightness(0.92); }
+/* Card embeds at the end of an article: see "Article page" below. */
 
 /* === Admin: linked-cards curation UI === */
 .admin-shell { background: var(--card-bg); padding: 16px 24px;
@@ -2484,7 +3278,7 @@ tr.flagged { background: #fef2f2; }
     padding: 10px 20px; border-radius: 6px; font-size: 14px; cursor: pointer; text-decoration: none; }
 
 /* Card video — click-to-load YouTube facade */
-.card-video { margin: 0 0 24px; scroll-margin-top: 5rem; }
+.card-video { margin: 0 0 24px; }
 .card-video-heading { font-size: 1.1rem; margin-bottom: 10px; }
 .card-video-facade, .card-video-frame { width: 100%; aspect-ratio: 16 / 9; display: block;
     border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 2px 6px var(--shadow); }
@@ -2498,6 +3292,600 @@ tr.flagged { background: #fef2f2; }
 .card-video-facade:hover .card-video-play { background: rgba(0,0,0,0.78); transform: translate(-50%, -50%) scale(1.06); }
 .card-video-facade:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .card-video-caption { color: var(--text-muted); font-size: 0.85rem; margin-top: 8px; }
+
+/* Card infographic: a compact bar under the card art in the summary panel
+   that opens the full image in a viewer. The thumbnail keeps a white ground
+   because the artwork is light in both themes. */
+.ig-bar { margin: 0 0 1rem; }
+.ig-bar-link { display: flex; align-items: center; gap: 0.7rem; padding: 0.45rem;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text);
+    text-decoration: none; cursor: zoom-in; }
+.ig-bar-link img { width: 84px; height: auto; flex: none; border-radius: 6px;
+    border: 1px solid var(--border); background: #fff; }
+.ig-bar-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.ig-bar-title { font-weight: 600; font-size: 0.88rem; }
+.ig-bar-cta { margin-top: 2px; font-size: 0.82rem; font-weight: 600; color: var(--accent); white-space: nowrap; }
+.ig-bar-link:hover .ig-bar-cta { text-decoration: underline; }
+.ig-bar-link:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.ig-bar-meta { color: var(--text-muted); font-size: 0.75rem; margin: 0.35rem 0 0; }
+
+/* The site reset zeroes margins, which would pin a modal dialog to the top-left. */
+dialog.ig-lightbox { margin: auto; padding: 0; border: 0; background: transparent;
+    width: 100%; max-width: min(1024px, 96vw); max-height: 96vh; overflow: visible; }
+dialog.ig-lightbox::backdrop { background: rgba(8, 12, 20, 0.82); }
+/* Keep the page behind the viewer still, so closing it returns the reader to
+   where they were. overscroll-behavior stops scroll chaining at the frame's end. */
+html:has(dialog.ig-lightbox[open]) { overflow: hidden; }
+.ig-lightbox-frame { max-height: 96vh; overflow: auto; overscroll-behavior: contain; border-radius: 12px; background: #fff; }
+.ig-lightbox-frame img { display: block; width: 100%; height: auto; }
+.ig-text { padding: 0.9rem 1.5rem 1rem; color: #1a1a2e; border-top: 1px solid #e2e8f0; }
+.ig-text summary { cursor: pointer; font-weight: 600; font-size: 0.95rem; }
+.ig-text[open] summary { margin-bottom: 0.6rem; }
+.ig-text summary:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.ig-text ul { margin: 0; padding-left: 1.2rem; }
+.ig-text li { font-size: 0.92rem; line-height: 1.55; margin: 0 0 0.55rem; }
+.ig-lightbox-bar { position: sticky; top: 0; left: 0; z-index: 1; display: flex; justify-content: space-between;
+    align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; font-size: 0.85rem;
+    background: #0f172a; color: #fff; }
+/* Underlined: colour alone does not separate it from the text beside it. */
+.ig-lightbox-bar a { color: #93c5fd; text-decoration: underline; }
+.ig-lightbox-close { font: inherit; font-size: 0.9rem; color: #fff; background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 0.25rem 0.6rem; cursor: pointer; }
+.ig-lightbox-close:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.ig-lightbox-meta { min-width: 0; margin-right: auto; }
+.ig-lightbox-zoom { font: inherit; font-size: 0.9rem; color: #fff; background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 0.25rem 0.6rem; cursor: pointer; white-space: nowrap; }
+.ig-lightbox-zoom[aria-pressed="true"] { background: rgba(255,255,255,0.28); }
+.ig-lightbox-zoom:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+/* Zoomed: the image at its real width; the frame scrolls both ways and the
+   bar stays put. */
+.ig-lightbox-frame.is-zoomed img { width: auto; max-width: none; }
+.ig-lightbox-frame.is-zoomed .ig-text { max-width: 96vw; }
+.ig-lightbox-close, .ig-lightbox-zoom { white-space: nowrap; }
+/* Narrow screens: the teaser under the card art already gives the date, so
+   the bar keeps to one line with "Open image", Zoom and Close. */
+@media (max-width: 480px) { .ig-lightbox-date { display: none; } }
+
+/* ==========================================================================
+   Brand: the mountain mark, misty header, home hero and footer band. The
+   artwork (static/img/brand/) matches the strip at the bottom of the card
+   infographics; scripts/brand/gen_band.py regenerates the ridges.
+   ========================================================================== */
+.brand-mark { display: block; height: auto; }
+.brand-mark.on-dark, .brand-plane.on-dark, .footer-plane.on-dark { display: none; }
+[data-theme="dark"] .brand-mark.on-light, [data-theme="dark"] .brand-plane.on-light, [data-theme="dark"] .footer-plane.on-light { display: none; }
+[data-theme="dark"] .brand-mark.on-dark, [data-theme="dark"] .brand-plane.on-dark, [data-theme="dark"] .footer-plane.on-dark { display: block; }
+.brand-text { display: flex; flex-direction: column; }
+.brand-word { font-weight: 800; letter-spacing: -0.035em; line-height: 1; color: #0f1f6e; }
+.brand-tag { display: block; text-transform: uppercase; letter-spacing: 0.18em; font-weight: 600; color: #1d3f8a; }
+[data-theme="dark"] .brand-word { color: #e6edf3; }
+[data-theme="dark"] .brand-tag { color: #9cc3f5; }
+
+/* Header: light sky with faint ridges along the bottom edge */
+nav.site-nav {
+    padding: 0.8rem 2rem 1.35rem;
+    background: url(/static/img/brand/strip-light.svg) center bottom / 100% 20px no-repeat,
+                linear-gradient(180deg, #f8fbfe 0%, #e6f1fb 100%);
+    border-bottom: 1px solid #d3e5f5;
+}
+[data-theme="dark"] nav.site-nav {
+    background: url(/static/img/brand/strip-dark.svg) center bottom / 100% 20px no-repeat,
+                linear-gradient(180deg, #0b1222 0%, #0f1a31 100%);
+    border-bottom-color: #1e2d4a;
+}
+nav .brand-logo { display: inline-flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
+nav .brand-logo:hover { text-decoration: none; }
+nav .brand-logo .brand-mark { width: 50px; }
+nav .brand-logo .brand-word { font-size: 1.65rem; }
+nav .brand-logo .brand-tag { font-size: 0.66rem; margin-top: 0.35rem; }
+nav.site-nav .nav-links { gap: 0.25rem; }
+/* Every header control is at least 44px tall, the touch-target guideline. */
+nav.site-nav .nav-link {
+    display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.7rem;
+    border-radius: 8px; font-size: 1rem;
+}
+nav.site-nav .nav-link:hover { background: rgba(37, 99, 235, 0.08); }
+nav.site-nav .nav-link[aria-current="page"] { color: var(--text); box-shadow: inset 0 -3px 0 var(--accent); border-radius: 0; }
+.nav-icon-btn, .nav-search button#search-toggle {
+    width: 44px; height: 44px; padding: 0; border-radius: 999px;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.nav-search button#search-toggle:hover { background: rgba(37, 99, 235, 0.08); }
+#theme-toggle.theme-icon-btn { background: rgba(255, 255, 255, 0.7); margin-left: 0.25rem; }
+[data-theme="dark"] #theme-toggle.theme-icon-btn { background: rgba(13, 21, 38, 0.6); }
+#theme-toggle .i-sun, .footer-theme-toggle .i-sun { display: none; }
+[data-theme="dark"] #theme-toggle .i-sun, [data-theme="dark"] .footer-theme-toggle .i-sun { display: block; }
+[data-theme="dark"] #theme-toggle .i-moon, [data-theme="dark"] .footer-theme-toggle .i-moon { display: none; }
+/* The header Newsletter link: an outlined pill, quieter than a filled
+   button, with the envelope. On phones only the envelope shows; the label
+   stays for screen readers. */
+nav.site-nav .nav-subscribe {
+    display: inline-flex; align-items: center; gap: 0.4rem; min-height: 44px; margin-left: 0.4rem; padding: 0 0.95rem;
+    border: 1px solid #b9d3ee; border-radius: 999px; background: rgba(255, 255, 255, 0.7);
+    color: #15307a; font-size: 0.95rem; font-weight: 600; white-space: nowrap;
+}
+nav.site-nav .nav-subscribe:hover { text-decoration: none; border-color: var(--accent); color: var(--accent); }
+nav.site-nav .nav-subscribe[aria-current="page"] { border-color: var(--accent); color: var(--accent); }
+[data-theme="dark"] nav.site-nav .nav-subscribe { border-color: #34507e; background: rgba(13, 21, 38, 0.6); color: #cfe3ff; }
+[data-theme="dark"] nav.site-nav .nav-subscribe:hover,
+[data-theme="dark"] nav.site-nav .nav-subscribe[aria-current="page"] { border-color: #9cc3f5; color: #e6edf3; }
+.nav-subscribe svg { flex-shrink: 0; }
+
+/* Home hero: one line about the site over the misty ridges. The logo is
+   already in the header, so it is not repeated here. */
+.hero-strip {
+    position: relative; overflow: hidden;
+    margin-bottom: 1.5rem; padding: 1.6rem 2rem 3.4rem;
+    border: 1px solid #d6e7f7; border-radius: 12px; color: #15307a;
+    background: url(/static/img/brand/band-light.svg) center bottom / 100% 64px no-repeat,
+                linear-gradient(180deg, #f6fafe 0%, #e3f0fb 100%);
+}
+[data-theme="dark"] .hero-strip {
+    border-color: var(--border); color: #d6e7ff;
+    background: url(/static/img/brand/band-dark.svg) center bottom / 100% 64px no-repeat,
+                linear-gradient(180deg, #0a1120 0%, #0e1930 100%);
+}
+.hero-strip h1 { position: relative; font-size: 1.9rem; line-height: 1.2; letter-spacing: -0.02em; color: #0f1f6e; max-width: 34ch; }
+[data-theme="dark"] .hero-strip h1 { color: #e6edf3; }
+.hero-strip .hero-sub { position: relative; margin-top: 0.4rem; font-size: 1.05rem; color: #2a4478; }
+[data-theme="dark"] .hero-strip .hero-sub { color: #b7cbe8; }
+.brand-plane { position: absolute; top: 1rem; right: 3%; width: 220px; height: auto; pointer-events: none; }
+/* The hero's one link, to the newsletter sign-up. */
+.hero-strip .hero-signup { font-weight: 600; color: #1d4ed8; text-decoration: underline; text-underline-offset: 3px; white-space: nowrap; }
+[data-theme="dark"] .hero-strip .hero-signup { color: #93c5fd; }
+
+/* Footer: the infographic band, with live text over it */
+footer.site-footer {
+    position: relative; margin-top: 3rem; color: #15307a;
+    border-top: 1px solid var(--border);
+    background: #eef6fd url(/static/img/brand/band-light.svg) center bottom / cover no-repeat;
+}
+footer.site-footer::before { /* mist behind the lockup, as in the infographic */
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(90deg, rgba(246, 250, 254, 0.95) 0%, rgba(246, 250, 254, 0.75) 30%, rgba(246, 250, 254, 0) 58%);
+}
+[data-theme="dark"] footer.site-footer { color: #d6e7ff; background-color: #0b1222; background-image: url(/static/img/brand/band-dark.svg); }
+[data-theme="dark"] footer.site-footer::before {
+    background: linear-gradient(90deg, rgba(10, 17, 32, 0.92) 0%, rgba(10, 17, 32, 0.7) 30%, rgba(10, 17, 32, 0) 58%);
+}
+.footer-plane { position: absolute; top: 1.1rem; right: 4%; width: 300px; height: auto; pointer-events: none; }
+.footer-inner {
+    position: relative; max-width: 1200px; margin: 0 auto; min-height: 240px;
+    padding: 2.25rem 2rem 1.5rem;
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 2rem;
+}
+.footer-lockup { display: inline-flex; align-items: center; gap: 1rem; }
+.footer-lockup:hover { text-decoration: none; }
+.footer-lockup .brand-mark { width: 118px; }
+.footer-lockup .brand-word { font-size: 2.9rem; }
+.footer-lockup .brand-tag { font-size: 0.78rem; margin-top: 0.45rem; }
+footer .footer-links { /* a <nav>, so undo the sticky header styles */
+    position: static; z-index: auto; padding: 0; background: none; border: 0;
+    display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0 0.5rem;
+    margin-top: 0.6rem; font-weight: 600; font-size: 0.95rem;
+}
+/* Footer links are 44px tall targets; the padding is inside the link. */
+footer .footer-links a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.4rem; margin-left: -0.4rem; }
+footer .footer-links a, .footer-pillars a { color: #15307a; }
+[data-theme="dark"] footer .footer-links a, [data-theme="dark"] .footer-pillars a { color: #cfe3ff; }
+.footer-legal { margin-top: 0.25rem; font-size: 0.8rem; color: #3d5a8a; }
+[data-theme="dark"] .footer-legal { color: #9fb6d9; }
+.footer-pillars {
+    font-size: 0.9rem; letter-spacing: 0.24em; font-weight: 600; text-transform: uppercase;
+    white-space: nowrap; margin-bottom: 0;
+}
+.footer-pillars a { display: inline-flex; align-items: center; min-height: 44px; }
+.footer-pillars span { margin: 0 0.5em; }
+/* The header has the theme switch on wider screens; this one is for phones. */
+.footer-theme-toggle {
+    display: none; align-items: center; gap: 0.5rem; min-height: 44px; margin-top: 0.25rem; padding: 0 1rem;
+    border: 1px solid #b9d3ee; border-radius: 999px; background: rgba(255, 255, 255, 0.75);
+    color: #15307a; font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+}
+[data-theme="dark"] .footer-theme-toggle { border-color: #34507e; background: rgba(13, 21, 38, 0.6); color: #cfe3ff; }
+/* Shows the toggle's state next to its fixed name ("Dark theme"). */
+.footer-theme-state::before { content: "Off"; }
+.footer-theme-toggle[aria-pressed="true"] .footer-theme-state::before { content: "On"; }
+.footer-theme-state { font-size: 0.75rem; font-weight: 700; padding: 0.1rem 0.45rem; border-radius: 999px; background: #dbeafe; color: #1e3a8a; }
+[data-theme="dark"] .footer-theme-state { background: #1e3a8a; color: #dbeafe; }
+
+@media (max-width: 768px) {
+    nav.site-nav { padding: 0.45rem 0.6rem 1rem 1rem; }
+    nav .brand-logo { gap: 0.45rem; }
+    nav .brand-logo .brand-mark { width: 38px; }
+    nav .brand-logo .brand-word { font-size: 1.3rem; }
+    /* At this width the tagline would be 8px: leave it to the footer. */
+    nav .brand-logo .brand-tag { display: none; }
+    nav.site-nav .nav-links { gap: 0; }
+    nav.site-nav .nav-link { font-size: 0.95rem; }
+    #theme-toggle.theme-icon-btn { display: none; }
+    /* Room for the Newsletter envelope: the two icons are 40px wide here
+       (still 44px tall), and the links a little narrower. */
+    nav.site-nav .nav-link { padding: 0 0.4rem; }
+    nav.site-nav #search-toggle { width: 40px; }
+    nav.site-nav .nav-subscribe { width: 40px; height: 44px; margin-left: 0; padding: 0; justify-content: center; border-color: transparent; background: none; }
+    [data-theme="dark"] nav.site-nav .nav-subscribe { border-color: transparent; background: none; }
+    nav.site-nav .nav-subscribe-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+    .footer-theme-toggle { display: inline-flex; }
+    /* The search field opens full width under the header. */
+    .nav-search { position: static; }
+    .nav-search-form { left: 0.75rem; right: 0.75rem; top: calc(100% - 0.6rem); }
+    .nav-search-form input { width: 100%; font-size: 1rem; padding: 0.7rem 0.85rem; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18); }
+
+    .hero-strip { padding: 1rem 1rem 2.4rem; margin-bottom: 1rem; }
+    .hero-strip, [data-theme="dark"] .hero-strip { background-size: 100% 40px, auto; }
+    .hero-strip h1 { font-size: 1.35rem; padding-right: 3.5rem; }
+    .hero-strip .hero-sub { font-size: 0.95rem; }
+    .brand-plane { width: 110px; top: 0.6rem; right: 0.5rem; }
+
+    footer.site-footer::before {
+        background: linear-gradient(180deg, rgba(246, 250, 254, 0.95) 0%, rgba(246, 250, 254, 0.8) 55%, rgba(246, 250, 254, 0) 85%);
+    }
+    [data-theme="dark"] footer.site-footer::before {
+        background: linear-gradient(180deg, rgba(10, 17, 32, 0.92) 0%, rgba(10, 17, 32, 0.75) 55%, rgba(10, 17, 32, 0) 85%);
+    }
+    .footer-plane { width: 170px; top: 0.6rem; right: 1rem; }
+    .footer-inner { flex-direction: column; align-items: center; text-align: center; padding: 2rem 1.25rem 1rem; min-height: 330px; gap: 0.75rem; }
+    .footer-brand { display: flex; flex-direction: column; align-items: center; }
+    .footer-lockup { flex-direction: column; gap: 0.5rem; }
+    .footer-lockup .brand-mark { width: 84px; }
+    .footer-lockup .brand-word { font-size: 2.2rem; }
+    footer .footer-links { justify-content: center; }
+    footer .footer-links a { margin-left: 0; }
+    .footer-pillars { font-size: 0.75rem; letter-spacing: 0.16em; }
+    .footer-pillars a { padding: 0 0.15rem; }
+    .footer-pillars span { margin: 0 0.3em; }
+}
+/* Phones up to 400px: a smaller mark and tighter spacing keep the logo,
+   Cards, Compare, search and the Newsletter envelope on one row down to
+   360px. Below 340px the envelope goes (the footer and every article still
+   link to the sign-up). */
+@media (max-width: 400px) {
+    nav.site-nav { padding-left: 0.75rem; padding-right: 0.35rem; }
+    nav .brand-logo { gap: 0.35rem; }
+    nav .brand-logo .brand-mark { width: 32px; }
+    nav.site-nav .nav-link { padding: 0 0.3rem; }
+    nav.site-nav #search-toggle, nav.site-nav .nav-subscribe { width: 38px; }
+}
+@media (max-width: 360px) {
+    nav .brand-logo .brand-word { font-size: 1.15rem; }
+}
+@media (max-width: 340px) {
+    nav.site-nav .nav-subscribe { display: none; }
+}
+
+/* Status pages: the 404/410/500 page and every step of the newsletter
+   flow (error.html, subscribe.html). */
+.status-page { max-width: 560px; margin: 2.5rem auto 1rem; text-align: center; }
+.status-page h1 { font-size: 1.9rem; line-height: 1.2; letter-spacing: -0.02em; }
+.status-kicker { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #1d3f8a; margin-bottom: 0.4rem; }
+[data-theme="dark"] .status-kicker { color: #9cc3f5; }
+.status-lead { margin-top: 0.6rem; font-size: 1.05rem; color: var(--text); }
+.status-note { margin-top: 0.9rem; font-size: 0.95rem; color: var(--text-muted); }
+.status-page p a, .status-note a { text-decoration: underline; text-underline-offset: 2px; }
+.status-icon {
+    width: 56px; height: 56px; margin: 0 auto 0.9rem; border-radius: 999px;
+    display: grid; place-items: center; font-size: 1.6rem; font-weight: 700;
+}
+.status-icon.ok { background: #dcfce7; color: #166534; }
+.status-icon.info { background: #dbeafe; color: #1e40af; }
+.status-icon.warn { background: #fef3c7; color: #92400e; }
+[data-theme="dark"] .status-icon.ok { background: #052e16; color: #86efac; }
+[data-theme="dark"] .status-icon.info { background: #172554; color: #93c5fd; }
+[data-theme="dark"] .status-icon.warn { background: #3a2a06; color: #fcd34d; }
+.status-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; margin-top: 1.4rem; }
+.status-page .status-btn {
+    display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 1.3rem;
+    border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent);
+    font: inherit; font-weight: 700; cursor: pointer; text-decoration: none;
+}
+.status-page .status-btn.secondary { background: var(--bg); color: var(--text); border-color: var(--border); }
+.status-page .status-btn:hover { text-decoration: none; filter: brightness(0.95); }
+.status-page .message { margin-top: 1.2rem; margin-bottom: 0; }
+.suggestions { list-style: none; margin: 1.4rem 0 0; padding: 0; text-align: left; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.suggestions li + li { border-top: 1px solid var(--border); }
+.suggestions a { display: flex; align-items: baseline; gap: 0.75rem; min-height: 44px; padding: 0.7rem 1rem; color: var(--text); font-weight: 600; }
+.suggestions a:hover { background: var(--card-bg); text-decoration: none; color: var(--accent); }
+.suggestion-kind { flex-shrink: 0; width: 3.4rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
+.status-search, .subscribe-row { display: flex; gap: 0.5rem; margin-top: 1.4rem; }
+.status-search input, .subscribe-form input[type="email"] {
+    flex: 1; min-width: 0; min-height: 44px; padding: 0 0.9rem; border: 1px solid #94a3b8; border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit;
+}
+[data-theme="dark"] .status-search input, [data-theme="dark"] .subscribe-form input[type="email"] { border-color: #5b6573; }
+.status-search button, .subscribe-form button {
+    min-height: 44px; padding: 0 1.2rem; border: 0; border-radius: 8px;
+    background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 700; cursor: pointer;
+}
+.status-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 0.5rem; margin-top: 1rem; }
+.status-links a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.5rem; font-weight: 600; }
+.subscribe-form { margin-top: 1.4rem; text-align: left; }
+.subscribe-form label { display: block; font-weight: 600; font-size: 0.95rem; }
+.subscribe-form .subscribe-row { margin-top: 0.35rem; }
+.subscribe-form .status-note { margin-top: 0.6rem; }
+.hp-field { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+
+/* The newsletter sign-up at the end of every article. */
+.article-signup {
+    margin: 2rem 0; padding: 1.25rem 1.4rem; border: 1px solid #d6e7f7; border-radius: 12px;
+    background: linear-gradient(180deg, #f6fafe 0%, #eaf3fc 100%);
+}
+[data-theme="dark"] .article-signup { border-color: var(--border); background: linear-gradient(180deg, #0a1120 0%, #0e1930 100%); }
+.article-signup .article-signup-title { margin: 0; font-size: 1.15rem; line-height: 1.3; color: #0f1f6e; }
+[data-theme="dark"] .article-signup .article-signup-title { color: #e6edf3; }
+.article-signup-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.article-signup-row input[type="email"] {
+    flex: 1; min-width: 0; min-height: 44px; padding: 0 0.9rem; border: 1px solid #94a3b8; border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit;
+}
+[data-theme="dark"] .article-signup-row input[type="email"] { border-color: #5b6573; }
+.article-signup-row button {
+    min-height: 44px; padding: 0 1.2rem; border: 0; border-radius: 8px;
+    background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 700; cursor: pointer;
+}
+.article-signup-row button:hover { filter: brightness(0.95); }
+.article-signup-note { margin: 0.6rem 0 0; font-size: 0.875rem; color: var(--text-muted); }
+@media (max-width: 480px) {
+    .article-signup { padding: 1rem; }
+    .article-signup-row { flex-direction: column; }
+}
+@media (max-width: 480px) {
+    .status-page { margin-top: 1.5rem; }
+    .status-page h1 { font-size: 1.55rem; }
+    .subscribe-row, .status-search { flex-direction: column; }
+}
+
+/* In-text links are underlined, not told apart by colour alone. */
+/* Card prose is underlined with the card styles above. */
+.article-content a, .empty-state a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+/* Wide tables in card sections and articles scroll inside their own box
+   (wrapped by scrollTables), so the page itself never gets wider than the
+   screen. Grid columns default to their content's minimum width, so they
+   also need min-width: 0 to let that box shrink. */
+.table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 1rem 0;
+    /* Scroll shadows: an edge darkens only while more of the table is hidden
+       past it. The "local" covers move with the content and hide the shadow
+       once that edge is reached. */
+    background:
+        linear-gradient(to right, var(--bg) 30%, transparent) left center / 40px 100% no-repeat local,
+        linear-gradient(to left, var(--bg) 30%, transparent) right center / 40px 100% no-repeat local,
+        radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.2), transparent) left center / 14px 100% no-repeat scroll,
+        radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.2), transparent) right center / 14px 100% no-repeat scroll;
+}
+[data-theme="dark"] .table-scroll {
+    background:
+        linear-gradient(to right, var(--bg) 30%, transparent) left center / 40px 100% no-repeat local,
+        linear-gradient(to left, var(--bg) 30%, transparent) right center / 40px 100% no-repeat local,
+        radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.7), transparent) left center / 14px 100% no-repeat scroll,
+        radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.7), transparent) right center / 14px 100% no-repeat scroll;
+}
+@media (max-width: 768px) {
+    .table-scroll th, .table-scroll td { padding: 0.55rem 0.65rem; }
+}
+.table-scroll > table { margin: 0; }
+.table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card-layout > *, .article-layout > * { min-width: 0; }
+
+/* Vote feedback: the status line reserves its height so the card does not jump. */
+.vote-card .vote-status {
+    min-height: 1.4em;
+    margin-top: 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+/* White on the dark theme's light-blue accent is 2.5:1; dark text is about 7.5:1. */
+[data-theme="dark"] .vote-btn.active { color: var(--bg); }
+
+/* ===== Article page =====
+   Headline and summary first: badges, headline, the ended-offer note, date,
+   byline and tags, then the TL;DR as a standfirst. The photo follows
+   as a fixed-height band. The story keeps a sticky Key Details sidebar on
+   desktop; on phones the details fold into a disclosure under the
+   standfirst. After the story: Scout's Take, the cards it names (one compact
+   row each), related stories, and a one-line vote with share
+   links. The admin dashboard's preview uses the same classes and order. */
+:root { --article-tag-fg: #1d4ed8; }            /* 5.9:1 on the chip */
+[data-theme="dark"] { --article-tag-fg: #79b8ff; } /* 7.5:1 on the chip */
+
+.article-sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.article-detail .back-link { padding: 0.25rem 0; margin-bottom: 0.5rem; }
+.article-header { margin-bottom: 1.25rem; }
+.article-header h1 { margin: 0.5rem 0 0.6rem; }
+.article-badges { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.article-header .offer-ended-banner { margin: 0.25rem 0 0.85rem; }
+.offer-ended-banner a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.article-meta-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; }
+.article-meta { display: flex; flex-wrap: wrap; align-items: center; margin: 0; color: var(--text-muted); font-size: 0.9rem; }
+/* inline-block, so the dot is never underlined with a link beside it. */
+.article-meta > * + *::before { content: "\00B7"; content: "\00B7" / ""; display: inline-block; margin: 0 0.5rem; }
+.article-meta a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.article-meta a:hover { color: var(--accent); }
+.article-header .article-tags { margin: 0; }
+.article-header .tag-badge { padding: 0.25rem 0.6rem; color: var(--article-tag-fg); }
+.article-header .tag-badge:hover { background: var(--accent-subtle); text-decoration: underline; }
+.article-standfirst { font-size: 1.2rem; line-height: 1.55; margin: 1rem 0 0; max-width: 46em; }
+
+/* The photo band: a fixed height at every width, the photo cropped to fill. */
+figure.article-hero, .article-detail .article-hero, .preview-body .article-hero {
+    height: 280px;
+    max-height: none;
+    margin: 0 0 1.75rem;
+}
+.article-hero img { width: 100%; height: 100%; max-height: none; object-fit: cover; }
+
+/* Key details on phones (the sidebar is hidden there). */
+.article-facts { display: none; }
+.article-facts-subhead { margin: 0.75rem 0 0.25rem; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); }
+
+.article-layout.no-sidebar { grid-template-columns: minmax(0, 1fr); }
+.sidebar-section h2 {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin: 0 0 0.75rem;
+}
+.key-detail-ended s { color: var(--text-muted); }
+.key-detail-ended-tag {
+    display: inline-block;
+    margin-left: 0.25rem;
+    padding: 0 0.4rem;
+    border: 1px solid var(--ended-banner-border);
+    border-radius: 4px;
+    background: var(--ended-banner-bg);
+    color: var(--ended-banner-fg);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+/* One reading measure for the story and everything after it: about 72
+   characters a line. (68ch measured 95: ch is the width of "0", which in the
+   system font is far wider than an average letter.) */
+.article-main > * { max-width: 36.5rem; }
+.article-main > .article-content { max-width: 33em; }
+
+.scouts-take { margin: 0.5rem 0 2rem; }
+.scouts-take h2.scout-label { margin: 0 0 0.4rem; line-height: 1.4; }
+.scouts-take p { margin: 0; }
+
+.article-section-title {
+    margin: 2rem 0 0.75rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Card rows */
+.card-embed {
+    display: grid;
+    grid-template-columns: 84px minmax(0, 1fr) auto;
+    gap: 0.75rem 1rem;
+    align-items: start;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+    margin: 0.6rem 0;
+    box-shadow: 0 2px 6px var(--shadow);
+}
+.card-embed-logo {
+    width: 84px; height: 53px; border-radius: 5px;
+    object-fit: contain; background: var(--bg); border: 1px solid var(--border);
+}
+.card-embed-name { font-size: 1rem; font-weight: 600; line-height: 1.35; margin: 0; }
+.card-embed-name a { color: var(--text); }
+.card-embed-name a:hover { color: var(--accent); }
+.card-embed-issuer { margin: 0.1rem 0 0; color: var(--text-muted); font-size: 0.8rem; }
+.card-embed-facts { margin: 0.4rem 0 0; font-size: 0.85rem; line-height: 1.45; }
+.card-embed-facts div + div { margin-top: 0.15rem; }
+.card-embed-facts dt { display: inline; font-weight: 600; margin-right: 0.35rem; }
+.card-embed-facts dd { display: inline; margin: 0; }
+.card-embed-verdict {
+    margin: 0.4rem 0 0; color: var(--text-muted); font-size: 0.85rem; line-height: 1.5;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.card-embed-actions { display: flex; flex-direction: column; gap: 0.4rem; }
+.card-embed-actions a {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 36px; padding: 0.4rem 0.8rem; border-radius: 6px;
+    font-size: 0.85rem; font-weight: 600; white-space: nowrap; text-decoration: none;
+}
+.card-embed-review, .card-embed-cta.is-muted {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+}
+.card-embed-review:hover, .card-embed-cta.is-muted:hover { border-color: var(--accent); }
+.card-embed-cta { background: var(--accent); color: var(--bg); border: 1px solid var(--accent); }
+.card-embed-cta:hover { filter: brightness(0.92); }
+.card-embed-cta.is-muted:hover { filter: none; }
+
+/* Related stories */
+.related-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.related-list li { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.7rem 0.8rem; border: 1px solid var(--border); border-radius: 10px; }
+.related-list a { color: var(--text); font-weight: 600; line-height: 1.35; }
+.related-list a:hover { text-decoration: none; }
+.related-list a:hover .related-title { text-decoration: underline; }
+.related-list li.is-ended .related-title { color: var(--ended-text); }
+.related-date { color: var(--text-muted); font-size: 0.8rem; }
+.related-more { display: inline-block; margin-top: 0.6rem; font-weight: 600; font-size: 0.9rem; }
+
+/* Vote and share, one line */
+.article-feedback {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 0.75rem 1.5rem; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+}
+.article-feedback .vote-card {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem;
+    margin: 0; padding: 0; background: none; border: 0; text-align: left;
+}
+.article-feedback .vote-card .vote-prompt { margin: 0; font-size: 1rem; }
+.article-feedback .vote-card .vote-buttons { gap: 0.5rem; }
+.article-feedback .vote-card .vote-btn { padding: 0.4rem 0.9rem; font-size: 0.95rem; }
+.article-feedback .vote-card .vote-status { min-height: 0; margin: 0; }
+.article-share { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; color: var(--text-muted); font-size: 0.9rem; }
+.article-share ul { display: flex; flex-wrap: wrap; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
+.article-share a, .article-share .share-copy {
+    display: inline-flex; align-items: center; min-height: 32px; padding: 0.2rem 0.75rem;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
+    color: var(--text); font: inherit; font-size: 0.85rem; cursor: pointer; text-decoration: none;
+}
+.article-share a:hover, .article-share .share-copy:hover { border-color: var(--accent); }
+.share-status:empty { display: none; }
+
+@media (max-width: 768px) {
+    .article-standfirst { font-size: 1.05rem; }
+    figure.article-hero, .article-detail .article-hero, .preview-body .article-hero {
+        height: 170px;
+        margin-bottom: 1.25rem;
+    }
+    .article-facts {
+        display: block;
+        margin: 0 0 1.25rem;
+        padding: 0.65rem 1rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+    }
+    .article-facts summary { font-weight: 600; cursor: pointer; padding: 0.15rem 0; }
+    .article-facts summary::marker { color: var(--text-muted); }
+    .article-facts .key-details li { font-size: 0.9rem; }
+    .article-layout > .article-sidebar { display: none; }
+    /* A wide table scrolls; let its columns take the width they need (up to
+       13rem) instead of squeezing every column, which wrapped short values
+       and made each row four lines tall. */
+    .article-content .table-scroll > table { width: max-content; min-width: 100%; }
+    .article-content .table-scroll th, .article-content .table-scroll td { max-width: 13rem; }
+    .related-list { grid-template-columns: 1fr; gap: 0; }
+    .related-list li { padding: 0.7rem 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+}
+@media (max-width: 600px) {
+    .card-embed { grid-template-columns: 64px minmax(0, 1fr); padding: 0.8rem; }
+    .card-embed-logo { width: 64px; height: 40px; }
+    .card-embed-actions { grid-column: 1 / -1; flex-direction: row; }
+    .card-embed-actions a { flex: 1; }
+}
 
 /* ---- Article infographic (model-drawn, inline SVG) ---------------------- */
 /* The SVG carries no width or height -- the sanitiser strips them -- so the
@@ -2523,23 +3911,4 @@ tr.flagged { background: #fef2f2; }
     color: var(--text-muted);
     font-size: 0.8rem;
     text-align: center;
-}
-/* On a card the diagram stands in for the photo, so it has to fill the same
-   box a cropped <img> would. */
-.card-thumb-svg {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--card-bg);
-    overflow: hidden;
-    padding: 6px;
-    color: var(--text);
-}
-.card-thumb-svg .infographic-svg {
-    display: block;
-    width: 100%;
-    height: auto;
-}
-@media (prefers-reduced-motion: no-preference) {
-    .infographic .infographic-svg { transition: opacity .2s ease; }
 }

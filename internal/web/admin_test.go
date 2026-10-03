@@ -91,7 +91,7 @@ func setupAdminTestApp(t *testing.T) (*App, *db.Database) {
 
 	// Write dashboard template.
 	dashboardContent := `{{template "layout" .}}
-{{define "content"}}<h1>Dashboard</h1>{{range .Articles}}<div class="article">{{.Title}}<a href="/admin/articles/{{.ID}}/cards">Linked cards</a></div>{{end}}{{end}}`
+{{define "content"}}<h1>Dashboard</h1>{{range .Groups}}{{range .Rows}}<div class="article">{{.Title}}<a href="/admin/articles/{{.ID}}/cards">Linked cards</a></div>{{end}}{{end}}{{end}}`
 	if err := os.WriteFile(filepath.Join(templateDir, "dashboard.html"), []byte(dashboardContent), 0644); err != nil {
 		t.Fatalf("failed to write dashboard template: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestApproveArticle_TransitionsToApproved(t *testing.T) {
 	cookies := loginAndGetSession(t, app)
 	session, csrf := getSessionAndCSRF(cookies)
 
-	rec := doAdminPOST(t, app, "/admin/articles/1/approve", session, csrf, nil)
+	rec := doAdminPOST(t, app, "/admin/articles/1/approve", session, csrf, url.Values{"revision": {"1"}})
 
 	if rec.Code != http.StatusSeeOther {
 		t.Errorf("expected status 303, got %d", rec.Code)
@@ -339,7 +339,7 @@ func TestRejectArticle_TransitionsToRejected(t *testing.T) {
 	cookies := loginAndGetSession(t, app)
 	session, csrf := getSessionAndCSRF(cookies)
 
-	rec := doAdminPOST(t, app, "/admin/articles/1/reject", session, csrf, nil)
+	rec := doAdminPOST(t, app, "/admin/articles/1/reject", session, csrf, url.Values{"revision": {"1"}})
 
 	if rec.Code != http.StatusSeeOther {
 		t.Errorf("expected status 303, got %d", rec.Code)
@@ -716,7 +716,7 @@ func setupNewsletterTestApp(t *testing.T, mock *mockNewsletterSvc) (*App, *db.Da
 	}
 
 	dashboardContent := `{{template "layout" .}}
-{{define "content"}}<h1>Dashboard</h1>{{range .Articles}}<div class="article">{{.Title}}<a href="/admin/articles/{{.ID}}/cards">Linked cards</a></div>{{end}}{{end}}`
+{{define "content"}}<h1>Dashboard</h1>{{range .Groups}}{{range .Rows}}<div class="article">{{.Title}}<a href="/admin/articles/{{.ID}}/cards">Linked cards</a></div>{{end}}{{end}}{{end}}`
 	if err := os.WriteFile(filepath.Join(templateDir, "dashboard.html"), []byte(dashboardContent), 0644); err != nil {
 		t.Fatalf("failed to write dashboard template: %v", err)
 	}
@@ -895,18 +895,16 @@ func TestNewsletterHistory_ListsSentNewsletters(t *testing.T) {
 	cookies := loginAndGetSession(t, app)
 	session, _ := getSessionAndCSRF(cookies)
 
+	// The old history URL now points at the newsletter page's history.
 	rec := doAdminGET(t, app, "/admin/newsletter/history", session)
-
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rec.Code)
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/admin/newsletter#history" {
+		t.Fatalf("history: %d %q, want 303 to /admin/newsletter#history", rec.Code, rec.Header().Get("Location"))
 	}
 
-	body := rec.Body.String()
+	// The unsent March 24 issue is the current one; the sent one is history.
+	body := doAdminGET(t, app, "/admin/newsletter", session).Body.String()
 	if !strings.Contains(body, "Daily Digest March 23") {
-		t.Error("expected body to contain 'Daily Digest March 23'")
-	}
-	if !strings.Contains(body, "Daily Digest March 24") {
-		t.Error("expected body to contain 'Daily Digest March 24'")
+		t.Error("expected history to contain 'Daily Digest March 23'")
 	}
 }
 

@@ -168,7 +168,8 @@ func TestTimeoutFor_ClassifiesEveryRealCallSite(t *testing.T) {
 		{"Scout's Take (ai/enrichment.go)", ScoutsTakeTokens, true},
 		{"tags and image queries (ai/enrichment.go)", TagsTokens, true},
 		{"key details (ai/enrichment.go)", KeyDetailTokens, true},
-		{"preflight probe (ai/preflight.go)", preflightMaxTokens, true},
+		{"preflight probe, vision and enrichment (ai/preflight.go)", preflightMaxTokens, true},
+		{"preflight probe, generator/fallback/critic (ai/preflight.go)", articleProbeTokens, false},
 		{"image text scoring (images/scorer.go)", 2048, true},
 		{"card update detection (cardupdate/detector.go)", 1024, true},
 		{"newsletter pick (newsletter/newsletter.go)", 512, true},
@@ -312,5 +313,76 @@ func TestHFClient_GivesUpOnPersistentlyUnusableResponse(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "truncated") {
 		t.Errorf("error should name truncation, got: %v", err)
+	}
+}
+
+// TestHFClient_WithThinkingDisabled pins the critic's request shape and its
+// scope. The copy must send exactly chat_template_kwargs.enable_thinking=false;
+// the original client -- the one generation, enrichment and the side jobs use
+// -- must send no chat_template_kwargs at all, even for the same model, since
+// nvidia/nemotron-3-super-120b-a12b serves as critic, enrichment model and
+// generator fallback at once.
+func TestHFClient_WithThinkingDisabled(t *testing.T) {
+	var bodies []map[string]json.RawMessage
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		bodies = append(bodies, body)
+		json.NewEncoder(w).Encode(makeChatResponse("OK"))
+	}))
+	defer ts.Close()
+
+	base := NewHFClient("test-token", 0)
+	base.BaseURL = ts.URL
+	base.SetRequestTimeout(15 * time.Minute)
+	critic := base.WithThinkingDisabled()
+
+	const model = "nvidia/nemotron-3-super-120b-a12b"
+	calls := []struct {
+		name     string
+		client   *HFClient
+		tokens   int
+		thinkOff bool
+	}{
+		{"critic", critic, 4096, true},
+		{"generator", base, 4096, false},
+		{"enrichment", base, KeyDetailTokens, false},
+		{"critic again", critic, 4096, true},
+	}
+	for _, c := range calls {
+		if _, err := c.client.Generate(model, "prompt", c.tokens); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+	}
+	if len(bodies) != len(calls) {
+		t.Fatalf("server saw %d requests, want %d", len(bodies), len(calls))
+	}
+	for i, c := range calls {
+		kw, present := bodies[i]["chat_template_kwargs"]
+		switch {
+		case c.thinkOff && !present:
+			t.Errorf("%s: chat_template_kwargs missing", c.name)
+		case c.thinkOff:
+			var got map[string]any
+			if err := json.Unmarshal(kw, &got); err != nil {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			if len(got) != 1 || got["enable_thinking"] != false {
+				t.Errorf("%s: chat_template_kwargs = %s; want exactly {\"enable_thinking\":false}", c.name, kw)
+			}
+		case present:
+			t.Errorf("%s: carries chat_template_kwargs %s; only critic requests may", c.name, kw)
+		}
+	}
+
+	// The copy keeps everything else: endpoint, token and timeout class.
+	if critic.BaseURL != base.BaseURL || critic.token != base.token ||
+		critic.timeoutFor(4096) != base.timeoutFor(4096) {
+		t.Error("WithThinkingDisabled changed more than the thinking flag")
+	}
+	if base.disableThinking {
+		t.Error("WithThinkingDisabled modified the original client")
 	}
 }

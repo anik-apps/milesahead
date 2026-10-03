@@ -3,17 +3,21 @@ package web
 import (
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/kumaranik/milesahead/internal/ai"
+	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/linker"
+	"github.com/kumaranik/milesahead/internal/newsletter"
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 // sem limits concurrent card update detection goroutines.
@@ -60,117 +64,71 @@ type adminArticleRow struct {
 	ArticleLinks      []struct{ Text, URL string }
 	ImageURL          string
 	Tags              []string
-	createdAtRaw      time.Time // for sorting only, not exposed to template
+	// ScoutsTake is shown in the admin preview so it can be reviewed before
+	// approval; empty until enrichment writes it.
+	ScoutsTake string
+	// EditorNotes are the article's remarks for the admin ("Could not find a
+	// link for: ..."), one per entry. Shown only here, never published.
+	EditorNotes []string
+	// RevisionFailures is how many rewrites of a revision_requested article
+	// have failed in a row, and RevisionLastError the latest reason. Without
+	// them "Revising..." looks the same whether a rewrite is running, retrying,
+	// or has been given up on.
+	RevisionFailures  int
+	RevisionLastError string
+	// RevisionGaveUp: the reconciler has stopped retrying; the admin must
+	// re-request the revision, approve or reject.
+	RevisionGaveUp bool
+	// RevisionThread is the article's feedback and the rewrites that answered
+	// it, oldest first, for the preview; nil when no feedback was ever sent.
+	RevisionThread []revisionRequest
+	// ImageRequest is the admin's "Find a new image", pending or failed;
+	// the zero value when there is none (see newimage.go).
+	ImageRequest db.ImageRequest
+
+	// Queue row extras (dashboard.go).
+	Group        string // groupDecide, groupReady or groupRewriting
+	Age          string // "3 h ago"
+	Enriched     bool   // has its image and Scout's Take
+	RetryNote    string // a rewrite's state: "Failed 2×, retrying in 8 min"
+	HasScore     bool
+	ScoreClass   string // "ok", "warn", "bad" against the critic threshold
+	FailedChecks int    // critic checks that did not pass
+	// Position is the row's place in the queue (1-based) of QueueLen;
+	// PrevID and NextID are its neighbours, 0 at the ends.
+	Position, QueueLen int
+	PrevID, NextID     int64
+
+	createdAtRaw time.Time // for sorting only, not exposed to template
+	updatedAtRaw time.Time
 }
 
-func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
-	// Show all articles needing admin attention: pending, unpublished, and revision_requested
-	var articles []db.GeneratedArticle
-	for _, status := range []string{"pending", "unpublished", "revision_requested", "draft"} {
-		batch, err := app.db.ListArticlesByStatus(status)
-		if err != nil {
-			continue
-		}
-		articles = append(articles, batch...)
-	}
+// CanDecide reports whether the row's article can be approved or rejected,
+// by the server's rules (article.Decidable), so its actions menu only offers
+// what will work.
+func (r adminArticleRow) CanDecide() bool { return article.Decidable(r.Status) }
 
-	var rows []adminArticleRow
-	for _, a := range articles {
-		row := adminArticleRow{
-			ID:             a.ID,
-			Title:          a.Title,
-			Type:           a.Type,
-			Status:         a.Status,
-			Slug:           a.Slug,
-			Content:        a.Content,
-			RevisionNumber: a.RevisionNumber,
-			TLDR:           a.TLDR,
-			ImageURL:       a.ImageURL,
-			CreatedAt:      a.CreatedAt.Format("Jan 2, 2006 3:04 PM"),
-			UpdatedAt:      a.UpdatedAt.Format("Jan 2, 2006 3:04 PM"),
-			createdAtRaw:   a.CreatedAt,
-		}
+// CanRequestRevision reports whether a rewrite can be requested for the
+// row's article (article.Revisable).
+func (r adminArticleRow) CanRequestRevision() bool { return article.Revisable(r.Status) }
 
-		// Parse key details and links from JSON
-		if a.KeyDetails != "" && a.KeyDetails != "[]" {
-			var kd []struct{ Label, Value string }
-			if err := json.Unmarshal([]byte(a.KeyDetails), &kd); err != nil {
-				slog.Warn("failed to parse key details", "article_id", a.ID, "error", err)
-			}
-			row.KeyDetails = kd
-		}
-		if a.Links != "" && a.Links != "[]" {
-			var links []struct{ Text, URL string }
-			if err := json.Unmarshal([]byte(a.Links), &links); err != nil {
-				slog.Warn("failed to parse links", "article_id", a.ID, "error", err)
-			}
-			row.ArticleLinks = links
-		}
-		if a.TagsJSON != "" && a.TagsJSON != "[]" {
-			var tags []string
-			if err := json.Unmarshal([]byte(a.TagsJSON), &tags); err == nil {
-				row.Tags = tags
-			}
-		}
+// adminTimeFormat is how admin views show timestamps.
+const adminTimeFormat = "Jan 2, 2006 3:04 PM"
 
-		if v, err := app.db.GetLatestVerification(a.ID); err == nil {
-			row.VerificationScore = v.Score
-			var issues []string
-			if v.IssuesJSON != "" && v.IssuesJSON != "[]" {
-				json.Unmarshal([]byte(v.IssuesJSON), &issues)
-			}
-			row.CriticReport = &adminCriticReport{
-				Score:              v.Score,
-				Issues:             issues,
-				FactualCheck:       v.FactualCheck,
-				AttributionCheck:   v.AttributionCheck,
-				CompletenessCheck:  v.CompletenessCheck,
-				HallucinationCheck: v.HallucinationCheck,
-			}
-		}
-		if count, err := app.db.CountArticleSources(a.ID); err == nil {
-			row.SourceCount = count
-		}
-		if rawArticles, err := app.db.GetLinkedRawArticles(a.ID); err == nil {
-			for _, ra := range rawArticles {
-				src, _ := app.db.GetSource(ra.SourceID)
-				name := "Unknown"
-				if src != nil {
-					name = src.Name
-				}
-				row.Sources = append(row.Sources, adminSourceInfo{
-					Name:  name,
-					Title: ra.Title,
-					URL:   ra.URL,
-				})
-			}
-		}
-
-		rows = append(rows, row)
-	}
-
-	// Sort by CreatedAt DESC (most recent first) and limit to 20 for dashboard
-	sort.Slice(rows, func(i, j int) bool {
-		return rows[i].createdAtRaw.After(rows[j].createdAtRaw)
-	})
-	if len(rows) > 20 {
-		rows = rows[:20]
-	}
-
-	data := map[string]interface{}{
-		"Title":     "Dashboard",
-		"Articles":  rows,
-		"CSRFToken": getCSRFToken(w, r),
-		"Message":   r.URL.Query().Get("msg"),
-	}
-	app.renderTemplate(w, "dashboard.html", data)
-}
+// publishedLimit is how many published articles the Published page lists,
+// most recent first; it says how many there are in all.
+const publishedLimit = 100
 
 func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
-	articles, err := app.db.ListPublishedArticles(100, 0)
+	order := parseSort(r.URL.Query().Get("sort"), publishedSorts)
+	articles, err := app.db.ListPublishedArticlesSorted(order == sortOldest, publishedLimit, 0)
 	if err != nil {
-		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
+		app.serverError(w, r, "admin: failed to load articles", err)
 		return
+	}
+	total := len(articles)
+	if counts, err := app.db.CountArticlesByStatus(); err == nil {
+		total = counts[db.StatusApproved]
 	}
 
 	threshold := app.cfg.Votes.AlertThreshold
@@ -178,6 +136,7 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		threshold = 5
 	}
 
+	now := time.Now()
 	var rows []adminArticleRow
 	for _, a := range articles {
 		row := adminArticleRow{
@@ -189,7 +148,8 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 			RevisionNumber: a.RevisionNumber,
 		}
 		if a.PublishedAt != nil {
-			row.PublishedAt = a.PublishedAt.Format("2006-01-02 15:04")
+			row.PublishedAt = a.PublishedAt.Format(adminTimeFormat)
+			row.Age = ago(*a.PublishedAt, now)
 		}
 
 		if vc, err := app.db.GetVoteCounts(a.ID); err == nil {
@@ -202,24 +162,39 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 
 		rows = append(rows, row)
 	}
+	app.attachImageRequests(rows)
 
 	data := map[string]interface{}{
 		"Title":     "Published Articles",
 		"Articles":  rows,
+		"Total":     total,
 		"CSRFToken": getCSRFToken(w, r),
+		"Message":   r.URL.Query().Get("msg"),
+		"MessageID": queryInt(r, "id"),
+		"Sort":      string(order),
+		"Sorts":     sortChoices(order, publishedSorts),
+	}
+	if data["Message"] == "image_requested" {
+		data["MessageText"] = imageRequestedMessage
+	}
+	// After a plain unpublish, the toast offers to put it back: approving
+	// the revision that was live, which needs that revision number.
+	if data["Message"] == "unpublished" && r.URL.Query().Get("undo") == "1" {
+		if a, err := app.db.GetGeneratedArticle(queryInt(r, "id")); err == nil && a.Status == db.StatusUnpublished {
+			data["UndoRevision"] = a.RevisionNumber
+			data["UndoTitle"] = a.Title
+		}
 	}
 	app.renderTemplate(w, "published.html", data)
 }
 
 func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+	id, revision, ok := articleDecisionForm(w, r)
+	if !ok {
 		return
 	}
-
-	if err := app.articleManager.Approve(id); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to approve: %v", err), http.StatusBadRequest)
+	if err := app.articleManager.ApproveRevision(id, revision); err != nil {
+		app.decisionFailed(w, r, id, "approve", err)
 		return
 	}
 
@@ -233,6 +208,20 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 					slog.Error("card update detection panicked", "article_id", id, "panic", r)
 				}
 			}()
+			// Wait out the undo window, then only draft card updates if
+			// the article is still published. (A shutdown during the wait
+			// skips detection for this article.)
+			if d := app.cardDetectDelay; d > 0 {
+				select {
+				case <-time.After(d):
+				case <-app.shutdownCtx.Done():
+					return
+				}
+			}
+			if a, err := app.db.GetGeneratedArticle(id); err != nil || a.Status != db.StatusApproved {
+				slog.Info("card update detection skipped: article no longer published", "article_id", id)
+				return
+			}
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			if err := app.cardDetector.DetectAndDraft(app.shutdownCtx, id); err != nil {
@@ -241,22 +230,58 @@ func (app *App) handleApproveArticle(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
-	http.Redirect(w, r, "/admin/dashboard?msg=approved", http.StatusSeeOther)
+	if r.FormValue("return") == "published" {
+		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/published?msg=republished&id=%d", id), publishedSorts), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=approved&id=%d&open=%d", id, nextParam(r)), queueSorts), http.StatusSeeOther)
 }
 
 func (app *App) handleRejectArticle(w http.ResponseWriter, r *http.Request) {
+	id, revision, ok := articleDecisionForm(w, r)
+	if !ok {
+		return
+	}
+
+	if err := app.articleManager.RejectRevision(id, revision); err != nil {
+		app.decisionFailed(w, r, id, "reject", err)
+		return
+	}
+
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=rejected&id=%d&open=%d", id, nextParam(r)), queueSorts), http.StatusSeeOther)
+}
+
+// articleDecisionForm reads an approve or reject request: the article id from
+// the path and the revision the admin was looking at from the form. The
+// revision is required, so a decision always names the text it is about.
+func articleDecisionForm(w http.ResponseWriter, r *http.Request) (id int64, revision int, ok bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		return 0, 0, false
+	}
+	revision, err = strconv.Atoi(r.FormValue("revision"))
+	if err != nil || revision <= 0 {
+		http.Error(w, "Missing the revision you reviewed; reload the dashboard and try again", http.StatusBadRequest)
+		return 0, 0, false
+	}
+	return id, revision, true
+}
+
+// decisionFailed answers an approve or reject that did not go through. When a
+// rewrite landed after the admin loaded the page, it says so on the dashboard
+// rather than as an error page, so the admin can review the new text.
+func (app *App) decisionFailed(w http.ResponseWriter, r *http.Request, id int64, verb string, err error) {
+	var changed *article.ErrArticleChanged
+	if errors.As(err, &changed) {
+		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=changed&id=%d&rev=%d", id, changed.Revision), queueSorts), http.StatusSeeOther)
 		return
 	}
-
-	if err := app.articleManager.Reject(id); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to reject: %v", err), http.StatusBadRequest)
+	if errors.Is(err, db.ErrStatusChanged) {
+		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=status_changed&id=%d", id), queueSorts), http.StatusSeeOther)
 		return
 	}
-
-	http.Redirect(w, r, "/admin/dashboard?msg=rejected", http.StatusSeeOther)
+	http.Error(w, fmt.Sprintf("Failed to %s: %v", verb, err), http.StatusBadRequest)
 }
 
 func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
@@ -277,26 +302,22 @@ func (app *App) handleRequestRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Trigger AI regeneration immediately in the background. Tracked on the
-	// WaitGroup so it cannot outlive the process (or, in tests, the database
-	// it is about to query). Panic recovery matches the card-detection
-	// goroutine below: an unrecovered panic here would kill the whole server.
-	if app.articleManager != nil {
-		app.bg.Add(1)
-		go func() {
-			defer app.bg.Done()
-			defer func() {
-				if r := recover(); r != nil {
-					slog.Error("revision processing panicked", "article_id", id, "panic", r)
-				}
-			}()
-			if err := app.articleManager.ProcessRevision(id); err != nil {
-				slog.Error("revision processing failed", "article_id", id, "error", err)
-			}
-		}()
-	}
+	app.startRevision(id)
 
-	http.Redirect(w, r, "/admin/dashboard?msg=revision_submitted", http.StatusSeeOther)
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=revision_submitted&id=%d&sent=revise-%d&open=%d", id, id, nextParam(r)), queueSorts), http.StatusSeeOther)
+}
+
+// startRevision kicks off the AI rewrite in the background so the admin sees it
+// soon, rather than on the next revision reconciler pass. The kick is only for
+// responsiveness: if it fails, or a deploy kills it, the reconciler retries.
+// It runs through the manager's in-flight guard, so it never races a rewrite
+// the reconciler already has going. Tracked by the manager and joined by
+// WaitBackground, which tests call before teardown and main calls, bounded, at
+// shutdown.
+func (app *App) startRevision(id int64) {
+	if app.articleManager != nil {
+		app.articleManager.StartRevision(id)
+	}
 }
 
 func (app *App) handleUnpublishArticle(w http.ResponseWriter, r *http.Request) {
@@ -313,14 +334,16 @@ func (app *App) handleUnpublishArticle(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("Failed to unpublish: %v", err), http.StatusBadRequest)
 			return
 		}
-	} else {
-		if err := app.articleManager.Unpublish(id); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to unpublish: %v", err), http.StatusBadRequest)
-			return
-		}
+		app.startRevision(id)
+		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/published?msg=unpublished_revise&id=%d&sent=unpublish-%d", id, id), publishedSorts), http.StatusSeeOther)
+		return
+	}
+	if err := app.articleManager.Unpublish(id); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to unpublish: %v", err), http.StatusBadRequest)
+		return
 	}
 
-	http.Redirect(w, r, "/admin/published", http.StatusSeeOther)
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/published?msg=unpublished&undo=1&id=%d&sent=unpublish-%d", id, id), publishedSorts), http.StatusSeeOther)
 }
 
 func (app *App) handleUnpublishAndRevise(w http.ResponseWriter, r *http.Request) {
@@ -340,58 +363,107 @@ func (app *App) handleUnpublishAndRevise(w http.ResponseWriter, r *http.Request)
 		http.Error(w, fmt.Sprintf("Failed to unpublish and revise: %v", err), http.StatusBadRequest)
 		return
 	}
+	app.startRevision(id)
 
-	http.Redirect(w, r, "/admin/published", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/published?msg=unpublished&id=%d&sent=unpublish-%d", id, id), http.StatusSeeOther)
 }
 
 func (app *App) handleAdminSources(w http.ResponseWriter, r *http.Request) {
 	sources, err := app.db.ListAllSources()
 	if err != nil {
-		http.Error(w, "Failed to load sources", http.StatusInternalServerError)
+		app.serverError(w, r, "admin: failed to load sources", err)
 		return
+	}
+
+	now := time.Now()
+	health, err := app.db.ListSourceHealth(now.Add(-sourceRecentWindow))
+	if err != nil {
+		slog.Warn("sources: could not load health", "error", err)
+	}
+	rows := make([]adminSourceRow, 0, len(sources))
+	for _, src := range sources {
+		h := health[src.ID]
+		rows = append(rows, adminSourceRow{
+			Source:      src,
+			LastArticle: ago(h.LastArticleAt, now),
+			Recent:      h.Recent,
+			Total:       h.Total,
+			Stale:       h.Stale(src.Active, now, sourceStaleAfter),
+		})
 	}
 
 	data := map[string]interface{}{
 		"Title":     "Sources",
-		"Sources":   sources,
+		"Sources":   rows,
 		"CSRFToken": getCSRFToken(w, r),
+		"Message":   sourceMessages[r.URL.Query().Get("msg")],
+		"Error":     sourceErrors[r.URL.Query().Get("error")],
 	}
 	app.renderTemplate(w, "sources.html", data)
 }
 
-func (app *App) handleAddSource(w http.ResponseWriter, r *http.Request) {
-	name := r.FormValue("name")
-	url := r.FormValue("url")
-	rssURL := r.FormValue("rss_url")
+// adminSourceRow is a source with what the scanner has collected from it.
+type adminSourceRow struct {
+	db.Source
+	LastArticle string // "3 h ago", or "never"
+	Recent      int    // articles stored in the last sourceRecentWindow
+	Total       int
+	// Stale: active, but nothing new for longer than sourceStaleAfter --
+	// the feed has probably moved or broken.
+	Stale bool
+}
 
-	if strings.TrimSpace(name) == "" || strings.TrimSpace(url) == "" {
-		http.Error(w, "Name and URL are required", http.StatusBadRequest)
-		return
-	}
+const (
+	sourceRecentWindow = 7 * 24 * time.Hour
+	sourceStaleAfter   = 3 * 24 * time.Hour
+)
 
-	source := &dbSource{
-		Name:   name,
-		URL:    url,
-		Active: true,
-	}
-	if rssURL != "" {
-		source.RSSURL = &rssURL
-	}
+var sourceMessages = map[string]string{
+	"added": "Source added.", "saved": "Source saved.", "toggled": "Source updated.",
+}
 
-	intervalStr := r.FormValue("scan_interval")
-	if intervalStr != "" {
-		interval, err := strconv.Atoi(intervalStr)
-		if err == nil {
-			source.ScanInterval = &interval
+var sourceErrors = map[string]string{
+	"required": "Not saved: a source needs a name and a URL.",
+	"interval": "Not saved: the scan interval must be a whole number of minutes, 1 or more. Leave it empty for the default.",
+	"store":    "Not saved: the source could not be stored.",
+}
+
+// sourceForm reads the add and edit forms. An empty RSS URL or interval is
+// stored as unset, so clearing a field clears it; errCode is a key of
+// sourceErrors, or "" when the form is valid.
+func sourceForm(r *http.Request) (name, siteURL string, rssURL *string, interval *int, errCode string) {
+	name = strings.TrimSpace(r.FormValue("name"))
+	siteURL = strings.TrimSpace(r.FormValue("url"))
+	if name == "" || siteURL == "" {
+		return "", "", nil, nil, "required"
+	}
+	if v := strings.TrimSpace(r.FormValue("rss_url")); v != "" {
+		rssURL = &v
+	}
+	if v := strings.TrimSpace(r.FormValue("scan_interval")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return "", "", nil, nil, "interval"
 		}
+		interval = &n
 	}
+	return name, siteURL, rssURL, interval, ""
+}
 
+func (app *App) handleAddSource(w http.ResponseWriter, r *http.Request) {
+	name, siteURL, rssURL, interval, errCode := sourceForm(r)
+	if errCode != "" {
+		http.Redirect(w, r, "/admin/sources?error="+errCode, http.StatusSeeOther)
+		return
+	}
+	source := &dbSource{Name: name, URL: siteURL, RSSURL: rssURL, ScanInterval: interval, Active: true}
 	if _, err := app.db.CreateSource(source); err != nil {
-		http.Error(w, "Failed to create source", http.StatusInternalServerError)
+		slog.Error("add source", "error", err)
+		http.Redirect(w, r, "/admin/sources?error=store", http.StatusSeeOther)
 		return
 	}
 
-	http.Redirect(w, r, "/admin/sources", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/sources?msg=added", http.StatusSeeOther)
 }
 
 func (app *App) handleEditSource(w http.ResponseWriter, r *http.Request) {
@@ -403,33 +475,24 @@ func (app *App) handleEditSource(w http.ResponseWriter, r *http.Request) {
 
 	source, err := app.db.GetSource(id)
 	if err != nil {
-		http.Error(w, "Source not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
-	source.Name = r.FormValue("name")
-	source.URL = r.FormValue("url")
-	rssURL := r.FormValue("rss_url")
-	if rssURL != "" {
-		source.RSSURL = &rssURL
-	} else {
-		source.RSSURL = nil
+	name, siteURL, rssURL, interval, errCode := sourceForm(r)
+	if errCode != "" {
+		http.Redirect(w, r, "/admin/sources?error="+errCode, http.StatusSeeOther)
+		return
 	}
-
-	intervalStr := r.FormValue("scan_interval")
-	if intervalStr != "" {
-		interval, err := strconv.Atoi(intervalStr)
-		if err == nil {
-			source.ScanInterval = &interval
-		}
-	}
+	source.Name, source.URL, source.RSSURL, source.ScanInterval = name, siteURL, rssURL, interval
 
 	if err := app.db.UpdateSource(source); err != nil {
-		http.Error(w, "Failed to update source", http.StatusInternalServerError)
+		slog.Error("edit source", "id", id, "error", err)
+		http.Redirect(w, r, "/admin/sources?error=store", http.StatusSeeOther)
 		return
 	}
 
-	http.Redirect(w, r, "/admin/sources", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/sources?msg=saved", http.StatusSeeOther)
 }
 
 func (app *App) handleToggleSource(w http.ResponseWriter, r *http.Request) {
@@ -444,20 +507,28 @@ func (app *App) handleToggleSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/admin/sources", http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/sources?msg=toggled", http.StatusSeeOther)
 }
 
 func (app *App) handleAdminSubscribers(w http.ResponseWriter, r *http.Request) {
 	subscribers, err := app.db.ListAllSubscribers()
 	if err != nil {
-		http.Error(w, "Failed to load subscribers", http.StatusInternalServerError)
+		app.serverError(w, r, "admin: failed to load subscribers", err)
 		return
 	}
 
+	// Totals by state: only active subscribers get the newsletter.
+	states := map[string]int{}
+	for _, s := range subscribers {
+		states[s.State()]++
+	}
 	data := map[string]interface{}{
-		"Title":       "Subscribers",
-		"Subscribers": subscribers,
-		"CSRFToken":   getCSRFToken(w, r),
+		"Title":        "Subscribers",
+		"Subscribers":  subscribers,
+		"Active":       states[db.SubscriberActive],
+		"Pending":      states[db.SubscriberPending],
+		"Unsubscribed": states[db.SubscriberUnsubscribed],
+		"CSRFToken":    getCSRFToken(w, r),
 	}
 	app.renderTemplate(w, "subscribers.html", data)
 }
@@ -465,7 +536,7 @@ func (app *App) handleAdminSubscribers(w http.ResponseWriter, r *http.Request) {
 func (app *App) handleExportSubscribers(w http.ResponseWriter, r *http.Request) {
 	subscribers, err := app.db.ListAllSubscribers()
 	if err != nil {
-		http.Error(w, "Failed to load subscribers", http.StatusInternalServerError)
+		app.serverError(w, r, "admin: failed to load subscribers", err)
 		return
 	}
 
@@ -473,7 +544,7 @@ func (app *App) handleExportSubscribers(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Disposition", "attachment; filename=subscribers.csv")
 
 	writer := csv.NewWriter(w)
-	writer.Write([]string{"Email", "Confirmed", "Subscribed At", "Confirmed At"})
+	writer.Write([]string{"Email", "Confirmed", "Subscribed At", "Confirmed At", "Unsubscribed At"})
 
 	for _, s := range subscribers {
 		confirmed := "No"
@@ -484,11 +555,16 @@ func (app *App) handleExportSubscribers(w http.ResponseWriter, r *http.Request) 
 		if s.ConfirmedAt != nil {
 			confirmedAt = s.ConfirmedAt.Format("2006-01-02 15:04:05")
 		}
+		unsubscribedAt := ""
+		if s.UnsubscribedAt != nil {
+			unsubscribedAt = s.UnsubscribedAt.Format("2006-01-02 15:04:05")
+		}
 		writer.Write([]string{
 			s.Email,
 			confirmed,
 			s.SubscribedAt.Format("2006-01-02 15:04:05"),
 			confirmedAt,
+			unsubscribedAt,
 		})
 	}
 	writer.Flush()
@@ -512,28 +588,29 @@ func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 			"UserAgent":       app.cfg.Scanner.UserAgent,
 		},
 		"AI": map[string]interface{}{
-			"GeneratorModel":  app.cfg.AI.GeneratorModel,
-			"CriticModel":     app.cfg.AI.CriticModel,
-			"HFAPIToken":      maskString(app.cfg.AI.HFAPIToken),
-			"CriticThreshold": app.cfg.AI.CriticThreshold,
-			"MaxRetries":      app.cfg.AI.MaxRetries,
-			"CacheTTL":        app.cfg.AI.CacheTTL,
+			"GeneratorModel": app.cfg.AI.GeneratorModel,
+			// A chain, tried left to right; shown that way rather than as the
+			// raw comma-separated string.
+			"CriticModel":           strings.Join(ai.SplitModels(app.cfg.AI.CriticModel), " -> "),
+			"CriticDisableThinking": app.cfg.AI.CriticDisableThinking,
+			"HFAPIToken":            maskString(app.cfg.AI.HFAPIToken),
+			"CriticThreshold":       app.cfg.AI.CriticThreshold,
+			"MaxRetries":            app.cfg.AI.MaxRetries,
+			"CacheTTL":              app.cfg.AI.CacheTTL,
 		},
+		// Flat, so each value is its own row: nested maps printed as
+		// "map[Host:... Password:...]".
 		"Mail": map[string]interface{}{
-			"SMTP": map[string]interface{}{
-				"Host":     app.cfg.Mail.SMTP.Host,
-				"Port":     app.cfg.Mail.SMTP.Port,
-				"User":     app.cfg.Mail.SMTP.User,
-				"Password": maskString(app.cfg.Mail.SMTP.Password),
-				"From":     app.cfg.Mail.SMTP.From,
-			},
-			"IMAP": map[string]interface{}{
-				"Host":         app.cfg.Mail.IMAP.Host,
-				"Port":         app.cfg.Mail.IMAP.Port,
-				"User":         app.cfg.Mail.IMAP.User,
-				"Password":     maskString(app.cfg.Mail.IMAP.Password),
-				"PollInterval": app.cfg.Mail.IMAP.PollInterval,
-			},
+			"SMTP host":          app.cfg.Mail.SMTP.Host,
+			"SMTP port":          app.cfg.Mail.SMTP.Port,
+			"SMTP user":          app.cfg.Mail.SMTP.User,
+			"SMTP password":      maskString(app.cfg.Mail.SMTP.Password),
+			"SMTP from":          app.cfg.Mail.SMTP.From,
+			"IMAP host":          app.cfg.Mail.IMAP.Host,
+			"IMAP port":          app.cfg.Mail.IMAP.Port,
+			"IMAP user":          app.cfg.Mail.IMAP.User,
+			"IMAP password":      maskString(app.cfg.Mail.IMAP.Password),
+			"IMAP poll interval": app.cfg.Mail.IMAP.PollInterval,
 		},
 		"Newsletter": map[string]interface{}{
 			"SendTime": app.cfg.Newsletter.SendTime,
@@ -566,6 +643,9 @@ func maskString(s string) string {
 type adminCandidateRow struct {
 	db.NewsletterCandidate
 	ArticleTitle string
+	// Ended marks a candidate whose offer has ended since the issue was
+	// built; the send leaves it out.
+	Ended bool
 }
 
 // adminCardInfo holds minimal card info for the admin dropdown.
@@ -600,16 +680,47 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 		currentNL = &newsletters[0]
 	}
 
-	// Load candidates for the current newsletter.
+	// Load candidates for the current newsletter. The stored preview was
+	// rendered when the issue was built; an offer that has ended since is
+	// left out when it is sent, so an unsent issue's ended candidates are
+	// marked and counted for the note above the preview.
 	var candidates []adminCandidateRow
+	var endedCount int
+	var pickEnded bool
 	if currentNL != nil {
+		unsent := currentNL.Status != "sent"
+		today := app.offerToday()
 		rawCandidates, _ := app.db.ListCandidatesForNewsletter(currentNL.ID)
 		for _, c := range rawCandidates {
 			row := adminCandidateRow{NewsletterCandidate: c}
 			if article, err := app.db.GetGeneratedArticle(c.ArticleID); err == nil {
 				row.ArticleTitle = article.Title
+				row.Ended = unsent && offer.Ended(article.ExpiresOn, today)
+			}
+			if row.Ended {
+				endedCount++
+				if currentNL.ScoutsPickArticleID != nil && *currentNL.ScoutsPickArticleID == c.ArticleID {
+					pickEnded = true
+				}
 			}
 			candidates = append(candidates, row)
+		}
+	}
+	endedNote := ""
+	switch {
+	case endedCount > 0 && !app.weekHasLiveArticle(currentNL.Date):
+		// SendWeekly re-renders from the week's live articles and skips the
+		// issue when there are none, so there is no Scout's Pick to pass on.
+		endedNote = "No article from this issue's week is still live, so it will not be sent."
+	case endedCount == 1:
+		endedNote = "1 offer in this preview has ended since it was built; it is left out when the issue is sent."
+		if pickEnded {
+			endedNote += " Scout's Pick passes to the top article still in it."
+		}
+	case endedCount > 1:
+		endedNote = fmt.Sprintf("%d offers in this preview have ended since it was built; they are left out when the issue is sent.", endedCount)
+		if pickEnded {
+			endedNote += " Scout's Pick passes to the top article still in it."
 		}
 	}
 
@@ -652,12 +763,22 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 		history = append(history, nl)
 	}
 
+	confirmed := 0
+	if subs, err := app.db.ListConfirmedSubscribers(); err == nil {
+		confirmed = len(subs)
+	}
+
 	data := map[string]interface{}{
 		"Title":             "Newsletter",
+		"PersonaName":       app.cfg.Site.PersonaName,
+		"StatusNote":        newsletterStatusNote(currentNL, confirmed, app.newsletterToday()),
+		"IssuePassed":       currentNL != nil && currentNL.Status != "sent" && currentNL.Date < app.newsletterToday(),
+		"Confirmed":         confirmed,
 		"PreviewHTML":       previewHTML,
 		"NoContent":         noContent,
 		"CurrentNewsletter": currentNL,
 		"Candidates":        candidates,
+		"EndedNote":         endedNote,
 		"CurrentCard":       currentCard,
 		"AllCards":          allCards,
 		"History":           history,
@@ -752,19 +873,54 @@ func (app *App) handleNewsletterSend(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/admin/newsletter?success=Newsletter+sent+successfully", http.StatusSeeOther)
 }
 
+// handleNewsletterHistory keeps the old URL working: the history is the
+// "Past newsletters" section of the newsletter page.
 func (app *App) handleNewsletterHistory(w http.ResponseWriter, r *http.Request) {
-	newsletters, err := app.db.ListNewsletters()
-	if err != nil {
-		http.Error(w, "Failed to load newsletters", http.StatusInternalServerError)
-		return
-	}
+	http.Redirect(w, r, "/admin/newsletter#history", http.StatusSeeOther)
+}
 
-	data := map[string]interface{}{
-		"Title":     "Newsletter History",
-		"History":   newsletters,
-		"CSRFToken": getCSRFToken(w, r),
+// newsletterStatusNote says what will happen to the issue: whether and when
+// it goes out, and to how many people. SendWeekly sends only an approved or
+// auto-approved issue, on its Saturday.
+//
+// today ("2006-01-02", the newsletter's zone) marks an unsent issue whose
+// date has passed: SendWeekly only sends its own Saturday's issue, so it
+// will never go out, whatever its status.
+func newsletterStatusNote(nl *db.Newsletter, confirmed int, today string) string {
+	if nl == nil {
+		return ""
 	}
-	app.renderTemplate(w, "newsletter.html", data)
+	if nl.Status != "sent" && nl.Date < today {
+		when := nl.Date
+		if d, err := time.Parse("2006-01-02", nl.Date); err == nil {
+			when = d.Format("Mon Jan 2")
+		}
+		return fmt.Sprintf("Not sent: this issue was for %s, which has passed, so it will not go out. The next issue is built on Friday evening.", when)
+	}
+	when := nl.Date
+	if d, err := time.Parse("2006-01-02", nl.Date); err == nil {
+		when = d.Format("Mon Jan 2")
+	}
+	people := fmt.Sprintf("%d confirmed subscribers", confirmed)
+	if confirmed == 1 {
+		people = "1 confirmed subscriber"
+	}
+	switch nl.Status {
+	case "approved", "auto_approved":
+		return fmt.Sprintf("Goes out %s, %s, to %s.", when, newsletter.WeeklySendLabel, people)
+	case "draft":
+		return fmt.Sprintf("Draft: it will not go out on %s unless you approve it. Approving sends it at %s to %s.", when, newsletter.WeeklySendLabel, people)
+	case "hold":
+		return fmt.Sprintf("On hold: it will not go out on %s unless you approve it.", when)
+	case "skipped":
+		return fmt.Sprintf("Skipped: the %s issue will not go out.", when)
+	case "sent":
+		if nl.SentAt != nil {
+			return "Sent " + nl.SentAt.Format(adminTimeFormat) + "."
+		}
+		return "Sent."
+	}
+	return ""
 }
 
 // dbSource is a type alias to avoid import cycle in this file.
@@ -796,7 +952,7 @@ type adminIssuerGroup struct {
 func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
 	pages, err := app.db.ListReferencePages("")
 	if err != nil {
-		http.Error(w, "Failed to load cards", http.StatusInternalServerError)
+		app.serverError(w, r, "admin: failed to load cards", err)
 		return
 	}
 
@@ -835,14 +991,21 @@ func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var issuers []adminIssuerGroup
+	var attention []adminCardRow
 	for _, name := range issuerOrder {
 		issuers = append(issuers, adminIssuerGroup{Name: name, Cards: issuerMap[name]})
+		for _, c := range issuerMap[name] {
+			if c.PendingCount > 0 || c.FlaggedCount > 0 {
+				attention = append(attention, c)
+			}
+		}
 	}
 
 	data := map[string]interface{}{
 		"Title":     "Cards",
 		"Cards":     pages,
 		"Issuers":   issuers,
+		"Attention": attention,
 		"CSRFToken": getCSRFToken(w, r),
 		"Message":   r.URL.Query().Get("msg"),
 	}
@@ -850,105 +1013,250 @@ func (app *App) handleAdminCards(w http.ResponseWriter, r *http.Request) {
 }
 
 func (app *App) handleAdminCardNew(w http.ResponseWriter, r *http.Request) {
-	personaName := app.cfg.Site.PersonaName
-
-	data := map[string]interface{}{
-		"Title":       "New Card",
-		"IsNew":       true,
-		"Card":        &db.ReferencePage{Status: "draft"},
-		"Sections":    []db.ReferenceSection{},
-		"Keywords":    "",
-		"FormAction":  "/admin/cards",
-		"PersonaName": personaName,
-		"CSRFToken":   getCSRFToken(w, r),
-	}
-	app.renderTemplate(w, "card-edit.html", data)
+	app.renderCardForm(w, r, http.StatusOK, cardForm{
+		Card:     &db.ReferencePage{Status: "draft"},
+		Sections: []db.ReferenceSection{},
+		IsNew:    true,
+	})
 }
 
-func (app *App) handleAdminCardCreate(w http.ResponseWriter, r *http.Request) {
-	page := &db.ReferencePage{
-		Title:         strings.TrimSpace(r.FormValue("title")),
-		Slug:          strings.TrimSpace(r.FormValue("slug")),
-		Category:      strings.TrimSpace(r.FormValue("category")),
-		Issuer:        strings.TrimSpace(r.FormValue("issuer")),
-		ImageURL:      strings.TrimSpace(r.FormValue("image_url")),
-		ApplyURL:      strings.TrimSpace(r.FormValue("apply_url")),
-		Status:        r.FormValue("status"),
-		ScoutsVerdict: r.FormValue("scouts_verdict"),
-	}
+// cardForm is what the card editor renders: the card as stored, or as the
+// admin submitted it when saving failed, with the reason.
+type cardForm struct {
+	Card     *db.ReferencePage
+	Sections []db.ReferenceSection
+	Keywords string
+	IsNew    bool
+	// FormError says why the save failed; FieldErrors holds the message for
+	// each failing form field, keyed by the field's name.
+	FormError   string
+	FieldErrors map[string]string
+	Message     string
+}
 
-	if page.Title == "" || page.Slug == "" {
-		http.Error(w, "Title and slug are required", http.StatusBadRequest)
-		return
+// renderCardForm renders the card editor with status.
+func (app *App) renderCardForm(w http.ResponseWriter, r *http.Request, status int, f cardForm) {
+	formAction := "/admin/cards"
+	title := "New Card"
+	if !f.IsNew {
+		formAction = fmt.Sprintf("/admin/cards/%d/edit", f.Card.ID)
+		title = "Edit: " + f.Card.Title
+	}
+	var flagged []db.FlaggedField
+	if f.Card.FlaggedFieldsJSON != "" && f.Card.FlaggedFieldsJSON != "[]" {
+		json.Unmarshal([]byte(f.Card.FlaggedFieldsJSON), &flagged)
+	}
+	if flagged == nil {
+		flagged = []db.FlaggedField{}
+	}
+	var pending []db.PendingUpdate
+	if f.Card.PendingUpdatesJSON != "" && f.Card.PendingUpdatesJSON != "[]" {
+		json.Unmarshal([]byte(f.Card.PendingUpdatesJSON), &pending)
+	}
+	// Flags are shown on the field they are about; flags on a name the
+	// editor has no field for are listed together above the form.
+	flagMap := map[string][]db.FlaggedField{}
+	var otherFlags []db.FlaggedField
+	known := map[string]bool{}
+	for _, cf := range cardFlagFields {
+		known[cf.Name] = true
+	}
+	for _, fl := range flagged {
+		if known[fl.Field] {
+			flagMap[fl.Field] = append(flagMap[fl.Field], fl)
+		} else {
+			otherFlags = append(otherFlags, fl)
+		}
+	}
+	sectionUpdates := map[string]int{}
+	for _, u := range pending {
+		sectionUpdates[u.SectionKey]++
+	}
+	data := map[string]interface{}{
+		"Title":          title,
+		"IsNew":          f.IsNew,
+		"Card":           f.Card,
+		"Sections":       f.Sections,
+		"Keywords":       f.Keywords,
+		"FormAction":     formAction,
+		"PersonaName":    app.cfg.Site.PersonaName,
+		"CSRFToken":      getCSRFToken(w, r),
+		"FlaggedFields":  flagged,
+		"FlagMap":        flagMap,
+		"OtherFlags":     otherFlags,
+		"FlagFields":     cardFlagFields,
+		"JSONFields":     cardJSONFieldValues(f.Card),
+		"SectionUpdates": sectionUpdates,
+		"PendingCount":   len(pending),
+		"FormError":      f.FormError,
+		"FieldErrors":    f.FieldErrors,
+		"Message":        f.Message,
+	}
+	app.renderStatus(w, status, "card-edit.html", data)
+}
+
+// cardFlagFields are the editor's fields an admin can flag, in form order.
+var cardFlagFields = []struct{ Name, Label string }{
+	{"title", "Title"}, {"slug", "Slug"}, {"category", "Category"}, {"issuer", "Issuer"}, {"status", "Status"},
+	{"keywords", "Keywords"}, {"image_url", "Image URL"}, {"apply_url", "Card details URL"},
+	{"annual_fee_amount", "Annual fee"}, {"annual_fee_note", "Annual fee note"},
+	{"welcome_bonus_text", "Welcome bonus"}, {"earning_rates_json", "Earning rates"},
+	{"credits_json", "Credits"}, {"benefits_json", "Benefits"}, {"protections_json", "Protections"},
+	{"sections", "Sections"}, {"scouts_verdict", "Verdict"},
+}
+
+// cardJSONFields are the card's structured-data fields, edited as JSON.
+var cardJSONFields = []struct{ name, label string }{
+	{"earning_rates_json", "Earning rates"},
+	{"credits_json", "Credits"},
+	{"benefits_json", "Benefits"},
+	{"protections_json", "Protections"},
+}
+
+// applyCardForm copies the submitted form onto page and reports what is
+// wrong with it, keyed by form field. page always ends up holding exactly
+// what was submitted, valid or not, so a failed save can show it again.
+// An emptied JSON field is stored as {} -- it clears the data rather than
+// keeping the old value.
+func applyCardForm(r *http.Request, page *db.ReferencePage) (keywords string, sections []db.ReferenceSection, errs map[string]string) {
+	errs = map[string]string{}
+	page.Title = strings.TrimSpace(r.FormValue("title"))
+	page.Slug = strings.TrimSpace(r.FormValue("slug"))
+	page.Category = strings.TrimSpace(r.FormValue("category"))
+	page.Issuer = strings.TrimSpace(r.FormValue("issuer"))
+	page.ImageURL = strings.TrimSpace(r.FormValue("image_url"))
+	page.ApplyURL = strings.TrimSpace(r.FormValue("apply_url"))
+	page.Status = r.FormValue("status")
+	page.ScoutsVerdict = r.FormValue("scouts_verdict")
+	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
+	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
+
+	if page.Title == "" {
+		errs["title"] = "Title is required."
+	}
+	if page.Slug == "" {
+		errs["slug"] = "Slug is required."
 	}
 	if page.Category == "" {
 		page.Category = "credit-card"
 	}
-	if page.Status == "" {
+	if page.Status != "published" {
 		page.Status = "draft"
 	}
 
-	// Parse keywords.
-	keywords := parseKeywords(r.FormValue("keywords"))
-	keywordsJSON, _ := json.Marshal(keywords)
-	page.KeywordsJSON = string(keywordsJSON)
-
-	// Parse sections.
-	sections := parseSectionsFromForm(r)
-	sectionsJSON, _ := json.Marshal(sections)
-	page.SectionsJSON = string(sectionsJSON)
-
-	// Parse structured data fields.
-	if feeStr := strings.TrimSpace(r.FormValue("annual_fee_amount")); feeStr != "" {
-		fmt.Sscanf(feeStr, "%d", &page.AnnualFeeAmount)
-	}
-	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
-	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
-	earningRatesJSON := strings.TrimSpace(r.FormValue("earning_rates_json"))
-	creditsJSON := strings.TrimSpace(r.FormValue("credits_json"))
-	benefitsJSON := strings.TrimSpace(r.FormValue("benefits_json"))
-	protectionsJSON := strings.TrimSpace(r.FormValue("protections_json"))
-
-	for _, field := range []struct{ name, value string }{
-		{"earning_rates_json", earningRatesJSON},
-		{"credits_json", creditsJSON},
-		{"benefits_json", benefitsJSON},
-		{"protections_json", protectionsJSON},
-	} {
-		if field.value != "" && !json.Valid([]byte(field.value)) {
-			http.Error(w, fmt.Sprintf("Invalid JSON in %s", field.name), http.StatusBadRequest)
-			return
+	page.AnnualFeeAmount = 0
+	if fee := strings.TrimSpace(r.FormValue("annual_fee_amount")); fee != "" {
+		n, err := strconv.Atoi(fee)
+		if err != nil || n < 0 {
+			errs["annual_fee_amount"] = "Annual fee must be a whole number of dollars, like 895."
+		} else {
+			page.AnnualFeeAmount = n
 		}
 	}
 
-	page.EarningRatesJSON = earningRatesJSON
-	page.CreditsJSON = creditsJSON
-	page.BenefitsJSON = benefitsJSON
-	page.ProtectionsJSON = protectionsJSON
+	values := map[string]string{}
+	for _, f := range cardJSONFields {
+		v := strings.TrimSpace(r.FormValue(f.name))
+		if v == "" {
+			v = "{}"
+		} else if err := checkJSON(v); err != "" {
+			errs[f.name] = f.label + " is not valid JSON: " + err
+		}
+		values[f.name] = v
+	}
+	page.EarningRatesJSON = values["earning_rates_json"]
+	page.CreditsJSON = values["credits_json"]
+	page.BenefitsJSON = values["benefits_json"]
+	page.ProtectionsJSON = values["protections_json"]
 
-	// Initialize empty JSON arrays.
-	page.RecentChangesJSON = "[]"
-	page.PendingUpdatesJSON = "[]"
-	if page.EarningRatesJSON == "" {
-		page.EarningRatesJSON = "{}"
-	}
-	if page.CreditsJSON == "" {
-		page.CreditsJSON = "{}"
-	}
-	if page.BenefitsJSON == "" {
-		page.BenefitsJSON = "{}"
-	}
-	if page.ProtectionsJSON == "" {
-		page.ProtectionsJSON = "{}"
-	}
-	page.FlaggedFieldsJSON = "[]"
+	keywords = r.FormValue("keywords")
+	kwJSON, _ := json.Marshal(parseKeywords(keywords))
+	page.KeywordsJSON = string(kwJSON)
 
-	if _, err := app.db.CreateReferencePage(page); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create card: %v", err), http.StatusInternalServerError)
+	sections = parseSectionsFromForm(r)
+	secJSON, _ := json.Marshal(sections)
+	page.SectionsJSON = string(secJSON)
+	if sections == nil {
+		sections = []db.ReferenceSection{}
+	}
+	return keywords, sections, errs
+}
+
+// cardJSONField is one JSON box in the card editor.
+type cardJSONField struct {
+	Name, Label, Placeholder, Value string
+}
+
+// cardJSONFieldValues are the editor's JSON boxes, holding card's values. A
+// stored "{}" shows as an empty box.
+func cardJSONFieldValues(card *db.ReferencePage) []cardJSONField {
+	placeholders := map[string]string{
+		"earning_rates_json": `{"dining": {"rate": "3x", "note": ""}}`,
+		"credits_json":       `{"airline": {"amount": "$200/yr", "note": ""}}`,
+		"benefits_json":      `{"lounge_access": {"value": "Priority Pass", "note": ""}}`,
+		"protections_json":   `{"purchase_protection": {"amount": "$10,000", "note": "120 days"}}`,
+	}
+	values := map[string]string{
+		"earning_rates_json": card.EarningRatesJSON,
+		"credits_json":       card.CreditsJSON,
+		"benefits_json":      card.BenefitsJSON,
+		"protections_json":   card.ProtectionsJSON,
+	}
+	out := make([]cardJSONField, 0, len(cardJSONFields))
+	for _, f := range cardJSONFields {
+		v := values[f.name]
+		if v == "{}" {
+			v = ""
+		}
+		out = append(out, cardJSONField{Name: f.name, Label: f.label, Placeholder: placeholders[f.name], Value: v})
+	}
+	return out
+}
+
+// checkJSON returns "" for valid JSON, or where and why it is not.
+func checkJSON(s string) string {
+	var v interface{}
+	err := json.Unmarshal([]byte(s), &v)
+	if err == nil {
+		return ""
+	}
+	var syn *json.SyntaxError
+	if errors.As(err, &syn) {
+		line := 1 + strings.Count(s[:min(int(syn.Offset), len(s))], "\n")
+		return fmt.Sprintf("%s (line %d)", syn.Error(), line)
+	}
+	return err.Error()
+}
+
+// cardFormSummary is the banner above a card form that failed to save.
+func cardFormSummary(errs map[string]string) string {
+	if len(errs) == 1 {
+		for _, e := range errs {
+			return "Not saved: " + e + " Your other changes are kept below."
+		}
+	}
+	return fmt.Sprintf("Not saved: %d fields need fixing. Your changes are kept below.", len(errs))
+}
+
+func (app *App) handleAdminCardCreate(w http.ResponseWriter, r *http.Request) {
+	page := &db.ReferencePage{RecentChangesJSON: "[]", PendingUpdatesJSON: "[]", FlaggedFieldsJSON: "[]"}
+	keywords, sections, errs := applyCardForm(r, page)
+	form := cardForm{Card: page, Sections: sections, Keywords: keywords, IsNew: true, FieldErrors: errs}
+	if len(errs) > 0 {
+		form.FormError = cardFormSummary(errs)
+		app.renderCardForm(w, r, http.StatusBadRequest, form)
 		return
 	}
 
-	http.Redirect(w, r, "/admin/cards?msg=Card+created", http.StatusSeeOther)
+	id, err := app.db.CreateReferencePage(page)
+	if err != nil {
+		slog.Error("create card", "slug", page.Slug, "error", err)
+		form.FormError = "Not saved: the card could not be stored (" + err.Error() + "). Is the slug already used by another card?"
+		app.renderCardForm(w, r, http.StatusBadRequest, form)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit?msg=created", id), http.StatusSeeOther)
 }
 
 func (app *App) handleAdminCardEdit(w http.ResponseWriter, r *http.Request) {
@@ -960,7 +1268,7 @@ func (app *App) handleAdminCardEdit(w http.ResponseWriter, r *http.Request) {
 
 	page, err := app.db.GetReferencePage(id)
 	if err != nil {
-		http.Error(w, "Card not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -974,28 +1282,20 @@ func (app *App) handleAdminCardEdit(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(page.KeywordsJSON), &keywords)
 	}
 
-	var flaggedFields []db.FlaggedField
-	if page.FlaggedFieldsJSON != "" && page.FlaggedFieldsJSON != "[]" {
-		json.Unmarshal([]byte(page.FlaggedFieldsJSON), &flaggedFields)
+	msg := ""
+	switch r.URL.Query().Get("msg") {
+	case "saved":
+		msg = "Saved."
+	case "created":
+		msg = "Card created."
+	case "flagged":
+		msg = "Flag added."
+	case "resolved":
+		msg = "Flag resolved."
 	}
-	if flaggedFields == nil {
-		flaggedFields = []db.FlaggedField{}
-	}
-
-	personaName := app.cfg.Site.PersonaName
-
-	data := map[string]interface{}{
-		"Title":         "Edit: " + page.Title,
-		"IsNew":         false,
-		"Card":          page,
-		"Sections":      sections,
-		"Keywords":      strings.Join(keywords, ", "),
-		"FormAction":    fmt.Sprintf("/admin/cards/%d/edit", page.ID),
-		"PersonaName":   personaName,
-		"CSRFToken":     getCSRFToken(w, r),
-		"FlaggedFields": flaggedFields,
-	}
-	app.renderTemplate(w, "card-edit.html", data)
+	app.renderCardForm(w, r, http.StatusOK, cardForm{
+		Card: page, Sections: sections, Keywords: strings.Join(keywords, ", "), Message: msg,
+	})
 }
 
 func (app *App) handleAdminCardUpdate(w http.ResponseWriter, r *http.Request) {
@@ -1007,81 +1307,26 @@ func (app *App) handleAdminCardUpdate(w http.ResponseWriter, r *http.Request) {
 
 	page, err := app.db.GetReferencePage(id)
 	if err != nil {
-		http.Error(w, "Card not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
-	page.Title = strings.TrimSpace(r.FormValue("title"))
-	page.Slug = strings.TrimSpace(r.FormValue("slug"))
-	page.Category = strings.TrimSpace(r.FormValue("category"))
-	page.Issuer = strings.TrimSpace(r.FormValue("issuer"))
-	page.ImageURL = strings.TrimSpace(r.FormValue("image_url"))
-	page.ApplyURL = strings.TrimSpace(r.FormValue("apply_url"))
-	page.Status = r.FormValue("status")
-	page.ScoutsVerdict = r.FormValue("scouts_verdict")
-
-	// Parse structured data fields.
-	if feeStr := strings.TrimSpace(r.FormValue("annual_fee_amount")); feeStr != "" {
-		fmt.Sscanf(feeStr, "%d", &page.AnnualFeeAmount)
-	} else {
-		page.AnnualFeeAmount = 0
-	}
-	page.AnnualFeeNote = strings.TrimSpace(r.FormValue("annual_fee_note"))
-	page.WelcomeBonusText = strings.TrimSpace(r.FormValue("welcome_bonus_text"))
-	updateEarningRatesJSON := strings.TrimSpace(r.FormValue("earning_rates_json"))
-	updateCreditsJSON := strings.TrimSpace(r.FormValue("credits_json"))
-	updateBenefitsJSON := strings.TrimSpace(r.FormValue("benefits_json"))
-	updateProtectionsJSON := strings.TrimSpace(r.FormValue("protections_json"))
-
-	for _, field := range []struct{ name, value string }{
-		{"earning_rates_json", updateEarningRatesJSON},
-		{"credits_json", updateCreditsJSON},
-		{"benefits_json", updateBenefitsJSON},
-		{"protections_json", updateProtectionsJSON},
-	} {
-		if field.value != "" && !json.Valid([]byte(field.value)) {
-			http.Error(w, fmt.Sprintf("Invalid JSON in %s", field.name), http.StatusBadRequest)
-			return
-		}
-	}
-
-	if updateEarningRatesJSON != "" {
-		page.EarningRatesJSON = updateEarningRatesJSON
-	}
-	if updateCreditsJSON != "" {
-		page.CreditsJSON = updateCreditsJSON
-	}
-	if updateBenefitsJSON != "" {
-		page.BenefitsJSON = updateBenefitsJSON
-	}
-	if updateProtectionsJSON != "" {
-		page.ProtectionsJSON = updateProtectionsJSON
-	}
-
-	if page.Title == "" || page.Slug == "" {
-		http.Error(w, "Title and slug are required", http.StatusBadRequest)
+	keywords, sections, errs := applyCardForm(r, page)
+	form := cardForm{Card: page, Sections: sections, Keywords: keywords, FieldErrors: errs}
+	if len(errs) > 0 {
+		form.FormError = cardFormSummary(errs)
+		app.renderCardForm(w, r, http.StatusBadRequest, form)
 		return
 	}
-	if page.Category == "" {
-		page.Category = "credit-card"
-	}
-
-	// Parse keywords.
-	keywords := parseKeywords(r.FormValue("keywords"))
-	keywordsJSON, _ := json.Marshal(keywords)
-	page.KeywordsJSON = string(keywordsJSON)
-
-	// Parse sections.
-	sections := parseSectionsFromForm(r)
-	sectionsJSON, _ := json.Marshal(sections)
-	page.SectionsJSON = string(sectionsJSON)
 
 	if err := app.db.UpdateReferencePage(page); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to update card: %v", err), http.StatusInternalServerError)
+		slog.Error("update card", "id", id, "error", err)
+		form.FormError = "Not saved: the card could not be stored (" + err.Error() + "). Is the slug already used by another card?"
+		app.renderCardForm(w, r, http.StatusBadRequest, form)
 		return
 	}
 
-	http.Redirect(w, r, "/admin/cards?msg=Card+updated", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit?msg=saved", id), http.StatusSeeOther)
 }
 
 func (app *App) handleAdminCardDelete(w http.ResponseWriter, r *http.Request) {
@@ -1118,7 +1363,7 @@ func (app *App) handleFlagField(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit?msg=flagged", id), http.StatusSeeOther)
 }
 
 func (app *App) handleResolveFlag(w http.ResponseWriter, r *http.Request) {
@@ -1139,7 +1384,16 @@ func (app *App) handleResolveFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/edit?msg=resolved", id), http.StatusSeeOther)
+}
+
+// cardUpdateView is a pending card update as the updates page shows it.
+type cardUpdateView struct {
+	db.PendingUpdate
+	Diff          wordDiff
+	SectionTitle  string
+	SectionExists bool   // the card still has a section with the update's key
+	ArticleSlug   string // the source article's slug, if it is published
 }
 
 func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
@@ -1151,7 +1405,7 @@ func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
 
 	page, err := app.db.GetReferencePage(id)
 	if err != nil {
-		http.Error(w, "Card not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -1160,12 +1414,44 @@ func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
 		json.Unmarshal([]byte(page.PendingUpdatesJSON), &updates)
 	}
 
+	msg := ""
+	switch r.URL.Query().Get("msg") {
+	case "approved":
+		msg = "Update approved: the section now has the proposed text."
+	case "rejected":
+		msg = "Update rejected."
+	}
+	// MissingUID is the update whose section no longer exists, after an
+	// approve that could not apply it.
+	var missingUID int64
+	if r.URL.Query().Get("error") == "missing_section" {
+		missingUID = queryInt(r, "uid")
+	}
+	var sections []db.ReferenceSection
+	if page.SectionsJSON != "" && page.SectionsJSON != "[]" {
+		json.Unmarshal([]byte(page.SectionsJSON), &sections)
+	}
+	titles := map[string]string{}
+	for _, sec := range sections {
+		titles[sec.Key] = sec.Title
+	}
+	views := make([]cardUpdateView, 0, len(updates))
+	for _, u := range updates {
+		v := cardUpdateView{PendingUpdate: u, Diff: diffWords(u.CurrentContent, u.ProposedContent)}
+		v.SectionTitle, v.SectionExists = titles[u.SectionKey]
+		if a, err := app.db.GetGeneratedArticle(u.ArticleID); err == nil && a.Status == db.StatusApproved {
+			v.ArticleSlug = a.Slug
+		}
+		views = append(views, v)
+	}
+
 	data := map[string]interface{}{
-		"Title":     "Pending Updates: " + page.Title,
-		"Card":      page,
-		"Updates":   updates,
-		"CSRFToken": getCSRFToken(w, r),
-		"Message":   r.URL.Query().Get("msg"),
+		"Title":      "Pending Updates: " + page.Title,
+		"Card":       page,
+		"Updates":    views,
+		"CSRFToken":  getCSRFToken(w, r),
+		"Message":    msg,
+		"MissingUID": int(missingUID),
 	}
 	app.renderTemplate(w, "card-updates.html", data)
 }
@@ -1184,7 +1470,7 @@ func (app *App) handleApproveCardUpdate(w http.ResponseWriter, r *http.Request) 
 
 	page, err := app.db.GetReferencePage(id)
 	if err != nil {
-		http.Error(w, "Card not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -1205,20 +1491,29 @@ func (app *App) handleApproveCardUpdate(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if approved == nil {
-		http.Error(w, "Update not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
-	// Apply the proposed content to the matching section.
+	// Apply the proposed content to the matching section. If the card no
+	// longer has that section (renamed or removed since the update was
+	// drafted), approving would throw the text away: keep the update and say
+	// so instead.
 	var sections []db.ReferenceSection
 	if page.SectionsJSON != "" && page.SectionsJSON != "[]" {
 		json.Unmarshal([]byte(page.SectionsJSON), &sections)
 	}
+	applied := false
 	for i, s := range sections {
 		if s.Key == approved.SectionKey {
 			sections[i].Content = approved.ProposedContent
+			applied = true
 			break
 		}
+	}
+	if !applied {
+		http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?error=missing_section&uid=%d", id, uid), http.StatusSeeOther)
+		return
 	}
 
 	sectionsJSON, _ := json.Marshal(sections)
@@ -1235,7 +1530,7 @@ func (app *App) handleApproveCardUpdate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=Update+approved", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=approved", id), http.StatusSeeOther)
 }
 
 func (app *App) handleRejectCardUpdate(w http.ResponseWriter, r *http.Request) {
@@ -1252,7 +1547,7 @@ func (app *App) handleRejectCardUpdate(w http.ResponseWriter, r *http.Request) {
 
 	page, err := app.db.GetReferencePage(id)
 	if err != nil {
-		http.Error(w, "Card not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -1280,7 +1575,7 @@ func (app *App) handleRejectCardUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=Update+rejected", id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/cards/%d/updates?msg=rejected", id), http.StatusSeeOther)
 }
 
 // adminLinkedCard is the per-row data for the curation page (combines reference
@@ -1303,7 +1598,7 @@ func (app *App) handleAdminArticleCardsGET(w http.ResponseWriter, r *http.Reques
 
 	article, err := app.db.GetGeneratedArticle(id)
 	if err != nil {
-		http.Error(w, "Article not found", http.StatusNotFound)
+		app.renderError(w, http.StatusNotFound, nil)
 		return
 	}
 
@@ -1358,11 +1653,21 @@ func (app *App) handleAdminArticleCardsGET(w http.ResponseWriter, r *http.Reques
 		})
 	}
 
+	// Back goes to the list the article is on.
+	backURL, backLabel, navTab := "/admin/dashboard", "Review", "review"
+	if article.Status == db.StatusApproved {
+		backURL, backLabel, navTab = "/admin/published", "Published", "published"
+	}
 	data := map[string]any{
+		"Title":     "Linked cards",
 		"Article":   article,
 		"Linked":    linked,
 		"Suggested": suggested,
 		"CSRFToken": getCSRFToken(w, r),
+		"Saved":     r.URL.Query().Get("msg") == "saved",
+		"BackURL":   backURL,
+		"BackLabel": backLabel,
+		"NavTab":    navTab,
 	}
 	app.renderTemplate(w, "article-cards.html", data)
 }
@@ -1485,4 +1790,27 @@ func parseSectionsFromForm(r *http.Request) []db.ReferenceSection {
 		})
 	}
 	return sections
+}
+
+// weekHasLiveArticle reports whether the weekly issue dated sendDate would go
+// out: SendWeekly sends the approved articles of the seven days before
+// sendDate whose offers have not ended, and nothing when none are left. On
+// an unreadable date or a database error it assumes the issue goes out,
+// which keeps the preview's usual note.
+func (app *App) weekHasLiveArticle(sendDate string) bool {
+	day, err := time.Parse("2006-01-02", sendDate)
+	if err != nil {
+		return true
+	}
+	articles, err := app.db.ListApprovedArticlesSince(day.AddDate(0, 0, -7))
+	if err != nil {
+		return true
+	}
+	today := app.offerToday()
+	for _, a := range articles {
+		if !offer.Ended(a.ExpiresOn, today) {
+			return true
+		}
+	}
+	return false
 }

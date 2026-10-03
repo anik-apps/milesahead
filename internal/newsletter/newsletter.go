@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -16,33 +19,88 @@ import (
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/mail"
+	"github.com/kumaranik/milesahead/internal/metrics"
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 // MailSender is the interface for sending newsletter emails.
 type MailSender interface {
-	SendNewsletter(subject, htmlContent string, recipients []string) error
+	// SendNewsletter sends to recipients in order and returns how many of
+	// them, from the first, it reached. When it fails, it failed at
+	// recipients[sent].
+	// htmlContent holds mail.UnsubscribeURLPlaceholder wherever the
+	// reader's own unsubscribe link goes.
+	SendNewsletter(subject, htmlContent string, recipients []mail.Recipient) (sent int, err error)
 }
+
+// PartialSendError reports a send that reached some subscribers and then
+// failed. The issue stays recorded as sent: sending it again would reach
+// the first Sent subscribers a second time.
+type PartialSendError struct {
+	Sent, Total int
+	FailedAt    string // the address the send failed at
+	Err         error
+}
+
+// Error names the failing subscriber by position, not address: the message
+// reaches the admin page's redirect URL and the logs, and the underlying SMTP
+// error can carry the address too, so addresses are redacted from it.
+func (e *PartialSendError) Error() string {
+	return fmt.Sprintf("newsletter sent to %d of %d subscribers; the send failed at subscriber %d: %s. It stays marked sent, so those who got it do not get it twice",
+		e.Sent, e.Total, e.Sent+1, emailAddressRE.ReplaceAllString(e.Err.Error(), "<address>"))
+}
+
+var emailAddressRE = regexp.MustCompile(`[^\s<>@"',;:]+@[^\s<>@"',;:]+\.[A-Za-z]{2,}`)
+
+func (e *PartialSendError) Unwrap() error { return e.Err }
 
 // templateDir is the base directory for email templates. Override for testing.
 var templateDir = "templates/email"
+
+// weeklySubject opens every weekly issue's subject.
+const weeklySubject = "MilesAhead Weekly"
+
+// WeeklySendSchedule is when the scheduler runs SendWeekly: Saturdays at
+// 08:00 New York time. WeeklySendLabel says the same for the admin page, which
+// tells the admin when the current issue goes out, and WeeklySendWhen for
+// readers (the sign-up page and the confirmation email). A test holds all
+// three to the same day and time.
+const (
+	WeeklySendSchedule = "CRON_TZ=America/New_York 0 0 8 * * 6"
+	WeeklySendLabel    = "8:00 AM ET"
+	WeeklySendDay      = "Saturday"
+	WeeklySendWhen     = "every " + WeeklySendDay + " at " + WeeklySendLabel
+)
 
 // Service handles newsletter generation and delivery.
 type Service struct {
 	db       *db.Database
 	sender   MailSender
 	ai       ai.HFClientInterface
-	aiModel  string
-	timezone string
+	aiModels []string
 	sendTime string
 	domain   string
+	// loc is the schedule's timezone, resolved once: an unknown name falls
+	// back to UTC with one warning, not one per lookup.
+	loc *time.Location
+	// now is the clock: time.Now, except in tests that need a given time
+	// of day.
+	now func() time.Time
+	// mailUnavailable is set when SMTP is not configured; see
+	// SetMailUnavailable.
+	mailUnavailable bool
+}
+
+// SetMailUnavailable records that outgoing mail is not configured. The
+// weekly send is then skipped with a warning (not counted as a failure, and
+// the issue stays unsent), and SendDaily returns ErrMailUnavailable.
+func (s *Service) SetMailUnavailable(unavailable bool) {
+	s.mailUnavailable = unavailable
 }
 
 // NewService creates a new newsletter Service.
 func NewService(database *db.Database, sender MailSender, cfg config.NewsletterConfig) *Service {
-	tz := cfg.Timezone
-	if tz == "" {
-		tz = "UTC"
-	}
 	st := cfg.SendTime
 	if st == "" {
 		st = "08:00"
@@ -50,16 +108,21 @@ func NewService(database *db.Database, sender MailSender, cfg config.NewsletterC
 	return &Service{
 		db:       database,
 		sender:   sender,
-		timezone: tz,
+		loc:      offer.Location(cfg.Timezone),
 		sendTime: st,
+		now:      time.Now,
 	}
 }
 
 // NewServiceWithAI creates a newsletter Service with AI ranking support.
-func NewServiceWithAI(database *db.Database, sender MailSender, cfg config.NewsletterConfig, aiClient ai.HFClientInterface, aiModel, domain string) *Service {
+// aiModels is a chain tried in order through ai.TryModels; it was a single
+// model (the critic) until that model's retirement cost every issue its
+// ranking. The pick is a short call, so production passes the fast
+// enrichment chain.
+func NewServiceWithAI(database *db.Database, sender MailSender, cfg config.NewsletterConfig, aiClient ai.HFClientInterface, aiModels []string, domain string) *Service {
 	svc := NewService(database, sender, cfg)
 	svc.ai = aiClient
-	svc.aiModel = aiModel
+	svc.aiModels = aiModels
 	svc.domain = domain
 	return svc
 }
@@ -125,28 +188,57 @@ func summary(content string) string {
 	return excerpt(content, 120)
 }
 
-// listRecentApproved fetches approved articles published in the last 24 hours.
+// listRecentApproved fetches approved articles published in the last 24
+// hours whose offer has not ended.
 func (s *Service) listRecentApproved() ([]db.GeneratedArticle, error) {
-	since := time.Now().UTC().Add(-24 * time.Hour)
-	return s.db.ListApprovedArticlesSince(since)
+	return s.listLiveSince(s.now().UTC().Add(-24 * time.Hour))
+}
+
+// listLiveSince fetches approved articles published since since whose offer
+// has not ended.
+func (s *Service) listLiveSince(since time.Time) ([]db.GeneratedArticle, error) {
+	articles, err := s.db.ListApprovedArticlesSince(since)
+	if err != nil {
+		return nil, err
+	}
+	return s.liveOffers(articles), nil
+}
+
+// liveOffers drops articles whose offer has ended, judged on the same date
+// as the site (offer.Today). An offer is live through its last day. A reader
+// acting on an ended transfer bonus makes a transfer that cannot be undone,
+// so an ended offer is never sent, featured or made Scout's Pick.
+func (s *Service) liveOffers(articles []db.GeneratedArticle) []db.GeneratedArticle {
+	today := offer.Today(s.now())
+	live := make([]db.GeneratedArticle, 0, len(articles))
+	for _, a := range articles {
+		if offer.Ended(a.ExpiresOn, today) {
+			slog.Info("newsletter: leaving out an ended offer", "article_id", a.ID, "ended", a.ExpiresOn)
+			continue
+		}
+		live = append(live, a)
+	}
+	return live
+}
+
+// containsArticle reports whether id is among articles.
+func containsArticle(articles []db.GeneratedArticle, id int64) bool {
+	for _, a := range articles {
+		if a.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // todayDate returns today's date string in YYYY-MM-DD format for the configured timezone.
 func (s *Service) todayDate() string {
-	loc, err := time.LoadLocation(s.timezone)
-	if err != nil {
-		loc = time.UTC
-	}
-	return time.Now().In(loc).Format("2006-01-02")
+	return s.now().In(s.loc).Format("2006-01-02")
 }
 
 // nextSaturday returns the date string for the next Saturday (or today if Saturday).
 func (s *Service) nextSaturday() string {
-	loc, err := time.LoadLocation(s.timezone)
-	if err != nil {
-		loc = time.UTC
-	}
-	now := time.Now().In(loc)
+	now := s.now().In(s.loc)
 	daysUntilSat := (6 - int(now.Weekday()) + 7) % 7
 	if daysUntilSat == 0 {
 		// Today is Saturday.
@@ -157,11 +249,7 @@ func (s *Service) nextSaturday() string {
 
 // thisSaturday returns the most recent Saturday date (today if Saturday, else last Saturday).
 func (s *Service) thisSaturday() string {
-	loc, err := time.LoadLocation(s.timezone)
-	if err != nil {
-		loc = time.UTC
-	}
-	now := time.Now().In(loc)
+	now := s.now().In(s.loc)
 	daysSinceSat := (int(now.Weekday()) - 6 + 7) % 7
 	return now.AddDate(0, 0, -daysSinceSat).Format("2006-01-02")
 }
@@ -203,6 +291,16 @@ func groupArticlesByTag(articles []db.GeneratedArticle) map[string][]articleItem
 		}
 	}
 	return groups
+}
+
+// baseURL is the absolute site root that email links and images are built on.
+// An email client has no base URL, so a relative link or image in a newsletter
+// is simply broken. Empty only when no domain is configured (tests).
+func (s *Service) baseURL() string {
+	if s.domain == "" {
+		return ""
+	}
+	return "https://" + s.domain
 }
 
 // renderNewsletter renders the newsletter HTML for the given articles and date.
@@ -303,9 +401,12 @@ func renderWeeklyNewsletter(articles []db.GeneratedArticle, date, domain string,
 // buildTemplateData converts a list of articles into template data.
 func buildTemplateData(articles []db.GeneratedArticle, date, domain string) newsletterData {
 	data := newsletterData{
-		Date:           date,
-		Domain:         domain,
-		UnsubscribeURL: domain + "/unsubscribe",
+		Date:   date,
+		Domain: domain,
+		// Each copy sent gets its reader's own link in place of this; see
+		// mail.Sender.SendNewsletter. Copies kept for the admin get
+		// forDisplay's.
+		UnsubscribeURL: mail.UnsubscribeURLPlaceholder,
 	}
 
 	if len(articles) == 0 {
@@ -371,6 +472,9 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("listing approved articles: %w", err)
 	}
+	// Ended offers are dropped before ranking, so neither the candidates nor
+	// Scout's Pick can be one.
+	articles = s.liveOffers(articles)
 	if len(articles) == 0 {
 		slog.Info("no articles for weekly newsletter", "date", sendDate)
 		return nil, nil
@@ -385,7 +489,7 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	// Create newsletter record with status draft.
 	nl := &db.Newsletter{
 		Date:         sendDate,
-		Subject:      fmt.Sprintf("Miles Ahead Weekly — %s", sendDate),
+		Subject:      fmt.Sprintf("%s — %s", weeklySubject, sendDate),
 		HTMLContent:  "", // Will be rendered at send time.
 		Status:       "draft",
 		ArticleCount: len(articles),
@@ -438,10 +542,11 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 	var sp *scoutsPickData
 	sp = s.loadScoutsPickData(scoutsPickID)
 
-	htmlContent, err := renderWeeklyNewsletter(articles, sendDate, "https://"+s.domain, cow, sp)
+	htmlContent, err := renderWeeklyNewsletter(articles, sendDate, s.baseURL(), cow, sp)
 	if err != nil {
 		slog.Error("failed to render weekly newsletter", "error", err)
 	} else {
+		htmlContent = s.forDisplay(htmlContent)
 		nl.HTMLContent = htmlContent
 		// Persist rendered HTML so the admin preview shows content.
 		if err := s.db.UpdateNewsletterHTML(nlID, htmlContent); err != nil {
@@ -467,7 +572,7 @@ func (s *Service) rankArticles(articles []db.GeneratedArticle) []int64 {
 		ids[i] = a.ID
 	}
 
-	if s.ai == nil || s.aiModel == "" {
+	if s.ai == nil || len(s.aiModels) == 0 {
 		return ids
 	}
 
@@ -481,7 +586,7 @@ func (s *Service) rankArticles(articles []db.GeneratedArticle) []int64 {
 	}
 
 	prompt := ai.NewsletterPickPrompt(summaries)
-	resp, err := s.ai.Generate(s.aiModel, prompt, 512)
+	resp, err := ai.TryModels(s.ai, s.aiModels, prompt, 512)
 	if err != nil {
 		slog.Error("AI ranking failed, using default order", "error", err)
 		return ids
@@ -576,9 +681,19 @@ func (s *Service) loadCardOfWeekData(cardID int64) *cardOfWeekData {
 		ID:       page.ID,
 		Title:    page.Title,
 		Slug:     page.Slug,
-		ImageURL: page.ImageURL,
+		ImageURL: s.absoluteURL(page.ImageURL),
 		Verdict:  page.ScoutsVerdict,
 	}
+}
+
+// absoluteURL makes a site-relative image path absolute. Card art is served from
+// the site's own /static/ directory, and a relative src does not resolve inside
+// an email client.
+func (s *Service) absoluteURL(u string) string {
+	if strings.HasPrefix(u, "/") && !strings.HasPrefix(u, "//") {
+		return s.baseURL() + u
+	}
+	return u
 }
 
 // loadScoutsPickData loads article data for the Scout's Pick.
@@ -631,55 +746,74 @@ func (s *Service) SendWeekly() error {
 		slog.Info("no confirmed subscribers, skipping send")
 		return nil
 	}
+	if s.mailUnavailable {
+		slog.Warn("weekly newsletter not sent: outgoing mail (SMTP) is not configured; it stays unsent",
+			"date", sendDate, "subscribers", len(subscribers))
+		return nil
+	}
 
-	// Re-render template at send time to reflect any admin overrides.
+	// Re-render template at send time to reflect any admin overrides, and
+	// because the newsletter was built the evening before: an offer in it
+	// may have ended overnight. The stored HTML is never sent in place of
+	// the re-rendered issue -- it cannot be checked, and may hold an offer
+	// that has ended or an article that has been unpublished.
 	since, _ := time.Parse("2006-01-02", sendDate)
 	since = since.AddDate(0, 0, -7)
 	articles, err := s.db.ListApprovedArticlesSince(since)
 	if err != nil {
-		slog.Error("failed to reload articles for send", "error", err)
-		// Fall back to stored HTML.
-	} else if len(articles) > 0 {
-		// Reload card of week and scout's pick data.
-		var cow *cardOfWeekData
-		if nl.CardOfWeekID != nil {
-			cow = s.loadCardOfWeekData(*nl.CardOfWeekID)
-		}
-		var sp *scoutsPickData
-		if nl.ScoutsPickArticleID != nil {
-			sp = s.loadScoutsPickData(*nl.ScoutsPickArticleID)
-		}
+		return fmt.Errorf("reloading articles for send: %w", err)
+	}
+	articles = s.liveOffers(articles)
+	if len(articles) == 0 {
+		slog.Warn("weekly newsletter not sent: no published article in it is still live", "date", sendDate)
+		return nil
+	}
 
-		// Re-rank articles using candidates order.
-		candidates, _ := s.db.ListCandidatesForNewsletter(nl.ID)
-		if len(candidates) > 0 {
-			candidateIDs := make([]int64, len(candidates))
-			for i, c := range candidates {
-				candidateIDs[i] = c.ArticleID
+	// Reload card of week and scout's pick data.
+	var cow *cardOfWeekData
+	if nl.CardOfWeekID != nil {
+		cow = s.loadCardOfWeekData(*nl.CardOfWeekID)
+	}
+
+	// Re-rank articles using candidates order.
+	candidates, _ := s.db.ListCandidatesForNewsletter(nl.ID)
+	if len(candidates) > 0 {
+		candidateIDs := make([]int64, len(candidates))
+		for i, c := range candidates {
+			candidateIDs[i] = c.ArticleID
+		}
+		articles = reorderArticles(articles, candidateIDs)
+	}
+
+	var sp *scoutsPickData
+	if nl.ScoutsPickArticleID != nil {
+		pickID := *nl.ScoutsPickArticleID
+		if !containsArticle(articles, pickID) {
+			// Scout's Pick has ended (or been unpublished) since it was
+			// chosen. Hand the slot to the top article still being sent.
+			slog.Info("weekly newsletter: replacing Scout's Pick that is no longer live",
+				"was", pickID, "now", articles[0].ID)
+			pickID = articles[0].ID
+			if err := s.db.UpdateNewsletterScoutsPick(nl.ID, pickID); err != nil {
+				slog.Error("failed to update scout's pick", "error", err)
 			}
-			articles = reorderArticles(articles, candidateIDs)
 		}
-
-		htmlContent, err := renderWeeklyNewsletter(articles, sendDate, "https://"+s.domain, cow, sp)
-		if err != nil {
-			slog.Error("failed to re-render newsletter at send time", "error", err)
-		} else {
-			nl.HTMLContent = htmlContent
-		}
+		sp = s.loadScoutsPickData(pickID)
 	}
 
-	recipients := make([]string, len(subscribers))
-	for i, sub := range subscribers {
-		recipients[i] = sub.Email
+	htmlContent, err := renderWeeklyNewsletter(articles, sendDate, s.baseURL(), cow, sp)
+	if err != nil {
+		return fmt.Errorf("re-rendering newsletter at send time: %w", err)
 	}
 
-	if err := s.sender.SendNewsletter(nl.Subject, nl.HTMLContent, recipients); err != nil {
+	recipients := s.recipients(subscribers)
+	if err := s.sendOnce(nl, htmlContent, recipients); err != nil {
+		if errors.Is(err, ErrAlreadySent) {
+			slog.Info("weekly newsletter already sent", "date", sendDate)
+			return nil
+		}
 		slog.Error("weekly newsletter send failed", "error", err)
-		return fmt.Errorf("sending newsletter: %w", err)
-	}
-
-	if err := s.db.MarkNewsletterSent(nl.ID); err != nil {
-		return fmt.Errorf("marking newsletter sent: %w", err)
+		return err
 	}
 
 	slog.Info("weekly newsletter sent", "date", sendDate, "recipients", len(recipients))
@@ -705,19 +839,22 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 		return existing, nil
 	}
 
-	htmlContent, err := renderNewsletter(articles, date, "")
+	htmlContent, err := renderNewsletter(articles, date, s.baseURL())
 	if err != nil {
 		return nil, fmt.Errorf("rendering newsletter: %w", err)
 	}
+	htmlContent = s.forDisplay(htmlContent)
 
-	subject := fmt.Sprintf("Miles Ahead Daily Digest — %s", date)
+	subject := fmt.Sprintf("MilesAhead Daily Digest — %s", date)
 
+	created := s.now().UTC()
 	nl := &db.Newsletter{
 		Date:         date,
 		Subject:      subject,
 		HTMLContent:  htmlContent,
 		Status:       "draft",
 		ArticleCount: len(articles),
+		CreatedAt:    &created,
 	}
 
 	id, err := s.db.CreateNewsletter(nl)
@@ -731,7 +868,88 @@ func (s *Service) GenerateDaily() (*db.Newsletter, error) {
 	return nl, nil
 }
 
-// SendDaily generates (if needed) and sends the daily newsletter to all confirmed subscribers.
+// SendDaily's answers when it sends nothing, so the admin is never told a
+// newsletter went out when none did.
+var (
+	// ErrNothingLive: no article for today's issue is still live.
+	ErrNothingLive = errors.New("nothing sent: no article for today's newsletter is still live")
+	// ErrAlreadySent: today's issue has gone out already.
+	ErrAlreadySent = errors.New("nothing sent: today's newsletter was already sent")
+	// ErrNoSubscribers: there is no one to send it to.
+	ErrNoSubscribers = errors.New("nothing sent: there are no confirmed subscribers")
+	// ErrMailUnavailable: outgoing mail (SMTP) is not configured.
+	ErrMailUnavailable = errors.New("nothing sent: outgoing mail (SMTP) is not configured; set mail.smtp in the config")
+	// ErrNoRecipients: no confirmed subscriber can be sent a copy (none has
+	// an unsubscribe token).
+	ErrNoRecipients = errors.New("nothing sent: no confirmed subscriber has an unsubscribe link")
+)
+
+// dailyWindow is when the articles in today's daily nl may have been
+// published: from 24 hours before it was generated, or before now if that
+// is earlier, up to when it was generated. An issue generated in the morning
+// and sent in the afternoon keeps its morning articles, and one sent late,
+// after a failed try, does not take in articles published since: those
+// belong to the next day's issue, and would go out twice. An issue stored
+// before generation times were recorded counts from 24 hours before the
+// start of its date to the end of it, which covers whenever that day it was
+// generated.
+func (s *Service) dailyWindow(nl *db.Newsletter, now time.Time) (since, until time.Time) {
+	since = now.Add(-24 * time.Hour)
+	var from time.Time
+	if nl.CreatedAt != nil {
+		from = nl.CreatedAt.Add(-24 * time.Hour)
+		until = *nl.CreatedAt
+	} else if day, err := time.ParseInLocation("2006-01-02", nl.Date, s.loc); err == nil {
+		from = day.Add(-24 * time.Hour)
+		until = day.AddDate(0, 0, 1)
+	}
+	if !from.IsZero() && from.Before(since) {
+		since = from
+	}
+	return since.UTC(), until
+}
+
+// publishedBy keeps the articles published no later than until; a zero
+// until keeps them all.
+func publishedBy(articles []db.GeneratedArticle, until time.Time) []db.GeneratedArticle {
+	if until.IsZero() {
+		return articles
+	}
+	kept := articles[:0]
+	for _, a := range articles {
+		if a.PublishedAt == nil || !a.PublishedAt.After(until) {
+			kept = append(kept, a)
+		}
+	}
+	return kept
+}
+
+// isWeekly reports whether nl is a weekly issue. A weekly is dated the
+// Saturday it goes out, so on a Saturday it holds the date a daily would.
+// Only BuildWeekly writes the weekly subject or candidates. (A Scout's Pick
+// or Card of the Week is no sign: the admin page can set either on whichever
+// issue is current, a daily included.)
+func (s *Service) isWeekly(nl *db.Newsletter) (bool, error) {
+	if strings.HasPrefix(nl.Subject, weeklySubject) {
+		return true, nil
+	}
+	candidates, err := s.db.ListCandidatesForNewsletter(nl.ID)
+	if err != nil {
+		return false, err
+	}
+	return len(candidates) > 0, nil
+}
+
+// SendDaily sends today's daily newsletter to all confirmed subscribers,
+// generating it first if there is none. The admin's "send" button calls it.
+//
+// The issue is rendered again as it is sent, from the live articles of the
+// 24 hours before it was generated (dailyWindow).
+// Its stored HTML was rendered when it was generated, hours earlier perhaps,
+// and may hold an offer that has ended since; it is never sent. Today's
+// issue is not sent at all when it is the weekly one (SendWeekly sends that,
+// on its own checks) or an admin has held or skipped it. Whenever nothing
+// goes out, SendDaily returns an error saying why.
 func (s *Service) SendDaily() error {
 	date := s.todayDate()
 
@@ -747,14 +965,26 @@ func (s *Service) SendDaily() error {
 			return fmt.Errorf("generating newsletter: %w", err)
 		}
 		if nl == nil {
-			// No articles to send.
-			return nil
+			return ErrNothingLive
 		}
 	}
 
-	// Already sent?
-	if nl.Status == "sent" {
-		return nil
+	switch nl.Status {
+	case "sent":
+		return ErrAlreadySent
+	case "draft", "approved", "auto_approved":
+		// Sendable.
+	case "hold":
+		return fmt.Errorf("today's newsletter is on hold, so it was not sent")
+	default:
+		return fmt.Errorf("today's newsletter is %s, so it was not sent", nl.Status)
+	}
+	weekly, err := s.isWeekly(nl)
+	if err != nil {
+		return fmt.Errorf("checking whether today's newsletter is the weekly: %w", err)
+	}
+	if weekly {
+		return fmt.Errorf("today's newsletter is the weekly issue, which goes out on its own schedule; it was not sent")
 	}
 
 	// Fetch confirmed subscribers.
@@ -763,25 +993,80 @@ func (s *Service) SendDaily() error {
 		return fmt.Errorf("listing subscribers: %w", err)
 	}
 	if len(subscribers) == 0 {
-		return nil
+		return ErrNoSubscribers
+	}
+	if s.mailUnavailable {
+		return ErrMailUnavailable
 	}
 
-	recipients := make([]string, len(subscribers))
-	for i, sub := range subscribers {
-		recipients[i] = sub.Email
+	since, until := s.dailyWindow(nl, s.now())
+	articles, err := s.listLiveSince(since)
+	if err != nil {
+		return fmt.Errorf("reloading articles for send: %w", err)
+	}
+	articles = publishedBy(articles, until)
+	if len(articles) == 0 {
+		slog.Warn("daily newsletter not sent: no article in it is still live", "date", date)
+		return ErrNothingLive
+	}
+	htmlContent, err := renderNewsletter(articles, date, s.baseURL())
+	if err != nil {
+		return fmt.Errorf("re-rendering newsletter at send time: %w", err)
+	}
+	// Keep the stored copy as sent, for the admin's history.
+	if err := s.db.UpdateNewsletterHTML(nl.ID, s.forDisplay(htmlContent)); err != nil {
+		slog.Warn("failed to store the daily newsletter as sent", "error", err, "id", nl.ID)
 	}
 
-	if err := s.sender.SendNewsletter(nl.Subject, nl.HTMLContent, recipients); err != nil {
+	recipients := s.recipients(subscribers)
+	if err := s.sendOnce(nl, htmlContent, recipients); err != nil {
 		slog.Error("newsletter send failed", "error", err)
-		return fmt.Errorf("sending newsletter: %w", err)
-	}
-
-	if err := s.db.MarkNewsletterSent(nl.ID); err != nil {
-		return fmt.Errorf("marking newsletter sent: %w", err)
+		return err
 	}
 
 	slog.Info("newsletter sent", "recipients", len(recipients))
 
+	return nil
+}
+
+// sendOnce sends issue nl, rendered as html, to recipients, and records it
+// as sent -- before sending, so that once it has gone out a second click or
+// a retry finds it sent and cannot send it again. If the send fails before
+// reaching anyone the issue is put back to its status, to be sent again; if
+// it fails partway it stays sent, and a *PartialSendError says how far it
+// got. It returns ErrAlreadySent when the issue was sent since nl was read,
+// and an error naming the new status when an admin changed it.
+func (s *Service) sendOnce(nl *db.Newsletter, html string, recipients []mail.Recipient) error {
+	// Never record an issue as sent to nobody.
+	if len(recipients) == 0 {
+		return ErrNoRecipients
+	}
+	claimed, err := s.db.ClaimNewsletterSend(nl.ID, nl.Status)
+	if err != nil {
+		return fmt.Errorf("nothing sent: could not record the newsletter as sent: %w", err)
+	}
+	if !claimed {
+		if cur, err := s.db.GetNewsletterByDate(nl.Date); err == nil && cur.Status != "sent" {
+			return fmt.Errorf("nothing sent: the newsletter was set to %s while it was being sent", cur.Status)
+		}
+		return ErrAlreadySent
+	}
+	sent, err := s.sender.SendNewsletter(nl.Subject, html, recipients)
+	metrics.EmailsSentTotal.WithLabelValues(metrics.EmailNewsletter, metrics.EmailSent).Add(float64(sent))
+	if err != nil {
+		metrics.EmailsSentTotal.WithLabelValues(metrics.EmailNewsletter, metrics.EmailFailed).Inc()
+		if sent > 0 {
+			failedAt := "the end of the list"
+			if sent < len(recipients) {
+				failedAt = recipients[sent].Email
+			}
+			return &PartialSendError{Sent: sent, Total: len(recipients), FailedAt: failedAt, Err: err}
+		}
+		if rerr := s.db.ReleaseNewsletterSend(nl.ID, nl.Status); rerr != nil {
+			return fmt.Errorf("sending newsletter: %w; it could not be put back to %s either, so it shows as sent though it may not have gone out to everyone: %v", err, nl.Status, rerr)
+		}
+		return fmt.Errorf("sending newsletter: %w", err)
+	}
 	return nil
 }
 
@@ -792,9 +1077,41 @@ func (s *Service) PreviewNext() (string, error) {
 		return "", err
 	}
 	if len(articles) == 0 {
-		return "", fmt.Errorf("no approved articles in the last 24 hours")
+		return "", fmt.Errorf("no live approved articles in the last 24 hours")
 	}
 
 	date := s.todayDate()
-	return renderNewsletter(articles, date, "")
+	html, err := renderNewsletter(articles, date, s.baseURL())
+	if err != nil {
+		return "", err
+	}
+	return s.forDisplay(html), nil
+}
+
+// recipients pairs each subscriber with their own unsubscribe link. A
+// subscriber without a token cannot have one, so is left out (none should
+// exist: the column is NOT NULL and every sign-up gets a token).
+func (s *Service) recipients(subscribers []db.Subscriber) []mail.Recipient {
+	out := make([]mail.Recipient, 0, len(subscribers))
+	for _, sub := range subscribers {
+		if sub.Token == "" {
+			slog.Warn("newsletter: leaving out a subscriber with no unsubscribe token", "subscriber_id", sub.ID)
+			continue
+		}
+		out = append(out, mail.Recipient{Email: sub.Email, UnsubscribeURL: s.UnsubscribeURL(sub.Token)})
+	}
+	return out
+}
+
+// UnsubscribeURL is the absolute link that unsubscribes the subscriber
+// with token.
+func (s *Service) UnsubscribeURL(token string) string {
+	return s.baseURL() + "/unsubscribe?token=" + url.QueryEscape(token)
+}
+
+// forDisplay is a rendered issue as the admin sees it (preview, stored
+// copy): with the plain /unsubscribe link, which explains itself, in place
+// of the per-reader one each sent copy gets.
+func (s *Service) forDisplay(html string) string {
+	return strings.ReplaceAll(html, mail.UnsubscribeURLPlaceholder, s.baseURL()+"/unsubscribe")
 }

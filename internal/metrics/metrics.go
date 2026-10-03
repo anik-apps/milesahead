@@ -28,6 +28,27 @@ var (
 		Help: "Total revisions processed",
 	}, []string{"status"}) // improved, unchanged, failed
 
+	// RevisionReconcileTotal counts what the revision reconciler did with each
+	// article it looked at: processed (rewrite stored), failed (rewrite
+	// attempted and failed), skipped (already being revised, or no longer
+	// waiting), error (could not read its retry state; not attempted).
+	// pass_skipped counts whole passes skipped because the previous one was
+	// still running. Revisions used to run only from the Revise button's
+	// one-shot goroutine, so a failure or a deploy mid-run left the article in
+	// "Revising" for good with nothing counting it.
+	RevisionReconcileTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_revision_reconcile_total",
+		Help: "Revision reconciler outcomes per article (processed, failed, skipped, error) and pass_skipped",
+	}, []string{"outcome"})
+
+	// RevisionsWaiting is the current number of articles in revision_requested:
+	// due (will be tried next pass), backoff (failed, waiting to retry) and
+	// exhausted (out of retries, needs the admin). exhausted > 0 is alertable.
+	RevisionsWaiting = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "milesahead_revisions_waiting",
+		Help: "Articles waiting for a revision, by state (due, backoff, exhausted)",
+	}, []string{"state"})
+
 	AIAPIDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "milesahead_ai_api_duration_seconds",
 		Help:    "AI API call duration including retries",
@@ -75,6 +96,26 @@ var (
 		Help:    "Wall-clock duration of an enrichment pass",
 		Buckets: []float64{10, 30, 60, 120, 300, 600, 1200},
 	})
+
+	// AIPreflightModelsReachable is how many configured models answered the
+	// startup preflight, by role (generator, fallback, critic, vision,
+	// enrichment). role="critic" == 0 means nothing can publish: every article
+	// fails verification. Set once per process, when the preflight finishes.
+	AIPreflightModelsReachable = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "milesahead_ai_preflight_models_reachable",
+		Help: "Configured AI models that answered the startup preflight, by role",
+	}, []string{"role"})
+
+	// StoryDedupDecisionsTotal counts the story-level duplicate check's
+	// verdict on each cluster that passed the raw-ID check: new, duplicate,
+	// follow_up (same story, materially new development) or error_fallback
+	// (the AI call failed and the lexical score decided). mode is the
+	// configured scanner.story_dedup; in "shadow" a duplicate is counted but
+	// still generated.
+	StoryDedupDecisionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_story_dedup_decisions_total",
+		Help: "Story-level duplicate check decisions by outcome (new, duplicate, follow_up, error_fallback) and mode",
+	}, []string{"decision", "mode"})
 
 	AIAPIErrorsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "milesahead_ai_api_errors_total",
@@ -131,11 +172,52 @@ var (
 		Help: "Total image selection outcomes",
 	}, []string{"outcome"}) // selected, no_match, search_failed
 
+	// ImageResizeTotal counts what the stored-image resize did with each row
+	// it tried: swapped for sized copies, left unchanged because a sized URL
+	// could not be confirmed, cleared because the file was deleted (or does not
+	// load and every sized copy is too heavy to replace it), or found
+	// unconvertible (see ArticleImagesUnconvertible).
+	ImageResizeTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_image_resize_total",
+		Help: "Stored article images the resize step tried, by outcome (resized, unconfirmed, cleared, unconvertible)",
+	}, []string{"outcome"})
+
+	// ArticleImagesUnsized is how many article images the resize step could
+	// still swap for a sized copy after its last pass. It should reach 0
+	// within a few passes of a deploy and stay there; a value that stays up
+	// means the conversion is stuck (hosts refusing, width lookups failing).
+	// Rows that can never convert are counted in ArticleImagesUnconvertible
+	// instead, so they do not hold this above 0.
+	ArticleImagesUnsized = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "milesahead_article_images_unsized",
+		Help: "Article images still waiting to be swapped for a sized copy (excluding unconvertible ones)",
+	})
+
+	// ArticleImagesUnconvertible is how many article images the resize step
+	// has found it cannot size, as of its last pass: every sized copy is
+	// heavier than the file the row holds, Commons reports the file deleted
+	// but its URL still loads, or Commons has no width for it. They keep
+	// their current, working file and are rechecked every six hours.
+	ArticleImagesUnconvertible = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "milesahead_article_images_unconvertible",
+		Help: "Article images the resize step cannot swap for a sized copy (no lighter copy, deleted but still served, or no width from Commons)",
+	})
+
 	ResponseBytes = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "milesahead_http_response_bytes",
 		Help:    "HTTP response body size in bytes",
 		Buckets: []float64{256, 1024, 4096, 16384, 65536, 262144, 1048576},
 	}, []string{"method", "path"})
+
+	// EmailsSentTotal counts reader emails by kind (confirmation,
+	// newsletter) and outcome (sent, failed). A newsletter counts one "sent"
+	// per recipient reached and one "failed" when a send stops; a
+	// confirmation counts one of either. Every series is created at zero in
+	// Init, so an alert on increase() sees the first failure.
+	EmailsSentTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "milesahead_emails_sent_total",
+		Help: "Reader emails by kind (confirmation, newsletter) and outcome (sent, failed)",
+	}, []string{"kind", "outcome"})
 
 	DailyUniqueVisitors = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "milesahead_daily_unique_visitors_total",
@@ -143,17 +225,38 @@ var (
 	})
 )
 
+// EmailsSentTotal labels.
+const (
+	EmailConfirmation = "confirmation"
+	EmailNewsletter   = "newsletter"
+	EmailSent         = "sent"
+	EmailFailed       = "failed"
+)
+
+// initEmailSeries creates every EmailsSentTotal series at zero, so the
+// first failure is an increase an alert can see rather than a new series.
+func initEmailSeries() {
+	for _, kind := range []string{EmailConfirmation, EmailNewsletter} {
+		for _, outcome := range []string{EmailSent, EmailFailed} {
+			EmailsSentTotal.WithLabelValues(kind, outcome)
+		}
+	}
+}
+
 func Init() {
+	initEmailSeries()
 	prometheus.MustRegister(
 		ScansTotal, ArticlesGeneratedTotal, ArticlesApprovedTotal,
 		EnrichmentFailuresTotal, ArticlesDegraded,
 		EnrichmentPassesTotal, EnrichmentLastSuccessTimestamp, EnrichmentPassDuration,
 		ArticlesRejectedTotal, RevisionsTotal, AIAPIDuration,
-		AIAPIErrorsTotal, CriticScore, VotesTotal,
+		RevisionReconcileTotal, RevisionsWaiting,
+		AIAPIErrorsTotal, AIPreflightModelsReachable, StoryDedupDecisionsTotal, CriticScore, VotesTotal,
 		HTTPRequestsTotal, HTTPDuration,
 		ImageSearchTotal, ImageSearchCandidates, ImageScoringTotal,
 		ImageSelectedScore, ImageSelectedTotal,
-		ResponseBytes, DailyUniqueVisitors,
+		ImageResizeTotal, ArticleImagesUnsized, ArticleImagesUnconvertible,
+		ResponseBytes, DailyUniqueVisitors, EmailsSentTotal,
 	)
 }
 

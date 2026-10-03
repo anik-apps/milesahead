@@ -1,31 +1,53 @@
 {{template "layout" .}}
 {{define "content"}}
-<div class="hero-banner">
-    <h1>Miles Ahead</h1>
-    <p>The latest miles, points, and credit card deals — curated daily.</p>
-</div>
+{{/* A short strip that says what the site is. The logo is already in the
+     header and footer, so the hero no longer repeats it. While newsletter
+     sign-up is open, one small link leads to it. */}}
+<section class="hero-strip">
+    <img class="brand-plane on-light" src="/static/img/brand/plane.svg" alt="" width="300" height="56">
+    <img class="brand-plane on-dark" src="/static/img/brand/plane-dark.svg" alt="" width="300" height="56">
+    <h1>Miles, points and credit card deals, curated daily</h1>
+    <p class="hero-sub">What changed, what it&rsquo;s worth, and when it ends.{{if signupOpen}} <a class="hero-signup" href="/subscribe">Get it weekly by email<span aria-hidden="true">&nbsp;&rarr;</span></a>{{end}}</p>
+</section>
 
-<div class="category-tabs">
-    <a href="/" class="tab{{if eq .TypeFilter ""}} active{{end}}">All</a>
-    <a href="/?type=deal" class="tab{{if eq .TypeFilter "deal"}} active{{end}}">Deals</a>
-    <a href="/?type=roundup" class="tab{{if eq .TypeFilter "roundup"}} active{{end}}">Roundups</a>
-    <a href="/?type=alert" class="tab{{if eq .TypeFilter "alert"}} active{{end}}">Alerts</a>
-    <a href="/?type=summary" class="tab{{if eq .TypeFilter "summary"}} active{{end}}">Summaries</a>
-</div>
-
-<div class="tag-filters">
-    <a href="/" class="tag-pill{{if not .ActiveTag}} active{{end}}">All</a>
-    {{range .Tags}}
-    <a href="/?tag={{.Slug}}" class="tag-pill{{if eq $.ActiveTag .Slug}} active{{end}}">{{.Name}}</a>
+{{/* One filter bar: the type switch, then topic chips. Every link keeps the
+     other filter (built in homefilters.go). It is one row that scrolls
+     sideways rather than wrapping when it does not fit. */}}
+<nav class="home-filters" aria-label="Filter articles">
+    <div class="filter-bar">
+        <div class="filter-switch" role="group" aria-label="Article type">
+            {{range .Filters.Types}}<a href="{{.URL}}" class="filter-switch-item{{if .Active}} active{{end}}"{{if .Active}} aria-current="page"{{end}}>{{.Label}}</a>{{end}}
+        </div>
+        <span class="filter-divider" aria-hidden="true"></span>
+        <div class="filter-topics" role="group" aria-label="Topic">
+            {{range .Filters.Topics}}<a href="{{.URL}}" class="filter-chip{{if .Active}} active{{end}}"{{if .Active}} aria-current="true"{{end}}>{{.Label}}</a>{{end}}
+        </div>
+    </div>
+    {{if .Filters.Active}}
+    {{/* The page shows at most 20 articles, so the count is of what is
+         shown, not a total. */}}
+    <div class="active-filters">
+        <span class="active-filters-count">{{with len .Articles}}Showing {{.}} article{{if ne . 1}}s{{end}}{{else}}No articles{{end}}</span>
+        <span class="active-filters-sep" aria-hidden="true">·</span>
+        {{range .Filters.Active}}<a href="{{.RemoveURL}}" class="filter-remove" aria-label="Remove filter: {{.Label}}">{{.Label}}<span class="filter-remove-x" aria-hidden="true">✕</span></a>
+        {{end}}<a href="/" class="filter-clear">Clear all</a>
+    </div>
     {{end}}
-</div>
+</nav>
 
 <div class="magazine-grid">
     {{if .Featured}}
-    <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}"{{if .Featured.ImageURL}} style="background-image: url('{{.Featured.ImageURL}}'); background-size: cover; background-position: center;"{{end}}>
+    <div class="featured-card{{if .Featured.ImageURL}} has-image{{end}}{{if .Featured.Ended}} is-ended{{end}}">
+        {{if .Featured.ImageURL}}
+        {{/* A real <img> rather than a CSS background: the preload scanner finds
+             it in the HTML instead of after the stylesheet, and it can ask for
+             priority as the likely largest paint. alt is empty because the
+             link beside it already carries the headline. */}}
+        <img class="featured-image" src="{{.Featured.ImageURL}}" alt="" width="1280" height="720" fetchpriority="high">
+        {{end}}
         <a href="/article/{{.Featured.Slug}}">
             <div class="featured-overlay">
-                <span class="type-badge badge-{{.Featured.Type}}">{{.Featured.Type}}</span>
+                <span class="type-badge badge-{{.Featured.Type}}">{{typeBadge .Featured.Type}}</span>{{if .Featured.Ended}} <span class="ended-badge">{{endedLabel .Featured.Type}}</span>{{end}}
                 <h2 class="featured-title">{{.Featured.Title}}</h2>
                 <p class="featured-excerpt">{{.Featured.Excerpt}}</p>
             </div>
@@ -34,20 +56,17 @@
     {{end}}
 
     <div class="sidebar-stack">
-        {{range .Sidebar}}
-        <div class="article-card{{if or .Infographic .ImageThumbnail}} has-thumb{{end}}">
+        {{range $i, $_ := .Sidebar}}
+        <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}{{if .Ended}} is-ended{{end}}">
             <a href="/article/{{.Slug}}">
-                {{if .Infographic}}
-                <div class="card-thumb card-thumb-svg" role="img" aria-label="{{.InfographicTitle}}">
-                    {{.Infographic}}
-                </div>
-                {{else if .ImageThumbnail}}
+                {{if .ImageThumbnail}}
                 <div class="card-thumb">
-                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}" loading="lazy">
+                    {{/* Only the first sidebar card is in the first screen on desktop. */}}
+                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}" width="300" height="200"{{if $i}} loading="lazy"{{end}} decoding="async">
                 </div>
                 {{end}}
                 <div class="card-body">
-                    <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+                    <span class="type-badge badge-{{.Type}}">{{typeBadge .Type}}</span>{{if .Ended}} <span class="ended-badge">{{endedLabel .Type}}</span>{{end}}
                     <h3>{{.Title}}</h3>
                     <p class="excerpt">{{.Excerpt}}</p>
                     <div class="card-meta">
@@ -63,19 +82,25 @@
 {{if .Grid}}
 <div class="bottom-grid">
     {{range .Grid}}
-    <div class="article-card{{if or .Infographic .ImageThumbnail}} has-thumb{{end}}">
+    <div class="article-card{{if .ImageThumbnail}} has-thumb{{end}}{{if .Ended}} is-ended{{end}}">
         <a href="/article/{{.Slug}}">
-            {{if .Infographic}}
-            <div class="card-thumb card-thumb-svg" role="img" aria-label="{{.InfographicTitle}}">
-                {{.Infographic}}
-            </div>
-            {{else if .ImageThumbnail}}
+            {{if .ImageThumbnail}}
             <div class="card-thumb">
-                <img src="{{.ImageThumbnail}}" alt="{{.Title}}" loading="lazy">
+                {{/* At 769-1024px the grid has two columns and a card is up to
+                     466 CSS px wide, too wide for a 500px thumbnail on a 2x
+                     screen, so there the display image is offered as well
+                     (see thumbSrcset). sizes is the width of .bottom-grid
+                     .card-thumb in that range: the column less the card's
+                     2px border, in main's 64px of padding and a 24px gap.
+                     Elsewhere every screen gets the thumbnail. */}}
+                <picture>
+                    {{with .ThumbSrcset}}<source media="(min-width: 769px) and (max-width: 1024px)" srcset="{{.}}" sizes="calc((100vw - 92px) / 2)">{{end}}
+                    <img src="{{.ImageThumbnail}}" alt="{{.Title}}" width="300" height="200" loading="lazy" decoding="async">
+                </picture>
             </div>
             {{end}}
             <div class="card-body">
-                <span class="type-badge badge-{{.Type}}">{{.Type}}</span>
+                <span class="type-badge badge-{{.Type}}">{{typeBadge .Type}}</span>{{if .Ended}} <span class="ended-badge">{{endedLabel .Type}}</span>{{end}}
                 <h3>{{.Title}}</h3>
                 <p class="excerpt">{{.Excerpt}}</p>
                 <div class="card-meta">
@@ -91,12 +116,12 @@
 
 {{if not .Featured}}
 <div class="empty-state">
-    {{if .ActiveTag}}
-    <p>No articles tagged <strong>{{.ActiveTag}}</strong> right now — check back soon!</p>
-    {{else if eq .TypeFilter ""}}
-    <p>No articles published yet. Check back soon!</p>
+    {{if .Filters.Active}}
+    <p>No articles for <strong>{{.Filters.Summary}}</strong> right now — check back soon, or <a href="/">see all articles</a>.</p>
+    {{else if .AllEnded}}
+    <p>No current offers right now — every recent one has ended. Check back soon!</p>
     {{else}}
-    <p>No {{.TypeFilter}} articles right now — check back soon!</p>
+    <p>No articles published yet. Check back soon!</p>
     {{end}}
     <p style="margin-top: 0.5rem;"><a href="/subscribe">Subscribe</a> to get notified when new articles are published.</p>
 </div>

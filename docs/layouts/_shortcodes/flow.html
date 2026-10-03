@@ -1,0 +1,82 @@
+{{- /*
+  A flow diagram drawn in HTML and CSS: {{< flow "ai-pipeline" >}} reads
+  assets/flows/ai-pipeline.yaml. Styles: assets/flows/flow.css, linked from
+  layouts/_partials/custom/head-end.html on pages that use this shortcode.
+
+  The flow runs top to bottom. Each entry of steps is one of:
+
+    a step       title, desc, code, badge (a retry or fallback note), and
+                 optionally exit: {label, title, desc, tone}, a way out
+                 drawn to the right (tone: stop or skip).
+    a decision   kind: decision, with an exit (the flow carries on below,
+                 labelled by continue), or with branches: two lists of steps
+                 side by side, the first straight below the decision and the
+                 second to its right, joining again underneath unless
+                 merge: false. A branch with no steps can carry a note.
+    start / end  kind: start or kind: end.
+
+  On narrow screens everything stacks in one column and the branches and
+  exits are labelled in words. Without CSS it is a nested ordered list.
+*/ -}}
+{{- $name := .Get 0 -}}
+{{- $res := resources.Get (printf "flows/%s.yaml" $name) -}}
+{{- if not $res }}{{ errorf "flow: assets/flows/%s.yaml not found (%s)" $name .Position }}{{ end -}}
+{{- $d := $res | transform.Unmarshal -}}
+{{- $page := .Page -}}
+<figure class="flow" aria-labelledby="flow-{{ $name }}-cap">
+  <ol class="flow-main">
+    {{- $in := "" -}}
+    {{- $out := false -}}
+    {{- range $i, $s := $d.steps }}
+    <li class="flow-row{{ if $s.branches }} flow-row--split{{ end }}">
+      {{- if $i }}
+      <div class="flow-link flow-c1" aria-hidden="true">{{ with $in }}<span class="flow-link-label">{{ . }}</span>{{ else }}{{ if $out }}<span class="flow-link-label flow-narrow-only">otherwise</span>{{ end }}{{ end }}</div>
+      {{- end }}
+      <div class="flow-c1 flow-cell">{{ partial "flow-node.html" (dict "s" $s "page" $page) }}</div>
+      {{- with $s.exit }}
+      <div class="flow-c2 flow-arrow-right" aria-hidden="true"><span class="flow-line-label">{{ .label }}</span></div>
+      <div class="flow-c3 flow-exit">
+        <p class="flow-say">If {{ .label }}:</p>
+        {{ partial "flow-node.html" (dict "s" (merge (dict "kind" "end" "tone" "stop") .) "page" $page) }}
+      </div>
+      {{- end }}
+      {{- with $s.branches }}
+      {{- $b1 := index . 0 }}
+      {{- $b2 := index . 1 }}
+      <div class="flow-c2 flow-split-h" aria-hidden="true"><span class="flow-line-label">{{ $b2.label }}</span></div>
+      <div class="flow-c3 flow-split-turn" aria-hidden="true"></div>
+      {{- range $j, $b := slice $b1 $b2 }}
+      <div class="flow-branch flow-c{{ if $j }}3{{ else }}1{{ end }}{{ if eq $s.merge false }} flow-branch--end{{ end }}">
+        <p class="flow-say">If {{ $b.label }}:</p>
+        <ol class="flow-branch-steps">
+          {{- range $k, $bs := $b.steps }}
+          <li>
+            <div class="flow-link" aria-hidden="true">{{ if and (not $j) (not $k) }}<span class="flow-link-label">{{ $b.label }}</span>{{ end }}</div>
+            {{ partial "flow-node.html" (dict "s" $bs "page" $page) }}
+          </li>
+          {{- end }}
+          {{- with $b.note }}
+          <li>
+            <div class="flow-link flow-link--plain" aria-hidden="true">{{ if not $j }}<span class="flow-link-label">{{ $b.label }}</span>{{ end }}</div>
+            <p class="flow-note">{{ $page.RenderString . }}</p>
+          </li>
+          {{- end }}
+        </ol>
+        {{- if ne $s.merge false }}
+        <div class="flow-fill" aria-hidden="true"></div>
+        {{- end }}
+      </div>
+      {{- end }}
+      {{- if ne $s.merge false }}
+      <div class="flow-c1 flow-merge flow-merge--1" aria-hidden="true"></div>
+      <div class="flow-c2 flow-merge flow-merge--2" aria-hidden="true"></div>
+      <div class="flow-c3 flow-merge flow-merge--3" aria-hidden="true"></div>
+      {{- end }}
+      {{- end }}
+    </li>
+    {{- $in = $s.continue | default "" -}}
+    {{- $out = ne $s.exit nil -}}
+    {{- end }}
+  </ol>
+  <figcaption class="flow-caption" id="flow-{{ $name }}-cap">{{ $page.RenderString $d.caption }}</figcaption>
+</figure>

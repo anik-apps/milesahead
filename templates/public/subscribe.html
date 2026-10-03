@@ -1,22 +1,90 @@
 {{template "layout" .}}
 {{define "content"}}
-<div class="subscribe-page">
-    <h1>Subscribe to Miles Ahead</h1>
-    <p>Get curated news delivered to your inbox.</p>
-
-    {{if .Error}}
-    <div class="message error">{{.Error}}</div>
-    {{end}}
-
-    {{if .Success}}
-    <div class="message success">{{.Success}}</div>
-    {{end}}
-
-    {{if not .Success}}
-    <form method="POST" action="/subscribe" class="subscribe-form">
-        <input type="email" name="email" placeholder="you@example.com" required>
-        <button type="submit">Subscribe</button>
+{{/* One page for every step of the newsletter flow; .State picks the step
+     (see the subState constants in internal/web/subscribe.go). */}}
+<div class="status-page newsletter-page">
+{{if eq .State "form"}}
+    <h1>Get the MilesAhead weekly email</h1>
+    <p class="status-lead">The week&rsquo;s best miles, points and credit card deals, and the ones about to end. One email, {{newsletterWhen}}.</p>
+    {{if .Error}}<p class="message error" role="alert" id="email-error">{{.Error}}</p>{{end}}
+    {{template "subscribe-form" .}}
+{{else if eq .State "check-email"}}
+    <div class="status-icon info" aria-hidden="true">&#9993;</div>
+    <h1>Check your inbox</h1>
+    <p class="status-lead">If that address isn&rsquo;t subscribed yet, we&rsquo;ve sent it a link to confirm. Click it to start getting the {{newsletterDay}} email.</p>
+    <p class="status-note">Nothing after ten minutes? Check your spam folder, or enter your address again and we&rsquo;ll resend the link.</p>
+    {{template "subscribe-form" .}}
+{{else if eq .State "confirmed"}}
+    <div class="status-icon ok" aria-hidden="true">&#10003;</div>
+    <h1>You&rsquo;re subscribed</h1>
+    <p class="status-lead">Your subscription is confirmed. The newsletter goes out {{newsletterWhen}}.</p>
+    <p class="status-actions"><a class="status-btn" href="/">Read the latest stories</a></p>
+{{else if eq .State "already"}}
+    <div class="status-icon ok" aria-hidden="true">&#10003;</div>
+    <h1>You&rsquo;re already subscribed</h1>
+    <p class="status-lead">This link has already been used to confirm your subscription, so there&rsquo;s nothing more to do.</p>
+    <p class="status-actions"><a class="status-btn" href="/">Read the latest stories</a></p>
+{{else if eq .State "welcome-back"}}
+    <div class="status-icon ok" aria-hidden="true">&#10003;</div>
+    <h1>You&rsquo;re subscribed again</h1>
+    <p class="status-lead">Welcome back. The newsletter goes out {{newsletterWhen}}.</p>
+    <p class="status-actions"><a class="status-btn" href="/">Read the latest stories</a></p>
+{{else if eq .State "unsub-confirm"}}
+    <div class="status-icon warn" aria-hidden="true">?</div>
+    <h1>Unsubscribe from the weekly email?</h1>
+    <p class="status-lead"><strong>{{.Masked}}</strong> will stop getting MilesAhead emails.</p>
+    <form method="POST" action="/unsubscribe" class="status-actions">
+        <input type="hidden" name="token" value="{{.Token}}">
+        <button type="submit" class="status-btn">Unsubscribe</button>
+        <a class="status-btn secondary" href="/">Keep my subscription</a>
     </form>
+{{else if eq .State "unsubscribed"}}
+    <div class="status-icon ok" aria-hidden="true">&#10003;</div>
+    <h1>You&rsquo;re unsubscribed</h1>
+    <p class="status-lead">You won&rsquo;t get any more emails from MilesAhead.</p>
+    <form method="POST" action="/resubscribe" class="status-actions">
+        <input type="hidden" name="token" value="{{.Token}}">
+        <button type="submit" class="status-btn secondary">Resubscribe</button>
+        <a class="status-btn" href="/">Go to the site</a>
+    </form>
+    <p class="status-note">Unsubscribed by mistake? Resubscribe puts you straight back on the list.</p>
+{{else if eq .State "no-token"}}
+    <h1>This unsubscribe link is incomplete</h1>
+    <p class="status-lead">Some earlier MilesAhead emails had an Unsubscribe link without the code that identifies you, so we can&rsquo;t tell which address to remove.</p>
+    {{if .ContactEmail}}
+    <p class="status-note">Email <a href="mailto:{{.ContactEmail}}?subject=Unsubscribe">{{.ContactEmail}}</a> from the address you want removed, and we&rsquo;ll take it off the list.</p>
+    {{else}}
+    <p class="status-note">Reply to the email you received, asking to unsubscribe, and we&rsquo;ll take your address off the list.</p>
     {{end}}
+{{else if eq .State "bad-link"}}
+    <h1>We don&rsquo;t recognise this link</h1>
+    <p class="status-lead">It may have been copied incompletely. Try the link in your most recent MilesAhead email.</p>
+    <p class="status-actions"><a class="status-btn secondary" href="/">Go to the site</a></p>
+{{else if eq .State "closed"}}
+    <div class="status-icon info" aria-hidden="true">&#9993;</div>
+    <h1>Newsletter sign-up opens soon</h1>
+    <p class="status-lead">The MilesAhead weekly email isn&rsquo;t taking sign-ups yet. Until it does, every story is on the site as it&rsquo;s published.</p>
+    <p class="status-actions"><a class="status-btn" href="/">Read the latest stories</a><a class="status-btn secondary" href="/feed.xml">RSS feed</a></p>
+{{else if eq .State "too-many"}}
+    <h1>Too many attempts</h1>
+    <p class="status-lead">Please wait a while before trying again.</p>
+    <p class="status-actions"><a class="status-btn secondary" href="/">Go to the site</a></p>
+{{end}}
 </div>
+{{end}}
+
+{{define "subscribe-form"}}
+<form method="POST" action="/subscribe" class="subscribe-form">
+    <label for="subscribe-email">Email address</label>
+    <div class="subscribe-row">
+        <input type="email" id="subscribe-email" name="email" value="{{.Email}}" autocomplete="email" inputmode="email" required{{if .Error}} aria-invalid="true" aria-describedby="email-error"{{end}}>
+        <button type="submit">{{if eq .State "check-email"}}Resend the link{{else}}Subscribe{{end}}</button>
+    </div>
+    {{/* People never see this field; bots fill it in. */}}
+    <div class="hp-field" aria-hidden="true">
+        <label for="subscribe-website">Leave this empty</label>
+        <input type="text" id="subscribe-website" name="website" tabindex="-1" autocomplete="off">
+    </div>
+    <p class="status-note">One email a week. Unsubscribe anytime. We only use your address to send the newsletter.</p>
+</form>
 {{end}}

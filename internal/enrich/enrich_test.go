@@ -374,3 +374,129 @@ func testutilGaugeValue(t *testing.T) float64 {
 	}
 	return m.GetGauge().GetValue()
 }
+
+func lastSuccessTimestamp(t *testing.T) float64 {
+	t.Helper()
+	var m dto.Metric
+	if err := metrics.EnrichmentLastSuccessTimestamp.Write(&m); err != nil {
+		t.Fatalf("gauge read: %v", err)
+	}
+	return m.GetGauge().GetValue()
+}
+
+// The pace between articles slept after the deadline check, so a pass whose
+// sleep ran past the deadline still started the next article. Its model
+// calls ran after the deadline and, if it was the batch's last, the pass
+// was recorded as completed.
+func TestRun_NoArticleStartsAfterThePaceSleepPassesTheDeadline(t *testing.T) {
+	d := testDB(t)
+	// Two articles missing only their tags; either may come first.
+	var ids []int64
+	for range 2 {
+		id := seedArticle(t, d)
+		if _, err := d.DB().Exec(`UPDATE generated_articles SET image_url = 'https://example.com/a.jpg',
+			image_thumbnail = 'https://example.com/a.jpg', scouts_take = 'Take',
+			key_details = '[{"label":"a","value":"b"}]' WHERE id = ?`, id); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+	}
+	client := &scriptedClient{reply: map[string]string{"topic tags": `["transfer-bonuses"]`}}
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.MaxDuration = 200 * time.Millisecond
+	s.Pace = 400 * time.Millisecond // past the deadline after the first article
+
+	completed, deadlinePasses := passCount(t, "completed"), passCount(t, "deadline")
+	s.Run()
+
+	tagged := 0
+	for _, id := range ids {
+		var tags string
+		if err := d.DB().QueryRow(`SELECT COALESCE(tags_json, '') FROM generated_articles WHERE id = ?`,
+			id).Scan(&tags); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(tags, "transfer-bonuses") {
+			tagged++
+		}
+	}
+	if tagged != 1 {
+		t.Errorf("%d articles enriched, want 1: the second started after the deadline", tagged)
+	}
+	if len(client.calls) != 1 {
+		t.Errorf("%d model calls, want 1", len(client.calls))
+	}
+	if got := passCount(t, "deadline") - deadlinePasses; got != 1 {
+		t.Errorf("deadline passes +%v, want +1", got)
+	}
+	if got := passCount(t, "completed") - completed; got != 0 {
+		t.Errorf("completed passes +%v, want 0", got)
+	}
+}
+
+// TestRun_RefusesNewsSiteMentions: Scout's Take and key details are public
+// copy with no revision after them, so a take naming a news site is refused
+// (and retried on a later pass) and such a detail is dropped. Outlets come
+// from Outlets (the sources table) as well as the built-in list.
+func TestRun_RefusesNewsSiteMentions(t *testing.T) {
+	d := testDB(t)
+	id := seedArticle(t, d)
+
+	client := &scriptedClient{
+		reply: map[string]string{
+			"Scout": "Some Travel Blog runs the math differently, but transfer now.",
+			"Extract key details": `{"key_details": [
+				{"label": "Value", "value": "~1.41 cents according to OMAAT"},
+				{"label": "Deadline", "value": "May 1, 2026"}], "links": []}`,
+			"topic tags":           `["transfer-bonuses"]`,
+			"image search queries": `["jal plane"]`,
+		},
+	}
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.Pace = 0
+	s.Outlets = func() []ai.Outlet { return []ai.Outlet{{Name: "Some Travel Blog", URL: "https://sometravelblog.net"}} }
+	s.Run()
+
+	var take, details string
+	if err := d.DB().QueryRow(`SELECT COALESCE(scouts_take,''), COALESCE(key_details,'') FROM generated_articles WHERE id = ?`,
+		id).Scan(&take, &details); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if take != "" {
+		t.Errorf("a take naming a news site was stored: %q", take)
+	}
+	if strings.Contains(details, "OMAAT") || !strings.Contains(details, "Deadline") {
+		t.Errorf("key_details = %q; want the OMAAT detail dropped and the deadline kept", details)
+	}
+}
+
+// TestRun_AllowsTheSubjectOutlet: when the title names the outlet, the outlet
+// is the subject of the story (the first exception) and may be named.
+func TestRun_AllowsTheSubjectOutlet(t *testing.T) {
+	d := testDB(t)
+	id, err := d.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Thrifty Traveler Premium Is 30% Off", Slug: "ttp-sale", Content: "Body.",
+		Type: "deal", Status: db.StatusPending, SourcesJSON: "[]", RevisionNumber: 1,
+	})
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	client := &scriptedClient{reply: map[string]string{
+		"Scout":                "Thrifty Traveler Premium pays for itself with one good fare alert.",
+		"Extract key details":  `{"key_details": [{"label": "Product", "value": "Thrifty Traveler Premium"}], "links": []}`,
+		"topic tags":           `["travel-deals"]`,
+		"image search queries": `["plane"]`,
+	}}
+	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
+	s.Pace = 0
+	s.Run()
+
+	var take, details string
+	if err := d.DB().QueryRow(`SELECT COALESCE(scouts_take,''), COALESCE(key_details,'') FROM generated_articles WHERE id = ?`,
+		id).Scan(&take, &details); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if take == "" || !strings.Contains(details, "Thrifty Traveler Premium") {
+		t.Errorf("take=%q details=%q; the subject outlet may be named", take, details)
+	}
+}

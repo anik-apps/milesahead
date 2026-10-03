@@ -1,27 +1,18 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
 {{define "content"}}
-<div class="admin-nav">
-    <a href="/admin/dashboard">Pending</a>
-    <a href="/admin/published">Published</a>
-    <a href="/admin/sources">Sources</a>
-    <a href="/admin/subscribers" class="active">Subscribers</a>
-    <a href="/admin/cards">Cards</a>
-    <a href="/admin/newsletter">Newsletter</a>
-    <a href="/admin/settings">Settings</a>
-    <form method="POST" action="/admin/logout" class="logout-btn">
-        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
-    </form>
-</div>
 <div class="admin-subscribers">
-    <h1>Subscribers</h1>
-    <p><a href="/admin/subscribers/export" class="btn btn-export">Export CSV</a></p>
+    <div class="page-head">
+        <h1>Subscribers</h1>
+        <a href="/admin/subscribers/export" class="btn">Export CSV</a>
+    </div>
+    <p class="dim">{{len .Subscribers}} total: {{.Active}} active (they get the newsletter), {{.Pending}} waiting for confirmation, {{.Unsubscribed}} unsubscribed.</p>
 
     {{if .Subscribers}}
     <table class="admin-table">
         <thead>
             <tr>
                 <th>Email</th>
-                <th>Confirmed</th>
+                <th>Status</th>
                 <th>Subscribed At</th>
                 <th>Confirmed At</th>
             </tr>
@@ -30,7 +21,7 @@
             {{range .Subscribers}}
             <tr>
                 <td>{{.Email}}</td>
-                <td>{{if .Confirmed}}Yes{{else}}No{{end}}</td>
+                <td>{{with .State}}{{if eq . "active"}}<span class="chip chip-ok">Active</span>{{else if eq . "pending"}}<span class="chip chip-warn">Pending</span>{{else}}<span class="chip chip-mute">Unsubscribed</span>{{end}}{{end}}</td>
                 <td>{{.SubscribedAt.Format "2006-01-02 15:04"}}</td>
                 <td>{{if .ConfirmedAt}}{{.ConfirmedAt.Format "2006-01-02 15:04"}}{{else}}-{{end}}</td>
             </tr>
@@ -40,7 +31,6 @@
     {{else}}
     <div class="empty-state">
         <p>No subscribers yet.</p>
-        <p style="margin-top: 0.5rem;">Share your subscribe page: <a href="/subscribe">/subscribe</a></p>
     </div>
     {{end}}
 </div>

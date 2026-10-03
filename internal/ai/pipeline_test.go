@@ -1,12 +1,14 @@
 package ai
 
 import (
+	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 )
 
 func TestPipeline_Process_AboveThreshold(t *testing.T) {
-	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA [TPG]"}
+	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA"}
 	criticMock := &mockHFClient{
 		response: `{"score": 90, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`,
 	}
@@ -267,5 +269,80 @@ func TestParseDashItems_Inline(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("item %d: got %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// TestPipeline_DetailsUseTheirOwnChain: the inline key-details call asks for
+// 1024 tokens, so it runs under the 30s short-call timeout. On the critic model
+// (minutes per reply since 2026-09-29) it would time out on every article, so
+// it runs on the chain given to SetDetailModels and falls over a retired model.
+func TestPipeline_DetailsUseTheirOwnChain(t *testing.T) {
+	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA"}
+	criticClient := &perModelMockHFClient{
+		responses: map[string]string{
+			"critic": `{"score": 90, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`,
+			"live":   `{"key_details": [{"Label": "Bonus", "Value": "40%"}], "links": []}`,
+		},
+		errs: map[string]error{"gone": &APIError{StatusCode: 410, Model: "gone", Body: "end of life"}},
+	}
+	pipeline := NewPipeline(NewGenerator(genMock, "gen", "", nil), NewCritic(criticClient, "critic"), 80)
+	pipeline.SetDetailModels([]string{"gone", "live"})
+
+	result, err := pipeline.Process("deal", []SourceArticle{
+		{Name: "TPG", URL: "https://tpg.com/1", Title: "Bonus", Content: "40% bonus to ANA"},
+		{Name: "OMAAT", URL: "https://omaat.com/1", Title: "ANA Bonus", Content: "40% transfer bonus"},
+	})
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if got := strings.Join(criticClient.callsOrder, ","); got != "critic,gone,live" {
+		t.Errorf("calls = %s; want the critic to verify, then details on gone then live", got)
+	}
+	if len(result.KeyDetails) != 1 || result.KeyDetails[0].Value != "40%" {
+		t.Errorf("key details = %+v; want the fallback model's answer", result.KeyDetails)
+	}
+}
+
+// TestPipeline_LogsWhichCriticScored: with a critic chain, "critic scored" has
+// to say which critic, or a fall-over to the stricter fallback is invisible
+// in the approval rate.
+func TestPipeline_LogsWhichCriticScored(t *testing.T) {
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	genMock := &mockHFClient{response: "Deal Alert: 40% Bonus\nTransfer bonus to ANA"}
+	criticClient := &perModelMockHFClient{
+		responses: map[string]string{
+			"fallback-critic": `{"score": 90, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`,
+		},
+		errs: map[string]error{"busy-critic": &APIError{StatusCode: 504, Model: "busy-critic", Body: "gateway timeout", Retries: 3}},
+	}
+	pipeline := NewPipeline(NewGenerator(genMock, "gen", "", nil),
+		NewCritic(criticClient, "busy-critic,fallback-critic"), 80)
+	pipeline.SetDetailModels([]string{"fallback-critic"})
+
+	result, err := pipeline.Process("deal", []SourceArticle{
+		{Name: "TPG", URL: "https://tpg.com/1", Title: "Bonus", Content: "40% bonus to ANA"},
+		{Name: "OMAAT", URL: "https://omaat.com/1", Title: "ANA Bonus", Content: "40% transfer bonus"},
+	})
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if result.Verification.Model != "fallback-critic" {
+		t.Errorf("Verification.Model = %q; want fallback-critic", result.Verification.Model)
+	}
+	var found bool
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, `"msg":"critic scored"`) {
+			found = true
+			if !strings.Contains(line, `"model":"fallback-critic"`) {
+				t.Errorf("critic scored log lacks the scoring model: %s", line)
+			}
+		}
+	}
+	if !found {
+		t.Error(`no "critic scored" log line`)
 	}
 }

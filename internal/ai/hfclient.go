@@ -34,6 +34,9 @@ type HFClient struct {
 	backoff time.Duration
 	// requestTimeout bounds one attempt; see timeoutFor.
 	requestTimeout time.Duration
+	// disableThinking asks the model to answer without a reasoning phase; see
+	// WithThinkingDisabled.
+	disableThinking bool
 }
 
 // initialBackoff is the first retry delay; it doubles per attempt.
@@ -122,12 +125,43 @@ func (c *HFClient) SetRequestTimeout(d time.Duration) {
 	}
 }
 
+// WithThinkingDisabled returns a copy of the client whose requests carry
+// chat_template_kwargs {"enable_thinking": false}, telling a hybrid reasoning
+// model to answer directly. The receiver is not modified, so the copy can be
+// handed to one role (the critic) while every other call keeps the default.
+//
+// It is per client rather than per model because the same model can serve
+// several roles: nvidia/nemotron-3-super-120b-a12b is at once the first critic,
+// an enrichment model and a generator fallback, and only the critic call was
+// measured with thinking off. With thinking on, that model truncates or leaks
+// its reasoning into the critic's JSON and scored a real article 45; with it
+// off it scored the same article 75, and a clean one 95, in 2-28s. On
+// deepseek-v4.1-flash the same switch removed the reasoning output entirely (a
+// 36-token reply). Both critics in production, nemotron-3-super and kimi-k3,
+// were checked to accept the field on 2026-09-30.
+func (c *HFClient) WithThinkingDisabled() *HFClient {
+	cp := *c
+	cp.disableThinking = true
+	return &cp
+}
+
+// WithMaxRetries returns a copy of the client that retries a failed call at
+// most n times. The original client is unchanged.
+func (c *HFClient) WithMaxRetries(n int) *HFClient {
+	cp := *c
+	cp.maxRetries = n
+	return &cp
+}
+
 // chatRequest is the OpenAI-compatible request format.
 type chatRequest struct {
 	Model       string        `json:"model"`
 	Messages    []chatMessage `json:"messages"`
 	MaxTokens   int           `json:"max_tokens"`
 	Temperature float64       `json:"temperature,omitempty"`
+	// ChatTemplateKwargs is passed through to the model's chat template. Nil,
+	// and so absent from the body, unless the client disables thinking.
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 }
 
 type chatMessage struct {
@@ -198,6 +232,9 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 		},
 		MaxTokens:   maxTokens,
 		Temperature: 0.7,
+	}
+	if c.disableThinking {
+		reqBody.ChatTemplateKwargs = map[string]any{"enable_thinking": false}
 	}
 	bodyBytes, err := json.Marshal(reqBody)
 	if err != nil {

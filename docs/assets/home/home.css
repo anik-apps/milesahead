@@ -1,0 +1,89 @@
+/* The home page (content/_index.md) and the section cards
+   (layouts/_shortcodes/doc-sections.html). */
+
+.home {
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.home-hero {
+  max-width: 46rem;
+  margin: 1rem 0 2.5rem;
+}
+
+.home-hero h1 {
+  margin: 1.25rem 0 0.75rem;
+}
+
+.home-intro {
+  margin: 0 0 1.75rem;
+  font-size: 1.125rem;
+  line-height: 1.65;
+  color: #4b5563;
+}
+
+.dark .home-intro {
+  color: #a3a3a3;
+}
+
+.home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.home-actions a {
+  font-size: 1.05rem;
+}
+
+/* Secondary button: Hextra's hero button, outlined. */
+.home-button-alt {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 999px;
+  color: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.home-button-alt:hover,
+.home-button-alt:focus-visible {
+  border-color: var(--color-primary-600, #0b5bd3);
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.dark .home-button-alt {
+  border-color: #404040;
+}
+
+.doc-sections-head {
+  margin: 2rem 0 0 !important;
+  font-size: 0.8rem !important;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.dark .doc-sections-head {
+  color: #a3a3a3;
+}
+
+.doc-sections .hextra-card-subtitle {
+  line-clamp: none;
+  -webkit-line-clamp: none;
+}
+
+/* Hextra sizes cards for two gaps whatever the column count, so four
+   columns came out as three. Allow for cols - 1 gaps. */
+.doc-sections .hextra-cards {
+  grid-template-columns: repeat(auto-fill, minmax(max(220px, calc((100% - 1rem * (var(--hextra-cards-grid-cols) - 1)) / var(--hextra-cards-grid-cols))), 1fr));
+}
+
+/* Titles line up across a row whatever the length of the text below. */
+.doc-sections .hextra-card > div {
+  margin-top: 0;
+}

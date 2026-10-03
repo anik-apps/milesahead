@@ -52,17 +52,19 @@ func csrfMiddleware(next http.Handler) http.Handler {
 }
 
 // adminAuthMiddleware checks for a valid session cookie and redirects to login if missing.
+// The login page is told where to return (see loginRedirect), so an expired
+// session does not drop the admin back on the dashboard.
 func (app *App) adminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("session")
 		if err != nil {
-			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+			http.Redirect(w, r, loginRedirect(r), http.StatusSeeOther)
 			return
 		}
 
 		session, err := app.db.GetSession(cookie.Value)
 		if err != nil || session == nil {
-			http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+			http.Redirect(w, r, loginRedirect(r), http.StatusSeeOther)
 			return
 		}
 
@@ -101,6 +103,11 @@ func (rl *rateLimiter) allow(ip string) bool {
 		}
 	}
 	rl.attempts[ip] = valid
+	if len(valid) == 0 {
+		// Forget addresses with nothing in the window, so the map does not
+		// grow with every visitor who ever tried.
+		delete(rl.attempts, ip)
+	}
 
 	if len(rl.attempts[ip]) >= rl.max {
 		return false
@@ -150,7 +157,7 @@ func normalizePath(p string) string {
 	// Known static paths — pass through as-is.
 	switch p {
 	case "/", "/cards/", "/search", "/healthz", "/metrics",
-		"/subscribe", "/subscribe/confirm", "/unsubscribe",
+		"/subscribe", "/subscribe/confirm", "/subscribe/check-email", "/unsubscribe", "/resubscribe",
 		"/api/vote", "/feed.xml", "/robots.txt", "/sitemap.xml",
 		"/admin/login", "/admin/logout",
 		"/admin/dashboard", "/admin/published", "/admin/sources",

@@ -1,11 +1,13 @@
 package db
 
 import (
+	"sort"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestListPublishedArticlesByTag(t *testing.T) {
+func TestListPublishedArticlesFiltered_ByTag(t *testing.T) {
 	d := openTestDB(t)
 
 	// Insert articles with different tags.
@@ -43,9 +45,9 @@ func TestListPublishedArticlesByTag(t *testing.T) {
 	}
 
 	// Query by "credit-cards" — should return only a1 (not draft a4).
-	results, err := d.ListPublishedArticlesByTag("credit-cards", 10, 0)
+	results, err := d.ListPublishedArticlesFiltered("", "credit-cards", 10, 0)
 	if err != nil {
-		t.Fatalf("ListPublishedArticlesByTag(credit-cards): %v", err)
+		t.Fatalf("ListPublishedArticlesFiltered(tag credit-cards): %v", err)
 	}
 	if len(results) != 1 {
 		t.Errorf("expected 1 article for credit-cards, got %d", len(results))
@@ -55,30 +57,115 @@ func TestListPublishedArticlesByTag(t *testing.T) {
 	}
 
 	// Query by "points-deals" — should return a1 and a3.
-	results, err = d.ListPublishedArticlesByTag("points-deals", 10, 0)
+	results, err = d.ListPublishedArticlesFiltered("", "points-deals", 10, 0)
 	if err != nil {
-		t.Fatalf("ListPublishedArticlesByTag(points-deals): %v", err)
+		t.Fatalf("ListPublishedArticlesFiltered(tag points-deals): %v", err)
 	}
 	if len(results) != 2 {
 		t.Errorf("expected 2 articles for points-deals, got %d", len(results))
 	}
 
 	// Query by "airlines" — should return only a2.
-	results, err = d.ListPublishedArticlesByTag("airlines", 10, 0)
+	results, err = d.ListPublishedArticlesFiltered("", "airlines", 10, 0)
 	if err != nil {
-		t.Fatalf("ListPublishedArticlesByTag(airlines): %v", err)
+		t.Fatalf("ListPublishedArticlesFiltered(tag airlines): %v", err)
 	}
 	if len(results) != 1 {
 		t.Errorf("expected 1 article for airlines, got %d", len(results))
 	}
 
 	// Query by non-existent tag — should return empty.
-	results, err = d.ListPublishedArticlesByTag("bank-bonuses", 10, 0)
+	results, err = d.ListPublishedArticlesFiltered("", "bank-bonuses", 10, 0)
 	if err != nil {
-		t.Fatalf("ListPublishedArticlesByTag(bank-bonuses): %v", err)
+		t.Fatalf("ListPublishedArticlesFiltered(tag bank-bonuses): %v", err)
 	}
 	if len(results) != 0 {
 		t.Errorf("expected 0 articles for bank-bonuses, got %d", len(results))
+	}
+}
+
+// Type and tag apply together; either alone, or neither, still works.
+func TestListPublishedArticlesFiltered_TypeAndTag(t *testing.T) {
+	d := openTestDB(t)
+
+	seed := []*GeneratedArticle{
+		{Title: "Hotel News", Slug: "hotel-news", Type: "summary", Status: StatusApproved, TagsJSON: `["hotels"]`},
+		{Title: "Hotel Deal", Slug: "hotel-deal", Type: "deal", Status: StatusApproved, TagsJSON: `["hotels", "points-deals"]`},
+		{Title: "Airline News", Slug: "airline-news", Type: "summary", Status: StatusApproved, TagsJSON: `["airlines"]`},
+		{Title: "Draft Hotel News", Slug: "draft-hotel-news", Type: "summary", Status: StatusDraft, TagsJSON: `["hotels"]`},
+		{Title: "Broken Tags", Slug: "broken-tags", Type: "summary", Status: StatusApproved, TagsJSON: `not json`},
+		// Valid JSON but not an array: json_each would expand these into a
+		// "hotels" value, so they must not match the hotels filter.
+		{Title: "String Tags", Slug: "string-tags", Type: "deal", Status: StatusApproved, TagsJSON: `"hotels"`},
+		{Title: "Object Tags", Slug: "object-tags", Type: "deal", Status: StatusApproved, TagsJSON: `{"a": "hotels"}`},
+	}
+	for i, a := range seed {
+		a.Content, a.SourcesJSON, a.RevisionNumber = "content", "[]", 1
+		id, err := d.CreateGeneratedArticle(a)
+		if err != nil {
+			t.Fatalf("CreateGeneratedArticle(%q): %v", a.Title, err)
+		}
+		if _, err := d.db.Exec(`UPDATE generated_articles SET published_at = ? WHERE id = ?`, time.Now().UTC().Add(-time.Duration(i)*time.Hour), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	titles := func(articleType, tag string) []string {
+		t.Helper()
+		got, err := d.ListPublishedArticlesFiltered(articleType, tag, 20, 0)
+		if err != nil {
+			t.Fatalf("ListPublishedArticlesFiltered(%q, %q): %v", articleType, tag, err)
+		}
+		var out []string
+		for _, a := range got {
+			out = append(out, a.Title)
+		}
+		return out
+	}
+	for _, c := range []struct {
+		articleType, tag string
+		want             []string
+	}{
+		{"summary", "hotels", []string{"Hotel News"}},
+		{"deal", "hotels", []string{"Hotel Deal"}},
+		{"", "hotels", []string{"Hotel News", "Hotel Deal"}},
+		{"summary", "", []string{"Hotel News", "Airline News", "Broken Tags"}},
+		{"", "", []string{"Hotel News", "Hotel Deal", "Airline News", "Broken Tags", "String Tags", "Object Tags"}},
+		{"deal", "airlines", nil},
+		{"nonsense", "", nil},
+	} {
+		if got := titles(c.articleType, c.tag); strings.Join(got, "|") != strings.Join(c.want, "|") {
+			t.Errorf("type %q, tag %q: got %q, want %q", c.articleType, c.tag, got, c.want)
+		}
+	}
+
+	// The limit still caps the page.
+	if got, err := d.ListPublishedArticlesFiltered("", "", 2, 0); err != nil || len(got) != 2 {
+		t.Errorf("limit 2: got %d articles, err %v", len(got), err)
+	}
+}
+
+// Only types with an approved article are listed.
+func TestListPublishedArticleTypes(t *testing.T) {
+	d := openTestDB(t)
+	for _, a := range []*GeneratedArticle{
+		{Title: "A", Slug: "a", Type: "deal", Status: StatusApproved},
+		{Title: "B", Slug: "b", Type: "deal", Status: StatusApproved},
+		{Title: "C", Slug: "c", Type: "summary", Status: StatusApproved},
+		{Title: "D", Slug: "d", Type: "roundup", Status: StatusPending},
+	} {
+		a.Content, a.SourcesJSON, a.RevisionNumber, a.TagsJSON = "content", "[]", 1, "[]"
+		if _, err := d.CreateGeneratedArticle(a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := d.ListPublishedArticleTypes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(got)
+	if strings.Join(got, ",") != "deal,summary" {
+		t.Errorf("got %q, want deal and summary", got)
 	}
 }
 

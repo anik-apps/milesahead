@@ -8,37 +8,48 @@ weight: 5
 ```
 milesahead/
 ├── cmd/
-│   ├── milesahead/          # Main application entry point
-│   │   └── main.go
-│   ├── seed-cards/          # Reference page seed tool
-│   │   ├── main.go
-│   │   └── cards.json       # 52 credit card definitions
-│   └── seed-structured/     # Structured comparison data seed tool
-│       ├── main.go
-│       └── structured-data.json
+│   ├── milesahead/           # The application: main.go (wiring, scheduler, shutdown)
+│   │                         # and scan.go (clustering, duplicate checks, generation)
+│   ├── seed-cards/           # Reference page seed tool + cards.json (52 cards)
+│   ├── seed-structured/      # Structured comparison data seed tool + structured-data.json
+│   ├── ab-models/            # Measures candidate models on real clusters (read-only)
+│   ├── flag-outlet-mentions/ # Lists stored articles that name a news site (read-only)
+│   ├── repair-editor-notes/  # Moves inline editor notes out of stored articles
+│   └── backfill-scouts-take/ # Fills missing Scout's Takes through the enrichment guard
 ├── internal/
-│   ├── ai/                  # AI pipeline (generator, critic, prompts, cache)
-│   ├── article/             # Article manager and revision handling
-│   ├── cluster/             # Source article clustering
-│   ├── config/              # YAML config loading
-│   ├── db/                  # SQLite database, models, migrations
-│   ├── images/              # Image search (5 APIs) and scoring
-│   ├── mail/                # SMTP/IMAP email handling
-│   ├── metrics/             # Prometheus metrics definitions
-│   ├── newsletter/          # Newsletter generation and delivery
-│   ├── scanner/             # RSS/scrape source scanner
-│   ├── scheduler/           # Cron job scheduling
-│   ├── vote/                # Voting system with anomaly detection
-│   └── web/                 # HTTP server, routes, admin, public, auth
-├── templates/               # Go HTML templates
-├── static/                  # CSS, JS, images
-├── tests/                   # Integration tests
-├── deploy/                  # Deployment configs (systemd, caddy, alloy)
-├── data/                    # SQLite database (gitignored)
-├── config.yaml              # Local configuration
-├── config.example.yaml      # Example configuration
-├── Makefile                 # Build, test, run, lint targets
-└── go.mod                   # Go module definition
+│   ├── ai/                   # Generator, critic chain, prompts, outlet and source-ref
+│   │                         # guards, critic issue filter, preflight, HTTP client
+│   ├── article/              # Article manager: decisions, undo, revisions, reconciler
+│   ├── cardupdate/           # Drafts card section updates when an approved article affects a card
+│   ├── cluster/              # Groups scanned posts into stories by title similarity
+│   ├── config/               # YAML config loading and ${VAR} expansion
+│   ├── db/                   # SQLite: schema and migrations, queries, search (FTS5),
+│   │                         # admin queue, approval undo, image requests
+│   ├── editornote/           # Splits admin-only editor notes out of article HTML
+│   ├── enrich/               # Enrichment reconciler (Scout's Take, details, tags,
+│   │                         # image, new-image requests) and stored-image resizing
+│   ├── images/               # Image search (4 APIs), sizing, probes, identity, scoring
+│   ├── linker/               # Links card mentions in articles to card pages
+│   ├── mail/                 # SMTP sender (newsletter, confirmation, alerts) and IMAP poller
+│   ├── metrics/              # Prometheus metric definitions
+│   ├── newsletter/           # Weekly build and send, daily digest
+│   ├── offer/                # Offer end dates from Key Details; "has it ended"
+│   ├── scanner/              # RSS and scrape source scanner
+│   ├── scheduler/            # Cron jobs, startup passes, overlap guard
+│   ├── seeddata/             # Real card data + made-up articles for tests and previews
+│   ├── storydedup/           # Story-level duplicate check before generation
+│   ├── vote/                 # Voting with downvote alerts
+│   └── web/                  # HTTP server: public pages, admin, subscribe, API
+├── templates/                # Go HTML templates: public/, admin/, email/
+├── static/                   # CSS, JS, images (card art, brand, infographics)
+├── tests/                    # Integration tests (Go) and tests/js (node --test)
+├── scripts/                  # Image and review helpers (see below)
+├── deploy/                   # systemd units, Caddy site, Alloy config, backup script,
+│                             # Grafana dashboards and alert rules
+├── docs/                     # This documentation site (Hugo + Hextra)
+├── config.example.yaml       # Example configuration, with the reasons for each value
+├── Makefile                  # build, test, test-js, run, lint
+└── go.mod                    # Go module definition
 ```
 
 ## Running Locally
@@ -52,71 +63,107 @@ make build
 ./milesahead -config config.yaml
 ```
 
-The server starts on the configured port. The SQLite database is created automatically on first run with all tables and indexes.
+The SQLite database is created automatically on first run with all tables and indexes. To preview the site with realistic content, seed the cards (`go run ./cmd/seed-cards` and `./cmd/seed-structured`); tests use `internal/seeddata`, which adds made-up articles to the same card data.
 
 ## Testing
 
 ```bash
-# Run all tests with verbose output
-make test
+# All Go tests
+go test ./...
 
-# Run all tests with race detection
-go test ./... -v -race
+# With race detection, as CI and the deploy run them
+go test ./... -race
 
-# Run tests for a specific package
+# One package
 go test ./internal/ai/... -v
 
-# Run integration tests only
+# Integration tests only
 go test ./tests/... -v
+
+# The admin pages' browser-side logic (needs Node 18+)
+make test-js            # node --test tests/js/*.test.mjs
 ```
 
-The project includes unit tests for most packages:
+Most packages have unit tests next to the code; handler tests render the real templates. Some tests worth knowing:
 
-| Package | Test File | Coverage |
-|---------|-----------|----------|
-| `internal/ai` | `cache_test.go`, `critic_test.go`, `generator_test.go`, `hfclient_test.go`, `pipeline_test.go` | Pipeline flow, scoring, caching |
-| `internal/article` | `manager_test.go`, `revision_test.go` | Article lifecycle, revisions |
-| `internal/cluster` | `cluster_test.go` | Clustering logic |
-| `internal/db` | `db_test.go` | Database operations |
-| `internal/newsletter` | `newsletter_test.go` | Newsletter generation |
-| `internal/scheduler` | `scheduler_test.go` | Job scheduling |
-| `internal/vote` | `vote_test.go` | Voting and anomaly detection |
-| `internal/web` | `admin_test.go`, `auth_test.go`, `public_test.go` | HTTP handlers |
-| `tests/` | `integration_test.go` | End-to-end integration |
+- `tests/integration_test.go` and `tests/newsletter_flow_test.go` (sign up, confirm from the email, per-reader `List-Unsubscribe`, one-click unsubscribe) run end to end.
+- `cmd/milesahead` tests the scan loop through real scans (duplicate checks, story dedup), the revision reconciler's startup pass, bounded shutdown, and the deploy workflow's own "Generate application config" step: hostile secrets round-trip exactly, a non-numeric port is rejected, and the output passes `-check-config`.
+- `internal/config` tests check that `config.example.yaml` loads with sane values (a pass shorter than its interval, an enrichment chain not led by the critic) and that `deploy.yml` mirrors its critic chain and story dedup mode.
+- `tests/js/admin.test.mjs` covers the keyboard shortcuts, the row actions menus and the rewrite box's image reminder.
 
 ## Code Style
 
 ```bash
-# Run static analysis
-make lint
-
-# This runs:
-go vet ./...
+make lint    # go vet ./...
 ```
 
 The project follows standard Go conventions:
+
 - All packages under `internal/` are not importable externally
 - Models are defined in `internal/db/models.go`
 - Database migrations are in `internal/db/migrations.go` (run automatically on startup)
 - Prompts are centralized in `internal/ai/prompts.go`
 
+## CI
+
+`.github/workflows/ci.yml` runs on every push and pull request to `main`:
+
+1. **test:** `go vet ./...`, `go test ./... -v -race`, `node --test tests/js/*.test.mjs`, `go build ./cmd/milesahead`
+2. **screenshot-test:** builds the binary, starts it with a test config, and captures desktop, tablet and mobile screenshots of the home and login pages with Playwright (uploaded as an artifact)
+
+The deploy workflow repeats the test job before it builds anything; see [Deployment](../deployment/).
+
 ## Database Migrations
 
-Migrations run automatically when the application starts. They are defined in `internal/db/migrations.go` and use `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ADD COLUMN` with duplicate-column error handling for idempotency.
+Migrations run automatically when the application starts (`migrate` in `internal/db/migrations.go`). Tables are created with `CREATE TABLE IF NOT EXISTS`; new columns are `ALTER TABLE ... ADD COLUMN` statements in the `alterStatements` slice, with "duplicate column" errors ignored, so every start is idempotent. After that, startup also:
+
+- creates the search indexes, rebuilding them once when `ftsIndexVersion` changes (recorded in `search_index_versions`);
+- reindexes any article that still holds an inline editor note;
+- recomputes offer end dates (`expires_on`) from Key Details, writing only rows that changed.
 
 To add a new column:
 
 1. Add the field to the model struct in `internal/db/models.go`
-2. Add an `ALTER TABLE` statement to the `alterStatements` slice in `migrations.go`
-3. Update any relevant queries in `internal/db/db.go`
+2. Add an `ALTER TABLE` statement to `alterStatements` in `migrations.go`, with a comment saying why
+3. Update the queries in `internal/db` that read or write it (every full article read scans the same column list)
 
 ## Adding a New Feature
 
-A typical workflow for adding a new feature:
-
 1. **Database** -- add models to `internal/db/models.go` and migrations to `migrations.go`
 2. **Business logic** -- create or extend a package under `internal/`
-3. **Web handlers** -- add routes in `internal/web/routes.go`, handlers in the appropriate file (`admin.go`, `public.go`, or `api.go`)
+3. **Web handlers** -- add routes in `internal/web/routes.go`, handlers in the appropriate file
 4. **Templates** -- add or modify Go templates in `templates/`
-5. **Tests** -- write unit tests in the package and integration tests in `tests/`
-6. **Config** -- add any new config fields to `internal/config/` and `config.example.yaml`
+5. **Tests** -- unit tests in the package, integration tests in `tests/`, and `tests/js` for admin browser logic
+6. **Config** -- add new fields to `internal/config/`, `config.example.yaml`, and the config the deploy workflow writes
+
+## One-off and Maintenance Tools
+
+Run these against a copy of the database, or take a backup first (`sudo systemctl start milesahead-backup.service` on the server).
+
+| Tool | What it does |
+|------|--------------|
+| `cmd/ab-models` | Measures candidate models against real source material: real clustering, prompts and critic. Opens the database read-only. `-critic-candidates "a,b"` probes critics for the JSON contract; `-generators`, `-critic`, `-topics`, `-days`, `-critic-no-thinking`; `-full -out a.json` dumps whole articles, which `scripts/render_article_review.py` renders side by side. |
+| `cmd/flag-outlet-mentions` | Lists articles that name or link to a news site, or carry a numbered source reference: id, status, title, field and the sentence. Read-only (`mode=ro`, `query_only`), with no write mode. `-status approved,pending` limits it. |
+| `cmd/repair-editor-notes` | Moves editor notes still inline in stored content to `editor_notes`. A read-only dry run unless `-apply` is given; `-ids` limits it. Each article is one transaction (a compare-and-set on what was read, plus the search reindex); idempotent; takes no backup itself. |
+| `cmd/backfill-scouts-take` | Fills missing Scout's Takes through `ai.GenerateScoutsTake`, the same guarded function enrichment uses. `-dry-run`, `-model` (a chain), `-api-key`, `-api-url`, `-persona`. |
+| `cmd/seed-cards`, `cmd/seed-structured` | Seed card pages and comparison data; see [Reference Pages](../features/reference-pages/#seed-script). |
+
+```bash
+go run ./cmd/ab-models -critic-candidates "model-a,model-b" -generators model-a
+go run ./cmd/flag-outlet-mentions -db ./data/milesahead.db -status approved,pending
+go run ./cmd/repair-editor-notes -db ./data/milesahead.db          # dry run
+go run ./cmd/repair-editor-notes -db ./data/milesahead.db -apply   # write
+```
+
+## Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/infographic-images.sh <slug> <png>` | Makes a card infographic and its teaser; see [Reference Pages](../features/reference-pages/#infographics) |
+| `scripts/brand-images.sh` | Renders the PNG brand images (email, favicon, share image) from `scripts/brand/` with Chrome |
+| `scripts/render_article_review.py` | Renders `ab-models -full` output as side-by-side HTML for review |
+| `scripts/check_card_consistency.py` | Cross-checks card prose against structured card data and reports disagreements for a person to judge |
+
+## Runbooks
+
+`docs/runbooks/generation-drought.md` (in the repository, not on this site) covers the "no articles generated in 24h" alert.

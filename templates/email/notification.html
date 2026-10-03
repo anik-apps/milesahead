@@ -14,7 +14,7 @@
 <!-- Header -->
 <tr>
 <td style="background-color:#1a1a2e;padding:24px 32px;">
-<h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">Miles Ahead — Article Review</h1>
+<h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">MilesAhead — Article Review</h1>
 </td>
 </tr>
 
@@ -61,6 +61,10 @@
 <div style="color:#333;font-size:15px;line-height:1.6;">
 {{.Article.Content}}
 </div>
+{{if .Article.EditorNotes}}
+<p style="margin:12px 0 0 0;padding:8px 12px;background:#fef3c7;color:#92400e;font-size:13px;white-space:pre-line;"><strong>Editor notes (not published):</strong>
+{{.Article.EditorNotes}}</p>
+{{end}}
 </td>
 </tr>
 
@@ -96,7 +100,7 @@
 <!-- Footer -->
 <tr>
 <td style="background-color:#f8f9fa;padding:16px 32px;border-top:1px solid #e0e0e0;">
-<p style="margin:0;color:#999;font-size:12px;">This is an automated review notification from Miles Ahead. Reply directly to take action.</p>
+<p style="margin:0;color:#999;font-size:12px;">This is an automated review notification from MilesAhead. Reply directly to take action.</p>
 </td>
 </tr>
 

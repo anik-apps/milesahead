@@ -19,16 +19,49 @@ type SourceArticle struct {
 	Content string
 }
 
+// formatSources renders the source material for a prompt, each piece labelled
+// by the outlet that published it.
+//
+// Sources used to be labelled "--- Source 1: [The Points Guy] ---", and the
+// generator copied the label into published articles ("Source 1 notes this
+// offer..."). The label now carries no number or position for a model to
+// parrot; the outlet name is the only handle it is given. A missing name is
+// rendered visibly rather than as an empty label.
 func formatSources(sources []SourceArticle) string {
 	var b strings.Builder
-	for i, s := range sources {
-		fmt.Fprintf(&b, "--- Source %d: [%s] ---\n", i+1, s.Name)
-		fmt.Fprintf(&b, "Title: %s\n", s.Title)
+	for _, s := range sources {
+		name := strings.TrimSpace(s.Name)
+		if name == "" {
+			name = "(outlet name missing)"
+		}
+		fmt.Fprintf(&b, "=== From %s ===\n", name)
+		fmt.Fprintf(&b, "Headline: %s\n", s.Title)
 		fmt.Fprintf(&b, "URL: %s\n", s.URL)
 		fmt.Fprintf(&b, "Content:\n%s\n\n", s.Content)
 	}
 	return b.String()
 }
+
+// noOutletsRule is the site owner's rule on the news sites and blogs articles
+// are written from: never name or refer to them, with exactly two exceptions,
+// quoted verbatim. Every prompt that writes or checks article text carries it.
+const noOutletsRule = `NEVER name or refer to the news sites and blogs you were given (the outlets the sources are labelled with) or any other points/travel news site or blog - for example The Points Guy (TPG), One Mile at a Time (OMAAT), Doctor of Credit (DoC), View from the Wing (VFTW), Upgraded Points, Loyalty Lobby, Frequent Miler (FM), AwardWallet, Thrifty Traveler, Miles to Memories. State facts plainly, as facts, without attributing them. This covers every form: "according to X", "X reports/notes/confirmed", "X's valuation", "X runs the math differently", "X readers", "(per X)", and abbreviations.
+Issuers, airlines, hotel chains and their official pages are NOT news sites: name them freely ("Chase says", "American confirmed").
+The only exceptions:
+` + outletExceptions + `
+Even then, never link to the news site.`
+
+// sourceReferenceRule tells the writer how to refer to the source material.
+// Every prompt that hands the model source articles includes it.
+const sourceReferenceRule = `
+REFERRING TO SOURCES:
+- The source articles below are your private research notes. Readers never see them, and they are labelled only by the outlet that published them.
+- ` + noOutletsRule + `
+  WRONG: "American confirmed to The Points Guy that the change is permanent." RIGHT: "American has confirmed the change is permanent."
+  WRONG: "That's about 1.4 cents per point (One Mile at a Time's valuation)." RIGHT: "That's about 1.4 cents per point."
+  WRONG: "One Mile at a Time runs the math slightly differently..." RIGHT: give the math itself, as your own analysis.
+- NEVER refer to a source by number or position either. These are all WRONG: "Source 1", "Source 2 notes", "sources 1 and 2", "the first source", "the second article", "Article 1", "[1]", "[Source 2]".
+`
 
 const writingStyle = `
 WRITING STYLE — THIS IS CRITICAL:
@@ -73,13 +106,13 @@ FACTUAL INTEGRITY:
     - frequentmiler.com
     - liveandletsfly.com
     - milesfromblighty.com
-  Do not mention source site names UNLESS reporting an unconfirmed claim from a specific site.
+  Do not name or refer to news sites or blogs at all (see REFERRING TO SOURCES for the only two exceptions).
   WRONG: "American Express is offering a 40% bonus [TPG]."
   WRONG: "According to The Points Guy, there is a 40% bonus."
   WRONG: <a href="https://thepointsguy.com/...">link</a>
   RIGHT: "American Express is offering a 40% transfer bonus to ANA through March 31."
-  EXCEPTION (unconfirmed report): When a claim can only be attributed to one source and is not officially confirmed, link the source name to their article:
-  RIGHT: <a href="https://thepointsguy.com/article-url" target="_blank" rel="noopener">The Points Guy is reporting</a> that Chase may change Sapphire Reserve benefits in April — take this with a grain of salt until there's official confirmation.
+  EXCEPTION (unconfirmed report only one news site carries): mention it once, phrased as a report, with no link:
+  RIGHT: Chase may reportedly change Sapphire Reserve benefits in April, according to The Points Guy - take this with a grain of salt until there's official confirmation.
 
 FORMATTING:
 - The article body is HTML. NEVER output Markdown.
@@ -109,6 +142,7 @@ Line 5+: KEY_DETAILS_START
 - Detail 1 label: value
 - Detail 2 label: value
 (include 3-6 bullet points with the most important facts: bonus amounts, deadlines, costs, requirements)
+(if the offer has an end date, include exactly one detail labelled "Deadline" whose value is the last day to act, written as Month D, YYYY - e.g. "- Deadline: May 1, 2026". The site reads this line to mark the offer as ended once that day has passed, so never put an effective date, travel window or points-expiry date under "Deadline", and omit the line entirely when the sources give no end date)
 KEY_DETAILS_END
 Line: Empty line
 Line: LINKS_START
@@ -153,9 +187,10 @@ Given the following source articles, extract the key details:
 Write an engaging deal-alert post that makes readers excited about this opportunity.
 %s
 %s
+%s
 Sources (for your reference only — do NOT cite these in the article):
 %s
-Write the deal alert post now.`, writingStyle, htmlFormat, formatSources(sources))
+Write the deal alert post now.`, writingStyle, htmlFormat, sourceReferenceRule, formatSources(sources))
 }
 
 // RoundupPrompt builds a prompt for a roundup article with natural writing.
@@ -167,9 +202,10 @@ Each topic gets an <h3> heading followed by its content, then an <hr class="topi
 End with a brief wrap-up paragraph (no <hr> before the wrap-up).
 %s
 %s
+%s
 Sources (for your reference only — do NOT cite these in the article):
 %s
-Write the roundup post now.`, writingStyle, htmlFormat, formatSources(sources))
+Write the roundup post now.`, writingStyle, htmlFormat, sourceReferenceRule, formatSources(sources))
 }
 
 // SummaryPrompt builds a prompt for a summary article with personality.
@@ -180,10 +216,23 @@ Given the following source articles, synthesize the information into a balanced,
 Add your own analysis and practical advice for readers.
 %s
 %s
+%s
 Sources (for your reference only — do NOT cite these in the article):
 %s
-Write the summary post now.`, writingStyle, htmlFormat, formatSources(sources))
+Write the summary post now.`, writingStyle, htmlFormat, sourceReferenceRule, formatSources(sources))
 }
+
+// criticIssuesRules defines what belongs in a critic's "issues" array. Process
+// auto-revises whenever issues remain, and the generator is told to fix every
+// one, so an issue that confirms a passed check ("matches the source",
+// "no source leakage -- good") costs a rewrite and a second critic call and
+// asks the generator to change something that is right. dropPassedChecks
+// removes the plainest of these after parsing; this rule is the main fix.
+const criticIssuesRules = `ISSUES — "issues" is the list of fixes the writer will be asked to make, nothing else:
+- Include ONLY problems that require changing the article. Each issue is one plain string (not an object) that says what is wrong, where (quote the phrase or name the section), and what it should say or do instead.
+- Do NOT list checks that passed, confirmations ("matches the source", "verified", "correct", "no source leakage"), praise ("reads well", "good"), or observations that need no change ("acceptable", "not a hallucination", "a reasonable inference"). The true/false checks already record what passed.
+- If nothing needs to change, return "issues": [] — an empty list is the expected answer for a clean article.
+- Every check you set to false must have at least one issue explaining what to fix.`
 
 // CriticPrompt builds a comprehensive verification prompt. The critic checks
 // factual accuracy, content quality, readability, and HTML validity.
@@ -208,9 +257,11 @@ VERIFICATION CHECKLIST:
 3. COMPLETENESS — Are the most important details from the sources included?
 4. READABILITY — Does the article read naturally? Does it flow well? Is it engaging and not robotic? Does the tone feel like a real person wrote it?
 5. HTML VALIDITY — Is the output clean HTML? No Markdown artifacts (**, ##, []() links)? Are tags properly opened and closed?
-6. SOURCE LEAKAGE — Does the article link to or mention source news sites (TPG, OMAAT, Doctor of Credit, View from the Wing, FlyerTalk, Frequent Miler) in the body? It should NOT, unless reporting an unconfirmed claim. Links to thepointsguy.com, onemileatatime.com, doctorofcredit.com, viewfromthewing.com are ALWAYS wrong.
+6. NEWS-SITE MENTIONS — The site's rule for articles: `+noOutletsRule+`
+   Check the title, TLDR, key details and body. Any mention of a news site or blog outside those two exceptions ("American confirmed to The Points Guy", "(One Mile at a Time's valuation)", "according to Doctor of Credit", "TPG", "OMAAT") is an ATTRIBUTION FAILURE: set attribution_check to false and add an issue that quotes the phrase and says to remove the mention and state the fact without attribution. Links to thepointsguy.com, onemileatatime.com, doctorofcredit.com, viewfromthewing.com or any other news site are ALWAYS wrong, even under an exception.
 7. LINK CHECK — The article should NOT link to source news articles. It MAY link to actual deals, products, or official pages (amazon.com, chase.com, united.com, etc.). Check every <a href> tag: if it points to a source news site, that's a FAILURE.
 8. COHERENCE — Does the article make logical sense from start to finish? Are there any contradictions, non-sequiturs, or confusing passages?
+9. SOURCE NUMBERING — The original sources below are private research notes labelled by outlet; readers never see them, numbered or otherwise. Any reference to a source by number or position in the title, TLDR, key details or body ("Source 1 notes", "Source 2", "sources 1 and 2", "the first source", "the second article", "Article 1", "[1]") is an ATTRIBUTION FAILURE: set attribution_check to false and add an issue that quotes the phrase and says to state the fact without attribution (never to put the outlet's name in its place). In your own issues, refer to sources by outlet name, never by number or position.
 
 Generated Article:
 %s
@@ -219,7 +270,9 @@ Original Sources:
 %s
 
 Return ONLY a JSON object (no other text):
-{"score": <0-100>, "issues": [<array of specific issue strings>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
+{"score": <0-100>, "issues": [<problems that need a change in the article; [] if none>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
+
+`+criticIssuesRules+`
 
 Scoring guide:
 - 90-100: Publish-ready. ALL four checks must be true. Every claim verified against sources. No extra content.
@@ -267,6 +320,9 @@ Read the article carefully and check:
    - Does it overstate the value of a deal?
    - Does it recommend specific actions without enough information?
 
+6. NEWS-SITE MENTIONS — The site's rule for articles: `+noOutletsRule+`
+   A mention of a news site or blog outside those two exceptions, anywhere in the article, fails attribution: set attribution_check to false and add an issue that quotes the phrase and says to remove the mention and state the fact without attribution.
+
 Article to review:
 %s
 
@@ -274,7 +330,9 @@ Original sources for reference:
 %s
 
 Return ONLY a JSON object (no other text):
-{"score": <0-100>, "issues": [<array of specific issue strings>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
+{"score": <0-100>, "issues": [<problems that need a change in the article; [] if none>], "factual_check": <bool>, "attribution_check": <bool>, "completeness_check": <bool>, "hallucination_check": <bool>}
+
+`+criticIssuesRules+`
 
 Scoring:
 - 90-100: Logically sound, no inconsistencies.
@@ -334,8 +392,11 @@ Return this exact JSON format (no other text):
 
 Rules:
 - key_details: 3-6 bullet points with the most important facts (bonus amounts, deadlines, costs, requirements, eligibility)
+- If the offer has an end date, include exactly one key detail with the label "Deadline" whose value is the last day to act, written as Month D, YYYY (e.g. "May 1, 2026"). The site uses it to mark the offer as ended, so never label an effective date, travel window or points-expiry date "Deadline", and leave it out when the article gives no end date.
 - links: 2-4 links to actual deal pages, booking sites, or official program pages found in the article content. Extract real URLs from the HTML <a href> tags. Do NOT invent URLs.
-- If the article has no links, return an empty links array.`, title, truncated)
+- If the article has no links, return an empty links array.
+- Never refer to sources by number or position ("Source 1", "the second source") in a label or value.
+- In a label or value, `+noOutletsRule+``, title, truncated)
 }
 
 // ArticleTagsPrompt builds a prompt that asks the AI to pick 1-3 topic tags
@@ -388,6 +449,9 @@ func ScoutsTakePrompt(personaName, title, tldr, content string) string {
 Given this article, write a 1-2 sentence take that captures your honest opinion. Be practical and direct. Tell readers whether this matters and what they should do about it. Do not be generic — reference specific details from the article.
 
 Do NOT start with "Look," or "Listen," or any attention-grabbing opener. Just state your take directly.
+
+`+noOutletsRule+`
+If the article itself names a news site or blog outside those exceptions, do not repeat it. Never refer to sources by number or position ("Source 1", "the second source") either.
 
 Article Title: %s
 Summary: %s
@@ -465,6 +529,9 @@ IMPORTANT: Address the admin feedback. Do not add editor notes, warnings, or dis
 Also fix any critic issues if present.
 %s
 %s
+%s
+If the previous article names or refers to a news site or blog ("according to The Points Guy", "One Mile at a Time's valuation", "TPG"), or refers to a source by number or position ("Source 1 notes...", "the second source"), remove the reference and state the fact without attribution, even if no one asked - unless one of the two exceptions under REFERRING TO SOURCES applies.
+
 Previous Article:
 %s
 
@@ -473,7 +540,7 @@ Critic Issues:
 
 Sources (for your reference only — do NOT cite or link to them):
 %s
-Write the revised article now.`, feedback, writingStyle, htmlFormat, previousOutput, criticIssues, formatSources(sources))
+Write the revised article now.`, feedback, writingStyle, htmlFormat, sourceReferenceRule, previousOutput, criticIssues, formatSources(sources))
 }
 
 // InfographicPrompt asks for an SVG diagram of an article's key numbers.

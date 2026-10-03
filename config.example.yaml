@@ -15,6 +15,31 @@ scanner:
   # several clusters and published it twice. 0 uses cluster.DefaultThreshold.
   cluster_threshold: 0.30
   user_agent: "MilesAhead/1.0"
+  # Story-level duplicate check, run on each cluster that passes the raw-ID
+  # check, before generation: "shadow" | "block" | "off". Unset means shadow.
+  #
+  # 16 of 98 articles generated 2026-09-21..30 repeated a story already
+  # written, and no pair shared a source article, so the raw-ID check could
+  # not see them. The check compares the cluster with every article generated
+  # in the last 7 days (any status, including rejected and drafts). A TF-IDF
+  # prefilter on titles keeps the top 5 scoring >= 0.25; if any pass, one
+  # short call on the enrichment_model chain decides whether it is the same
+  # story and, if so, whether it is a materially new development (a
+  # follow-up, which is generated). If that call fails, the lexical score
+  # decides alone at >= 0.55.
+  #
+  # Lexical score alone, measured on those 98 articles (16 duplicates):
+  #   >= 0.25   16/16 duplicates caught, 24 of 79 legitimate flagged
+  #   >= 0.35   15/16,  9 flagged
+  #   >= 0.45    9/16,  4 flagged
+  #   >= 0.55    7/16,  2 flagged
+  # which is why the AI makes the call. shadow logs every decision ("story
+  # dedup decision", with would_block, the cluster's raw IDs and the matched
+  # article) and counts milesahead_story_dedup_decisions_total, but still
+  # generates. block skips a duplicate and records its sources as covered by
+  # the matched article. Review the shadow decisions against what was
+  # approved and rejected before switching to block.
+  story_dedup: "shadow"
 
 ai:
   # Primary generator. Re-selected 2026-09-21 after the previous primary
@@ -37,18 +62,45 @@ ai:
   # returns 503 intermittently and leaks reasoning preamble, so it is placed
   # after a model that does neither.
   fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
-  # Critic must return parseable JSON: Critic.Verify runs replies through
-  # extractJSON, so reasoning-style models that answer in prose disqualify
-  # themselves regardless of judgement quality (glm-5.3-flash failed 3 of 4).
-  # mistral-nemotron answers directly, so no reasoning competes for the token
-  # budget. It CANNOT be used as a generator -- it returns 500 on the article
-  # prompt, reproducibly, while handling 16k chars of ordinary prose fine.
+  # Critic: a comma-separated chain, tried left to right on the same errors as
+  # the generator fallbacks (429 / 5xx / timeout / 404 / 410). One reachable
+  # critic is enough to publish. It must return parseable JSON: Critic.Verify
+  # runs replies through extractJSON, so models that answer in prose
+  # disqualify themselves regardless of judgement quality.
   #
-  # Deliberately a different model from the generator: self-grading is not a
-  # quality gate. Scores on one shared article were mistral 92 / 550b 82 /
-  # gpt-oss-20b 45, so this choice moves the publish bar materially -- watch
-  # the approval rate after changing it.
-  critic_model: "mistralai/mistral-nemotron"
+  # Re-selected 2026-09-30. deepseek-ai/deepseek-v4.1-flash, chosen on
+  # 2026-09-29 after mistralai/mistral-nemotron was retired (410 "end of
+  # life"), scored well on two lucky runs that day but its hosted endpoint is
+  # overloaded: every critic call since has ended in a gateway 504 after ~5
+  # minutes, and even a 36-token reply queues for 70-100s. A critic ERROR drops
+  # the article from the scan outright, so nothing was verified at all. (A
+  # score below critic_threshold is different: the article is saved as a
+  # draft, not lost -- see article.Manager.CreateFromPipeline.)
+  #
+  # Measured on the real critic prompt, two articles from the production
+  # generator, score after the pipeline's adjustScore, threshold 75:
+  #   nemotron-3-super-120b-a12b, thinking OFF   75 and 95        28s, 1.7s
+  #   moonshotai/kimi-k3, thinking OFF           62 and 62        44-50s
+  #   deepseek-v4.1-flash, thinking OFF          50 and 50        67-101s
+  #   nemotron-3-super-120b-a12b, thinking ON    45, then 503 overloaded
+  #   openai/gpt-oss-20b, reasoning_effort=low   ~30 and ~35      4-18s
+  #   google/gemma-4-31b-it                      504 and 504      302s
+  #
+  # Thinking off (critic_disable_thinking below) is what makes nemotron-super
+  # usable as a critic: with thinking on it truncates or leaks its reasoning
+  # into the JSON and scored 45. kimi-k3 is the fallback; it is stricter, so
+  # articles it grades mostly land as drafts (62 < 75).
+  #
+  # Independence caveat: nemotron-3-super is the same family as the generator
+  # (not the same model), and it is also in fallback_generator_model -- when
+  # the generator falls back to it, the article is graded by the model that
+  # wrote it. Self-grading is not a quality gate; watch the approval rate.
+  critic_model: "nvidia/nemotron-3-super-120b-a12b,moonshotai/kimi-k3"
+  # Sends chat_template_kwargs {"enable_thinking": false} on critic requests
+  # (critic_model and critic2_model) only; generation, enrichment, side jobs
+  # and vision keep the model's default. Every critic measurement above that
+  # says "thinking OFF" was made with this. Default false.
+  critic_disable_thinking: true
   # Vision model for image scoring. The 90b variant this replaced times out on
   # every call, so each candidate image burned the full 300s client timeout.
   vision_model: "meta/llama-3.2-11b-vision-instruct"
@@ -56,12 +108,26 @@ ai:
   # previous hardcoded 300s could have timed out a healthy-but-slow generation
   # and silently demoted it to the fallback.
   request_timeout: 900
-  # Enrichment (Scout's Take, key details, tags, image queries) runs as a
-  # background reconciliation pass, not inline in article creation. Deliberately
-  # a different model from critic_model: those calls used to reuse it, so a
-  # degraded critic backend silently cost every article in that window its
-  # fields. Comma-separated, tried in order.
-  enrichment_model: "mistralai/mistral-nemotron,openai/gpt-oss-20b"
+  # The chain for every short AI call: enrichment (Scout's Take, key details,
+  # tags, image queries -- a background reconciliation pass, not inline in
+  # article creation), image text-scoring, the newsletter pick, card-update
+  # detection and the pipeline's inline key-details call. Comma-separated,
+  # tried in order on a retryable error or a retired model. These calls are
+  # capped at 30s, so only fast models belong here.
+  #
+  # Deliberately not led by the critic: the side jobs used to reuse it, so the
+  # critic's retirement on 2026-09-28 took them all down with it. Enrichment
+  # itself survived only because this was already a chain -- kept two deep for
+  # the same reason as fallback_generator_model. nemotron-3-super is in both
+  # chains since 2026-09-30, but first in only one of them, so an overloaded
+  # critic backend costs enrichment a fallback, not its primary.
+  #
+  # Checked 2026-09-29 on short real prompts (tags, image scoring, card-update
+  # detection, Scout's Take): gpt-oss-20b 3-11s, all valid; nemotron-3-super
+  # 2-11s, all valid, and its Scout's Take was clean prose with no reasoning
+  # preamble. It is second because it returns 503 intermittently. Rejected:
+  # gemma-4-31b-it (30s timeout on tags), deepseek-v4.1-flash (minutes).
+  enrichment_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
   enrichment_interval: 15        # minutes
   enrichment_max_attempts: 3     # passes before an article is left alone
   # Bounds one pass. A pass has no limit of its own otherwise, and on a
@@ -91,7 +157,24 @@ mail:
 
 newsletter:
   send_time: "08:00"
+  # The newsletter schedule's timezone. Defaults to UTC when empty. Offer end
+  # dates do not use it: "Deadline: July 29, 2026" counts as ended once July
+  # 29 is over in Hawaii, the westernmost US zone, on the site and in the
+  # newsletter alike.
   timezone: "America/New_York"
+  # Opens newsletter sign-up: the Newsletter link in the header and footer,
+  # the line in the home hero, the box at the end of every article, the
+  # /subscribe form and the confirmation email. Off, /subscribe says sign-up
+  # opens soon and stores nothing. Turn it on only once mail.smtp points at a
+  # working relay: with it on and SMTP looking unset (no host or From,
+  # localhost, or placeholder credentials) the app logs an ERROR at startup
+  # and keeps sign-up closed. Checklist in ROADMAP.md (Newsletter).
+  signup_enabled: false
+  # A mailbox someone reads and acts on, added to every newsletter's
+  # List-Unsubscribe header as a mailto. Leave empty unless one exists: the
+  # one-click https link is what Gmail and Yahoo require, and a mailto to an
+  # unread address leaves readers thinking they unsubscribed when they did not.
+  unsubscribe_mailbox: ""
 
 votes:
   alert_threshold: 10

@@ -3,12 +3,14 @@ package db
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"html"
 	"log/slog"
 	"strings"
 	"time"
 
+	"github.com/kumaranik/milesahead/internal/editornote"
+	"github.com/kumaranik/milesahead/internal/offer"
 	_ "modernc.org/sqlite"
 )
 
@@ -96,8 +98,11 @@ func (d *Database) GetSource(id int64) (*Source, error) {
 	return s, nil
 }
 
+// ListActiveSources returns the active sources by id. The order is part of the
+// contract: the scan builds each cluster's source list in this order, and
+// revisions and the source-reference repair rely on reproducing it.
 func (d *Database) ListActiveSources() ([]Source, error) {
-	rows, err := d.db.Query(`SELECT id, name, url, rss_url, scrape_selector, scan_interval, active, created_at, updated_at FROM sources WHERE active = 1`)
+	rows, err := d.db.Query(`SELECT id, name, url, rss_url, scrape_selector, scan_interval, active, created_at, updated_at FROM sources WHERE active = 1 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +164,7 @@ func (d *Database) CreateRawArticleIfNew(a *RawArticle) (bool, error) {
 
 func (d *Database) GetRawArticlesBySourceID(sourceID int64) ([]RawArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, source_id, title, url, content, published_at, hash, created_at FROM raw_articles WHERE source_id = ?`, sourceID,
+		`SELECT id, source_id, title, url, content, published_at, hash, created_at FROM raw_articles WHERE source_id = ? ORDER BY id`, sourceID,
 	)
 	if err != nil {
 		return nil, err
@@ -212,9 +217,13 @@ func (d *Database) GetRawArticlesByIDs(ids []int64) ([]RawArticle, error) {
 // --- GeneratedArticle CRUD ---
 
 func (d *Database) CreateGeneratedArticle(a *GeneratedArticle) (int64, error) {
+	// created_at is "now", the same anchor the startup backfill uses for this
+	// derivation, so the two agree.
+	a.ExpiresOn = offer.EndDate(a.KeyDetails, time.Now().UTC())
+	a.separateEditorNotes()
 	res, err := d.db.Exec(
-		`INSERT INTO generated_articles (title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.Title, a.Slug, a.Content, a.Type, a.Status, a.SourcesJSON, a.RevisionNumber, a.Featured, a.TLDR, a.KeyDetails, a.Links, a.ImageURL, a.ImageThumbnail, a.ImageAttribution, a.ScoutsTake, a.RelatedCardsJSON, a.TagsJSON,
+		`INSERT INTO generated_articles (title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, expires_on, editor_notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.Title, a.Slug, a.Content, a.Type, a.Status, a.SourcesJSON, a.RevisionNumber, a.Featured, a.TLDR, a.KeyDetails, a.Links, a.ImageURL, a.ImageThumbnail, a.ImageAttribution, a.ScoutsTake, a.RelatedCardsJSON, a.TagsJSON, nullIfEmpty(a.ExpiresOn), a.EditorNotes,
 	)
 	if err != nil {
 		return 0, err
@@ -232,57 +241,121 @@ func (d *Database) CreateGeneratedArticle(a *GeneratedArticle) (int64, error) {
 func (d *Database) GetGeneratedArticle(id int64) (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, infographic_svg, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE id = ?`, id,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.InfographicSVG, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes, COALESCE(infographic_svg, '') FROM generated_articles WHERE id = ?`, id,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt, &a.ExpiresOn, &a.EditorNotes, &a.InfographicSVG)
 	if err != nil {
 		return nil, err
 	}
+	a.separateEditorNotes()
 	return a, nil
 }
 
 // validTransitions defines allowed status transitions.
 var validTransitions = map[string][]string{
-	StatusDraft:             {StatusPending, StatusApproved, StatusRejected, StatusRevisionRequested},
-	StatusPending:           {StatusApproved, StatusRejected, StatusRevisionRequested},
-	StatusApproved:          {StatusUnpublished},
-	StatusRejected:          {},
-	StatusRevisionRequested: {StatusDraft, StatusApproved, StatusRejected, StatusRevisionRequested},
+	StatusDraft:    {StatusPending, StatusApproved, StatusRejected, StatusRevisionRequested},
+	StatusPending:  {StatusApproved, StatusRejected, StatusRevisionRequested},
+	StatusApproved: {StatusUnpublished},
+	StatusRejected: {},
+	// -> pending: a rewrite that passes the critic goes straight to pending.
+	// ApplyRevision makes that move in its own compare-and-set, not through
+	// here, but it is a real transition and belongs in the table.
+	StatusRevisionRequested: {StatusDraft, StatusPending, StatusApproved, StatusRejected, StatusRevisionRequested},
 	StatusUnpublished:       {StatusRevisionRequested, StatusApproved, StatusRejected},
 }
 
+// ErrStatusChanged means the article's status was no longer the one a
+// transition was validated against: another writer got there first.
+var ErrStatusChanged = errors.New("article status changed concurrently")
+
+// UpdateArticleStatus moves an article from whatever status it has now.
+// Callers that decided on the move from a status they read earlier should use
+// TransitionArticleStatus, so the decision cannot apply to a different status.
 func (d *Database) UpdateArticleStatus(id int64, newStatus string) error {
 	a, err := d.GetGeneratedArticle(id)
 	if err != nil {
 		return fmt.Errorf("getting article: %w", err)
 	}
+	return d.TransitionArticleStatus(id, a.Status, newStatus)
+}
 
-	allowed := validTransitions[a.Status]
+// TransitionArticleStatus moves an article from status from to newStatus, and
+// only if it is still in from. The write is conditional on it: a read-then-write
+// let an Approve validated against revision_requested land after a rewrite had
+// already moved the article to pending, publishing a rewrite nobody reviewed.
+// Returns ErrStatusChanged if the status moved in the meantime.
+func (d *Database) TransitionArticleStatus(id int64, from, newStatus string) error {
+	return d.transitionArticleStatus(id, from, newStatus, 0)
+}
+
+// TransitionArticleStatusAtRevision is TransitionArticleStatus that also
+// requires the article to still be at revision: the one the admin read
+// before deciding. A rewrite that lands between the admin opening the article
+// and clicking Approve bumps the revision, so the decision cannot apply to
+// text nobody reviewed. Returns ErrStatusChanged if either moved.
+func (d *Database) TransitionArticleStatusAtRevision(id int64, from, newStatus string, revision int) error {
+	if revision <= 0 {
+		return fmt.Errorf("invalid revision %d", revision)
+	}
+	return d.transitionArticleStatus(id, from, newStatus, revision)
+}
+
+// transitionArticleStatus is the conditional write behind both; revision 0
+// leaves the revision unchecked.
+func (d *Database) transitionArticleStatus(id int64, from, newStatus string, revision int) error {
 	valid := false
-	for _, s := range allowed {
+	for _, s := range validTransitions[from] {
 		if s == newStatus {
 			valid = true
 			break
 		}
 	}
 	if !valid {
-		return fmt.Errorf("invalid status transition from %q to %q", a.Status, newStatus)
+		return fmt.Errorf("invalid status transition from %q to %q", from, newStatus)
 	}
 
 	query := `UPDATE generated_articles SET status = ?, updated_at = CURRENT_TIMESTAMP`
 	args := []interface{}{newStatus}
-	if newStatus == StatusApproved {
+	switch {
+	case newStatus == StatusApproved && from == StatusUnpublished:
+		// Republishing an article that was taken down puts the same text
+		// back: it keeps its original publish date rather than jumping to
+		// the top of the feed (and into this week's newsletter) as new.
+		query += `, published_at = COALESCE(published_at, CURRENT_TIMESTAMP)`
+	case newStatus == StatusApproved:
 		query += `, published_at = CURRENT_TIMESTAMP`
 	}
-	query += ` WHERE id = ?`
-	args = append(args, id)
+	query += ` WHERE id = ? AND status = ?`
+	args = append(args, id, from)
+	if revision > 0 {
+		query += ` AND revision_number = ?`
+		args = append(args, revision)
+	}
 
-	_, err = d.db.Exec(query, args...)
-	return err
+	res, err := d.db.Exec(query, args...)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		if revision > 0 {
+			return fmt.Errorf("%w: expected %q at revision %d", ErrStatusChanged, from, revision)
+		}
+		return fmt.Errorf("%w: expected %q", ErrStatusChanged, from)
+	}
+	return nil
 }
+
+// ErrUndoExpired means an approval can no longer be undone: there is no
+// recorded approval, its window has passed, or the article has changed since
+// (no longer approved, or at another revision).
+var ErrUndoExpired = errors.New("approval can no longer be undone")
 
 func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, infographic_svg, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY created_at DESC`, status,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles WHERE status = ? ORDER BY created_at DESC`, status,
 	)
 	if err != nil {
 		return nil, err
@@ -291,9 +364,22 @@ func (d *Database) ListArticlesByStatus(status string) ([]GeneratedArticle, erro
 	return scanGeneratedArticles(rows)
 }
 
+// ListPublishedArticles returns approved articles, most recently published
+// first.
 func (d *Database) ListPublishedArticles(limit, offset int) ([]GeneratedArticle, error) {
+	return d.ListPublishedArticlesSorted(false, limit, offset)
+}
+
+// ListPublishedArticlesSorted is ListPublishedArticles in either order:
+// oldestFirst lists the earliest published first. Ties go by id, the same
+// way round, so the order is stable.
+func (d *Database) ListPublishedArticlesSorted(oldestFirst bool, limit, offset int) ([]GeneratedArticle, error) {
+	order := "published_at DESC, id DESC"
+	if oldestFirst {
+		order = "published_at ASC, id ASC"
+	}
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, infographic_svg, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles WHERE status = ? ORDER BY `+order+` LIMIT ? OFFSET ?`,
 		StatusApproved, limit, offset,
 	)
 	if err != nil {
@@ -303,13 +389,83 @@ func (d *Database) ListPublishedArticles(limit, offset int) ([]GeneratedArticle,
 	return scanGeneratedArticles(rows)
 }
 
+// ListLivePublishedArticles is ListPublishedArticles without the articles
+// whose offer has ended. today is the site's current date as "2006-01-02";
+// an offer is still live on its last day, so only a strictly earlier
+// expires_on is excluded. Articles with no end date are always live.
+func (d *Database) ListLivePublishedArticles(today string, limit, offset int) ([]GeneratedArticle, error) {
+	rows, err := d.db.Query(
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles
+		WHERE status = ? AND (expires_on IS NULL OR expires_on >= ?)
+		ORDER BY published_at DESC LIMIT ? OFFSET ?`,
+		StatusApproved, today, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanGeneratedArticles(rows)
+}
+
+// OfferEnd is an article's offer end date and its type, which says how an
+// ended one is labelled.
+type OfferEnd struct {
+	EndsOn      string // "2006-01-02"
+	ArticleType string
+}
+
+// OfferEndsBySlug returns the end date and type of the approved articles
+// among slugs that have an end date, keyed by slug. Pages that link to
+// articles (a card's recent changes) use it to mark the ones whose offer has
+// ended.
+func (d *Database) OfferEndsBySlug(slugs []string) (map[string]OfferEnd, error) {
+	out := map[string]OfferEnd{}
+	if len(slugs) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(slugs))
+	args := make([]interface{}, 0, len(slugs)+1)
+	args = append(args, StatusApproved)
+	for i, s := range slugs {
+		placeholders[i] = "?"
+		args = append(args, s)
+	}
+	rows, err := d.db.Query(
+		`SELECT slug, expires_on, type FROM generated_articles
+		WHERE status = ? AND expires_on IS NOT NULL AND slug IN (`+strings.Join(placeholders, ",")+`)`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var slug string
+		var end OfferEnd
+		if err := rows.Scan(&slug, &end.EndsOn, &end.ArticleType); err != nil {
+			return nil, err
+		}
+		out[slug] = end
+	}
+	return out, rows.Err()
+}
+
+// nullIfEmpty stores "" as NULL, so "no end date" is one value in SQL.
+func nullIfEmpty(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 func scanGeneratedArticles(rows *sql.Rows) ([]GeneratedArticle, error) {
 	var articles []GeneratedArticle
 	for rows.Next() {
 		var a GeneratedArticle
-		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.InfographicSVG, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt, &a.ExpiresOn, &a.EditorNotes); err != nil {
 			return nil, err
 		}
+		a.separateEditorNotes()
 		articles = append(articles, a)
 	}
 	return articles, rows.Err()
@@ -373,9 +529,12 @@ func (d *Database) CreateAdminFeedback(f *AdminFeedback) (int64, error) {
 	return res.LastInsertId()
 }
 
+// ListFeedbackForArticle returns an article's feedback, newest first. id breaks
+// ties because created_at has one-second resolution: two notes sent in the same
+// second came back in arbitrary order, so a revision could answer the older one.
 func (d *Database) ListFeedbackForArticle(articleID int64) ([]AdminFeedback, error) {
 	rows, err := d.db.Query(
-		`SELECT id, generated_article_id, feedback_text, source, created_at FROM admin_feedback WHERE generated_article_id = ? ORDER BY created_at DESC`, articleID,
+		`SELECT id, generated_article_id, feedback_text, source, created_at FROM admin_feedback WHERE generated_article_id = ? ORDER BY created_at DESC, id DESC`, articleID,
 	)
 	if err != nil {
 		return nil, err
@@ -393,11 +552,14 @@ func (d *Database) ListFeedbackForArticle(articleID int64) ([]AdminFeedback, err
 	return feedback, rows.Err()
 }
 
-// UpdateArticleContent updates the content, title, and revision_number of a generated article.
+// UpdateArticleContent updates the content, title, and revision_number of a
+// generated article. Editor notes in content are stored apart from it, and
+// replace the article's previous notes: they described the old content.
 func (d *Database) UpdateArticleContent(id int64, title, content string, revisionNumber int) error {
+	content, notes := editornote.Split(content)
 	_, err := d.db.Exec(
-		`UPDATE generated_articles SET title = ?, content = ?, revision_number = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-		title, content, revisionNumber, id,
+		`UPDATE generated_articles SET title = ?, content = ?, editor_notes = ?, revision_number = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		title, content, notes, revisionNumber, id,
 	)
 	return err
 }
@@ -489,22 +651,29 @@ func (d *Database) HasVoted(articleID int64, ipHash string) (bool, error) {
 
 // --- Newsletter CRUD ---
 
+// CreateNewsletter stores n. Its CreatedAt is now unless n sets it, and n
+// is left holding the CreatedAt stored.
 func (d *Database) CreateNewsletter(n *Newsletter) (int64, error) {
+	created := time.Now().UTC()
+	if n.CreatedAt != nil {
+		created = n.CreatedAt.UTC()
+	}
 	res, err := d.db.Exec(
-		`INSERT INTO newsletters (date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		n.Date, n.Subject, n.HTMLContent, n.Status, n.ArticleCount, n.CardOfWeekID, n.ScoutsPickArticleID,
+		`INSERT INTO newsletters (date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		n.Date, n.Subject, n.HTMLContent, n.Status, n.ArticleCount, n.CardOfWeekID, n.ScoutsPickArticleID, created,
 	)
 	if err != nil {
 		return 0, err
 	}
+	n.CreatedAt = &created
 	return res.LastInsertId()
 }
 
 func (d *Database) GetNewsletterByDate(date string) (*Newsletter, error) {
 	n := &Newsletter{}
 	err := d.db.QueryRow(
-		`SELECT id, date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, sent_at FROM newsletters WHERE date = ?`, date,
-	).Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.CardOfWeekID, &n.ScoutsPickArticleID, &n.SentAt)
+		`SELECT id, date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, sent_at, created_at FROM newsletters WHERE date = ?`, date,
+	).Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.CardOfWeekID, &n.ScoutsPickArticleID, &n.SentAt, &n.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -516,10 +685,34 @@ func (d *Database) MarkNewsletterSent(id int64) error {
 	return err
 }
 
+// ClaimNewsletterSend marks newsletter id sent before it goes out, if its
+// status is still from, and reports whether it did. Recording the send first
+// means a failure to record it can never leave an issue that went out
+// looking unsent, to be sent again; and of two sends at once only one claims
+// the issue.
+func (d *Database) ClaimNewsletterSend(id int64, from string) (bool, error) {
+	res, err := d.db.Exec(`UPDATE newsletters SET status = 'sent', sent_at = ? WHERE id = ? AND status = ?`, time.Now().UTC(), id, from)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n == 1, nil
+}
+
+// ReleaseNewsletterSend puts newsletter id, claimed by ClaimNewsletterSend
+// for a send that failed, back to status.
+func (d *Database) ReleaseNewsletterSend(id int64, status string) error {
+	_, err := d.db.Exec(`UPDATE newsletters SET status = ?, sent_at = NULL WHERE id = ? AND status = 'sent'`, status, id)
+	return err
+}
+
 // ListNewsletters returns all newsletters ordered by date descending.
 func (d *Database) ListNewsletters() ([]Newsletter, error) {
 	rows, err := d.db.Query(
-		`SELECT id, date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, sent_at FROM newsletters ORDER BY date DESC`,
+		`SELECT id, date, subject, html_content, status, article_count, card_of_week_id, scouts_pick_article_id, sent_at, created_at FROM newsletters ORDER BY date DESC`,
 	)
 	if err != nil {
 		return nil, err
@@ -529,7 +722,7 @@ func (d *Database) ListNewsletters() ([]Newsletter, error) {
 	var newsletters []Newsletter
 	for rows.Next() {
 		var n Newsletter
-		if err := rows.Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.CardOfWeekID, &n.ScoutsPickArticleID, &n.SentAt); err != nil {
+		if err := rows.Scan(&n.ID, &n.Date, &n.Subject, &n.HTMLContent, &n.Status, &n.ArticleCount, &n.CardOfWeekID, &n.ScoutsPickArticleID, &n.SentAt, &n.CreatedAt); err != nil {
 			return nil, err
 		}
 		newsletters = append(newsletters, n)
@@ -538,6 +731,50 @@ func (d *Database) ListNewsletters() ([]Newsletter, error) {
 }
 
 // --- Subscriber CRUD ---
+
+// Subscriber lookup and state errors.
+var (
+	ErrSubscriberNotFound = errors.New("subscriber not found")
+	ErrAlreadyConfirmed   = errors.New("subscriber already confirmed")
+	ErrUnsubscribed       = errors.New("subscriber has unsubscribed")
+)
+
+const subscriberColumns = `id, email, confirmed, token, subscribed_at, confirmed_at, unsubscribed_at`
+
+func scanSubscriber(row interface{ Scan(...any) error }) (Subscriber, error) {
+	var s Subscriber
+	err := row.Scan(&s.ID, &s.Email, &s.Confirmed, &s.Token, &s.SubscribedAt, &s.ConfirmedAt, &s.UnsubscribedAt)
+	return s, err
+}
+
+func (d *Database) querySubscribers(query string, args ...any) ([]Subscriber, error) {
+	rows, err := d.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var subscribers []Subscriber
+	for rows.Next() {
+		s, err := scanSubscriber(rows)
+		if err != nil {
+			return nil, err
+		}
+		subscribers = append(subscribers, s)
+	}
+	return subscribers, rows.Err()
+}
+
+func (d *Database) getSubscriber(where string, arg any) (*Subscriber, error) {
+	s, err := scanSubscriber(d.db.QueryRow(`SELECT `+subscriberColumns+` FROM subscribers WHERE `+where, arg))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrSubscriberNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
 
 func (d *Database) CreateSubscriber(s *Subscriber) (int64, error) {
 	res, err := d.db.Exec(
@@ -550,9 +787,26 @@ func (d *Database) CreateSubscriber(s *Subscriber) (int64, error) {
 	return res.LastInsertId()
 }
 
+// GetSubscriberByToken returns the subscriber with this token, or
+// ErrSubscriberNotFound.
+func (d *Database) GetSubscriberByToken(token string) (*Subscriber, error) {
+	return d.getSubscriber(`token = ?`, token)
+}
+
+// GetSubscriberByEmail returns the subscriber with this address, compared
+// without regard to case, or ErrSubscriberNotFound.
+func (d *Database) GetSubscriberByEmail(email string) (*Subscriber, error) {
+	return d.getSubscriber(`lower(email) = lower(?)`, email)
+}
+
+// ConfirmSubscriber confirms the subscription with this token. A second
+// confirmation is not an error a reader should see, so it returns
+// ErrAlreadyConfirmed for the caller to tell apart; an unsubscribed row is
+// left alone (an old confirmation link must not undo an unsubscribe) and
+// returns ErrUnsubscribed.
 func (d *Database) ConfirmSubscriber(token string) error {
 	res, err := d.db.Exec(
-		`UPDATE subscribers SET confirmed = 1, confirmed_at = ? WHERE token = ? AND confirmed = 0`, time.Now().UTC(), token,
+		`UPDATE subscribers SET confirmed = 1, confirmed_at = ? WHERE token = ? AND confirmed = 0 AND unsubscribed_at IS NULL`, time.Now().UTC(), token,
 	)
 	if err != nil {
 		return err
@@ -561,34 +815,33 @@ func (d *Database) ConfirmSubscriber(token string) error {
 	if err != nil {
 		return err
 	}
-	if n == 0 {
-		return fmt.Errorf("subscriber not found or already confirmed")
+	if n > 0 {
+		return nil
 	}
-	return nil
+	s, err := d.GetSubscriberByToken(token)
+	if err != nil {
+		return err
+	}
+	if s.State() == SubscriberUnsubscribed {
+		return ErrUnsubscribed
+	}
+	return ErrAlreadyConfirmed
 }
 
 func (d *Database) ListConfirmedSubscribers() ([]Subscriber, error) {
-	rows, err := d.db.Query(
-		`SELECT id, email, confirmed, token, subscribed_at, confirmed_at FROM subscribers WHERE confirmed = 1`,
+	return d.querySubscribers(
+		`SELECT ` + subscriberColumns + ` FROM subscribers WHERE confirmed = 1 AND unsubscribed_at IS NULL`,
 	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var subscribers []Subscriber
-	for rows.Next() {
-		var s Subscriber
-		if err := rows.Scan(&s.ID, &s.Email, &s.Confirmed, &s.Token, &s.SubscribedAt, &s.ConfirmedAt); err != nil {
-			return nil, err
-		}
-		subscribers = append(subscribers, s)
-	}
-	return subscribers, rows.Err()
 }
 
+// Unsubscribe marks the subscription with this token unsubscribed. The row
+// is kept so the token still resolves (for Resubscribe, and for links in
+// emails already sent). Unsubscribing twice is not an error.
 func (d *Database) Unsubscribe(token string) error {
-	res, err := d.db.Exec(`DELETE FROM subscribers WHERE token = ?`, token)
+	res, err := d.db.Exec(
+		`UPDATE subscribers SET confirmed = 0, unsubscribed_at = COALESCE(unsubscribed_at, ?) WHERE token = ?`,
+		time.Now().UTC(), token,
+	)
 	if err != nil {
 		return err
 	}
@@ -597,9 +850,67 @@ func (d *Database) Unsubscribe(token string) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("subscriber not found")
+		return ErrSubscriberNotFound
 	}
 	return nil
+}
+
+// Resubscribe makes the subscription with this token active again. The token
+// only ever reaches its owner's inbox, so holding it is proof enough; no new
+// confirmation is needed.
+func (d *Database) Resubscribe(token string) error {
+	res, err := d.db.Exec(
+		`UPDATE subscribers SET confirmed = 1, confirmed_at = ?, unsubscribed_at = NULL WHERE token = ?`,
+		time.Now().UTC(), token,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrSubscriberNotFound
+	}
+	return nil
+}
+
+// ReopenSubscriber turns an unsubscribed address back into a pending one,
+// for someone who signs up again through the form: they must confirm again
+// before anything is sent. The old confirmed_at goes too, so the stored row
+// reads as pending everywhere (the subscriber list, the CSV export).
+func (d *Database) ReopenSubscriber(id int64) error {
+	_, err := d.db.Exec(
+		`UPDATE subscribers SET confirmed = 0, confirmed_at = NULL, unsubscribed_at = NULL WHERE id = ? AND unsubscribed_at IS NOT NULL`, id,
+	)
+	return err
+}
+
+// ClaimConfirmationSend records that a confirmation email is about to go to
+// subscriber id, unless one went within cooldown. It reports whether the
+// caller should send. The check and the write are one statement, so two
+// requests at once cannot both send.
+func (d *Database) ClaimConfirmationSend(id int64, now time.Time, cooldown time.Duration) (bool, error) {
+	res, err := d.db.Exec(
+		`UPDATE subscribers SET confirmation_sent_unix = ? WHERE id = ? AND confirmation_sent_unix <= ?`,
+		now.Unix(), id, now.Add(-cooldown).Unix(),
+	)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
+// ReleaseConfirmationSend clears a claim whose email failed to send, so the
+// reader can ask again straight away.
+func (d *Database) ReleaseConfirmationSend(id int64) error {
+	_, err := d.db.Exec(`UPDATE subscribers SET confirmation_sent_unix = 0 WHERE id = ?`, id)
+	return err
 }
 
 // --- AdminSession CRUD ---
@@ -661,23 +972,7 @@ func (d *Database) ToggleSourceActive(id int64) error {
 
 // ListAllSubscribers returns all subscribers regardless of confirmation status.
 func (d *Database) ListAllSubscribers() ([]Subscriber, error) {
-	rows, err := d.db.Query(
-		`SELECT id, email, confirmed, token, subscribed_at, confirmed_at FROM subscribers ORDER BY subscribed_at DESC`,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var subscribers []Subscriber
-	for rows.Next() {
-		var s Subscriber
-		if err := rows.Scan(&s.ID, &s.Email, &s.Confirmed, &s.Token, &s.SubscribedAt, &s.ConfirmedAt); err != nil {
-			return nil, err
-		}
-		subscribers = append(subscribers, s)
-	}
-	return subscribers, rows.Err()
+	return d.querySubscribers(`SELECT ` + subscriberColumns + ` FROM subscribers ORDER BY subscribed_at DESC`)
 }
 
 // CountArticleSources returns the number of raw article sources linked to a generated article.
@@ -691,20 +986,40 @@ func (d *Database) CountArticleSources(articleID int64) (int, error) {
 func (d *Database) GetGeneratedArticleBySlug(slug string) (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, infographic_svg, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE slug = ?`, slug,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.InfographicSVG, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes, COALESCE(infographic_svg, '') FROM generated_articles WHERE slug = ?`, slug,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt, &a.ExpiresOn, &a.EditorNotes, &a.InfographicSVG)
 	if err != nil {
 		return nil, err
 	}
+	a.separateEditorNotes()
 	return a, nil
 }
 
-// ListPublishedArticlesByType returns approved articles filtered by type.
-func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset int) ([]GeneratedArticle, error) {
-	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, infographic_svg, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND type = ? ORDER BY published_at DESC LIMIT ? OFFSET ?`,
-		StatusApproved, articleType, limit, offset,
-	)
+// ListPublishedArticlesFiltered returns approved articles, newest first,
+// narrowed to articleType and to articles carrying tag in their tags_json
+// array. An empty articleType or tag leaves that filter off, so both empty
+// lists every approved article. Ended offers are included: filtered views
+// list them, marked as ended.
+func (d *Database) ListPublishedArticlesFiltered(articleType, tag string, limit, offset int) ([]GeneratedArticle, error) {
+	query := `SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles
+		WHERE status = ?`
+	args := []any{StatusApproved}
+	if articleType != "" {
+		query += ` AND type = ?`
+		args = append(args, articleType)
+	}
+	if tag != "" {
+		// A malformed tags_json would make json_each fail the whole query,
+		// and valid JSON that is not an array (a bare string, an object)
+		// would be expanded into values that look like tags. Both count as
+		// no tags.
+		query += ` AND EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(generated_articles.tags_json) AND json_type(generated_articles.tags_json) = 'array' THEN generated_articles.tags_json ELSE '[]' END) WHERE json_each.value = ?)`
+		args = append(args, tag)
+	}
+	query += ` ORDER BY published_at DESC LIMIT ? OFFSET ?`
+	args = append(args, limit, offset)
+
+	rows, err := d.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -712,25 +1027,30 @@ func (d *Database) ListPublishedArticlesByType(articleType string, limit, offset
 	return scanGeneratedArticles(rows)
 }
 
-// ListPublishedArticlesByTag returns approved articles that have the given tag in their tags_json array.
-func (d *Database) ListPublishedArticlesByTag(tag string, limit, offset int) ([]GeneratedArticle, error) {
-	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, infographic_svg, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles
-		WHERE status = 'approved'
-		AND id IN (SELECT ga.id FROM generated_articles ga, json_each(ga.tags_json) je WHERE je.value = ?)
-		ORDER BY published_at DESC LIMIT ? OFFSET ?`, tag, limit, offset,
-	)
+// ListPublishedArticleTypes returns the distinct types of approved articles,
+// in no particular order. The homepage offers a type filter only for types
+// that have something to show.
+func (d *Database) ListPublishedArticleTypes() ([]string, error) {
+	rows, err := d.db.Query(`SELECT DISTINCT type FROM generated_articles WHERE status = ?`, StatusApproved)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	return scanGeneratedArticles(rows)
+	var types []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		types = append(types, t)
+	}
+	return types, rows.Err()
 }
 
 // ListApprovedArticlesSince returns approved articles published since the given time.
 func (d *Database) ListApprovedArticlesSince(since time.Time) ([]GeneratedArticle, error) {
 	rows, err := d.db.Query(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, infographic_svg, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles
 		WHERE status = ? AND published_at >= ?
 		ORDER BY featured DESC, published_at DESC`,
 		StatusApproved, since,
@@ -746,35 +1066,19 @@ func (d *Database) ListApprovedArticlesSince(since time.Time) ([]GeneratedArticl
 func (d *Database) GetFeaturedArticle() (*GeneratedArticle, error) {
 	a := &GeneratedArticle{}
 	err := d.db.QueryRow(
-		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, infographic_svg, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE status = ? AND featured = 1 ORDER BY published_at DESC LIMIT 1`, StatusApproved,
-	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.InfographicSVG, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles WHERE status = ? AND featured = 1 ORDER BY published_at DESC LIMIT 1`, StatusApproved,
+	).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt, &a.ExpiresOn, &a.EditorNotes)
 	if err != nil {
 		// Fallback to most recent approved.
 		err = d.db.QueryRow(
-			`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, infographic_svg, linked_cards_heading, created_at, updated_at, published_at FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT 1`, StatusApproved,
-		).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.InfographicSVG, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt)
+			`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles WHERE status = ? ORDER BY published_at DESC LIMIT 1`, StatusApproved,
+		).Scan(&a.ID, &a.Title, &a.Slug, &a.Content, &a.Type, &a.Status, &a.SourcesJSON, &a.RevisionNumber, &a.Featured, &a.TLDR, &a.KeyDetails, &a.Links, &a.ImageURL, &a.ImageThumbnail, &a.ImageAttribution, &a.ScoutsTake, &a.RelatedCardsJSON, &a.TagsJSON, &a.LinkedCardsHeading, &a.CreatedAt, &a.UpdatedAt, &a.PublishedAt, &a.ExpiresOn, &a.EditorNotes)
 		if err != nil {
 			return nil, err
 		}
 	}
+	a.separateEditorNotes()
 	return a, nil
-}
-
-// HasArticleForRawIDs checks if any generated article already exists that links to any of the given raw article IDs.
-func (d *Database) HasArticleForRawIDs(rawIDs []int64) (bool, error) {
-	if len(rawIDs) == 0 {
-		return false, nil
-	}
-	placeholders := make([]string, len(rawIDs))
-	args := make([]interface{}, len(rawIDs))
-	for i, id := range rawIDs {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	query := fmt.Sprintf("SELECT COUNT(*) FROM article_sources WHERE raw_article_id IN (%s)", strings.Join(placeholders, ","))
-	var count int
-	err := d.db.QueryRow(query, args...).Scan(&count)
-	return count > 0, err
 }
 
 // GetLinkedRawArticles returns the raw articles linked to a generated article.
@@ -799,6 +1103,47 @@ func (d *Database) GetLinkedRawArticles(generatedArticleID int64) ([]RawArticle,
 		articles = append(articles, a)
 	}
 	return articles, rows.Err()
+}
+
+// ListRelatedArticles returns up to limit approved articles, other than
+// excludeID, that carry at least one of tags: the related stories at the end
+// of an article page. Offers still live on today (as ListLivePublishedArticles
+// judges it) come first; then articles carrying topic; then those sharing
+// more of tags; then the newest. topic may be "" and need not be in tags.
+func (d *Database) ListRelatedArticles(excludeID int64, topic string, tags []string, today string, limit int) ([]GeneratedArticle, error) {
+	if len(tags) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	// A malformed or non-array tags_json counts as no tags, as in
+	// ListPublishedArticlesFiltered.
+	const articleTags = `json_each(CASE WHEN json_valid(generated_articles.tags_json) AND json_type(generated_articles.tags_json) = 'array' THEN generated_articles.tags_json ELSE '[]' END)`
+	in := strings.TrimSuffix(strings.Repeat("?,", len(tags)), ",")
+	// DISTINCT and EXISTS, so a tag repeated in tags_json counts once.
+	shared := `(SELECT COUNT(DISTINCT json_each.value) FROM ` + articleTags + ` WHERE json_each.value IN (` + in + `))`
+	hasTopic := `EXISTS (SELECT 1 FROM ` + articleTags + ` WHERE json_each.value = ?)`
+
+	args := []any{StatusApproved, excludeID}
+	for _, t := range tags {
+		args = append(args, t)
+	}
+	args = append(args, today, topic)
+	for _, t := range tags {
+		args = append(args, t)
+	}
+	args = append(args, limit)
+
+	rows, err := d.db.Query(
+		`SELECT id, title, slug, content, type, status, sources_json, revision_number, featured, tldr, key_details, links, image_url, image_thumbnail, image_attribution, scouts_take, related_cards_json, tags_json, linked_cards_heading, created_at, updated_at, published_at, COALESCE(expires_on, ''), editor_notes FROM generated_articles
+		WHERE status = ? AND id != ? AND `+shared+` > 0
+		ORDER BY CASE WHEN expires_on IS NULL OR expires_on >= ? THEN 0 ELSE 1 END,
+			`+hasTopic+` DESC, `+shared+` DESC, published_at DESC, id DESC
+		LIMIT ?`, args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanGeneratedArticles(rows)
 }
 
 // --- ReferencePage CRUD ---
@@ -977,7 +1322,8 @@ type ComparisonCard struct {
 	ScoutsVerdict          string
 }
 
-// GetComparisonData returns structured comparison data for the given slugs,
+// GetComparisonData returns structured comparison data for the given slugs
+// (published cards only),
 // sorted to match the input slug order.
 func (d *Database) GetComparisonData(slugs []string) ([]ComparisonCard, error) {
 	if len(slugs) == 0 {
@@ -991,7 +1337,7 @@ func (d *Database) GetComparisonData(slugs []string) ([]ComparisonCard, error) {
 		args[i] = s
 	}
 
-	query := `SELECT id, slug, title, issuer, image_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, scouts_verdict FROM reference_pages WHERE slug IN (` + strings.Join(placeholders, ",") + `)`
+	query := `SELECT id, slug, title, issuer, image_url, annual_fee_amount, annual_fee_note, welcome_bonus_text, welcome_bonus_verified_at, earning_rates_json, credits_json, benefits_json, protections_json, scouts_verdict FROM reference_pages WHERE status = 'published' AND slug IN (` + strings.Join(placeholders, ",") + `)`
 
 	rows, err := d.db.Query(query, args...)
 	if err != nil {
@@ -1105,9 +1451,36 @@ func (d *Database) SyncArticleFTS(id int64) error {
 	d.db.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id)
 	_, err = d.db.Exec(
 		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
-		id, stripHTMLForDB(title), stripHTMLForDB(tldr), stripHTMLForDB(content),
+		id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), articleFTSContent(content),
 	)
 	return err
+}
+
+// SyncArticleFTSTx is SyncArticleFTS inside the caller's transaction, so an
+// article rewrite and its index entry commit or roll back together. Unlike
+// SyncArticleFTS it reports a failed delete too: a stale entry left behind
+// next to the new one is exactly what the transaction is there to prevent.
+func SyncArticleFTSTx(tx *sql.Tx, id int64) error {
+	var title, tldr, content string
+	err := tx.QueryRow(`SELECT title, COALESCE(tldr,''), content FROM generated_articles WHERE id = ?`, id).Scan(&title, &tldr, &content)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM articles_fts WHERE rowid = ?`, id); err != nil {
+		return err
+	}
+	_, err = tx.Exec(
+		`INSERT INTO articles_fts(rowid, title, tldr, content) VALUES (?, ?, ?, ?)`,
+		id, stripHTMLForFTS(title), stripHTMLForFTS(tldr), articleFTSContent(content),
+	)
+	return err
+}
+
+// articleFTSContent is an article's content as the search index holds it:
+// without editor notes, which search results must never show, and without
+// markup.
+func articleFTSContent(content string) string {
+	return stripHTMLForFTS(editornote.Strip(content))
 }
 
 // SyncCardFTS updates the FTS index for a single reference page.
@@ -1120,7 +1493,7 @@ func (d *Database) SyncCardFTS(id int64) error {
 	d.db.Exec(`DELETE FROM cards_fts WHERE rowid = ?`, id)
 	_, err = d.db.Exec(
 		`INSERT INTO cards_fts(rowid, title, sections_text, scouts_verdict) VALUES (?, ?, ?, ?)`,
-		id, stripHTMLForDB(title), extractSectionsTextDB(sectionsJSON), stripHTMLForDB(verdict),
+		id, stripHTMLForFTS(title), extractSectionsText(sectionsJSON), stripHTMLForFTS(verdict),
 	)
 	return err
 }
@@ -1135,110 +1508,6 @@ func (d *Database) DeleteArticleFTS(id int64) error {
 func (d *Database) DeleteCardFTS(id int64) error {
 	_, err := d.db.Exec(`DELETE FROM cards_fts WHERE rowid = ?`, id)
 	return err
-}
-
-// stripHTMLForDB removes HTML tags from a string and HTML-escapes the result
-// so that FTS content is safe to render with safeHTML (only FTS5 snippet
-// <mark> tags should be unescaped at render time).
-func stripHTMLForDB(s string) string {
-	var result []byte
-	inTag := false
-	for i := 0; i < len(s); i++ {
-		switch {
-		case s[i] == '<':
-			inTag = true
-		case s[i] == '>':
-			inTag = false
-			result = append(result, ' ')
-		case !inTag:
-			result = append(result, s[i])
-		}
-	}
-	return html.EscapeString(strings.TrimSpace(string(result)))
-}
-
-// extractSectionsTextDB extracts plain text from sections_json for FTS indexing.
-func extractSectionsTextDB(sectionsJSON string) string {
-	var sections []struct {
-		Title   string `json:"title"`
-		Content string `json:"content"`
-	}
-	if err := json.Unmarshal([]byte(sectionsJSON), &sections); err != nil {
-		return ""
-	}
-	var parts []string
-	for _, s := range sections {
-		parts = append(parts, stripHTMLForDB(s.Title))
-		parts = append(parts, stripHTMLForDB(s.Content))
-	}
-	return strings.Join(parts, " ")
-}
-
-// --- FTS Search ---
-
-// SearchResult holds a single search result.
-type SearchResult struct {
-	ID      int64
-	Title   string
-	Slug    string
-	Excerpt string
-	Type    string // "article" or "card"
-}
-
-// SearchArticles performs a full-text search on articles, returning only approved ones.
-func (d *Database) SearchArticles(query string, limit, offset int) ([]SearchResult, error) {
-	rows, err := d.db.Query(
-		`SELECT a.id, a.title, a.slug, snippet(articles_fts, 2, '<mark>', '</mark>', '...', 40) AS excerpt
-		FROM articles_fts f
-		JOIN generated_articles a ON a.id = f.rowid
-		WHERE articles_fts MATCH ? AND a.status = ?
-		ORDER BY rank
-		LIMIT ? OFFSET ?`,
-		query, StatusApproved, limit, offset,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []SearchResult
-	for rows.Next() {
-		var r SearchResult
-		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt); err != nil {
-			return nil, err
-		}
-		r.Type = "article"
-		results = append(results, r)
-	}
-	return results, rows.Err()
-}
-
-// SearchCards performs a full-text search on reference pages, returning only published ones.
-func (d *Database) SearchCards(query string, limit, offset int) ([]SearchResult, error) {
-	rows, err := d.db.Query(
-		`SELECT p.id, p.title, p.slug, snippet(cards_fts, 1, '<mark>', '</mark>', '...', 40) AS excerpt
-		FROM cards_fts f
-		JOIN reference_pages p ON p.id = f.rowid
-		WHERE cards_fts MATCH ? AND p.status = 'published'
-		ORDER BY rank
-		LIMIT ? OFFSET ?`,
-		query, limit, offset,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var results []SearchResult
-	for rows.Next() {
-		var r SearchResult
-		if err := rows.Scan(&r.ID, &r.Title, &r.Slug, &r.Excerpt); err != nil {
-			return nil, err
-		}
-		r.Type = "card"
-		results = append(results, r)
-	}
-	return results, rows.Err()
 }
 
 // --- Newsletter Candidate CRUD ---

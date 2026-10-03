@@ -10,12 +10,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/seeddata"
 )
 
 type cardData struct {
@@ -98,13 +98,13 @@ func main() {
 		}
 
 		// Normalize JSON fields before writing
-		normalizedEarning := normalizeEarningRates(c.EarningRates)
-		normalizedCredits := normalizeCredits(c.Credits)
-		normalizedBenefits := normalizeBenefitsOrProtections(c.Benefits, "value")
-		normalizedProtections := normalizeBenefitsOrProtections(c.Protections, "value")
+		normalizedEarning := seeddata.NormalizeEarningRates(c.EarningRates)
+		normalizedCredits := seeddata.NormalizeCredits(c.Credits)
+		normalizedBenefits := seeddata.NormalizeBenefitsOrProtections(c.Benefits)
+		normalizedProtections := seeddata.NormalizeBenefitsOrProtections(c.Protections)
 
 		// Build earning_rates with transfer_partners merged in
-		earningWithPartners := mergeTransferPartners(normalizedEarning, c.TransferPartners)
+		earningWithPartners := seeddata.MergeTransferPartners(normalizedEarning, c.TransferPartners)
 
 		// Update structured fields
 		now := time.Now()
@@ -150,194 +150,4 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
-}
-
-// ratePattern matches a leading rate like "3x", "1.5%", "10x".
-var ratePattern = regexp.MustCompile(`^(\d+(?:\.\d+)?[x%])`)
-
-// upToPattern matches "Up to 2x ..." style strings.
-var upToPattern = regexp.MustCompile(`^Up to (\d+(?:\.\d+)?[x%])`)
-
-// cashbackMatchPattern matches "1% cash back (2% effective in first year with Cashback Match)".
-var cashbackMatchPattern = regexp.MustCompile(`^(\d+(?:\.\d+)?%) cash back \((\d+(?:\.\d+)?%) effective.*Cashback Match\)`)
-
-// cleanRate extracts the short rate from a verbose string and returns (rate, note).
-// If the string is already clean, it returns it unchanged with empty note.
-func cleanRate(raw string) (string, string) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "N/A" {
-		return raw, ""
-	}
-
-	// Special case: "1% cash back (2% effective in first year with Cashback Match)"
-	if m := cashbackMatchPattern.FindStringSubmatch(raw); m != nil {
-		return m[1], m[2] + " effective with Cashback Match"
-	}
-
-	// "Up to 2x Hyatt points (if dining is a top-3 spending category)"
-	if m := upToPattern.FindStringSubmatch(raw); m != nil {
-		rest := strings.TrimSpace(raw[len(m[0]):])
-		note := "Up to " + m[1]
-		if rest != "" {
-			note = "Up to " + m[1] + " " + rest
-		}
-		return m[1], note
-	}
-
-	// "3x Atmos Rewards points on Alaska Airlines" → rate "3x", note "Atmos Rewards points on Alaska Airlines"
-	if m := ratePattern.FindStringSubmatch(raw); m != nil {
-		rest := strings.TrimSpace(raw[len(m[0]):])
-		if rest == "" {
-			return m[1], ""
-		}
-		return m[1], rest
-	}
-
-	// Patterns like "1% (5% when rotating category, ...)" — rate is "1%", rest is note
-	if idx := strings.Index(raw, " ("); idx > 0 {
-		prefix := raw[:idx]
-		if ratePattern.MatchString(prefix) {
-			return prefix, strings.TrimSpace(raw[idx+1:])
-		}
-	}
-
-	return raw, ""
-}
-
-// normalizeEarningRates converts flat string values like "2x" into {"rate":"2x","note":""}.
-// Also normalizes "niche" strings into arrays, and cleans verbose rate strings.
-func normalizeEarningRates(raw json.RawMessage) json.RawMessage {
-	var m map[string]interface{}
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return raw
-	}
-	for k, v := range m {
-		if k == "niche" {
-			m[k] = normalizeNiche(v)
-			continue
-		}
-		switch val := v.(type) {
-		case string:
-			if val == "N/A" || val == "" {
-				m[k] = map[string]string{"rate": "N/A", "note": ""}
-			} else {
-				rate, note := cleanRate(val)
-				m[k] = map[string]string{"rate": rate, "note": note}
-			}
-		case map[string]interface{}:
-			// Already an object — clean the rate field if verbose
-			rateStr, _ := val["rate"].(string)
-			noteStr, _ := val["note"].(string)
-			if rateStr != "" && rateStr != "N/A" {
-				cleanedRate, extraNote := cleanRate(rateStr)
-				if cleanedRate != rateStr {
-					val["rate"] = cleanedRate
-					if noteStr == "" && extraNote != "" {
-						val["note"] = extraNote
-					}
-					m[k] = val
-				}
-			}
-		}
-	}
-	out, err := json.Marshal(m)
-	if err != nil {
-		return raw
-	}
-	return out
-}
-
-// normalizeCredits converts flat string values like "$200 credit" into {"amount":"$200 credit","note":""}.
-func normalizeCredits(raw json.RawMessage) json.RawMessage {
-	var m map[string]interface{}
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return raw
-	}
-	for k, v := range m {
-		if k == "niche" {
-			m[k] = normalizeNiche(v)
-			continue
-		}
-		switch val := v.(type) {
-		case string:
-			if val == "N/A" || val == "" {
-				m[k] = map[string]string{"amount": "", "note": ""}
-			} else {
-				m[k] = map[string]string{"amount": val, "note": ""}
-			}
-		}
-	}
-	out, err := json.Marshal(m)
-	if err != nil {
-		return raw
-	}
-	return out
-}
-
-// normalizeBenefitsOrProtections converts flat string values into {"value":"...","note":""}.
-// Also handles boolean values for fields like no_ftf.
-func normalizeBenefitsOrProtections(raw json.RawMessage, _ string) json.RawMessage {
-	var m map[string]interface{}
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return raw
-	}
-	for k, v := range m {
-		if k == "niche" {
-			m[k] = normalizeNiche(v)
-			continue
-		}
-		switch val := v.(type) {
-		case string:
-			if val == "N/A" || val == "" {
-				m[k] = map[string]string{"value": "N/A", "note": ""}
-			} else {
-				m[k] = map[string]string{"value": val, "note": ""}
-			}
-		case bool:
-			boolStr := "No"
-			if val {
-				boolStr = "Yes"
-			}
-			m[k] = map[string]string{"value": boolStr, "note": ""}
-		}
-	}
-	out, err := json.Marshal(m)
-	if err != nil {
-		return raw
-	}
-	return out
-}
-
-// normalizeNiche converts a "niche" field: if it's a string, convert to array format.
-// "N/A" or "" becomes []. Any other string becomes [{"label":"...","note":""}].
-func normalizeNiche(v interface{}) interface{} {
-	switch val := v.(type) {
-	case string:
-		if val == "N/A" || val == "" {
-			return []interface{}{}
-		}
-		return []map[string]string{{"label": val, "note": ""}}
-	default:
-		return v // already an array or other valid type
-	}
-}
-
-// mergeTransferPartners adds transfer_partners into the earning_rates JSON
-// so the comparison page can show them together.
-func mergeTransferPartners(earningRaw, partnersRaw json.RawMessage) json.RawMessage {
-	var earning map[string]interface{}
-	if err := json.Unmarshal(earningRaw, &earning); err != nil {
-		return earningRaw
-	}
-
-	var partners interface{}
-	if err := json.Unmarshal(partnersRaw, &partners); err == nil {
-		earning["transfer_partners"] = partners
-	}
-
-	merged, err := json.Marshal(earning)
-	if err != nil {
-		return earningRaw
-	}
-	return merged
 }

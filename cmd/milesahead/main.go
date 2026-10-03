@@ -5,9 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -19,12 +22,12 @@ import (
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/enrich"
 	"github.com/kumaranik/milesahead/internal/images"
-	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/mail"
 	"github.com/kumaranik/milesahead/internal/metrics"
 	"github.com/kumaranik/milesahead/internal/newsletter"
 	"github.com/kumaranik/milesahead/internal/scanner"
 	"github.com/kumaranik/milesahead/internal/scheduler"
+	"github.com/kumaranik/milesahead/internal/storydedup"
 	"github.com/kumaranik/milesahead/internal/vote"
 	"github.com/kumaranik/milesahead/internal/web"
 )
@@ -37,12 +40,209 @@ func (s *stubTokenResolver) Resolve(token string) (int64, string, error) {
 	return 0, "", fmt.Errorf("token resolution not yet implemented")
 }
 
+// newImageScoring builds the image searcher and scorer. With an endpoint for
+// vision scoring configured, the searcher warms the thumbnails the scorer is
+// about to send: Wikimedia renders a new size before the vision endpoint
+// fetches it, so a slow first render does not fail its scoring. textModels is
+// the chain for the text pre-filter; see enrichmentModels.
+func newImageScoring(cfg *config.Config, client ai.HFClientInterface, visionModel string, textModels []string) (*images.Searcher, *images.Scorer) {
+	searcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey)
+	scorer := images.NewScorer(client, textModels)
+	if cfg.AI.HFBaseURL != "" {
+		scorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, visionModel, searcher)
+	}
+	return searcher, scorer
+}
+
+// sourceOutlets reads every row of the sources table, active or not, as the
+// outlets articles must not name. It is read on each use, so a source added in
+// the admin is covered from the next article on. A read error leaves only the
+// article's own sources and the built-in outlets to check, which is logged.
+func sourceOutlets(database *db.Database) func() []ai.Outlet {
+	return func() []ai.Outlet {
+		rows, err := database.ListAllSources()
+		if err != nil {
+			slog.Warn("could not list sources for the outlet check", "error", err)
+		}
+		out := make([]ai.Outlet, 0, len(rows))
+		for _, r := range rows {
+			out = append(out, ai.Outlet{Name: r.Name, URL: r.URL})
+		}
+		return out
+	}
+}
+
+// enrichmentModels is the chain for every short AI call: enrichment, image
+// text-scoring, the newsletter pick, card-update detection and the pipeline's
+// inline key-details call.
+//
+// Those calls asked for 512-2048 tokens, so HFClient bounds them at
+// ai.ShortCallTimeout (30s). Most of them used to go to the critic model, which
+// failed them all when mistralai/mistral-nemotron was retired on 2026-09-28;
+// its first replacement took minutes per reply and would have timed out every
+// one. The critic is for verification only.
+func enrichmentModels(cfg *config.Config) []string {
+	if models := ai.SplitModels(cfg.AI.EnrichmentModel); len(models) > 0 {
+		return models
+	}
+	// Unset: fall back to the generator fallback chain rather than silently
+	// doing nothing. Those models are the fast ones; the critic chain goes
+	// last.
+	return append(ai.SplitModels(cfg.AI.FallbackGeneratorModel), ai.SplitModels(cfg.AI.CriticModel)...)
+}
+
+// newCriticClient returns the client the critics call through. With
+// critic_disable_thinking set it is a copy of hfClient that asks for no
+// reasoning phase; the generator, enrichment, side jobs and vision scoring keep
+// using hfClient itself, so the setting cannot leak into them.
+//
+// With more than one critic, each retries at most once before the chain moves
+// on. A critic whose gateway times out takes ~5 minutes per attempt, so the
+// usual retries held an article ~20 minutes before the next critic was tried;
+// one retry still absorbs a single transient error.
+func newCriticClient(cfg *config.Config, hfClient *ai.HFClient) *ai.HFClient {
+	c := hfClient
+	if cfg.AI.CriticDisableThinking {
+		c = c.WithThinkingDisabled()
+	}
+	if len(ai.SplitModels(cfg.AI.CriticModel)) > 1 && cfg.AI.MaxRetries > criticChainRetries {
+		c = c.WithMaxRetries(criticChainRetries)
+	}
+	return c
+}
+
+// criticChainRetries is how often each critic in a multi-critic chain retries.
+const criticChainRetries = 1
+
+// criticModels is every critic the preflight should probe: the critic_model
+// chain, then critic2_model.
+func criticModels(cfg *config.Config) []string {
+	return append(ai.SplitModels(cfg.AI.CriticModel), ai.SplitModels(cfg.AI.Critic2Model)...)
+}
+
+// aiSideJobs are the components whose AI calls are short side jobs rather than
+// article generation or verification.
+type aiSideJobs struct {
+	imageSearcher *images.Searcher
+	imageScorer   *images.Scorer
+	newsletter    *newsletter.Service
+	cardDetector  *cardupdate.Detector
+}
+
+// newAISideJobs wires every side job to the same short-call model chain, so
+// none of them depends on the critic.
+func newAISideJobs(cfg *config.Config, database *db.Database, client ai.HFClientInterface,
+	sender newsletter.MailSender, visionModel string, models []string) aiSideJobs {
+	searcher, scorer := newImageScoring(cfg, client, visionModel, models)
+	return aiSideJobs{
+		imageSearcher: searcher,
+		imageScorer:   scorer,
+		newsletter:    newsletter.NewServiceWithAI(database, sender, cfg.Newsletter, client, models, cfg.Server.Domain),
+		cardDetector:  cardupdate.NewDetector(database, client, models),
+	}
+}
+
+// warnIfSMTPUnset logs, once at startup, when the SMTP settings look unset
+// (smtpLooksUnset, passed in as unset): no email can be sent, so the weekly
+// newsletter is skipped and sign-up stays closed. Only the host is logged,
+// never the credentials.
+func warnIfSMTPUnset(c config.SMTPConfig, unset bool) {
+	if unset {
+		slog.Warn("mail: SMTP is not configured; no newsletter or confirmation email will be sent",
+			"host", c.Host, "from_set", c.From != "")
+	}
+}
+
+// smtpLooksUnset reports whether c cannot be a working SMTP setup: no host
+// or From, credentials still holding a placeholder ("placeholder", or an
+// unexpanded "${...}"), or a relay on this machine that nothing answers.
+// Empty credentials are allowed, for a relay that needs none.
+func smtpLooksUnset(c config.SMTPConfig) bool {
+	if c.Host == "" || c.From == "" {
+		return true
+	}
+	for _, v := range []string{c.User, c.Password} {
+		if v == "placeholder" || strings.HasPrefix(v, "${") {
+			return true
+		}
+	}
+	switch c.Host {
+	case "localhost", "127.0.0.1", "::1":
+		return !smtpReachable(net.JoinHostPort(c.Host, strconv.Itoa(c.Port)))
+	}
+	return false
+}
+
+// smtpReachable reports whether something accepts connections at addr.
+// Tests replace it.
+var smtpReachable = func(addr string) bool {
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// signupMailerSetter is the part of web.App wireSignup uses.
+type signupMailerSetter interface {
+	SetConfirmationMailer(web.ConfirmationMailer)
+}
+
+// wireSignup opens newsletter sign-up (placements, the /subscribe form and
+// confirmation emails, all sent by m) when newsletter.signup_enabled is on
+// and SMTP looks configured (smtpUnset false; see smtpLooksUnset), and
+// reports whether it did. On with SMTP unset is an ERROR, and sign-up stays
+// closed: readers would sign up and never get the email.
+func wireSignup(app signupMailerSetter, cfg *config.Config, smtpUnset bool, m web.ConfirmationMailer) bool {
+	if !cfg.Newsletter.SignupEnabled {
+		slog.Info("newsletter sign-up is closed (newsletter.signup_enabled is off)")
+		return false
+	}
+	if smtpUnset {
+		slog.Error("newsletter sign-up stays closed: newsletter.signup_enabled is on but SMTP is not configured",
+			"host", cfg.Mail.SMTP.Host, "port", cfg.Mail.SMTP.Port, "from_set", cfg.Mail.SMTP.From != "")
+		return false
+	}
+	app.SetConfirmationMailer(m)
+	slog.Info("newsletter sign-up is open", "smtp_host", cfg.Mail.SMTP.Host)
+	return true
+}
+
+// checkConfig loads the config at path as startup would, without starting
+// anything. The deploy workflow runs it on the config it generated before
+// copying it to the server, so a bad value (a secret that breaks the YAML,
+// a non-numeric port) fails the deploy instead of the service.
+func checkConfig(path string) error {
+	cfg, err := config.Load(path)
+	if err != nil {
+		return err
+	}
+	if cfg.Server.Port <= 0 {
+		return fmt.Errorf("server.port must be set")
+	}
+	if cfg.DB.Path == "" {
+		return fmt.Errorf("db.path must be set")
+	}
+	return nil
+}
+
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
 	configPath := flag.String("config", "config.yaml", "path to config file")
+	checkOnly := flag.Bool("check-config", false, "load the config file, report whether it is valid, and exit (non-zero if not)")
 	flag.Parse()
+
+	if *checkOnly {
+		if err := checkConfig(*configPath); err != nil {
+			fmt.Fprintln(os.Stderr, "config invalid:", err)
+			os.Exit(1)
+		}
+		fmt.Println("config ok:", *configPath)
+		return
+	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -81,7 +281,9 @@ func main() {
 	hfClient.SetRequestTimeout(time.Duration(cfg.AI.RequestTimeout) * time.Second)
 	cache := ai.NewCache(time.Duration(cfg.AI.CacheTTL) * time.Second)
 	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cfg.AI.FallbackGeneratorModel, cache)
-	critic := ai.NewCritic(hfClient, cfg.AI.CriticModel)
+	// critic_model is a chain; see ai.Critic.
+	criticClient := newCriticClient(cfg, hfClient)
+	critic := ai.NewCritic(criticClient, cfg.AI.CriticModel)
 	// Was hardcoded to meta/llama-3.2-90b-vision-instruct, which now times out
 	// on every call (120s+, reproducible) -- so each image scored burned the
 	// client's full request timeout before failing. Configurable now, so the
@@ -99,9 +301,16 @@ func main() {
 		clusterThreshold = cluster.DefaultThreshold
 	}
 
+	// The short-call chain; see enrichmentModels.
+	enrichModels := enrichmentModels(cfg)
+
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
+	pipeline.SetDetailModels(enrichModels)
+	// Articles must not name or link to the sites they are written from.
+	outlets := sourceOutlets(database)
+	pipeline.SetOutlets(outlets)
 	if cfg.AI.Critic2Model != "" {
-		critic2 := ai.NewCritic(hfClient, cfg.AI.Critic2Model)
+		critic2 := ai.NewCritic(criticClient, cfg.AI.Critic2Model)
 		pipeline.SetCritic2(critic2)
 	}
 
@@ -109,10 +318,9 @@ func main() {
 	// calling them every three hours. A retired model answers 410 forever, and
 	// without this the only symptom is articles quietly never appearing.
 	go func() {
-		results := ai.PreflightAll(hfClient, cfg.AI.GeneratorModel,
-			ai.SplitModels(cfg.AI.FallbackGeneratorModel),
-			[]string{cfg.AI.CriticModel, cfg.AI.Critic2Model},
-			[]string{visionModel})
+		results := ai.PreflightAllWithCriticClient(hfClient, criticClient, cfg.AI.GeneratorModel,
+			ai.SplitModels(cfg.AI.FallbackGeneratorModel), criticModels(cfg),
+			[]string{visionModel}, enrichModels)
 		switch {
 		case ai.PublishingViable(results):
 			slog.Info("ai preflight complete", "summary", ai.PreflightSummary(results))
@@ -127,25 +335,25 @@ func main() {
 		}
 	}()
 
-	// Image search and scoring
-	imageSearcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey)
-	imageScorer := images.NewScorer(hfClient, cfg.AI.CriticModel)
-	if cfg.AI.HFBaseURL != "" {
-		imageScorer.SetVisionModel(cfg.AI.HFBaseURL, cfg.AI.HFAPIToken, visionModel)
+	// Image scoring, the newsletter pick and card-update detection, all on the
+	// short-call chain.
+	mailSender := mail.NewSender(cfg.Mail.SMTP)
+	mailSender.SetNewsletterSchedule(newsletter.WeeklySendWhen)
+	if err := mailSender.SetUnsubscribeMailbox(cfg.Newsletter.UnsubscribeMailbox); err != nil {
+		slog.Warn("mail: List-Unsubscribe will have no mailto", "error", err)
 	}
+	// Checked once: it can dial a local relay.
+	smtpUnset := smtpLooksUnset(cfg.Mail.SMTP)
+	warnIfSMTPUnset(cfg.Mail.SMTP, smtpUnset)
+	side := newAISideJobs(cfg, database, hfClient, mailSender, visionModel, enrichModels)
 
 	// Enrichment runs as a reconciliation pass rather than inline in article
 	// creation. Inline, each step was a best-effort call that logged a warning
 	// and moved on, so one slow response permanently cost the article a field.
 	// Reconciled, a miss is picked up on the next pass.
-	enrichModels := ai.SplitModels(cfg.AI.EnrichmentModel)
-	if len(enrichModels) == 0 {
-		// Fall back to the critic chain rather than silently doing nothing.
-		enrichModels = append([]string{cfg.AI.CriticModel},
-			ai.SplitModels(cfg.AI.FallbackGeneratorModel)...)
-	}
 	enricher := enrich.New(database, hfClient, enrichModels,
-		cfg.Site.PersonaName, imageSearcher, imageScorer)
+		cfg.Site.PersonaName, side.imageSearcher, side.imageScorer)
+	enricher.Outlets = outlets
 	if cfg.AI.EnrichmentMaxAttempts > 0 {
 		enricher.MaxAttempts = cfg.AI.EnrichmentMaxAttempts
 	}
@@ -156,7 +364,6 @@ func main() {
 	// Services
 	scnr := scanner.NewScanner(database, cfg.Scanner.UserAgent)
 	articleMgr := article.NewManager(database, pipeline)
-	mailSender := mail.NewSender(cfg.Mail.SMTP)
 	mailPoller := mail.NewPoller(cfg.Mail.IMAP, articleMgr, &stubTokenResolver{})
 	voteSvc := vote.NewService(database, cfg.Votes, func(articleID int64) {
 		a, _ := database.GetGeneratedArticle(articleID)
@@ -164,7 +371,18 @@ func main() {
 			mailSender.SendVoteAlert(cfg.Mail.SMTP.From, articleID, a.Title)
 		}
 	})
-	newsletterSvc := newsletter.NewServiceWithAI(database, mailSender, cfg.Newsletter, hfClient, cfg.AI.CriticModel, cfg.Server.Domain)
+	newsletterSvc := side.newsletter
+	// With no SMTP, the weekly send is skipped (a warning, not a failure)
+	// and the admin's Send says why, rather than dialling a relay that is
+	// not there and firing the send-failed alert every Saturday.
+	newsletterSvc.SetMailUnavailable(smtpUnset)
+
+	// Clustering and generation, with both duplicate checks; see
+	// clusterGenerator.
+	clusterGen := newClusterGenerator(cfg, database, pipeline, articleMgr, hfClient, enrichModels, clusterThreshold)
+	slog.Info("story dedup configured", "mode", cfg.Scanner.StoryDedup,
+		"window", storydedup.Window, "lexical_threshold", storydedup.LexicalThreshold,
+		"fallback_threshold", storydedup.FallbackThreshold, "models", enrichModels)
 
 	// Scheduler
 	sched := scheduler.New()
@@ -183,107 +401,8 @@ func main() {
 		}
 		slog.Info("scan complete", "sources", len(results))
 
-		// Cluster and generate articles from multi-source topics
-		sources, _ := database.ListActiveSources()
-		var clusterArticles []cluster.Article
-		for _, s := range sources {
-			raws, _ := database.GetRawArticlesBySourceID(s.ID)
-			for _, r := range raws {
-				if time.Since(r.CreatedAt) < 48*time.Hour {
-					clusterArticles = append(clusterArticles, cluster.Article{
-						ID: r.ID, Title: r.Title, SourceID: r.SourceID, Content: r.Content,
-					})
-				}
-			}
-		}
-		if len(clusterArticles) == 0 {
-			return
-		}
-
-		clusters := cluster.Cluster(clusterArticles, clusterThreshold)
-		slog.Info("clustering complete", "articles", len(clusterArticles), "clusters", len(clusters))
-
-		// Filter to multi-source clusters and generate
-		for _, c := range clusters {
-			sourceIDs := make(map[int64]bool)
-			for _, a := range c.Articles {
-				sourceIDs[a.SourceID] = true
-			}
-			if len(sourceIDs) < 2 {
-				continue
-			}
-
-			var sa []ai.SourceArticle
-			var rawIDs []int64
-			for _, a := range c.Articles {
-				raws, _ := database.GetRawArticlesByIDs([]int64{a.ID})
-				if len(raws) == 0 {
-					continue
-				}
-				r := raws[0]
-				src, _ := database.GetSource(r.SourceID)
-				name := "Unknown"
-				if src != nil {
-					name = src.Name
-				}
-				content := r.Content
-				if len(content) > 1500 {
-					content = content[:1500]
-				}
-				sa = append(sa, ai.SourceArticle{Name: name, URL: r.URL, Title: r.Title, Content: content})
-				rawIDs = append(rawIDs, a.ID)
-			}
-
-			// Skip if we already have articles from these source articles
-			exists, _ := database.HasArticleForRawIDs(rawIDs)
-			if exists {
-				slog.Info("skipping cluster, articles already exist for these sources", "topic", c.Articles[0].Title)
-				continue
-			}
-
-			result, err := pipeline.Process("auto", sa)
-			if err != nil {
-				slog.Warn("article generation skipped", "topic", c.Articles[0].Title, "error", err)
-				continue
-			}
-
-			// Image search: generate queries from the article title
-
-			// Auto-link card mentions: insert inline <a> tags for first mention
-			// of each card, cap RelatedCards to top 2 by mention count. Articles
-			// with 3+ mentioned cards rely on admin curation via
-			// /admin/articles/{id}/cards.
-			refPages, _ := database.ListPublishedReferencePages("")
-			if len(refPages) > 0 {
-				linkedContent, _ := linker.AutoLink(result.Content, refPages)
-				result.Content = linkedContent
-
-				detected := linker.DetectMentions(result.Content, refPages)
-				const autoLinkCap = 2
-				top := linker.TopByMentionCount(detected, autoLinkCap)
-				for _, dc := range top {
-					result.RelatedCards = append(result.RelatedCards, ai.RelatedCard{
-						Slug:  dc.Slug,
-						Title: dc.Title,
-					})
-				}
-				if len(detected) > 0 {
-					slog.Info("auto-linked card mentions",
-						"title", result.Title,
-						"detected", len(detected),
-						"linked", len(top),
-					)
-				}
-			}
-
-			id, err := articleMgr.CreateFromPipeline(result, rawIDs, result.Type)
-			if err != nil {
-				slog.Error("article save failed", "error", err)
-				continue
-			}
-			art, _ := database.GetGeneratedArticle(id)
-			slog.Info("article created", "id", id, "title", result.Title, "score", result.Verification.Score, "status", art.Status)
-		}
+		// Cluster and generate articles from multi-source topics.
+		clusterGen.run()
 	})
 	if cfg.Mail.IMAP.Host != "localhost" && cfg.Mail.IMAP.Password != "placeholder" {
 		sched.AddMailPollJob(time.Duration(cfg.Mail.IMAP.PollInterval)*time.Second, func() {
@@ -306,7 +425,7 @@ func main() {
 
 	// Saturday 08:00 ET — send newsletter
 	sched.AddWeeklyJob("newsletter-send",
-		"CRON_TZ=America/New_York 0 0 8 * * 6",
+		newsletter.WeeklySendSchedule,
 		func() {
 			if err := newsletterSvc.SendWeekly(); err != nil {
 				slog.Error("newsletter send failed", "error", err)
@@ -321,10 +440,12 @@ func main() {
 		"interval", enrichInterval, "models", enrichModels,
 		"max_attempts", enricher.MaxAttempts)
 
+	scheduleRevisionReconciler(ctx, sched, articleMgr, revisionReconcileInterval)
+
 	sched.Start()
 
 	// Card update detector
-	detector := cardupdate.NewDetector(database, hfClient, cfg.AI.CriticModel)
+	detector := side.cardDetector
 
 	// Web server
 	app, err := web.NewApp(cfg, database, articleMgr, voteSvc, newsletterSvc, detector, ctx)
@@ -332,6 +453,11 @@ func main() {
 		slog.Error("failed to create web app", "error", err)
 		os.Exit(1)
 	}
+
+	// Newsletter sign-up, with confirmation emails from the same SMTP sender
+	// as the newsletter, only when newsletter.signup_enabled is on and SMTP
+	// is configured.
+	wireSignup(app, cfg, smtpUnset, mailSender)
 
 	// Web server with explicit Server struct for graceful shutdown
 	httpServer := &http.Server{
@@ -359,16 +485,99 @@ func main() {
 	}
 	cancel()
 
-	// Stop scheduler (waits for running jobs to finish)
-	sched.Stop()
+	// Shutdown is bounded end to end -- scheduler, then HTTP, then background
+	// work -- to shutdownBudget in total, inside systemd's default 90s stop
+	// timeout, so a stop ends here rather than in SIGKILL.
 
-	// Shutdown HTTP server with 30s timeout
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Stop the scheduler, waiting for running jobs within a bound. A revision
+	// pass can be mid-rewrite, and one AI call with its retries can take
+	// minutes; the context stops the pass starting anything new, but cannot
+	// interrupt the call. Abandoning it is safe: nothing is stored until the
+	// rewrite finishes, so the article stays revision_requested and the next
+	// process's startup pass redoes it.
+	if !waitBounded(sched.Stop, schedulerStopWait) {
+		slog.Warn("scheduled jobs still running at shutdown; abandoning them",
+			"waited", schedulerStopWait)
+	}
+
+	// Shutdown HTTP server with a timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), httpShutdownWait)
 	defer shutdownCancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		slog.Error("server shutdown error", "error", err)
 	}
 
+	// Requests can leave AI rewrites running in the background (the Revise
+	// button, unpublish-and-revise). Give them a bounded wait so they do not run
+	// on against the database closed below. One still unfinished is harmless:
+	// its article stays revision_requested and the next process's startup
+	// revision pass resumes it.
+	if !waitBounded(app.WaitBackground, backgroundShutdownWait) {
+		slog.Warn("background work still running at shutdown; unfinished revisions resume on next start",
+			"waited", backgroundShutdownWait)
+	}
+
 	slog.Info("shutdown complete")
+}
+
+// revisionReconcileInterval is how often articles waiting for an AI rewrite are
+// swept. Short, because an admin is usually waiting on the result; each pass is
+// one cheap query when there is nothing to do.
+const revisionReconcileInterval = 5 * time.Minute
+
+// scheduleRevisionReconciler registers the pass that rewrites articles left in
+// revision_requested, plus one pass shortly after startup.
+//
+// Rewrites were previously started only by the Revise button's one-shot
+// goroutine, so an AI failure or a deploy mid-rewrite left the article
+// "Revising" for hours, and email replies and unpublish-and-revise never started
+// one at all. This sweep is the backstop for every path; the manager's in-flight
+// guard keeps it from rewriting an article a request is already rewriting, and
+// its retry budget keeps it from retrying a hopeless one forever.
+func scheduleRevisionReconciler(ctx context.Context, sched *scheduler.Scheduler, mgr *article.Manager, interval time.Duration) {
+	sched.AddRevisionJob(interval, func() {
+		if ctx.Err() != nil {
+			slog.Info("revision pass skipped, shutting down")
+			return
+		}
+		mgr.ProcessPendingRevisions(ctx)
+	})
+	slog.Info("revision reconciler scheduled", "interval", interval,
+		"max_failures", article.DefaultRevisionMaxFailures)
+}
+
+// Shutdown bounds. Their sum, shutdownBudget, must stay under systemd's
+// TimeoutStopSec (the default, 90s, since deploy/milesahead.service does not
+// set it), or the stop ends in SIGKILL. An AI rewrite can take minutes, so none
+// of these waits for one to finish; the revision reconciler makes abandoning a
+// rewrite safe.
+//
+// The scheduler gets most of the budget. Its other jobs -- a newsletter send,
+// an enrichment pass, a scan -- are not safe to cut off the way a rewrite is,
+// and before this bound they had up to the full 90s before SIGKILL; 60s keeps
+// nearly all of that. HTTP requests finish in well under 10s, and a
+// request-started rewrite left running resumes on the next start.
+const (
+	schedulerStopWait      = 60 * time.Second
+	httpShutdownWait       = 10 * time.Second
+	backgroundShutdownWait = 15 * time.Second
+	shutdownBudget         = schedulerStopWait + httpShutdownWait + backgroundShutdownWait
+)
+
+// waitBounded runs wait and reports whether it returned within d.
+func waitBounded(wait func(), d time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wait()
+		close(done)
+	}()
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	}
 }

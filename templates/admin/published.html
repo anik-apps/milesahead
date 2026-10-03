@@ -1,54 +1,94 @@
-{{template "layout" .}}
+{{template "admin_layout" .}}
 {{define "content"}}
-<div class="admin-nav">
-    <a href="/admin/dashboard">Pending</a>
-    <a href="/admin/published" class="active">Published</a>
-    <a href="/admin/sources">Sources</a>
-    <a href="/admin/subscribers">Subscribers</a>
-    <a href="/admin/cards">Cards</a>
-    <a href="/admin/newsletter">Newsletter</a>
-    <a href="/admin/settings">Settings</a>
-    <form method="POST" action="/admin/logout" class="logout-btn">
-        <button type="submit" style="background:none;border:none;color:#dc2626;cursor:pointer;font-weight:500;font-size:0.9rem;">Logout</button>
-    </form>
-</div>
 <div class="admin-published">
-    <h1>Published Articles</h1>
+    <div class="page-head">
+        <h1>Published <span class="page-count">{{.Total}}</span></h1>
+        <div class="page-head-tools">
+            <form method="get" action="/admin/published" class="sort-form">
+                <label for="p-sort">Sort</label>
+                <select id="p-sort" name="sort" data-autosubmit>
+                    {{range .Sorts}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}
+                </select>
+                <noscript><button type="submit" class="btn btn-sm">Sort</button></noscript>
+            </form>
+        </div>
+    </div>
+    {{if eq .Message "unpublished_revise"}}<div class="message success" role="status">Taken down and a rewrite requested. It is in Review under "Being rewritten".</div>{{end}}
+    {{if eq .Message "republished"}}<div class="message success" role="status">Back on the site.</div>{{end}}
+    {{if .MessageText}}<div class="message success" role="status">{{.MessageText}}</div>{{end}}
+
     {{if .Articles}}
-    <table class="admin-table">
-        <thead>
-            <tr>
-                <th>Title</th>
-                <th>Published</th>
-                <th class="hide-mobile">Upvotes</th>
-                <th class="hide-mobile">Downvotes</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {{range .Articles}}
-            <tr{{if .Flagged}} class="flagged"{{end}}>
-                <td><span class="badge badge-{{.Type}}">{{.Type}}</span> {{.Title}}{{if .Flagged}} <span class="flag-icon" title="High downvotes">&#9873;</span>{{end}}</td>
-                <td>{{.PublishedAt}}</td>
-                <td class="hide-mobile">{{.Upvotes}}</td>
-                <td class="hide-mobile">{{.Downvotes}}</td>
-                <td class="actions">
-                    <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="inline-form">
+    <ol class="q-list">
+        {{range .Articles}}
+        <li class="p-row{{if .Flagged}} p-flagged{{end}}">
+            <span class="type-pill type-pill-{{.Type}} q-type">{{typeBadge .Type}}</span>
+            <span class="q-main">
+                <a class="q-title p-title" href="/article/{{.Slug}}" target="_blank" rel="noopener" title="Open the live article">{{.Title}} <span aria-hidden="true">&#8599;</span></a>
+                <span class="q-meta">
+                    {{if .Flagged}}<span class="chip chip-bad">Many downvotes</span>{{end}}
+                    {{if .ImageRequest.Pending}}<span class="chip chip-info" title="{{if .ImageRequest.Hint}}Searching for &ldquo;{{.ImageRequest.Hint}}&rdquo;. {{end}}The live image stays until a new one is found.">Finding a new image&hellip;</span>{{else if .ImageRequest.Failed}}<span class="chip chip-bad" title="{{.ImageRequest.LastError}}">No new image found &mdash; try other search words</span>{{end}}
+                    <span class="q-sub" title="Published {{.PublishedAt}}">Published {{.Age}} &middot; <span title="Upvotes">&#9650; {{.Upvotes}}</span> <span title="Downvotes">&#9660; {{.Downvotes}}</span> &middot; #{{.ID}}</span>
+                </span>
+            </span>
+            <div class="row-menu">
+                <button type="button" class="row-menu-btn" id="menu-btn-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-{{.ID}}" title="Actions"><span aria-hidden="true">&#8943;</span><span class="visually-hidden">Actions for article #{{.ID}}: {{.Title}}</span></button>
+                <div class="row-menu-list" id="menu-{{.ID}}" role="menu" aria-labelledby="menu-btn-{{.ID}}" hidden>
+                    <a role="menuitem" tabindex="-1" href="/article/{{.Slug}}" target="_blank" rel="noopener">View on the site</a>
+                    <a role="menuitem" tabindex="-1" href="/admin/articles/{{.ID}}/cards">Linked cards</a>
+                    <button type="button" role="menuitem" tabindex="-1" data-reveal="image-panel-{{.ID}}">Find a new image&hellip;</button>
+                    {{/* Unpublish at once; the toast that follows can undo it. */}}
+                    <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="row-menu-form">
                         {{template "csrf_field" $}}
-                        <textarea name="feedback" placeholder="Optional feedback..."></textarea>
-                        <button type="submit" class="btn btn-warn">Unpublish</button>
+                        <input type="hidden" name="sort" value="{{$.Sort}}">
+                        <button type="submit" role="menuitem" tabindex="-1" class="row-menu-danger">Unpublish</button>
                     </form>
-                    <form method="POST" action="/admin/articles/{{.ID}}/reject" class="inline-form" onsubmit="return confirm('Are you sure you want to delete this article?');">
-                        {{template "csrf_field" $}}
-                        <button type="submit" class="btn btn-danger">Delete</button>
-                    </form>
-                </td>
-            </tr>
-            {{end}}
-        </tbody>
-    </table>
+                    <button type="button" role="menuitem" tabindex="-1" data-reveal="unpub-panel-{{.ID}}">Unpublish and request a rewrite&hellip;</button>
+                </div>
+            </div>
+            {{/* The live article keeps its image until a new one is found. */}}
+            <form method="POST" action="/admin/articles/{{.ID}}/new-image" class="p-unpublish-panel p-image-panel" id="image-panel-{{.ID}}" hidden>
+                {{template "csrf_field" $}}
+                <input type="hidden" name="sort" value="{{$.Sort}}">
+                <input type="hidden" name="return" value="published">
+                <label for="image-hint-{{.ID}}">Find a new image. Search for (optional):</label>
+                <input type="text" id="image-hint-{{.ID}}" name="hint" maxlength="100" autocomplete="off" placeholder="e.g. Hyatt Regency lobby" data-draft="image-{{.ID}}">
+                <span class="p-image-note">The live article keeps its current image until a new one is found, usually within 15 minutes. The current image is not picked again.</span>
+                <span class="p-unpublish-buttons">
+                    <button type="submit" class="btn">Find a new image</button>
+                    <button type="button" class="btn" data-hide="image-panel-{{.ID}}">Cancel</button>
+                </span>
+            </form>
+            <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="p-unpublish-panel" id="unpub-panel-{{.ID}}" hidden>
+                {{template "csrf_field" $}}
+                <input type="hidden" name="sort" value="{{$.Sort}}">
+                <label for="unpub-{{.ID}}">Take it down and ask for a rewrite: what should change?</label>
+                <textarea id="unpub-{{.ID}}" name="feedback" rows="2" required data-draft="unpublish-{{.ID}}" data-image-hint="unpub-image-hint-{{.ID}}"></textarea>
+                <p class="rewrite-image-hint" id="unpub-image-hint-{{.ID}}" role="status" hidden>Rewrites only change the text &mdash; use <button type="button" class="link-button" data-reveal="image-panel-{{.ID}}">Find a new image</button> to change the picture.</p>
+                <span class="p-unpublish-buttons">
+                    <button type="submit" class="btn btn-warn">Take it down and request the rewrite</button>
+                    <button type="button" class="btn" data-hide="unpub-panel-{{.ID}}">Cancel</button>
+                </span>
+            </form>
+        </li>
+        {{end}}
+    </ol>
+    {{if lt (len .Articles) .Total}}<p class="q-more">Showing the {{len .Articles}} {{if eq .Sort "oldest"}}earliest published{{else}}most recent{{end}} of {{.Total}}.</p>{{end}}
     {{else}}
-    <p>No published articles.</p>
+    <p class="q-empty">No published articles.</p>
+    {{end}}
+
+    {{if .UndoRevision}}
+    <div class="toast" role="status" data-autohide="15000">
+        <span>Took down &ldquo;{{.UndoTitle}}&rdquo;.</span>
+        <form method="POST" action="/admin/articles/{{.MessageID}}/approve" class="inline-form">
+            {{template "csrf_field" $}}
+            <input type="hidden" name="revision" value="{{.UndoRevision}}">
+            <input type="hidden" name="return" value="published">
+            <input type="hidden" name="sort" value="{{.Sort}}">
+            <button type="submit" class="toast-action">Undo</button>
+        </form>
+        <button type="button" class="toast-close" aria-label="Dismiss">&times;</button>
+    </div>
     {{end}}
 </div>
 {{end}}

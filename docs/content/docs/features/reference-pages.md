@@ -3,7 +3,7 @@ title: Reference Pages
 weight: 1
 ---
 
-Reference pages are curated, evergreen guides for credit cards. They provide structured information that stays up to date as new articles are published.
+Reference pages are curated, evergreen guides for credit cards. They provide structured information that stays up to date as new articles are published. This page covers their content, seed data and admin tools; how readers browse, filter and compare them is on [Reader Site](../reader-site/#cards).
 
 ## Card Coverage
 
@@ -44,17 +44,20 @@ The `site.persona_name` config (default "Scout") defines the editorial voice use
 
 ## Auto-Linking
 
-When a new article is published that mentions a credit card, the system creates cross-links:
+Cards are linked to articles in two steps:
 
-- The article links to the relevant reference page(s)
-- The reference page's "Recent Changes" section gets an entry linking back to the article
-- Keywords stored on each reference page (`keywords_json`) drive the matching
+- **When an article is generated** (`cmd/milesahead/scan.go`, `internal/linker`), the first mention of each published card in the content becomes a link to its page, and the two most-mentioned cards become the article's related cards (its card rows). An article that mentions three or more cards relies on the admin choosing them (Linked cards, `/admin/articles/{id}/cards`).
+- **When an article is approved**, `internal/cardupdate` checks whether it changes anything on the cards it mentions and, if so, drafts pending section updates (a short AI call) for the admin to review. Detection waits out the 30-second approval Undo window.
 
-The seed data includes 42+ keyword variants per category to maximize link coverage across different ways blogs refer to cards (e.g., "CSR", "Chase Sapphire Reserve", "Sapphire Reserve").
+Keywords stored on each reference page (`keywords_json`) drive the matching. The seed data includes 42+ keyword variants per category to maximize link coverage across different ways blogs refer to cards (e.g., "CSR", "Chase Sapphire Reserve", "Sapphire Reserve").
 
 ## Card Images
 
-Each reference page has an `image_url` field for a card image. These are set in the seed data and can be updated through the admin dashboard.
+Card art is self-hosted: every card's `image_url` in the seed data is `/static/img/cards/<slug>.png`, a committed palette PNG with transparency, at most 480px wide. Hotlinking issuer images broke 15 cards when the issuers redeployed their sites, so `TestCardArt_IsSelfHosted` fails if any card points anywhere else or its file is missing.
+
+The path is relative on the site. Places where the image leaves the site (og:image, JSON-LD, and the newsletter's Card of the Week) turn it into an absolute URL on the configured domain.
+
+`image_url` can still be changed per card in the admin dashboard. A change to the seed file reaches existing production cards only through a scoped force-reseed (`seed-cards -force -slug <slug>`, or the Deploy workflow's `reseed_slugs` input), because a normal seed skips cards that already exist.
 
 ## Seed Script
 
@@ -128,12 +131,92 @@ That means phrasing varies with the verdict rather than following one template.
 It is a deliberate trade of uniformity for honesty, and is worth revisiting once
 there are enough videos to see how the variation reads.
 
+## Infographics
+
+A card page can carry a designed infographic: a portrait image, 1024 px wide and
+1536 or more high, that summarises the card's earning, redemption and credits.
+
+It is not placed inline. In the article column it would render at under half its
+designed size, leaving its body text around 7px. Instead a compact **"Infographic /
+Expand" bar sits under the card art** (in the sidebar on desktop, in the header card
+on mobile) and opens the full image in a native `<dialog>` viewer. The bar adds
+about 40px to the sticky sidebar; a full-width teaser there would add about 145px
+and push the TOC and the Card Details button further below the fold.
+`static/js/card-infographic.js` does the upgrade; without JavaScript the bar is a
+plain link to the image. The page behind the viewer does not scroll while it is
+open, and it opens with focus on its Close button.
+
+Infographics are declared in `internal/web/cardinfographics.go`:
+
+```go
+var cardInfographics = map[string]cardInfographic{
+    "amex-platinum": {
+        Alt:     "Amex Platinum infographic: annual fee, ... The text version below lists every figure.",
+        Text:    []string{"Annual fee: $895. ...", "Earn Membership Rewards: ..."},
+        Checked: "Sep 22, 2026",
+        Facts:   []string{"$895", "$219"},
+    },
+}
+```
+
+- **Alt** names the image briefly.
+- **Text** is the image's content, one plain sentence group per section, offered as
+  a collapsed "Text version" under the image in the viewer. It is the only way a screen-reader user
+  gets what the image says, so it transcribes every figure and caveat, including
+  cadences, thresholds and the "important to know" warnings. A single long alt
+  string would be read as one unbroken run with nothing to navigate.
+- **Checked** is shown in the caption. An image cannot be corrected by a reseed the
+  way prose can, so readers are told how current it is.
+- **Facts** are figures the image states. `TestCardInfographics_FactsMatchCardProse`
+  fails if one disappears from the card's `cards.json` text, and
+  `TestCardInfographics_TextVersionCarriesTheFacts` fails if the text version
+  drops one. Two limits: it checks the **seed file only**, so an admin edit or an
+  approved card update that changes the live prose will not trip it; and it
+  cannot see a *second, older* figure elsewhere in the prose. Recheck the image
+  whenever either happens to a card that has one.
+
+To add a card, generate the images and add the map entry:
+
+```bash
+scripts/infographic-images.sh chase-sapphire-reserve ~/Downloads/infographic.png
+```
+
+This writes two files to `static/img/`:
+
+| File | Size | Used for |
+|---|---|---|
+| `infographic-<slug>.jpg` | 1024 wide at the source's aspect ratio (1024x1536 for 2:3), ~400-600 KB | the viewer; loaded only when it opens |
+| `infographic-<slug>-teaser.jpg` | 256x160, ~14 KB | the bar's thumbnail, shown at 84 CSS px |
+
+The script scales any source to 1024 px wide and keeps its aspect ratio, so nothing
+is cropped or stretched: a 1024x1536 source is unchanged and a 1080x1917 one becomes
+1024x1818. The teaser is always the top 1024x640 region. It rejects anything
+shorter than 2:3 (a landscape image, say) and flattens transparency onto white,
+since JPEG has no alpha channel. The viewer's `width`/`height` attributes come from
+the JPEG's header, read at startup, so a taller image needs no extra configuration;
+`TestCardInfographics_CommittedImageSizes` fails if a committed image is not 1024
+wide or its teaser is not 256x160.
+
+Image URLs carry `?v=<content hash>`, computed from the files at startup. Static
+files are served with only `Last-Modified`, so browsers cache them heuristically;
+without the version, replacing an image would leave returning visitors on the old
+artwork beside the new "Figures checked" date.
+
+Infographics render for everyone: unlike the video embed they are first-party
+images with no third-party request, so there is no `?beta=1` gate.
+
 ## Admin Management
 
-Reference pages can be managed through the admin dashboard:
+Cards are managed under **Cards** in the admin bar. The list puts cards with open flags or pending updates in a **Needs attention** group and has a filter box.
 
-- Edit any section's content
-- Update the Scout's Verdict
-- Change the card image URL
-- Review and approve pending updates (AI-drafted section changes triggered by new articles)
-- Set page status (draft, published)
+The card editor:
+
+- has a sticky bar with the card's status, its open flags, View page and Save, and warns about unsaved changes;
+- lays fields out as labelled two-column rows, with each flag shown on its field and a **Resolve** button (status flags included);
+- checks the JSON fields (earning rates, credits, benefits, protections) as you type, with a Format button; a bad value comes back with a 400, everything as typed, and the error and line number on its field;
+- has collapsible, reorderable sections, with Undo on Remove;
+- clears a field that was emptied, rather than keeping its old value.
+
+**Card updates** (section changes drafted when an approved article affects a card) are shown as a word-level diff with the rendered before and after, and approved or rejected one by one. An update whose section no longer exists fails visibly.
+
+The reader-facing card index, card pages and compare tool are described in [Reader Site](../reader-site/#cards).

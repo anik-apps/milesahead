@@ -1,6 +1,9 @@
 package newsletter
 
 import (
+	"bytes"
+	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +12,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/mail"
 )
 
 // mockSender records calls to SendNewsletter.
@@ -19,12 +23,12 @@ type mockSender struct {
 type sendCall struct {
 	subject    string
 	html       string
-	recipients []string
+	recipients []mail.Recipient
 }
 
-func (m *mockSender) SendNewsletter(subject, htmlContent string, recipients []string) error {
+func (m *mockSender) SendNewsletter(subject, htmlContent string, recipients []mail.Recipient) (int, error) {
 	m.calls = append(m.calls, sendCall{subject: subject, html: htmlContent, recipients: recipients})
-	return nil
+	return len(recipients), nil
 }
 
 // setupTestDB creates a temporary SQLite database and returns it along with a cleanup function.
@@ -123,8 +127,8 @@ func TestGenerateDaily_ThreeArticles(t *testing.T) {
 	}
 
 	// Verify newspaper-style layout markers.
-	if !strings.Contains(nl.HTMLContent, "MILES AHEAD") {
-		t.Error("newsletter HTML missing masthead 'MILES AHEAD'")
+	if !strings.Contains(nl.HTMLContent, "/static/img/brand/email-lockup.png") {
+		t.Error("newsletter HTML missing the MilesAhead masthead image")
 	}
 	if !strings.Contains(nl.HTMLContent, "WEEKLY") {
 		t.Error("newsletter HTML missing subtitle")
@@ -255,8 +259,9 @@ func TestSendDaily_NoSubscribers(t *testing.T) {
 	sender := &mockSender{}
 	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
 
-	if err := svc.SendDaily(); err != nil {
-		t.Fatalf("SendDaily() error: %v", err)
+	// Nothing goes out, and the admin is told so rather than "sent".
+	if err := svc.SendDaily(); !errors.Is(err, ErrNoSubscribers) {
+		t.Fatalf("SendDaily() = %v, want ErrNoSubscribers", err)
 	}
 
 	// Sender should not have been called.
@@ -291,9 +296,10 @@ func TestSendDaily_AlreadySent(t *testing.T) {
 		t.Fatalf("expected 1 send call, got %d", len(sender.calls))
 	}
 
-	// Send again — should be a no-op.
-	if err := svc.SendDaily(); err != nil {
-		t.Fatalf("second SendDaily() error: %v", err)
+	// Send again — nothing goes out, and the admin is told so rather than
+	// "sent".
+	if err := svc.SendDaily(); !errors.Is(err, ErrAlreadySent) {
+		t.Fatalf("second SendDaily() = %v, want ErrAlreadySent", err)
 	}
 	if len(sender.calls) != 1 {
 		t.Errorf("expected still 1 send call after resend, got %d", len(sender.calls))
@@ -318,7 +324,7 @@ func TestPreviewNext(t *testing.T) {
 	if !strings.Contains(html, "Preview Article") {
 		t.Error("preview HTML missing article title")
 	}
-	if !strings.Contains(html, "MILES AHEAD") {
+	if !strings.Contains(html, "/static/img/brand/email-lockup.png") {
 		t.Error("preview HTML missing masthead")
 	}
 
@@ -362,8 +368,9 @@ func TestBuildTemplateData_FeaturedLeadStory(t *testing.T) {
 	if len(data.Sidebar) != 2 {
 		t.Errorf("sidebar count = %d, want 2", len(data.Sidebar))
 	}
-	if data.UnsubscribeURL != "https://example.com/unsubscribe" {
-		t.Errorf("unsubscribe URL = %q", data.UnsubscribeURL)
+	// Each copy sent gets its reader's own link in place of the placeholder.
+	if data.UnsubscribeURL != mail.UnsubscribeURLPlaceholder {
+		t.Errorf("unsubscribe URL = %q, want the per-reader placeholder", data.UnsubscribeURL)
 	}
 }
 
@@ -377,5 +384,36 @@ func TestExcerpt(t *testing.T) {
 	got := excerpt(long, 50)
 	if len(got) > 55 { // 50 + "..."
 		t.Errorf("excerpt too long: %d chars", len(got))
+	}
+}
+
+// The schedule's timezone is resolved once, when the service is made: an
+// unknown name warns once and falls back to UTC, however often the date is
+// looked up.
+func TestNewService_ResolvesTimezoneOnce(t *testing.T) {
+	var logged bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logged, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	svc := NewService(nil, &mockSender{}, config.NewsletterConfig{Timezone: "Not/AZone"})
+	for i := 0; i < 3; i++ {
+		svc.todayDate()
+		svc.thisSaturday()
+		svc.nextSaturday()
+	}
+	if svc.loc != time.UTC {
+		t.Errorf("loc = %v, want the UTC fallback", svc.loc)
+	}
+	if n := strings.Count(logged.String(), "level=WARN"); n != 1 || !strings.Contains(logged.String(), "Not/AZone") {
+		t.Errorf("want one warning about the unknown zone, got %d:\n%s", n, logged.String())
+	}
+
+	ny := NewService(nil, &mockSender{}, config.NewsletterConfig{Timezone: "America/New_York"})
+	if ny.loc.String() != "America/New_York" {
+		t.Errorf("loc = %v, want America/New_York", ny.loc)
+	}
+	if got, want := ny.todayDate(), time.Now().In(ny.loc).Format("2006-01-02"); got != want {
+		t.Errorf("todayDate = %s, want %s", got, want)
 	}
 }

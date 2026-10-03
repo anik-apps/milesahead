@@ -22,27 +22,52 @@ import (
 // Phase 2: Vision model looks at actual images to pick the best one.
 type Scorer struct {
 	textClient  ai.HFClientInterface
-	textModel   string
+	textModels  []string
 	visionURL   string // e.g., "https://integrate.api.nvidia.com/v1"
 	visionToken string
 	visionModel string // e.g., "meta/llama-3.2-90b-vision-instruct"
 	httpClient  *http.Client
+	// warmer, if set, is given the thumbnails about to go to the vision
+	// model before any of them is sent. See SetVisionModel.
+	warmer Warmer
 }
 
-// NewScorer creates a Scorer with a text model for pre-filtering.
-func NewScorer(textClient ai.HFClientInterface, textModel string) *Scorer {
+// Warmer has an image host prepare files before another client fetches them.
+// *Searcher is one: its Warm has Wikimedia render new thumbnail sizes.
+type Warmer interface {
+	Warm(urls []string)
+}
+
+// NewScorer creates a Scorer with a chain of text models for pre-filtering,
+// tried in order through ai.TryModels.
+//
+// A chain rather than one model: this used to be the critic model alone, so
+// when that model was retired (410 on every call) every image lost its text
+// score. It is a short call bounded by ai.ShortCallTimeout, so it belongs on a
+// fast model -- production passes the enrichment chain, not the critic, whose
+// replies can take minutes.
+func NewScorer(textClient ai.HFClientInterface, textModels []string) *Scorer {
 	return &Scorer{
 		textClient: textClient,
-		textModel:  textModel,
+		textModels: textModels,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
 // SetVisionModel enables vision-based scoring for the final selection.
-func (s *Scorer) SetVisionModel(baseURL, token, model string) {
+//
+// warmer is handed the thumbnails Score is about to send, before any is sent
+// (the Searcher that found the candidates, in production). The vision
+// endpoint fetches each thumbnail itself, and for a sized Wikimedia URL it
+// was usually the first client to ask for that size: it met a slow render or
+// a 429, and the candidate took the x0.6 failure penalty however good the
+// image was. It is an argument here, not an option, so that vision scoring
+// cannot be switched on without it by accident; nil means no warming.
+func (s *Scorer) SetVisionModel(baseURL, token, model string, warmer Warmer) {
 	s.visionURL = baseURL
 	s.visionToken = token
 	s.visionModel = model
+	s.warmer = warmer
 }
 
 type scoreResponse struct {
@@ -69,6 +94,13 @@ func (s *Scorer) Score(title, tldr string, candidates []ImageCandidate) ([]Image
 		if len(candidates) < top {
 			top = len(candidates)
 		}
+		if s.warmer != nil {
+			thumbs := make([]string, top)
+			for i, c := range candidates[:top] {
+				thumbs[i] = c.Thumbnail
+			}
+			s.warmer.Warm(thumbs)
+		}
 		scored := s.visionScore(title, tldr, candidates[:top])
 		copy(candidates[:top], scored)
 		sort.Slice(candidates, func(i, j int) bool {
@@ -91,7 +123,7 @@ func (s *Scorer) textScore(title, tldr string, candidates []ImageCandidate) []Im
 	}
 
 	prompt := ai.ImageScoringPrompt(title, tldr, descriptions)
-	response, err := s.textClient.Generate(s.textModel, prompt, 2048)
+	response, err := ai.TryModels(s.textClient, s.textModels, prompt, 2048)
 	if err != nil {
 		slog.Warn("text image scoring failed", "error", err)
 		metrics.ImageScoringTotal.WithLabelValues("text", "error").Inc()
