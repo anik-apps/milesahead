@@ -338,7 +338,15 @@ func main() {
 	// Image scoring, the newsletter pick and card-update detection, all on the
 	// short-call chain.
 	mailSender := mail.NewSender(cfg.Mail.SMTP)
-	mailSender.SetNewsletterSchedule(newsletter.WeeklySendWhen)
+	// When the weekly goes out, from newsletter.send_day, send_time and
+	// timezone (checked by config.Load): the cron lines below and what
+	// readers are told both come from it.
+	weekly, err := newsletter.ScheduleFor(cfg.Newsletter)
+	if err != nil {
+		slog.Error("newsletter schedule", "error", err)
+		os.Exit(1)
+	}
+	mailSender.SetNewsletterSchedule(weekly.When())
 	if err := mailSender.SetUnsubscribeMailbox(cfg.Newsletter.UnsubscribeMailbox); err != nil {
 		slog.Warn("mail: List-Unsubscribe will have no mailto", "error", err)
 	}
@@ -414,23 +422,25 @@ func main() {
 	} else {
 		slog.Info("mail polling disabled", "reason", "IMAP not configured")
 	}
-	// Friday 20:00 ET — build newsletter
+	// Built at 20:00 the evening before the send (Friday, by default),
+	// sent on the send day (Saturday 08:00 New York time, by default).
 	sched.AddWeeklyJob("newsletter-build",
-		"CRON_TZ=America/New_York 0 0 20 * * 5",
+		weekly.BuildCron(),
 		func() {
 			if _, err := newsletterSvc.BuildWeekly(); err != nil {
 				slog.Error("newsletter build failed", "error", err)
 			}
 		})
 
-	// Saturday 08:00 ET — send newsletter
 	sched.AddWeeklyJob("newsletter-send",
-		newsletter.WeeklySendSchedule,
+		weekly.SendCron(),
 		func() {
 			if err := newsletterSvc.SendWeekly(); err != nil {
 				slog.Error("newsletter send failed", "error", err)
 			}
 		})
+	slog.Info("weekly newsletter scheduled", "send", weekly.When(),
+		"send_cron", weekly.SendCron(), "build_cron", weekly.BuildCron())
 	enrichInterval := time.Duration(cfg.AI.EnrichmentInterval) * time.Minute
 	if enrichInterval <= 0 {
 		enrichInterval = 15 * time.Minute

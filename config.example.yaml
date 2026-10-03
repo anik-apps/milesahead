@@ -156,11 +156,18 @@ mail:
     poll_interval: 120  # seconds
 
 newsletter:
+  # When the weekly issue goes out: send_day (a weekday name or its first
+  # three letters), send_time (24-hour HH:MM) and timezone (an IANA name),
+  # by default saturday, 08:00 and America/New_York. The issue is built at
+  # 20:00 the day before. The sign-up page, the confirmation email and the
+  # admin newsletter page say the same ("every Saturday at 8:00 AM ET").
+  # A value that cannot be read fails the config check.
+  send_day: "saturday"
   send_time: "08:00"
-  # The newsletter schedule's timezone. Defaults to UTC when empty. Offer end
-  # dates do not use it: "Deadline: July 29, 2026" counts as ended once July
-  # 29 is over in Hawaii, the westernmost US zone, on the site and in the
-  # newsletter alike.
+  # Also dates the issues and decides which day counts as "today" on the
+  # admin newsletter page. Offer end dates do not use it: "Deadline: July
+  # 29, 2026" counts as ended once July 29 is over in Hawaii, the westernmost
+  # US zone, on the site and in the newsletter alike.
   timezone: "America/New_York"
   # Opens newsletter sign-up: the Newsletter link in the header and footer,
   # the line in the home hero, the box at the end of every article, the

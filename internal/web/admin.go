@@ -613,8 +613,11 @@ func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 			"IMAP poll interval": app.cfg.Mail.IMAP.PollInterval,
 		},
 		"Newsletter": map[string]interface{}{
+			"SendDay":  app.cfg.Newsletter.SendDay,
 			"SendTime": app.cfg.Newsletter.SendTime,
 			"Timezone": app.cfg.Newsletter.Timezone,
+			// What the three come to, as readers are told it.
+			"Schedule": app.schedule.When() + " (built " + app.schedule.BuildDay().String() + " 8:00 PM)",
 		},
 		"Votes": map[string]interface{}{
 			"AlertThreshold": app.cfg.Votes.AlertThreshold,
@@ -771,7 +774,7 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":             "Newsletter",
 		"PersonaName":       app.cfg.Site.PersonaName,
-		"StatusNote":        newsletterStatusNote(currentNL, confirmed, app.newsletterToday()),
+		"StatusNote":        newsletterStatusNote(currentNL, confirmed, app.newsletterToday(), app.schedule),
 		"IssuePassed":       currentNL != nil && currentNL.Status != "sent" && currentNL.Date < app.newsletterToday(),
 		"Confirmed":         confirmed,
 		"PreviewHTML":       previewHTML,
@@ -881,12 +884,12 @@ func (app *App) handleNewsletterHistory(w http.ResponseWriter, r *http.Request) 
 
 // newsletterStatusNote says what will happen to the issue: whether and when
 // it goes out, and to how many people. SendWeekly sends only an approved or
-// auto-approved issue, on its Saturday.
+// auto-approved issue, on its send day (sched).
 //
 // today ("2006-01-02", the newsletter's zone) marks an unsent issue whose
-// date has passed: SendWeekly only sends its own Saturday's issue, so it
+// date has passed: SendWeekly only sends its own send day's issue, so it
 // will never go out, whatever its status.
-func newsletterStatusNote(nl *db.Newsletter, confirmed int, today string) string {
+func newsletterStatusNote(nl *db.Newsletter, confirmed int, today string, sched newsletter.Schedule) string {
 	if nl == nil {
 		return ""
 	}
@@ -895,7 +898,7 @@ func newsletterStatusNote(nl *db.Newsletter, confirmed int, today string) string
 		if d, err := time.Parse("2006-01-02", nl.Date); err == nil {
 			when = d.Format("Mon Jan 2")
 		}
-		return fmt.Sprintf("Not sent: this issue was for %s, which has passed, so it will not go out. The next issue is built on Friday evening.", when)
+		return fmt.Sprintf("Not sent: this issue was for %s, which has passed, so it will not go out. The next issue is built on %s evening.", when, sched.BuildDay())
 	}
 	when := nl.Date
 	if d, err := time.Parse("2006-01-02", nl.Date); err == nil {
@@ -907,9 +910,9 @@ func newsletterStatusNote(nl *db.Newsletter, confirmed int, today string) string
 	}
 	switch nl.Status {
 	case "approved", "auto_approved":
-		return fmt.Sprintf("Goes out %s, %s, to %s.", when, newsletter.WeeklySendLabel, people)
+		return fmt.Sprintf("Goes out %s, %s, to %s.", when, sched.Label(), people)
 	case "draft":
-		return fmt.Sprintf("Draft: it will not go out on %s unless you approve it. Approving sends it at %s to %s.", when, newsletter.WeeklySendLabel, people)
+		return fmt.Sprintf("Draft: it will not go out on %s unless you approve it. Approving sends it at %s to %s.", when, sched.Label(), people)
 	case "hold":
 		return fmt.Sprintf("On hold: it will not go out on %s unless you approve it.", when)
 	case "skipped":

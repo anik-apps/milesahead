@@ -61,26 +61,15 @@ var templateDir = "templates/email"
 // weeklySubject opens every weekly issue's subject.
 const weeklySubject = "MilesAhead Weekly"
 
-// WeeklySendSchedule is when the scheduler runs SendWeekly: Saturdays at
-// 08:00 New York time. WeeklySendLabel says the same for the admin page, which
-// tells the admin when the current issue goes out, and WeeklySendWhen for
-// readers (the sign-up page and the confirmation email). A test holds all
-// three to the same day and time.
-const (
-	WeeklySendSchedule = "CRON_TZ=America/New_York 0 0 8 * * 6"
-	WeeklySendLabel    = "8:00 AM ET"
-	WeeklySendDay      = "Saturday"
-	WeeklySendWhen     = "every " + WeeklySendDay + " at " + WeeklySendLabel
-)
-
 // Service handles newsletter generation and delivery.
 type Service struct {
 	db       *db.Database
 	sender   MailSender
 	ai       ai.HFClientInterface
 	aiModels []string
-	sendTime string
 	domain   string
+	// schedule is when the weekly goes out; issues are dated on its day.
+	schedule Schedule
 	// loc is the schedule's timezone, resolved once: an unknown name falls
 	// back to UTC with one warning, not one per lookup.
 	loc *time.Location
@@ -100,16 +89,26 @@ func (s *Service) SetMailUnavailable(unavailable bool) {
 }
 
 // NewService creates a new newsletter Service.
+// cfg comes through config.Load, which has checked the schedule; one that
+// cannot be read falls back to the default with a warning.
 func NewService(database *db.Database, sender MailSender, cfg config.NewsletterConfig) *Service {
-	st := cfg.SendTime
-	if st == "" {
-		st = "08:00"
+	tz := cfg.Timezone
+	if strings.TrimSpace(tz) == "" {
+		tz = config.DefaultTimezone
+	}
+	// Resolved once, here: an unknown zone warns once and becomes UTC.
+	loc := offer.Location(tz)
+	cfg.Timezone = loc.String()
+	sched, err := ScheduleFor(cfg)
+	if err != nil {
+		slog.Warn("newsletter: unreadable schedule; using the default", "error", err, "default", DefaultSchedule().When())
+		sched = DefaultSchedule()
 	}
 	return &Service{
 		db:       database,
 		sender:   sender,
-		loc:      offer.Location(cfg.Timezone),
-		sendTime: st,
+		schedule: sched,
+		loc:      loc,
 		now:      time.Now,
 	}
 }
@@ -236,22 +235,18 @@ func (s *Service) todayDate() string {
 	return s.now().In(s.loc).Format("2006-01-02")
 }
 
-// nextSaturday returns the date string for the next Saturday (or today if Saturday).
-func (s *Service) nextSaturday() string {
+// nextSendDate returns the date of the next send day (today on a send day).
+func (s *Service) nextSendDate() string {
 	now := s.now().In(s.loc)
-	daysUntilSat := (6 - int(now.Weekday()) + 7) % 7
-	if daysUntilSat == 0 {
-		// Today is Saturday.
-		return now.Format("2006-01-02")
-	}
-	return now.AddDate(0, 0, daysUntilSat).Format("2006-01-02")
+	daysUntil := (int(s.schedule.Day) - int(now.Weekday()) + 7) % 7
+	return now.AddDate(0, 0, daysUntil).Format("2006-01-02")
 }
 
-// thisSaturday returns the most recent Saturday date (today if Saturday, else last Saturday).
-func (s *Service) thisSaturday() string {
+// thisSendDate returns the most recent send day's date (today on a send day).
+func (s *Service) thisSendDate() string {
 	now := s.now().In(s.loc)
-	daysSinceSat := (int(now.Weekday()) - 6 + 7) % 7
-	return now.AddDate(0, 0, -daysSinceSat).Format("2006-01-02")
+	daysSince := (int(now.Weekday()) - int(s.schedule.Day) + 7) % 7
+	return now.AddDate(0, 0, -daysSince).Format("2006-01-02")
 }
 
 // parseTags parses a JSON array of tag strings.
@@ -454,9 +449,9 @@ func buildWeeklyTemplateData(articles []db.GeneratedArticle, date, domain string
 
 // BuildWeekly creates a weekly newsletter with AI-ranked candidates, Scout's Pick,
 // and Card of the Week. It is idempotent: if a newsletter already exists for the
-// target Saturday date, it returns the existing one.
+// target send date (the next send day), it returns the existing one.
 func (s *Service) BuildWeekly() (*db.Newsletter, error) {
-	sendDate := s.nextSaturday()
+	sendDate := s.nextSendDate()
 
 	// Check if newsletter already exists for this date.
 	existing, err := s.db.GetNewsletterByDate(sendDate)
@@ -465,7 +460,7 @@ func (s *Service) BuildWeekly() (*db.Newsletter, error) {
 		return existing, nil
 	}
 
-	// Query the week's articles (Saturday minus 7 days, same window as SendWeekly).
+	// Query the week's articles (send date minus 7 days, same window as SendWeekly).
 	satDate, _ := time.Parse("2006-01-02", sendDate)
 	since := satDate.AddDate(0, 0, -7)
 	articles, err := s.db.ListApprovedArticlesSince(since)
@@ -712,9 +707,9 @@ func (s *Service) loadScoutsPickData(articleID int64) *scoutsPickData {
 	}
 }
 
-// SendWeekly sends the weekly newsletter for this Saturday to all confirmed subscribers.
+// SendWeekly sends the weekly newsletter for this send day to all confirmed subscribers.
 func (s *Service) SendWeekly() error {
-	sendDate := s.thisSaturday()
+	sendDate := s.thisSendDate()
 
 	nl, err := s.db.GetNewsletterByDate(sendDate)
 	if err != nil {
@@ -925,7 +920,7 @@ func publishedBy(articles []db.GeneratedArticle, until time.Time) []db.Generated
 }
 
 // isWeekly reports whether nl is a weekly issue. A weekly is dated the
-// Saturday it goes out, so on a Saturday it holds the date a daily would.
+// day it goes out, so on a send day it holds the date a daily would.
 // Only BuildWeekly writes the weekly subject or candidates. (A Scout's Pick
 // or Card of the Week is no sign: the admin page can set either on whichever
 // issue is current, a daily included.)

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/db"
-	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 // adminNav is the admin bar: which tab is current, and the counts on the
@@ -97,5 +96,5 @@ func (app *App) newsletterToday() string {
 	if app.now != nil {
 		now = app.now
 	}
-	return now().In(offer.Location(app.cfg.Newsletter.Timezone)).Format("2006-01-02")
+	return now().In(app.schedule.Location()).Format("2006-01-02")
 }

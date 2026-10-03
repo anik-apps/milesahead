@@ -78,7 +78,7 @@ func (s *Sender) SendAdminNotification(toEmail string, article *db.GeneratedArti
 
 // SetNewsletterSchedule sets how the confirmation email says the
 // newsletter comes, "every Saturday at 8:00 AM ET"
-// (newsletter.WeeklySendWhen). Unset, it says "once a week".
+// (newsletter.Schedule.When). Unset, it says "once a week".
 func (s *Sender) SetNewsletterSchedule(when string) {
 	s.newsletterWhen = when
 }

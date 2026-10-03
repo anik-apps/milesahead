@@ -341,7 +341,7 @@ func TestSendWeekly_ReplacesScoutsPickThatEndedSinceBuild(t *testing.T) {
 	// As BuildWeekly left it when the offer was still live.
 	pick := ended
 	nlID, err := database.CreateNewsletter(&db.Newsletter{
-		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved",
+		Date: svc.thisSendDate(), Subject: "MilesAhead Weekly", Status: "auto_approved",
 		HTMLContent: "<p>" + endedTitle + "</p>", ArticleCount: 3, ScoutsPickArticleID: &pick,
 	})
 	if err != nil {
@@ -368,7 +368,7 @@ func TestSendWeekly_ReplacesScoutsPickThatEndedSinceBuild(t *testing.T) {
 	if !strings.Contains(html, "Take on "+liveTitle) {
 		t.Error("Scout's Pick should have passed to the top live article")
 	}
-	nl, err := database.GetNewsletterByDate(svc.thisSaturday())
+	nl, err := database.GetNewsletterByDate(svc.thisSendDate())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,7 +390,7 @@ func TestSendWeekly_AllEndedSendsNothing(t *testing.T) {
 	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
 	pick := ended
 	if _, err := database.CreateNewsletter(&db.Newsletter{
-		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved",
+		Date: svc.thisSendDate(), Subject: "MilesAhead Weekly", Status: "auto_approved",
 		HTMLContent: "<p>" + endedTitle + "</p>", ArticleCount: 1, ScoutsPickArticleID: &pick,
 	}); err != nil {
 		t.Fatal(err)
@@ -418,7 +418,7 @@ func TestSendWeekly_UncheckableIssueIsNotSent(t *testing.T) {
 	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
 	pick := ended
 	if _, err := database.CreateNewsletter(&db.Newsletter{
-		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved",
+		Date: svc.thisSendDate(), Subject: "MilesAhead Weekly", Status: "auto_approved",
 		HTMLContent: "<p>" + endedTitle + "</p><p>" + liveTitle + "</p>", ArticleCount: 2, ScoutsPickArticleID: &pick,
 	}); err != nil {
 		t.Fatal(err)
@@ -434,7 +434,7 @@ func TestSendWeekly_UncheckableIssueIsNotSent(t *testing.T) {
 	if len(sender.calls) != 0 {
 		t.Errorf("sent the stored issue unchecked:\n%s", sender.calls[0].html)
 	}
-	nl, err := database.GetNewsletterByDate(svc.thisSaturday())
+	nl, err := database.GetNewsletterByDate(svc.thisSendDate())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +457,7 @@ func TestSendWeekly_NothingLeftToSendSendsNothing(t *testing.T) {
 	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
 	pick := id
 	if _, err := database.CreateNewsletter(&db.Newsletter{
-		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved",
+		Date: svc.thisSendDate(), Subject: "MilesAhead Weekly", Status: "auto_approved",
 		HTMLContent: "<p>" + liveTitle + "</p>", ArticleCount: 1, ScoutsPickArticleID: &pick,
 	}); err != nil {
 		t.Fatal(err)
@@ -726,7 +726,7 @@ func TestSendWeekly_SentOnlyOnce(t *testing.T) {
 	svc := NewService(database, sender, config.NewsletterConfig{Timezone: "UTC"})
 	pick := live
 	if _, err := database.CreateNewsletter(&db.Newsletter{
-		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved",
+		Date: svc.thisSendDate(), Subject: "MilesAhead Weekly", Status: "auto_approved",
 		HTMLContent: "<p>" + liveTitle + "</p>", ArticleCount: 1, ScoutsPickArticleID: &pick,
 	}); err != nil {
 		t.Fatal(err)

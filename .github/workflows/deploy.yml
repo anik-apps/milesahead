@@ -255,6 +255,9 @@ jobs:
               poll_interval: 120
 
           newsletter:
+            # Saturday 08:00 New York time; the issue is built the evening
+            # before. See config.example.yaml.
+            send_day: "saturday"
             send_time: "08:00"
             timezone: "America/New_York"
             # Open since 2026-10-02: SMTP secrets set (OCI Email Delivery),
