@@ -34,8 +34,10 @@ func (d *Database) RecordVoteAlert(articleID int64, up, down int) (opened bool, 
 	if n, _ := res.RowsAffected(); n == 1 {
 		return true, nil
 	}
+	// Counts only grow: two votes checked at once can arrive out of order,
+	// and the later write must not replace larger totals with smaller ones.
 	_, err = d.db.Exec(
-		`UPDATE vote_alerts SET upvotes = ?, downvotes = ?, updated_at = CURRENT_TIMESTAMP
+		`UPDATE vote_alerts SET upvotes = MAX(upvotes, ?), downvotes = MAX(downvotes, ?), updated_at = CURRENT_TIMESTAMP
 		WHERE article_id = ? AND acknowledged_at IS NULL`, up, down, articleID)
 	return false, err
 }

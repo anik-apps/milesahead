@@ -43,7 +43,7 @@
                 <form method="POST" action="/admin/vote-alerts/{{.ID}}/acknowledge" class="inline-form">
                     {{template "csrf_field" $}}
                     <input type="hidden" name="sort" value="{{$.Sort}}">
-                    <button type="submit" class="btn btn-sm">Acknowledge<span class="visually-hidden"> the alert on {{.Title}}</span></button>
+                    <button type="submit" class="btn btn-sm">Acknowledge<span class="visually-hidden"> the alert on {{if .Title}}{{.Title}}{{else}}article #{{.ArticleID}}{{end}}</span></button>
                 </form>
             </li>
             {{end}}

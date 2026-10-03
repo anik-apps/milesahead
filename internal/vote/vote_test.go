@@ -250,3 +250,33 @@ func TestNewService_DefaultThreshold(t *testing.T) {
 		t.Error("the default threshold should be 10 downvotes")
 	}
 }
+
+// Votes cast in the same second as the acknowledgement were seen by the
+// admin and do not count towards the next alert; the next second's do.
+func TestCheckThreshold_StartsAfterTheAcknowledgedSecond(t *testing.T) {
+	d := setupTestDB(t)
+	artID := seedArticle(t, d)
+	ack := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	svc := NewService(d, config.VotesConfig{AlertThreshold: 2, AlertRatio: 0.5, AlertWindow: 24}, nil)
+	svc.now = func() time.Time { return ack.Add(time.Minute) }
+	if _, err := d.RecordVoteAlert(artID, 0, 2); err != nil {
+		t.Fatal(err)
+	}
+	alerts, _ := d.ListOpenVoteAlerts()
+	if _, err := d.AcknowledgeVoteAlert(alerts[0].ID, ack); err != nil {
+		t.Fatal(err)
+	}
+	castAt(t, d, artID, -1, "same0", ack)
+	castAt(t, d, artID, -1, "same1", ack)
+	if hit, _ := svc.CheckThreshold(artID); hit {
+		t.Error("votes in the acknowledged second should not count again")
+	}
+	castAt(t, d, artID, -1, "next0", ack.Add(time.Second))
+	if hit, _ := svc.CheckThreshold(artID); hit {
+		t.Error("one new downvote is under the threshold of 2")
+	}
+	castAt(t, d, artID, -1, "next1", ack.Add(2*time.Second))
+	if hit, _ := svc.CheckThreshold(artID); !hit {
+		t.Error("two downvotes after the acknowledged second should alert")
+	}
+}

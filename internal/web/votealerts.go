@@ -35,7 +35,10 @@ func (app *App) openVoteAlerts(now time.Time) []voteAlertRow {
 // voteAlertWindowLabel says which votes an alert counts, for the banner:
 // "in the last 24 hours", or "in all" with no window.
 func (app *App) voteAlertWindowLabel() string {
-	if h := app.cfg.Votes.AlertWindow; h > 0 {
+	switch h := app.cfg.Votes.AlertWindow; {
+	case h == 1:
+		return "in the hour before it was raised"
+	case h > 1:
 		return fmt.Sprintf("in the %d hours before it was raised", h)
 	}
 	return "in all"

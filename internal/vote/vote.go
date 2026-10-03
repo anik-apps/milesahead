@@ -169,8 +169,11 @@ func (s *Service) alertCounts(articleID int64) (*db.VoteCounts, error) {
 	if err != nil {
 		return nil, err
 	}
-	if acked.After(since) {
-		since = acked
+	// created_at and acknowledged_at are whole seconds: start the second
+	// after the acknowledgement, so votes cast in its second (seen by the
+	// admin) do not count again.
+	if !acked.IsZero() && !acked.Add(time.Second).Before(since) {
+		since = acked.Add(time.Second)
 	}
 	return s.db.GetVoteCountsSince(articleID, since)
 }

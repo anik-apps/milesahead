@@ -101,3 +101,31 @@ func TestVoteAlerts_AcknowledgeAll(t *testing.T) {
 		t.Errorf("open alerts after acknowledging all: %d", n)
 	}
 }
+
+func TestVoteAlertWindowLabel(t *testing.T) {
+	app := &App{cfg: &config.Config{}}
+	for h, want := range map[int]string{0: "in all", 1: "in the hour before it was raised", 24: "in the 24 hours before it was raised"} {
+		app.cfg.Votes.AlertWindow = h
+		if got := app.voteAlertWindowLabel(); got != want {
+			t.Errorf("window %d: %q, want %q", h, got, want)
+		}
+	}
+}
+
+// An alert whose article has no title (deleted) still gets an accessible
+// Acknowledge label, naming the article by number like its row.
+func TestVoteAlerts_AcknowledgeLabelFallsBackToTheID(t *testing.T) {
+	app, database := realTemplateApp(t)
+	id, _ := createApprovedArticle(t, database, "Soon untitled", "news", false)
+	if _, err := database.RecordVoteAlert(id, 0, 9); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB().Exec(`UPDATE generated_articles SET title = '' WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	page := doAdminGET(t, app, "/admin/published", session).Body.String()
+	if want := fmt.Sprintf(`<span class="visually-hidden"> the alert on article #%d</span>`, id); !strings.Contains(page, want) {
+		t.Errorf("page should contain %q", want)
+	}
+}

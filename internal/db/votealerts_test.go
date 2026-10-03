@@ -75,3 +75,27 @@ func insertVoteAlertArticle(t *testing.T, d *Database, slug string) int64 {
 	id, _ := res.LastInsertId()
 	return id
 }
+
+// Two downvotes checked at once can record their counts out of order; the
+// open alert keeps the larger totals.
+func TestRecordVoteAlert_OutOfOrderUpdatesKeepTheLargerCounts(t *testing.T) {
+	d := openTestDB(t)
+	a := insertVoteAlertArticle(t, d, "racy")
+	if _, err := d.RecordVoteAlert(a, 1, 10); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.RecordVoteAlert(a, 3, 12); err != nil {
+		t.Fatal(err)
+	}
+	// The earlier check's smaller totals land last.
+	if _, err := d.RecordVoteAlert(a, 2, 11); err != nil {
+		t.Fatal(err)
+	}
+	alerts, err := d.ListOpenVoteAlerts()
+	if err != nil || len(alerts) != 1 {
+		t.Fatalf("alerts %+v, %v", alerts, err)
+	}
+	if alerts[0].Upvotes != 3 || alerts[0].Downvotes != 12 {
+		t.Errorf("counts went backwards: up %d, down %d; want 3, 12", alerts[0].Upvotes, alerts[0].Downvotes)
+	}
+}
