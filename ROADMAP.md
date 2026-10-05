@@ -302,8 +302,9 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 - [ ] **Turn on article infographics** — merged off (`ai.enrichment_infographics: "off"`
       in config.example.yaml and deploy.yml; `TestDeployConfigMirrorsCritic` keeps the
       two equal). Set both to `"preview"`, let a few passes run, and judge the charts in
-      the review queue preview: numbers match the Key Details, labels fit, nothing names
-      a news site. Then `"on"`. Not yet checked against the production enrichment chain
+      the review queue preview and on Published (each row's "Chart"): numbers match the
+      Key Details, labels fit, nothing names a news site. Remove or redraw any that are
+      wrong, then set `"on"`. Not yet checked against the production enrichment chain
       (gpt-oss-20b, nemotron-3-super); the 2026-09-22 trial used the 550B generator.
 
 - [ ] **Fix stored articles that name news sites** — `cmd/flag-outlet-mentions`

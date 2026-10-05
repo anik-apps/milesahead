@@ -138,14 +138,17 @@ ai:
   enrichment_max_duration: 10    # minutes
   # Article infographics: an SVG chart of each article's key details, drawn
   # by the enrichment_model chain (one more call per article, bounded at
-  # 120s with no retries).
-  #   off      draw nothing, show nothing (the default)
-  #   preview  draw them, show them only in the admin preview
+  # 120s per model in the chain -- up to 240s with the two above -- with no
+  # retries).
+  #   off      draw nothing; article pages show nothing (the default)
+  #   preview  draw them; show them only in the admin (review preview and
+  #            Published), where they can be removed or redrawn
   #   on       draw them and show them on article pages
+  # The admin shows charts already stored in every mode.
   # preview or on makes every article without a chart eligible for the next
   # passes, ten at a time, until the archive is drawn or each article's
-  # attempts run out. Going back to off hides the charts and stops drawing;
-  # nothing is deleted.
+  # attempts run out. Going back to off takes the charts off article pages
+  # and stops drawing; nothing is deleted.
   enrichment_infographics: "off"
   hf_api_token: "${HF_API_TOKEN}"
   critic_threshold: 70
