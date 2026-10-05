@@ -566,7 +566,8 @@ Key details (JSON): %s
 
 WHAT TO DRAW
 Pick the one comparison that carries the article and draw it. Usually that is a horizontal bar chart comparing two to five labelled amounts, but use a simple timeline if the story is about dates, or a small grid of stat cards if the numbers do not compare to each other.
-- Every number you draw must appear in the article above. Do not invent, round, or extrapolate figures.
+- Every number you draw must appear in the article above, written as the article writes it. Do not invent, round, extrapolate, add up or subtract figures: a chart showing a number the article does not state is thrown away.
+- Do not number the axes: no tick values, gridline values or scales. Bar lengths show the proportions; the value label on each bar gives the number.
 - Label every bar or row with both its name and its value. A chart nobody can read the numbers off is useless.
 - Include a short headline at the top and a one-line takeaway at the bottom.
 - If the article has no comparable numbers at all, output exactly: NO_INFOGRAPHIC

@@ -280,3 +280,18 @@ func TestWritingStyleAndHTMLFormat_ForbidMarkdown(t *testing.T) {
 		t.Error("writingStyle+htmlFormat missing ASCII-hyphens rule")
 	}
 }
+
+// The infographic prompt states the rules the number check enforces, so a
+// model is not refused for something it was never told.
+func TestInfographicPrompt_StatesTheNumberRules(t *testing.T) {
+	p := InfographicPrompt("T", "tldr", "[]")
+	for _, want := range []string{
+		"Every number you draw must appear in the article above",
+		"add up or subtract",
+		"Do not number the axes",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("infographic prompt missing %q", want)
+		}
+	}
+}

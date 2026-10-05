@@ -3918,3 +3918,9 @@ figure.article-hero, .article-detail .article-hero, .preview-body .article-hero 
 [data-theme="dark"] .article-infographic img {
     filter: invert(1) hue-rotate(180deg);
 }
+/* Forced colours (Windows High Contrast) would otherwise leave the chart's
+   fixed dark ink on whatever background the user's scheme sets. Keep the
+   chart's own colours and give it the white page it was drawn for. */
+@media (forced-colors: active) {
+    .article-infographic img { forced-color-adjust: none; background: #fff; filter: none; }
+}

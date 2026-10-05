@@ -159,6 +159,8 @@ func TestInfographic_RefusedChartsAreNotStored(t *testing.T) {
 		"numbered source":           drawn("Source 1: $895"),
 		"outlet split over tspans":  drawn("Per One Mile at a <tspan>Time</tspan>"),
 		"truncated":                 strings.TrimSuffix(drawnSVG, "</svg>"),
+		"invented number":           drawn("Annual fee $995"),
+		"derived number":            drawn("Fee over five years $4,475"),
 	}
 	for name, reply := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -202,7 +204,7 @@ func TestInfographic_AllowsTheSubjectOutlet(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := &scriptedClient{reply: fullReplies(map[string]string{
-		designerPrompt: drawn("Thrifty Traveler Premium: $69 a year"),
+		designerPrompt: drawn("Thrifty Traveler Premium: 30% off"),
 	})}
 	newInfographicService(d, client).Run()
 	if got, _ := readInfographic(t, d, id); !strings.Contains(got, "Thrifty Traveler Premium") {
@@ -293,3 +295,58 @@ var errFake = fakeErr("provider exploded")
 type fakeErr string
 
 func (e fakeErr) Error() string { return string(e) }
+
+// With less of the pass left than the chain could take, the chart is put off
+// without ending the pass: the article's other fields are saved, uncharged,
+// and the chart waits for the next pass.
+func TestInfographic_PutOffWhenThePassCannotFitTheChain(t *testing.T) {
+	d := testDB(t)
+	id := seedArticle(t, d)
+	client := &scriptedClient{reply: fullReplies(map[string]string{designerPrompt: drawnSVG})}
+	s := newInfographicService(d, client)
+
+	arts, err := d.ListArticlesNeedingEnrichmentWithInfographics(s.MaxAttempts, 10)
+	if err != nil || len(arts) != 1 {
+		t.Fatalf("listed %d, err %v", len(arts), err)
+	}
+	_, _, putOff := s.enrichOne(arts[0], time.Now().Add(s.infographicBudget()/2))
+	if putOff {
+		t.Error("a chart put off for want of time ended the pass")
+	}
+	if n := client.promptCalls(designerPrompt); n != 0 {
+		t.Errorf("chart requested %d time(s) with too little of the pass left", n)
+	}
+	var take string
+	if err := d.DB().QueryRow(`SELECT COALESCE(scouts_take,'') FROM generated_articles WHERE id = ?`, id).Scan(&take); err != nil {
+		t.Fatal(err)
+	}
+	if take == "" {
+		t.Error("the article's other fields were not saved")
+	}
+	if got, _ := readInfographic(t, d, id); got != "" {
+		t.Errorf("chart stored: %q", got)
+	}
+}
+
+// An admin waiting on a new image does not wait on a chart too: the chart
+// waits a pass.
+func TestInfographic_WaitsWhileAnImageIsRequested(t *testing.T) {
+	d := testDB(t)
+	id := seedArticle(t, d)
+	client := &scriptedClient{reply: fullReplies(map[string]string{designerPrompt: drawnSVG})}
+	s := newInfographicService(d, client)
+
+	arts, err := d.ListArticlesNeedingEnrichmentWithInfographics(s.MaxAttempts, 10)
+	if err != nil || len(arts) != 1 {
+		t.Fatalf("listed %d, err %v", len(arts), err)
+	}
+	a := arts[0]
+	a.ImageRequestSeq = 1 // as listed with a pending request
+	s.enrichOne(a, time.Now().Add(time.Hour))
+	if n := client.promptCalls(designerPrompt); n != 0 {
+		t.Errorf("chart requested %d time(s) while an image request was pending", n)
+	}
+	if got, _ := readInfographic(t, d, id); got != "" {
+		t.Errorf("chart stored: %q", got)
+	}
+}

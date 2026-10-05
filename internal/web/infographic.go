@@ -1,14 +1,18 @@
 package web
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
-	"html"
+	"errors"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"math"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/svg"
@@ -50,30 +54,43 @@ func infographicFor(stored string) *articleInfographic {
 	if s == "" || s == db.NoInfographic {
 		return nil
 	}
-	clean, err := svg.Sanitize(s)
+	doc, err := svg.SanitizeDoc(s)
 	if err != nil {
-		slog.Warn("infographic: stored chart did not survive the sanitiser, not shown", "error", err)
+		warnUnshowable(s, err)
 		return nil
 	}
 	g := &articleInfographic{
-		Src: template.URL("data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(clean))),
-		Alt: infographicAlt(clean),
+		Src: template.URL("data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte(doc.SVG))),
+		Alt: infographicAlt(doc),
 	}
-	if m := rootSize.FindStringSubmatch(clean); m != nil {
+	if m := rootSize.FindStringSubmatch(doc.SVG); m != nil {
 		g.Width, g.Height = pixels(m[1]), pixels(m[2])
 	}
 	return g
 }
 
 // infographicAlt is the chart's title, followed by its description when it
-// has one. Both are stored XML-escaped; html/template escapes again on
-// output, so they are unescaped here to avoid "Fees &amp;amp; credits".
-func infographicAlt(clean string) string {
-	alt := html.UnescapeString(svg.Title(clean))
-	if d := html.UnescapeString(svg.Desc(clean)); d != "" {
-		alt = strings.TrimRight(alt, ". ") + ". " + d
+// has one: the root's own <title> and <desc>, as plain text (html/template
+// escapes them on output).
+func infographicAlt(doc svg.Doc) string {
+	alt := doc.Title
+	if doc.Desc != "" {
+		alt = strings.TrimRight(alt, ". ") + ". " + doc.Desc
 	}
 	return alt
+}
+
+// unshowable remembers the stored charts already reported as failing the
+// sanitiser, by hash, so a bad row is logged once rather than on every view
+// of its page.
+var unshowable sync.Map
+
+func warnUnshowable(stored string, err error) {
+	sum := sha256.Sum256([]byte(stored))
+	if _, seen := unshowable.LoadOrStore(sum, true); !seen {
+		slog.Warn("infographic: stored chart did not survive the sanitiser, not shown (logged once per chart; Redraw chart replaces it)",
+			"error", err)
+	}
 }
 
 // pixels rounds a viewBox dimension to the whole number an <img> attribute
@@ -123,5 +140,47 @@ func (app *App) attachInfographics(rows []adminArticleRow) {
 			continue
 		}
 		rows[i].Infographic = infographicFor(s)
+		rows[i].InfographicBroken = rows[i].Infographic == nil
 	}
+}
+
+// Chart actions, from the review queue preview and the Published row menu.
+// Both are POSTs behind the admin CSRF check; neither touches the article's
+// content.
+const (
+	chartRemovedMessage = "Chart removed. It is not shown or drawn again unless you choose Redraw chart."
+	chartRedrawMessage  = "Chart cleared. Enrichment draws a new one on a coming pass (every 15 minutes) while ai.enrichment_infographics is preview or on."
+)
+
+// handleRemoveChart stores the "nothing to chart" sentinel, so a chart the
+// admin judged wrong comes off the page at once and is not drawn again.
+func (app *App) handleRemoveChart(w http.ResponseWriter, r *http.Request) {
+	app.chartAction(w, r, app.db.RemoveInfographic, "chart_removed")
+}
+
+// handleRedrawChart clears the chart so the reconciler draws a new one, with
+// a fresh attempt budget. Until it does, the article has no chart.
+func (app *App) handleRedrawChart(w http.ResponseWriter, r *http.Request) {
+	app.chartAction(w, r, app.db.RedrawInfographic, "chart_redraw")
+}
+
+func (app *App) chartAction(w http.ResponseWriter, r *http.Request, act func(int64) error, msg string) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid article ID", http.StatusBadRequest)
+		return
+	}
+	if err := act(id); err != nil {
+		if errors.Is(err, db.ErrNoChart) {
+			http.Error(w, "This article does not exist or was rejected", http.StatusBadRequest)
+			return
+		}
+		app.serverError(w, r, "admin: chart action failed", err)
+		return
+	}
+	if r.FormValue("return") == "published" {
+		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/published?msg=%s&id=%d", msg, id), publishedSorts), http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=%s&id=%d&open=%d", msg, id, id), queueSorts), http.StatusSeeOther)
 }

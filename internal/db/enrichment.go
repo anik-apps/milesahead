@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -334,4 +335,39 @@ func (d *Database) InfographicsFor(ids []int64) (map[int64]string, error) {
 		out[id] = svg
 	}
 	return out, rows.Err()
+}
+
+// ErrNoChart means a chart action named an article that does not exist or
+// was rejected.
+var ErrNoChart = errors.New("no such article, or it was rejected")
+
+// RemoveInfographic is the admin's "Remove chart": the article's chart is
+// replaced by the sentinel, so it is not shown and not drawn again until
+// RedrawInfographic.
+func (d *Database) RemoveInfographic(id int64) error {
+	return d.setInfographic(id, `infographic_svg = ?`, NoInfographic)
+}
+
+// RedrawInfographic is the admin's "Redraw chart": the chart (or the
+// sentinel) is cleared so the reconciler draws a new one, and the article's
+// attempts are reset so it is picked up even if earlier passes used them all
+// -- as a new-image request gets a fresh budget. Any other field still
+// missing is retried with that budget too.
+func (d *Database) RedrawInfographic(id int64) error {
+	return d.setInfographic(id, `infographic_svg = '', enrichment_attempts = 0`)
+}
+
+func (d *Database) setInfographic(id int64, set string, args ...any) error {
+	// updated_at is not touched: the article's content did not change.
+	res, err := d.db.Exec(`UPDATE generated_articles SET `+set+` WHERE id = ? AND status != ?`,
+		append(args, id, StatusRejected)...)
+	if err != nil {
+		return fmt.Errorf("updating the chart of article %d: %w", id, err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNoChart
+	}
+	return nil
 }

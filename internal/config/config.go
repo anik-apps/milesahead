@@ -84,10 +84,10 @@ type AIConfig struct {
 	// EnrichmentMaxDuration bounds a single pass, in minutes.
 	EnrichmentMaxDuration int `yaml:"enrichment_max_duration"`
 	// EnrichmentInfographics is what the infographic step does: "off" (the
-	// default) draws nothing and shows nothing; "preview" has enrichment
-	// draw each article's key details as an SVG chart and shows it only in
-	// the admin preview; "on" also shows it on the article page. See
-	// config.example.yaml.
+	// default) draws nothing; "preview" has enrichment draw each article's
+	// key details as an SVG chart, shown only in the admin; "on" also shows
+	// it on the article page. The admin shows stored charts in every mode.
+	// See config.example.yaml.
 	EnrichmentInfographics string `yaml:"enrichment_infographics"`
 	Critic2Model           string `yaml:"critic2_model"`
 	HFAPIToken             string `yaml:"hf_api_token"`

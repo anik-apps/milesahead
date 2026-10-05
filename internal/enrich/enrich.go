@@ -342,14 +342,24 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 	}
 
 	// After the image, which matters more to the page: a chart is a few
-	// seconds to a couple of minutes of model time, and should not be what
-	// leaves an article without its picture when the pass is short of time.
+	// seconds to a few minutes of model time, and should not be what leaves
+	// an article without its picture when the pass is short of time.
+	var chartPutOff bool
 	if a.MissingInfographic && s.Infographics {
 		switch {
 		case !time.Now().Before(deadline):
 			// Not tried, so not charged; it waits for the next pass like an
 			// image search would.
 			putOff = true
+		case a.ImageRequestSeq > 0:
+			// An admin is waiting on a new image, which is only saved once
+			// this article is done; the chart can wait a pass instead.
+			chartPutOff = true
+		case time.Until(deadline) < s.infographicBudget():
+			// Not enough of the pass left for the whole chain to answer:
+			// starting would run the pass past its deadline. Later
+			// articles still get their other fields this pass.
+			chartPutOff = true
 		default:
 			switch ok, err := s.drawInfographic(&u, a); {
 			case err != nil:
@@ -364,12 +374,14 @@ func (s *Service) enrichOne(a db.ArticleNeedingEnrichment, deadline time.Time) (
 		}
 	}
 
-	// An image search or chart put off for lack of time was not tried, so it
-	// is not charged: if nothing else failed, the attempt is not counted, and an
-	// article with nothing to write is not touched at all.
-	if putOff && failed == 0 {
+	// An image search or chart put off was not tried, so it is not charged:
+	// if nothing else failed, the attempt is not counted, and an article with
+	// nothing to write is not touched at all. Only an image search put off by
+	// the deadline ends the pass (putOff); a chart put off for want of time
+	// lets later articles fill their quicker fields.
+	if (putOff || chartPutOff) && failed == 0 {
 		if filled == 0 {
-			return 0, 0, true
+			return 0, 0, putOff
 		}
 		u.Uncounted = true
 	}
@@ -575,8 +587,19 @@ func (s *Service) drawInfographic(u *db.EnrichmentUpdate, a db.ArticleNeedingEnr
 	if ms := s.outletMatcher().DerivedTextMentions(words, a.Title); len(ms) > 0 {
 		return false, fmt.Errorf("infographic names a news site (%s): %q", ms[0].Outlet, ms[0].Text)
 	}
+	// Every figure must be one the article states: a made-up or miscopied
+	// number would be published as fact. See ai.UnsupportedChartNumbers.
+	if bad := ai.UnsupportedChartNumbers(words, a.Title, a.TLDR, details, ai.VisibleText(a.Content)); len(bad) > 0 {
+		return false, fmt.Errorf("infographic shows numbers the article does not: %q", bad)
+	}
 	u.InfographicSVG = &markup
 	return true, nil
+}
+
+// infographicBudget is how long a chart may take: every model in the chain
+// timing out in turn (see ai.InfographicCallTimeout).
+func (s *Service) infographicBudget() time.Duration {
+	return ai.InfographicCallTimeout * time.Duration(max(len(s.models), 1))
 }
 
 // failImageRequest tells the admin their request for a new image found

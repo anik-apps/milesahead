@@ -146,3 +146,26 @@ func TestRun_MissingDatabaseIsNotCreated(t *testing.T) {
 		t.Error("a missing database was created")
 	}
 }
+
+// A database from before infographics has no infographic_svg column; the
+// tool still reports everything else rather than failing.
+func TestRun_DatabaseWithoutTheInfographicColumn(t *testing.T) {
+	path := seed(t)
+	database, err := db.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB().Exec(`ALTER TABLE generated_articles DROP COLUMN infographic_svg`); err != nil {
+		t.Fatalf("drop column: %v", err)
+	}
+	database.Close()
+
+	var out bytes.Buffer
+	if err := run([]string{"-db", path}, &out); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "content [The Points Guy]") || strings.Contains(got, "infographic [") {
+		t.Errorf("unexpected output without the column:\n%s", got)
+	}
+}

@@ -120,9 +120,17 @@ type hit struct {
 // scan checks every article's title, TLDR, key details, body, Scout's Take,
 // links and the words of its infographic.
 func scan(conn *sql.DB, m *ai.OutletMatcher, only map[string]bool) ([]hit, error) {
+	// A database from before infographics has no infographic_svg column,
+	// and the tool opens it read-only, so no migration adds one.
+	chartCol := "''"
+	if ok, err := hasColumn(conn, "generated_articles", "infographic_svg"); err != nil {
+		return nil, err
+	} else if ok {
+		chartCol = "COALESCE(infographic_svg,'')"
+	}
 	rows, err := conn.Query(`SELECT id, status, COALESCE(title,''), COALESCE(tldr,''),
 		COALESCE(key_details,''), COALESCE(content,''), COALESCE(scouts_take,''), COALESCE(links,''),
-		COALESCE(infographic_svg,'')
+		` + chartCol + `
 		FROM generated_articles ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("list articles: %w", err)
@@ -165,10 +173,10 @@ func scan(conn *sql.DB, m *ai.OutletMatcher, only map[string]bool) ([]hit, error
 		if chart != "" && chart != db.NoInfographic {
 			// A chart that is not well-formed is never shown, so there is
 			// nothing a reader could see to check.
+			// Checked whole, as enrichment checks it, so an outlet's name
+			// split across two labels is still found.
 			if words, err := svg.Text(chart); err == nil {
-				for _, line := range strings.Split(words, "\n") {
-					check("infographic", line)
-				}
+				check("infographic", words)
 			}
 		}
 		for _, l := range storedLinks(links) {
@@ -246,4 +254,23 @@ func parseList(s string) map[string]bool {
 		}
 	}
 	return out
+}
+
+// hasColumn reports whether table has the named column.
+func hasColumn(conn *sql.DB, table, column string) (bool, error) {
+	rows, err := conn.Query(`SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return false, fmt.Errorf("reading %s columns: %w", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }

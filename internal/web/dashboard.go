@@ -298,6 +298,8 @@ var dashboardMessages = map[string]string{
 	"undone":             "Approval undone: the article is back in the queue and no longer on the site.",
 	"undo_expired":       "Too late to undo that approval. Use Unpublish on the Published page to take it down.",
 	"image_requested":    imageRequestedMessage,
+	"chart_removed":      chartRemovedMessage,
+	"chart_redraw":       chartRedrawMessage,
 }
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {

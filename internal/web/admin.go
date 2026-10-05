@@ -91,6 +91,9 @@ type adminArticleRow struct {
 	// charts can be reviewed before they are published.
 	Infographic     *articleInfographic
 	InfographicNone bool
+	// InfographicBroken: a chart is stored but no longer passes the
+	// sanitiser, so it is shown nowhere; Redraw or Remove replaces it.
+	InfographicBroken bool
 
 	// Queue row extras (dashboard.go).
 	Group        string // groupDecide, groupReady or groupRewriting
@@ -169,19 +172,28 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, row)
 	}
 	app.attachImageRequests(rows)
+	// Charts too, so ones drawn for the archive in "preview" mode can be
+	// checked here before "on" publishes them.
+	app.attachInfographics(rows)
 
 	data := map[string]interface{}{
-		"Title":     "Published Articles",
-		"Articles":  rows,
-		"Total":     total,
-		"CSRFToken": getCSRFToken(w, r),
-		"Message":   r.URL.Query().Get("msg"),
-		"MessageID": queryInt(r, "id"),
-		"Sort":      string(order),
-		"Sorts":     sortChoices(order, publishedSorts),
+		"Title":        "Published Articles",
+		"Infographics": infographicsState{Drawn: app.cfg.AI.DrawInfographics(), Shown: app.cfg.AI.ShowInfographics()},
+		"Articles":     rows,
+		"Total":        total,
+		"CSRFToken":    getCSRFToken(w, r),
+		"Message":      r.URL.Query().Get("msg"),
+		"MessageID":    queryInt(r, "id"),
+		"Sort":         string(order),
+		"Sorts":        sortChoices(order, publishedSorts),
 	}
-	if data["Message"] == "image_requested" {
+	switch data["Message"] {
+	case "image_requested":
 		data["MessageText"] = imageRequestedMessage
+	case "chart_removed":
+		data["MessageText"] = chartRemovedMessage
+	case "chart_redraw":
+		data["MessageText"] = chartRedrawMessage
 	}
 	// After a plain unpublish, the toast offers to put it back: approving
 	// the revision that was live, which needs that revision number.

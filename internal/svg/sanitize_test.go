@@ -229,16 +229,67 @@ func TestSanitize_Idempotent(t *testing.T) {
 	}
 }
 
-func TestTitleAndDesc(t *testing.T) {
-	got := sanitize(t, `<desc>Bars.</desc>`)
-	if Title(got) != "Fee vs value" {
-		t.Errorf("Title = %q, want %q", Title(got), "Fee vs value")
+// The chart's name and description are the root's own <title> and <desc>,
+// returned by SanitizeDoc rather than found by searching the markup: a
+// <title> on one shape is a tooltip, and must not become the chart's alt text.
+func TestSanitizeDoc_TitleAndDesc(t *testing.T) {
+	d, err := SanitizeDoc(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360">` +
+		`<g><title>Tooltip on a bar</title><rect x="1" y="1" width="2" height="2"/></g>` +
+		`<title id="t" class="x" onload="alert(1)">Fees &amp; credits</title><desc lang="en">Bars.</desc>` +
+		`<title>A second title</title><text x="1" y="1">a</text></svg>`)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if Desc(got) != "Bars." {
-		t.Errorf("Desc = %q, want %q", Desc(got), "Bars.")
+	if d.Title != "Fees & credits" || d.Desc != "Bars." {
+		t.Errorf("Title %q, Desc %q; want the root's own, unescaped", d.Title, d.Desc)
 	}
-	if Title("<svg></svg>") != "" || Desc("<svg><title>x</title></svg>") != "" {
-		t.Error("found a title or description where there is none")
+	// title and desc carry no attributes.
+	if strings.Contains(d.SVG, `<title id`) || strings.Contains(d.SVG, "onload") || strings.Contains(d.SVG, `<desc lang`) {
+		t.Errorf("title or desc kept attributes:\n%s", d.SVG)
+	}
+
+	// A title only on a shape is no name for the chart.
+	if _, err := SanitizeDoc(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 4">` +
+		`<g><title>Tooltip</title></g><text x="1" y="1">a</text></svg>`); err == nil {
+		t.Error("accepted a chart whose only <title> is not under the root")
+	}
+
+	// Markup inside a title is dropped, and is not part of the name.
+	d, err = SanitizeDoc(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 4">` +
+		`<title>Fee <tspan>hidden</tspan>vs value</title><text x="1" y="1">a</text></svg>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(d.SVG, "hidden") || d.Title != "Fee vs value" {
+		t.Errorf("Title %q from:\n%s", d.Title, d.SVG)
+	}
+}
+
+// A repeated attribute is not well-formed XML -- a browser refuses the whole
+// image -- so only the first of each name is written.
+func TestSanitize_DropsRepeatedAttributes(t *testing.T) {
+	got := sanitize(t, `<rect x="1" x="2" y="1" y="5" width="2" height="2" fill="#123" fill="#456"/>`)
+	if !strings.Contains(got, `<rect x="1" y="1" width="2" height="2" fill="#123">`) {
+		t.Errorf("repeated attributes were not collapsed to the first:\n%s", got)
+	}
+	checkOutput(t, got)
+}
+
+// Escaping can grow a document: a quote in text is one byte in and five out
+// (&#34;). The output is what pages carry, so it has the input's bound too.
+func TestSanitize_RejectsOversizedOutput(t *testing.T) {
+	wrap := func(text string) string {
+		return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 4"><title>t</title><text x="1" y="1">` + text + `</text></svg>`
+	}
+	if _, err := Sanitize(wrap(strings.Repeat(`"`, 1000))); err != nil {
+		t.Fatalf("small chart rejected: %v", err)
+	}
+	in := wrap(strings.Repeat(`"`, MaxInputBytes/4))
+	if len(in) > MaxInputBytes {
+		t.Fatalf("fixture is %d bytes, over the input cap", len(in))
+	}
+	if out, err := Sanitize(in); err == nil {
+		t.Errorf("output of %d bytes accepted", len(out))
 	}
 }
 
@@ -286,6 +337,18 @@ func checkOutput(t *testing.T, out string) {
 			if !allowedElements[e.Name.Local] {
 				t.Fatalf("output has element %q:\n%s", e.Name.Local, out)
 			}
+			if (e.Name.Local == "title" || e.Name.Local == "desc") && len(e.Attr) > 0 {
+				t.Fatalf("output has attributes on <%s>:\n%s", e.Name.Local, out)
+			}
+			// encoding/xml does not reject a repeated attribute, so the
+			// check is explicit: browsers do, and drop the whole image.
+			seen := map[string]bool{}
+			for _, a := range e.Attr {
+				if seen[a.Name.Local] {
+					t.Fatalf("output repeats attribute %q:\n%s", a.Name.Local, out)
+				}
+				seen[a.Name.Local] = true
+			}
 			for _, a := range e.Attr {
 				root := e.Name.Local == "svg" && depth == 1
 				if !allowedAttrs[a.Name.Local] && !(root && rootAttrs[a.Name.Local]) {
@@ -324,6 +387,7 @@ func FuzzSanitize(f *testing.F) {
 		strings.Replace(validWrapper, "%s", `<foreignObject><div xmlns="http://www.w3.org/1999/xhtml">x</div></foreignObject>`, 1),
 		strings.Replace(validWrapper, "%s", `<g transform="rotate(5)"><text x="1" y="1">a<tspan>b</tspan></text></g>`, 1),
 		strings.Replace(validWrapper, "%s", `<rect fill="&#x6A;avascript:x" x="1" y="1" width="1" height="1"/>`, 1),
+		strings.Replace(validWrapper, "%s", `<rect x="1" x="2" y="1" width="1" height="1"/><g><title id="a">tip</title></g>`, 1),
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 4"><title>t</title><text>a</text></svg><text>after</text>`,
 		"```svg\n<svg viewBox='0 0 1 1'><title>x</title><text>y</text></svg>\n```",
 	} {

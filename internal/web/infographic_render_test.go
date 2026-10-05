@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -179,7 +181,7 @@ func TestInfographic_AdminPreview(t *testing.T) {
 			[]string{`<figure class="article-infographic">`},
 			[]string{"Not shown on the site", "No infographic"}},
 		{config.InfographicsOn, db.NoInfographic,
-			[]string{"No infographic: enrichment found nothing in the key details to chart."},
+			[]string{"No infographic: enrichment found nothing in the key details to chart, or the chart was removed.", "Redraw chart"},
 			[]string{"article-infographic"}},
 		{config.InfographicsPreview, "",
 			[]string{"No infographic yet."},
@@ -211,3 +213,97 @@ func TestInfographic_AdminPreview(t *testing.T) {
 		})
 	}
 }
+
+// Approved articles are not in the review queue, so charts drawn for the
+// archive in "preview" mode are checked on Published: each row with a chart
+// has it folded under "Chart", with Remove and Redraw in its menu.
+func TestInfographic_PublishedRowsShowChartsAndActions(t *testing.T) {
+	app := setupRealTemplateApp(t, config.InfographicsPreview)
+	drawn := createInfographicArticle(t, app, "drawn", db.StatusApproved, sanitized)
+	createInfographicArticle(t, app, "nothing", db.StatusApproved, db.NoInfographic)
+	createInfographicArticle(t, app, "broken", db.StatusApproved, `<svg><script>alert(1)</script></svg>`)
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	rec := doAdminGET(t, app, "/admin/published", session)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("published status %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`<details class="p-chart">`, `(not on the site yet)`, `<img src="data:image/svg&#43;xml;base64,`,
+		`action="/admin/articles/` + idStr(drawn) + `/chart/remove"`,
+		`action="/admin/articles/` + idStr(drawn) + `/chart/redraw"`,
+		`>No chart</span>`, `>Chart unusable</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("published page missing %q", want)
+		}
+	}
+	if strings.Count(body, `<details class="p-chart">`) != 1 {
+		t.Error("only the article with a usable chart should have a Chart disclosure")
+	}
+	if strings.Contains(body, "alert(1)") {
+		t.Error("the broken chart reached the page")
+	}
+}
+
+// Remove stores the sentinel (off the page at once, not drawn again); Redraw
+// clears it with a fresh attempt budget. Both are CSRF-protected POSTs.
+func TestInfographic_RemoveAndRedraw(t *testing.T) {
+	app := setupRealTemplateApp(t, config.InfographicsOn)
+	id := createInfographicArticle(t, app, "chart", db.StatusApproved, sanitized)
+	if _, err := app.db.DB().Exec(`UPDATE generated_articles SET enrichment_attempts = 3 WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	read := func() (string, int) {
+		var s string
+		var n int
+		if err := app.db.DB().QueryRow(`SELECT infographic_svg, enrichment_attempts FROM generated_articles WHERE id = ?`, id).Scan(&s, &n); err != nil {
+			t.Fatal(err)
+		}
+		return s, n
+	}
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+
+	// Without the CSRF token the action is refused and nothing changes.
+	req := httptest.NewRequest(http.MethodPost, "/admin/articles/"+idStr(id)+"/chart/remove", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: session})
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code < 400 {
+		t.Errorf("remove without a CSRF token = %d, want refused", rec.Code)
+	}
+	if got, _ := read(); got != sanitized {
+		t.Fatalf("chart changed without a CSRF token: %q", got)
+	}
+
+	rec = doAdminPOST(t, app, "/admin/articles/"+idStr(id)+"/chart/remove", session, "", url.Values{"return": {"published"}})
+	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/admin/published?msg=chart_removed") {
+		t.Errorf("remove = %d to %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if got, _ := read(); got != db.NoInfographic {
+		t.Errorf("after remove, infographic_svg = %q", got)
+	}
+	if strings.Contains(get(t, app, "/article/chart"), "article-infographic") {
+		t.Error("a removed chart is still on the article page")
+	}
+
+	rec = doAdminPOST(t, app, "/admin/articles/"+idStr(id)+"/chart/redraw", session, "", nil)
+	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "msg=chart_redraw") ||
+		!strings.Contains(rec.Header().Get("Location"), "open="+idStr(id)) {
+		t.Errorf("redraw = %d to %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if got, attempts := read(); got != "" || attempts != 0 {
+		t.Errorf("after redraw: %q with %d attempts; want empty and a fresh budget", got, attempts)
+	}
+	arts, err := app.db.ListArticlesNeedingEnrichmentWithInfographics(3, 10)
+	if err != nil || len(arts) != 1 || !arts[0].MissingInfographic {
+		t.Errorf("after redraw the article should be listed for a chart: %+v, %v", arts, err)
+	}
+
+	rejected := createInfographicArticle(t, app, "rejected", db.StatusRejected, sanitized)
+	if rec := doAdminPOST(t, app, "/admin/articles/"+idStr(rejected)+"/chart/redraw", session, "", nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("redraw on a rejected article = %d, want 400", rec.Code)
+	}
+}
+
+func idStr(id int64) string { return strconv.FormatInt(id, 10) }

@@ -127,15 +127,40 @@ var (
 // ErrNoRoot means the input held no <svg> document at all.
 var ErrNoRoot = errors.New("no <svg> root element")
 
+// Doc is a sanitised SVG document.
+type Doc struct {
+	// SVG is the rewritten markup.
+	SVG string
+	// Title and Desc are the text of the root's own <title> and <desc>
+	// (direct children of <svg>), unescaped and trimmed: the chart's
+	// accessible name and description. A <title> deeper in the drawing is a
+	// tooltip on one shape, not a name for the chart, and is not used here.
+	Title, Desc string
+}
+
 // Sanitize extracts the SVG document from a model response and rewrites it
-// using only constructs on the allowlist.
+// using only constructs on the allowlist. See SanitizeDoc.
+func Sanitize(raw string) (string, error) {
+	d, err := SanitizeDoc(raw)
+	return d.SVG, err
+}
+
+// SanitizeDoc is Sanitize, also returning the chart's title and description.
 //
 // An error means nothing usable survived -- callers should treat that as "no
 // infographic this time" rather than substituting the raw input.
-func Sanitize(raw string) (string, error) {
+func SanitizeDoc(raw string) (Doc, error) {
+	svgOut, title, desc, err := rewrite(raw)
+	if err != nil {
+		return Doc{}, err
+	}
+	return Doc{SVG: svgOut, Title: strings.TrimSpace(title), Desc: strings.TrimSpace(desc)}, nil
+}
+
+func rewrite(raw string) (string, string, string, error) {
 	doc, err := extractDocument(raw)
 	if err != nil {
-		return "", err
+		return "", "", "", err
 	}
 
 	dec := xml.NewDecoder(strings.NewReader(doc))
@@ -146,15 +171,20 @@ func Sanitize(raw string) (string, error) {
 	dec.Entity = xml.HTMLEntity
 
 	var (
-		out        strings.Builder
+		b          strings.Builder
 		open       []string // allowed elements currently open, for closing tags
 		skipDepth  int      // >0 while inside a dropped element
 		elements   int
 		sawRoot    bool
 		rootClosed bool
-		title      string
 		hasText    bool
+		// capturing is "title" or "desc" while inside the root's first one
+		// of each; sawTitle and sawDesc record that it has been read.
+		capturing         string
+		sawTitle, sawDesc bool
+		title, desc       string
 	)
+	fail := func(err error) (string, string, string, error) { return "", "", "", err }
 
 	for {
 		tok, err := dec.Token()
@@ -162,7 +192,7 @@ func Sanitize(raw string) (string, error) {
 			break
 		}
 		if err != nil {
-			return "", fmt.Errorf("parsing svg: %w", err)
+			return fail(fmt.Errorf("parsing svg: %w", err))
 		}
 
 		switch t := tok.(type) {
@@ -170,7 +200,7 @@ func Sanitize(raw string) (string, error) {
 			if skipDepth > 0 {
 				skipDepth++
 				if skipDepth+len(open) > MaxDepth*4 {
-					return "", fmt.Errorf("svg nests deeper than %d", MaxDepth*4)
+					return fail(fmt.Errorf("svg nests deeper than %d", MaxDepth*4))
 				}
 				continue
 			}
@@ -193,36 +223,61 @@ func Sanitize(raw string) (string, error) {
 				skipDepth = 1
 				continue
 			}
+			if n := len(open); n > 0 && (open[n-1] == "title" || open[n-1] == "desc") {
+				// A title or description is text only; markup inside one
+				// is not rendered anywhere a reader would see it.
+				skipDepth = 1
+				continue
+			}
 			if elements++; elements > MaxElements {
-				return "", fmt.Errorf("svg has more than %d elements", MaxElements)
+				return fail(fmt.Errorf("svg has more than %d elements", MaxElements))
 			}
 			if len(open) >= MaxDepth {
-				return "", fmt.Errorf("svg nests deeper than %d", MaxDepth)
+				return fail(fmt.Errorf("svg nests deeper than %d", MaxDepth))
 			}
 
 			if name == "svg" {
 				sawRoot = true
 				w, h, vb, err := parseViewBox(attrValue(t, "viewBox"))
 				if err != nil {
-					return "", err
+					return fail(err)
 				}
 				// The model's own width/height are dropped: the canvas is the
 				// viewBox, and the page decides how large it is shown.
-				fmt.Fprintf(&out, `<svg xmlns="%s" viewBox="%s" width="%s" height="%s" color="%s" role="img">`,
+				fmt.Fprintf(&b, `<svg xmlns="%s" viewBox="%s" width="%s" height="%s" color="%s" role="img">`,
 					svgNS, vb, w, h, Ink)
 				open = append(open, name)
 				continue
 			}
 
-			out.WriteString("<" + name)
-			for _, a := range t.Attr {
-				if v, ok := cleanAttr(a); ok {
-					out.WriteString(" " + a.Name.Local + `="`)
-					xml.EscapeText(&out, []byte(v))
-					out.WriteString(`"`)
+			if (name == "title" || name == "desc") && len(open) == 1 {
+				// The root's own title and description are the chart's
+				// accessible name and description; the first of each is
+				// read (see Doc).
+				if name == "title" && !sawTitle {
+					capturing, sawTitle = name, true
+				} else if name == "desc" && !sawDesc {
+					capturing, sawDesc = name, true
 				}
 			}
-			out.WriteString(">")
+
+			b.WriteString("<" + name)
+			if name != "title" && name != "desc" {
+				// A repeated attribute is not well-formed XML, and a
+				// browser refuses the whole image over it, so only the
+				// first of each name is written. title and desc take no
+				// attributes at all: they carry text, not drawing.
+				written := map[string]bool{}
+				for _, a := range t.Attr {
+					if v, ok := cleanAttr(a); ok && !written[a.Name.Local] {
+						written[a.Name.Local] = true
+						b.WriteString(" " + a.Name.Local + `="`)
+						xml.EscapeText(&b, []byte(v))
+						b.WriteString(`"`)
+					}
+				}
+			}
+			b.WriteString(">")
 			open = append(open, name)
 
 		case xml.EndElement:
@@ -233,7 +288,10 @@ func Sanitize(raw string) (string, error) {
 			// Strict parsing guarantees end tags match their start tags, so
 			// the element closing here is always the top of the stack.
 			if n := len(open); n > 0 {
-				out.WriteString("</" + open[n-1] + ">")
+				b.WriteString("</" + open[n-1] + ">")
+				if n == 2 && open[1] == capturing {
+					capturing = ""
+				}
 				open = open[:n-1]
 				if n == 1 {
 					rootClosed = true
@@ -249,37 +307,44 @@ func Sanitize(raw string) (string, error) {
 				continue
 			}
 			text := string(t)
-			switch cur {
-			case "title":
+			switch {
+			case len(open) == 2 && capturing == "title":
 				title += text
-			case "text", "tspan":
+			case len(open) == 2 && capturing == "desc":
+				desc += text
+			case cur == "text" || cur == "tspan":
 				if strings.TrimSpace(text) != "" {
 					hasText = true
 				}
 			}
-			xml.EscapeText(&out, []byte(text))
+			xml.EscapeText(&b, []byte(text))
 		}
 		// Comments, processing instructions and directives are dropped: none of
 		// them render, and a directive is where a DTD would arrive.
 	}
 
 	if !sawRoot {
-		return "", ErrNoRoot
+		return fail(ErrNoRoot)
 	}
 	if !rootClosed {
 		// Strict parsing already fails on an unterminated document; this is
 		// the belt to that brace.
-		return "", fmt.Errorf("svg is unterminated")
+		return fail(fmt.Errorf("svg is unterminated"))
 	}
 	if strings.TrimSpace(title) == "" {
-		return "", fmt.Errorf("svg has no <title>, so it has no accessible name")
+		return fail(fmt.Errorf("svg has no <title> directly under the root, so it has no accessible name"))
 	}
 	if !hasText {
 		// A chart with no labels is decoration, and this one exists to carry
 		// the article's numbers.
-		return "", fmt.Errorf("svg contains no text")
+		return fail(fmt.Errorf("svg contains no text"))
 	}
-	return out.String(), nil
+	if b.Len() > MaxInputBytes {
+		// Re-serialising can only grow the input by its escaping, but the
+		// output is what pages carry, so it gets the same bound.
+		return fail(fmt.Errorf("sanitised svg is %d bytes, over the %d limit", b.Len(), MaxInputBytes))
+	}
+	return b.String(), title, desc, nil
 }
 
 // parseViewBox validates a viewBox and returns its width, height and a
@@ -297,29 +362,6 @@ func parseViewBox(raw string) (w, h, normalised string, err error) {
 		}
 	}
 	return m[3], m[4], strings.Join(m[1:5], " "), nil
-}
-
-// Title returns the accessible name of a sanitised SVG, still XML-escaped.
-func Title(sanitized string) string {
-	return firstElementText(sanitized, "title")
-}
-
-// Desc returns the description of a sanitised SVG, still XML-escaped, or "".
-func Desc(sanitized string) string {
-	return firstElementText(sanitized, "desc")
-}
-
-func firstElementText(sanitized, name string) string {
-	open, end := "<"+name+">", "</"+name+">"
-	start := strings.Index(sanitized, open)
-	if start == -1 {
-		return ""
-	}
-	stop := strings.Index(sanitized[start:], end)
-	if stop == -1 {
-		return ""
-	}
-	return strings.TrimSpace(sanitized[start+len(open) : start+stop])
 }
 
 // Text returns every word a reader can see or hear in an SVG -- its title,

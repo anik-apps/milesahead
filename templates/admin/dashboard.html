@@ -205,11 +205,30 @@
                                 <img src="{{.Src}}" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}} decoding="async">
                                 <figcaption>Chart drawn automatically from this article&rsquo;s key details.{{if not $.Infographics.Shown}} <span class="dim">Not shown on the site: ai.enrichment_infographics is not &ldquo;on&rdquo;.</span>{{end}}</figcaption>
                             </figure>
-                            {{else}}{{if .InfographicNone}}
-                            <p class="preview-missing">No infographic: enrichment found nothing in the key details to chart.</p>
+                            {{end}}
+                            {{if not .Infographic}}{{if .InfographicNone}}
+                            <p class="preview-missing">No infographic: enrichment found nothing in the key details to chart, or the chart was removed.</p>
+                            {{else if .InfographicBroken}}
+                            <p class="preview-missing">The stored chart no longer passes the sanitiser, so it is not shown. Redraw it, or remove it.</p>
                             {{else if $.Infographics.Drawn}}
                             <p class="preview-missing">No infographic yet. Enrichment draws one once the key details are in.</p>
                             {{end}}{{end}}
+                            {{if or .Infographic .InfographicNone .InfographicBroken}}
+                            <div class="chart-tools">
+                                {{if or .Infographic .InfographicBroken}}
+                                <form method="POST" action="/admin/articles/{{.ID}}/chart/remove" class="inline-form">
+                                    {{template "csrf_field" $}}
+                                    <input type="hidden" name="sort" value="{{$.Sort}}">
+                                    <button type="submit" class="btn btn-sm">Remove chart</button>
+                                </form>
+                                {{end}}
+                                <form method="POST" action="/admin/articles/{{.ID}}/chart/redraw" class="inline-form">
+                                    {{template "csrf_field" $}}
+                                    <input type="hidden" name="sort" value="{{$.Sort}}">
+                                    <button type="submit" class="btn btn-sm">Redraw chart</button>
+                                </form>
+                            </div>
+                            {{end}}
                             <div class="article-content">
                                 {{.Content | safeHTML}}
                             </div>
