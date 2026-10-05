@@ -9,6 +9,7 @@ import (
 	netmail "net/mail"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
@@ -238,6 +239,10 @@ func TestSend_MailUnavailable(t *testing.T) {
 	}
 
 	daily := NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "UTC"}, nil, nil, "milesahead.example")
+	// Pinned to a Wednesday: on a Saturday "today's" issue is the weekly
+	// one created above, and SendDaily refuses it for that reason first,
+	// so the test failed every Saturday.
+	daily.now = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 	daily.SetMailUnavailable(true)
 	if err := daily.SendDaily(); !errors.Is(err, ErrMailUnavailable) {
 		t.Errorf("SendDaily() = %v, want ErrMailUnavailable", err)
