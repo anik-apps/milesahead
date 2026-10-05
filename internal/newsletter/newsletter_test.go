@@ -399,8 +399,8 @@ func TestNewService_ResolvesTimezoneOnce(t *testing.T) {
 	svc := NewService(nil, &mockSender{}, config.NewsletterConfig{Timezone: "Not/AZone"})
 	for i := 0; i < 3; i++ {
 		svc.todayDate()
-		svc.thisSaturday()
-		svc.nextSaturday()
+		svc.thisSendDate()
+		svc.nextSendDate()
 	}
 	if svc.loc != time.UTC {
 		t.Errorf("loc = %v, want the UTC fallback", svc.loc)

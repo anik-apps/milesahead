@@ -138,7 +138,7 @@ func TestSendWeekly_PassesEachReadersUnsubscribeLink(t *testing.T) {
 	sender := &mockSender{}
 	svc := NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "America/New_York"}, nil, nil, "milesahead.example")
 	if _, err := database.CreateNewsletter(&db.Newsletter{
-		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &live,
+		Date: svc.thisSendDate(), Subject: "MilesAhead Weekly", Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &live,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestSend_MailUnavailable(t *testing.T) {
 	svc := NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "America/New_York"}, nil, nil, "milesahead.example")
 	svc.SetMailUnavailable(true)
 	if _, err := database.CreateNewsletter(&db.Newsletter{
-		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &live,
+		Date: svc.thisSendDate(), Subject: "MilesAhead Weekly", Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &live,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestSend_MailUnavailable(t *testing.T) {
 	if d := emailCount(t, metrics.EmailFailed) - failed0; d != 0 {
 		t.Errorf("a skipped send counted %v failures, want 0", d)
 	}
-	if nl, _ := database.GetNewsletterByDate(svc.thisSaturday()); nl == nil || nl.Status != "auto_approved" {
+	if nl, _ := database.GetNewsletterByDate(svc.thisSendDate()); nl == nil || nl.Status != "auto_approved" {
 		t.Errorf("the weekly should stay unsent, got %+v", nl)
 	}
 

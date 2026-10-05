@@ -29,7 +29,7 @@ type confirmData struct {
 	ConfirmURL     string
 	UnsubscribeURL string
 	// When is how often the newsletter comes, "every Saturday at 8:00 AM
-	// ET" (newsletter.WeeklySendWhen); empty, the email says "once a week".
+	// ET" (newsletter.Schedule.When); empty, the email says "once a week".
 	When string
 }
 

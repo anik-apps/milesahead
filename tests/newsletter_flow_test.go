@@ -112,7 +112,7 @@ func TestNewsletterFlow_SignUpToOneClickUnsubscribe(t *testing.T) {
 	smtp := &smtpCapture{}
 	sender := mail.NewSender(cfg.Mail.SMTP)
 	sender.SetDialFunc(func() (mail.SendCloser, error) { return smtp, nil })
-	sender.SetNewsletterSchedule(newsletter.WeeklySendWhen)
+	sender.SetNewsletterSchedule(newsletter.DefaultSchedule().When())
 
 	nlSvc := newsletter.NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "America/New_York"}, nil, nil, cfg.Server.Domain)
 	app, err := web.NewAppWithTemplateDir(cfg, database, article.NewManager(database, ai.NewPipeline(nil, nil, 70)),

@@ -181,6 +181,9 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          # Where vote alerts are emailed (votes.alert_email). Unset, they
+          # are shown on the admin Published page only.
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
         run: |
           set -eo pipefail
           q() { jq -n --arg v "$1" '$v'; }
@@ -198,6 +201,7 @@ jobs:
           SMTP_USER_Q=$(q "${SMTP_USER:-placeholder}")
           SMTP_PASSWORD_Q=$(q "${SMTP_PASSWORD:-placeholder}")
           SMTP_FROM_Q=$(q "${SMTP_FROM:-noreply@milesahead.kumaranik.com}")
+          ALERT_EMAIL_Q=$(q "${ALERT_EMAIL}")
 
           cat > "$CONFIG_OUT" << CONFIGEOF
           server:
@@ -255,6 +259,9 @@ jobs:
               poll_interval: 120
 
           newsletter:
+            # Saturday 08:00 New York time; the issue is built the evening
+            # before. See config.example.yaml.
+            send_day: "saturday"
             send_time: "08:00"
             timezone: "America/New_York"
             # Open since 2026-10-02: SMTP secrets set (OCI Email Delivery),
@@ -267,6 +274,7 @@ jobs:
             alert_threshold: 10
             alert_ratio: 0.4
             alert_window: 24
+            alert_email: ${ALERT_EMAIL_Q}
           CONFIGEOF
 
       # The config must load before it replaces the server's: a bad value

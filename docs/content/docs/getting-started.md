@@ -68,14 +68,16 @@ All settings live in a single `config.yaml` file. `config.example.yaml` document
 | `ai` | `unsplash_key` | Unsplash API key for image search |
 | `ai` | `pexels_key` | Pexels API key for image search |
 | `mail` | `smtp.host`, `smtp.port`, `smtp.user`, `smtp.password`, `smtp.from` | Outbound email; see [Email](../deployment/email/) |
-| `mail` | `imap.*` | Inbound review replies. The poller only runs when `imap.host` is not `localhost` and the password is not `placeholder`; production leaves it off |
-| `newsletter` | `timezone` | Which day counts as "today" for newsletter issue dates (UTC when empty). The weekly send itself is fixed at Saturday 8:00 AM New York time |
-| `newsletter` | `send_time` | Shown on the admin settings page; it does not move the send schedule |
+| `mail` | `imap.*` | Mailbox for review-by-email replies. Review by email is not built, so the poller never starts; startup logs `review by email is off (mail.imap not configured)` with the deploy's placeholders, and the settings page says "Review by email: off" |
+| `newsletter` | `send_day` | Day the weekly issue goes out: a weekday name or its first three letters (default `saturday`). The issue is built at 20:00 the day before |
+| `newsletter` | `send_time` | Time it goes out, 24-hour `HH:MM` (default `08:00`) |
+| `newsletter` | `timezone` | IANA zone for `send_day` and `send_time`, and for which day counts as "today" for issue dates (default `America/New_York`). The sign-up page, confirmation email and admin pages say the schedule in words ("every Saturday at 8:00 AM ET"). A value that cannot be read fails the config check |
 | `newsletter` | `signup_enabled` | Opens newsletter sign-up (default `false`; on in production). See [Newsletter](../features/newsletter/#the-sign-up-switch) |
 | `newsletter` | `unsubscribe_mailbox` | Adds a `mailto:` to `List-Unsubscribe`; leave empty unless someone reads that mailbox |
-| `votes` | `alert_threshold` | Minimum downvotes before alerting |
-| `votes` | `alert_ratio` | Downvote ratio that triggers an alert |
-| `votes` | `alert_window` | Alert window in hours (loaded, not yet used by the check) |
+| `votes` | `alert_threshold` | Minimum downvotes in the window before alerting |
+| `votes` | `alert_ratio` | Share of the window's votes that must be downvotes |
+| `votes` | `alert_window` | Hours of votes the alert check counts (production 24; 0 counts all votes) |
+| `votes` | `alert_email` | Where vote alerts are also emailed (the `ALERT_EMAIL` deploy secret). Empty by default: alerts are shown on the admin Published page only |
 | `site` | `persona_name` | AI persona name (default `Scout`) |
 
 ## Admin Password Hash

@@ -35,9 +35,10 @@ var templateFuncs = template.FuncMap{
 	},
 	"scrollTables": scrollTables,
 	// newsletterWhen and newsletterDay tell readers when the newsletter
-	// comes: "every Saturday at 8:00 AM ET", "Saturday".
-	"newsletterWhen": func() string { return newsletter.WeeklySendWhen },
-	"newsletterDay":  func() string { return newsletter.WeeklySendDay },
+	// comes: "every Saturday at 8:00 AM ET", "Saturday". Replaced per App
+	// by loadTemplates with the configured schedule.
+	"newsletterWhen": func() string { return newsletter.DefaultSchedule().When() },
+	"newsletterDay":  func() string { return newsletter.DefaultSchedule().DayName() },
 	// signupOpen is replaced per App by loadTemplates; see App.signupOpen.
 	"signupOpen": func() bool { return false },
 	"endedLabel": endedLabel,
@@ -110,6 +111,20 @@ type App struct {
 	mailer ConfirmationMailer
 	// subscribeLimiter caps sign-up attempts per IP address.
 	subscribeLimiter *rateLimiter
+	// schedule is when the weekly newsletter goes out, from the config.
+	schedule newsletter.Schedule
+}
+
+// newsletterSchedule reads the weekly schedule from cfg. config.Load has
+// checked it; a config that did not come through Load (a test fixture) and
+// cannot be read gets the default.
+func newsletterSchedule(cfg *config.Config) newsletter.Schedule {
+	if cfg != nil {
+		if s, err := newsletter.ScheduleFor(cfg.Newsletter); err == nil {
+			return s
+		}
+	}
+	return newsletter.DefaultSchedule()
 }
 
 // offerToday is the date offer end dates are compared against
@@ -149,6 +164,7 @@ func NewApp(cfg *config.Config, database *db.Database, mgr *article.Manager, vot
 
 		cardDetectDelay:  undoWindow,
 		subscribeLimiter: newRateLimiter(subscribeMaxAttempts, subscribeWindow),
+		schedule:         newsletterSchedule(cfg),
 	}
 
 	if err := app.loadTemplates("templates"); err != nil {
@@ -177,6 +193,7 @@ func NewAppWithTemplateDir(cfg *config.Config, database *db.Database, mgr *artic
 
 		cardDetectDelay:  undoWindow,
 		subscribeLimiter: newRateLimiter(subscribeMaxAttempts, subscribeWindow),
+		schedule:         newsletterSchedule(cfg),
 	}
 
 	if err := app.loadTemplates(templateDir); err != nil {
@@ -235,6 +252,9 @@ func (app *App) loadTemplates(dir string) error {
 		// Read as each page renders: the mailer is set after the templates
 		// are parsed.
 		"signupOpen": app.signupOpen,
+		// The configured schedule, for the sign-up page.
+		"newsletterWhen": app.schedule.When,
+		"newsletterDay":  app.schedule.DayName,
 	}
 
 	// Parse each page template separately with the layout so that each gets

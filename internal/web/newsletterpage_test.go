@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/newsletter"
 )
 
 func TestNewsletterStatusNote(t *testing.T) {
@@ -27,12 +29,24 @@ func TestNewsletterStatusNote(t *testing.T) {
 		{&db.Newsletter{Date: "2026-09-26", Status: "draft"}, 5, "Not sent: this issue was for Sat Sep 26, which has passed"},
 		{&db.Newsletter{Date: "2026-09-26", Status: "approved"}, 5, "Not sent: this issue was for Sat Sep 26, which has passed"},
 	} {
-		if got := newsletterStatusNote(c.nl, c.n, "2026-10-01"); !strings.HasPrefix(got, c.want) {
+		if got := newsletterStatusNote(c.nl, c.n, "2026-10-01", newsletter.DefaultSchedule()); !strings.HasPrefix(got, c.want) {
 			t.Errorf("%s: got %q, want it to start %q", c.nl.Status, got, c.want)
 		}
 	}
-	if newsletterStatusNote(nil, 3, "2026-10-01") != "" {
+	if newsletterStatusNote(nil, 3, "2026-10-01", newsletter.DefaultSchedule()) != "" {
 		t.Error("no issue, no note")
+	}
+
+	// A configured schedule is what the note tells the admin.
+	sunday, err := newsletter.ScheduleFor(config.NewsletterConfig{SendDay: "sunday", SendTime: "18:30", Timezone: "America/Los_Angeles"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := newsletterStatusNote(&db.Newsletter{Date: "2026-10-04", Status: "approved"}, 2, "2026-10-01", sunday); got != "Goes out Sun Oct 4, 6:30 PM PT, to 2 confirmed subscribers." {
+		t.Errorf("configured schedule: %q", got)
+	}
+	if got := newsletterStatusNote(&db.Newsletter{Date: "2026-09-27", Status: "draft"}, 2, "2026-10-01", sunday); !strings.HasSuffix(got, "The next issue is built on Saturday evening.") {
+		t.Errorf("configured schedule, passed issue: %q", got)
 	}
 }
 

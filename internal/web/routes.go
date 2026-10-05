@@ -75,6 +75,10 @@ func (app *App) setupRoutes() {
 	adminMux.HandleFunc("POST /admin/articles/{id}/unpublish-revise", app.handleUnpublishAndRevise)
 	adminMux.HandleFunc("POST /admin/articles/{id}/new-image", app.handleRequestNewImage)
 
+	// Vote alerts, listed on the Published page.
+	adminMux.HandleFunc("POST /admin/vote-alerts/{id}/acknowledge", app.handleAcknowledgeVoteAlert)
+	adminMux.HandleFunc("POST /admin/vote-alerts/acknowledge-all", app.handleAcknowledgeAllVoteAlerts)
+
 	// Newsletter action routes.
 	adminMux.HandleFunc("POST /admin/newsletter/send", app.handleNewsletterSend)
 	adminMux.HandleFunc("POST /admin/newsletter/feature", app.handleNewsletterFeature)
