@@ -121,6 +121,28 @@ func infographicModels(cfg *config.Config, enrichModels []string) []string {
 	return enrichModels
 }
 
+// preflightEnrichmentModels is what the boot preflight checks under the
+// enrichment role: the enrichment chain, plus any chart model not already in
+// it while charts are drawn, so a retired or mistyped infographic_model is
+// reported at boot like any other model rather than on the first chart.
+func preflightEnrichmentModels(cfg *config.Config, enrichModels []string) []string {
+	out := append([]string(nil), enrichModels...)
+	if !cfg.AI.DrawInfographics() {
+		return out
+	}
+	seen := map[string]bool{}
+	for _, m := range out {
+		seen[m] = true
+	}
+	for _, m := range infographicModels(cfg, enrichModels) {
+		if !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // criticChainRetries is how often each critic in a multi-critic chain retries.
 const criticChainRetries = 1
 
@@ -338,7 +360,7 @@ func main() {
 	go func() {
 		results := ai.PreflightAllWithCriticClient(hfClient, criticClient, cfg.AI.GeneratorModel,
 			ai.SplitModels(cfg.AI.FallbackGeneratorModel), criticModels(cfg),
-			[]string{visionModel}, enrichModels)
+			[]string{visionModel}, preflightEnrichmentModels(cfg, enrichModels))
 		switch {
 		case ai.PublishingViable(results):
 			slog.Info("ai preflight complete", "summary", ai.PreflightSummary(results))
