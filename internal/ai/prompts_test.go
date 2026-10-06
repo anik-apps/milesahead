@@ -289,6 +289,13 @@ func TestInfographicPrompt_StatesTheNumberRules(t *testing.T) {
 		"Every number you draw must appear in the article above",
 		"add up or subtract",
 		"Do not number the axes",
+		// What the edge check enforces, with the limits a model can count to.
+		"text running past an edge is thrown away",
+		"keep the headline to 40 characters, the takeaway to 50, and each row label to 16",
+		// What no check can catch.
+		"in the same unit",
+		"Never draw a ratio",
+		"order of steps exactly as the article puts it",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("infographic prompt missing %q", want)

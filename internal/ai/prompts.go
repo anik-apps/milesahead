@@ -568,8 +568,9 @@ WHAT TO DRAW
 Pick the one comparison that carries the article and draw it. Usually that is a horizontal bar chart comparing two to five labelled amounts, but use a simple timeline if the story is about dates, or a small grid of stat cards if the numbers do not compare to each other.
 - Every number you draw must appear in the article above, written as the article writes it. Do not invent, round, extrapolate, add up or subtract figures: a chart showing a number the article does not state is thrown away.
 - Do not number the axes: no tick values, gridline values or scales. Bar lengths show the proportions; the value label on each bar gives the number.
+- Bars compare amounts of the same kind in the same unit: dollars with dollars, points with points, a percentage with a percentage of the same thing. Never draw a ratio (1:3), a multiplier or a rate as a bar, and never put a percentage beside a ratio, or one program's points beside another's, on one scale: the bar lengths would claim a comparison the numbers do not make. If the numbers do not share a unit, use stat cards instead.
 - Label every bar or row with both its name and its value. A chart nobody can read the numbers off is useless.
-- Include a short headline at the top and a one-line takeaway at the bottom.
+- Include a short headline at the top and a one-line takeaway at the bottom. The takeaway must say what the article says: keep any rule, condition or order of steps exactly as the article puts it (activate before you spend, not after), or state a number instead.
 - If the article has no comparable numbers at all, output exactly: NO_INFOGRAPHIC
 
 WORDS IN THE CHART
@@ -588,7 +589,8 @@ STRICT OUTPUT RULES
 - font-family must be: sans-serif
 - Must be well-formed XML: quote every attribute value, close every tag (<rect ... /> or <text ...>…</text>), and escape & as &amp;.
 - Keep it under 60 elements and stay inside the 560x360 viewBox. Nothing outside it is rendered.
-- The chart is shown 560 wide on a computer and about 340 wide on a phone, so text must be large: font-size 22 for the headline, 18 for every label and value, never below 16. Use short labels (at most about 16 characters) and at most five rows.
+- The chart is shown 560 wide on a computer and about 340 wide on a phone, so text must be large: font-size 22 for the headline, 18 for every label and value, never below 16. At most five rows.
+- Text does not wrap, and anything past the edge of the 560x360 frame is cut off, so a chart with any text running past an edge is thrown away. At font-size 18 a character is about 10 units wide, at 22 about 12: keep the headline to 40 characters, the takeaway to 50, and each row label to 16. Name the thing ("JAL", "Old fee") and leave the details to the value label or the takeaway.
 - Leave room for the value labels: end the longest bar at x=440 at most, so the value that follows it still fits. A label running past x=550 is clipped and its number is lost -- which defeats the diagram.
 - Left-hand row labels need room too: start the bars at x=180 or further right, and right-align those labels (text-anchor="end") just left of the bars.`, title, tldr, keyDetailsJSON)
 }

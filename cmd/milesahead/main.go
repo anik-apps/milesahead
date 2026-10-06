@@ -112,6 +112,15 @@ func newInfographicClient(hfClient *ai.HFClient) *ai.HFClient {
 	return hfClient.WithRequestTimeout(ai.InfographicCallTimeout).WithMaxRetries(0)
 }
 
+// infographicModels is the chain charts are drawn with: infographic_model,
+// or the enrichment chain when that is unset.
+func infographicModels(cfg *config.Config, enrichModels []string) []string {
+	if models := ai.SplitModels(cfg.AI.InfographicModel); len(models) > 0 {
+		return models
+	}
+	return enrichModels
+}
+
 // criticChainRetries is how often each critic in a multi-critic chain retries.
 const criticChainRetries = 1
 
@@ -374,7 +383,9 @@ func main() {
 	if cfg.AI.DrawInfographics() {
 		enricher.Infographics = true
 		enricher.InfographicClient = newInfographicClient(hfClient)
-		slog.Info("article infographics are drawn", "mode", cfg.AI.EnrichmentInfographics)
+		enricher.InfographicModels = infographicModels(cfg, enrichModels)
+		slog.Info("article infographics are drawn", "mode", cfg.AI.EnrichmentInfographics,
+			"models", enricher.InfographicModels)
 	}
 	if cfg.AI.EnrichmentMaxAttempts > 0 {
 		enricher.MaxAttempts = cfg.AI.EnrichmentMaxAttempts

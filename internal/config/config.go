@@ -96,14 +96,18 @@ type AIConfig struct {
 	// it on the article page. The admin shows stored charts in every mode.
 	// See config.example.yaml.
 	EnrichmentInfographics string `yaml:"enrichment_infographics"`
-	Critic2Model           string `yaml:"critic2_model"`
-	HFAPIToken             string `yaml:"hf_api_token"`
-	HFBaseURL              string `yaml:"hf_base_url"`
-	CriticThreshold        int    `yaml:"critic_threshold"`
-	MaxRetries             int    `yaml:"max_retries"`
-	CacheTTL               int    `yaml:"cache_ttl"`
-	UnsplashKey            string `yaml:"unsplash_key"`
-	PexelsKey              string `yaml:"pexels_key"`
+	// InfographicModel is the chain charts are drawn with. Comma-separated;
+	// tried in order, and a chart one model gets wrong goes to the next.
+	// Empty uses enrichment_model.
+	InfographicModel string `yaml:"infographic_model"`
+	Critic2Model     string `yaml:"critic2_model"`
+	HFAPIToken       string `yaml:"hf_api_token"`
+	HFBaseURL        string `yaml:"hf_base_url"`
+	CriticThreshold  int    `yaml:"critic_threshold"`
+	MaxRetries       int    `yaml:"max_retries"`
+	CacheTTL         int    `yaml:"cache_ttl"`
+	UnsplashKey      string `yaml:"unsplash_key"`
+	PexelsKey        string `yaml:"pexels_key"`
 }
 
 type SMTPConfig struct {
