@@ -270,9 +270,11 @@ One call per article on the `ai.infographic_model` chain (the
 `enrichment_model` chain when unset), after the image and only once key details
 exist. Production puts nemotron-3-super first and gpt-oss-20b second, the
 reverse of `enrichment_model`: drawing charts for ten real articles, gpt-oss-20b
-timed out on 4 of 10, while nemotron-3-super answered every time, in 22 to 46
-seconds. It asks for up to 6,144 tokens, more than the 30-second short-call
-class allows, so it has its own client: 120 seconds per model
+timed out at 120 seconds on 4 of 10, while nemotron-3-super answered all four
+calls that reached it, in 22 to 46 seconds. It asks for up to 12,288 tokens: at
+6,144, a second run had nemotron-3-super spend the whole budget reasoning, with
+no SVG written, on 4 of 10 articles, and none of 16 calls ran out at 12,288.
+That is more than the 30-second short-call class allows, so it has its own client: 120 seconds per model
 (`ai.InfographicCallTimeout`) and no retries, rather than the generator's
 `request_timeout` and retries. With production's two-model chain one chart can
 take up to 240 seconds.

@@ -24,12 +24,17 @@ const (
 	TagsTokens       = 512
 	KeyDetailTokens  = 1024
 
-	// InfographicTokens is an order of magnitude larger because the answer is
-	// markup, not a sentence: a labelled bar chart runs 2-4 KB, and a
-	// reasoning model spends its budget on layout arithmetic before it emits
-	// the first tag. Truncation here is total -- the sanitiser rejects an
-	// unterminated document outright -- so the ceiling is set well clear.
-	InfographicTokens = 6144
+	// InfographicTokens is far larger because the answer is markup, not a
+	// sentence: a labelled bar chart runs 2-4 KB, and a reasoning model
+	// spends most of its budget on layout arithmetic before it emits the
+	// first tag. Truncation here is total -- the sanitiser rejects an
+	// unterminated document, and a reply cut off mid-reasoning has no SVG in
+	// it at all -- so the ceiling is set well clear. It was 6,144: drawing
+	// ten real articles on 2026-10-06, nemotron-3-super ran out on 4 of 10
+	// and gpt-oss-20b on 2 of 3, returning nothing. At 12,288 none of 16
+	// calls ran out, and all answered in 6-86s. Time is bounded by
+	// InfographicCallTimeout, not by this.
+	InfographicTokens = 12288
 )
 
 // InfographicCallTimeout bounds one infographic call.

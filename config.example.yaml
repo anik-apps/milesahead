@@ -154,7 +154,8 @@ ai:
   # The chain charts are drawn with; empty uses enrichment_model. Reversed
   # from enrichment_model: drawing charts for ten real articles on
   # 2026-10-05, gpt-oss-20b timed out at 120s on 4 of 10 and took 46-70s
-  # otherwise; nemotron-3-super answered every time it was asked, in 22-46s.
+  # otherwise; nemotron-3-super answered all four calls that reached it, in
+  # 22-46s.
   # The charts were of similar quality; the 503s that put nemotron-3-super
   # second in enrichment_model fall through to gpt-oss-20b here.
   infographic_model: "nvidia/nemotron-3-super-120b-a12b,openai/gpt-oss-20b"
