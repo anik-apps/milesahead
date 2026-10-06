@@ -304,8 +304,14 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       two equal). Set both to `"preview"`, let a few passes run, and judge the charts in
       the review queue preview and on Published (each row's "Chart"): numbers match the
       Key Details, labels fit, nothing names a news site. Remove or redraw any that are
-      wrong, then set `"on"`. Not yet checked against the production enrichment chain
-      (gpt-oss-20b, nemotron-3-super); the 2026-09-22 trial used the 550B generator.
+      wrong, then set `"on"`. Checked locally on 2026-10-05 against ten published
+      articles with the production models: 9 drawn, 1 correctly "nothing to chart",
+      every number in its article, but only 2-3 publishable. Five had labels cut off
+      at the edge (now refused by `svg.Overflow` and passed to the next model); two
+      drew bars for things that do not compare (a percentage beside a ratio, two
+      programs' points) and one reversed the article's rule in its takeaway. The
+      prompt now forbids both, but no check can catch them, so review every chart
+      in `preview` before `on`.
 
 - [ ] **Fix stored articles that name news sites** — `cmd/flag-outlet-mentions`
       (read-only) found 33 on 2026-10-01: 6 approved, 18 pending, 6 draft, 2 rejected,

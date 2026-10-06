@@ -266,13 +266,21 @@ redrawn whatever the mode; only article pages depend on `on`.
 
 ### The call
 
-One call per article on the `enrichment_model` chain, after the image and only
-once key details exist. It asks for up to 6,144 tokens, more than the 30-second
-short-call class allows, so it has its own client: 120 seconds per model
+One call per article on the `ai.infographic_model` chain (the
+`enrichment_model` chain when unset), after the image and only once key details
+exist. Production puts nemotron-3-super first and gpt-oss-20b second, the
+reverse of `enrichment_model`: drawing charts for ten real articles, gpt-oss-20b
+timed out on 4 of 10, while nemotron-3-super answered every time, in 22 to 46
+seconds. It asks for up to 6,144 tokens, more than the 30-second short-call
+class allows, so it has its own client: 120 seconds per model
 (`ai.InfographicCallTimeout`) and no retries, rather than the generator's
 `request_timeout` and retries. With production's two-model chain one chart can
-take up to 240 seconds. The chain is the retry within a pass, and the next pass
-the retry after that.
+take up to 240 seconds.
+
+The chain is the retry within a pass, and not only for failed calls: a chart
+that fails any check below goes to the next model too. Only when no model's
+chart is usable is the article left for the next pass. A model that answers
+that there is nothing to chart ends the chain.
 
 The chart is put off, without using an attempt, when the pass deadline has
 passed, when less of the pass is left than the whole chain could take (120
@@ -282,7 +290,8 @@ should not wait on a chart). Only the first of these ends the pass; otherwise
 later articles still get their quicker fields.
 
 There are three outcomes. A chart is stored in `infographic_svg`. A failure
-leaves the column empty for a later pass and uses an attempt. An article with
+(every model's call failed or its chart was refused) leaves the column empty
+for a later pass and uses an attempt. An article with
 nothing to compare gets the sentinel `none`, so it is not asked again.
 
 Missing charts are not counted in `milesahead_articles_degraded`: every article
@@ -305,6 +314,27 @@ figure (a sum the article does not give) refuses the chart. The one exemption is
 bare integers up to 10 with no currency, unit or separator: axis ticks, row
 numbers and small counts. The prompt asks for no numbered axes and no derived
 figures, so a model is not refused for something it was not told.
+
+### Text past the edges
+
+The chart is shown as an image, which clips at its 560x360 frame, so a label
+that runs past an edge loses whatever falls outside: on the first charts the
+production models drew, five of nine had row labels so long that the airline
+names or tier percentages were cut off, with every number still in the markup.
+`svg.Overflow` refuses those. It estimates each run of text's width from
+Helvetica's character widths (Arial's are the same), at the font size, weight,
+letter spacing and anchor the chart gives it, through any transforms, and
+refuses the chart when one runs more than 2 units past an edge. On those nine
+charts it refused exactly the five that were cut off. The estimate is for
+macOS, iOS and Windows; Android's Roboto is a little narrower, and Linux's
+DejaVu Sans about a tenth wider, so text that only just fits may clip there.
+The prompt gives the limits a model can count to: 40 characters for the
+headline, 50 for the takeaway, 16 for a row label.
+
+The prompt also asks for what no check can catch, and the review below is for
+those: bars only for amounts of the same kind and unit (never a ratio or a
+percentage beside points), and a takeaway that keeps the article's rules and
+conditions as it states them.
 
 ### Reviewing charts
 
