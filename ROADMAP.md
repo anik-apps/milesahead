@@ -304,14 +304,16 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       two equal). Set both to `"preview"`, let a few passes run, and judge the charts in
       the review queue preview and on Published (each row's "Chart"): numbers match the
       Key Details, labels fit, nothing names a news site. Remove or redraw any that are
-      wrong, then set `"on"`. Checked locally on 2026-10-05 against ten published
-      articles with the production models: 9 drawn, 1 correctly "nothing to chart",
-      every number in its article, but only 2-3 publishable. Five had labels cut off
-      at the edge (now refused by `svg.Overflow` and passed to the next model); two
-      drew bars for things that do not compare (a percentage beside a ratio, two
-      programs' points) and one reversed the article's rule in its takeaway. The
-      prompt now forbids both, but no check can catch them, so review every chart
-      in `preview` before `on`.
+      wrong, then set `"on"`. Checked locally against ten published articles with
+      the production models. First run (2026-10-05): 9 drawn, every number in its
+      article, but only 2-3 publishable: five had labels cut off at the edge, two
+      drew bars for things that do not compare, one reversed the article's rule in
+      its takeaway. After the edge check, the same-unit and takeaway rules, the
+      nemotron-3-super-first chain and 12,288 tokens (2026-10-06): 7 drawn, 3
+      correctly "nothing to chart", none cut off, misleading or wrong; 5 good, 2
+      correct but thin (a tier chart whose labels repeat its values, a two-date
+      timeline). One label was wrong in a way no check sees ("Max nights" on a
+      points bar), so review every chart in `preview` before `on`.
 
 - [ ] **Fix stored articles that name news sites** — `cmd/flag-outlet-mentions`
       (read-only) found 33 on 2026-10-01: 6 approved, 18 pending, 6 draft, 2 rejected,
