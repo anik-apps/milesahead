@@ -628,9 +628,18 @@ type VoteCounts struct {
 }
 
 func (d *Database) GetVoteCounts(articleID int64) (*VoteCounts, error) {
+	return d.GetVoteCountsSince(articleID, time.Time{})
+}
+
+// GetVoteCountsSince counts an article's votes cast at or after since; a
+// zero since counts them all.
+func (d *Database) GetVoteCountsSince(articleID int64, since time.Time) (*VoteCounts, error) {
 	vc := &VoteCounts{}
+	// created_at is SQLite's CURRENT_TIMESTAMP: UTC, "2006-01-02 15:04:05".
 	err := d.db.QueryRow(
-		`SELECT COALESCE(SUM(CASE WHEN vote > 0 THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN vote < 0 THEN 1 ELSE 0 END), 0) FROM article_votes WHERE article_id = ?`, articleID,
+		`SELECT COALESCE(SUM(CASE WHEN vote > 0 THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN vote < 0 THEN 1 ELSE 0 END), 0)
+		FROM article_votes WHERE article_id = ? AND created_at >= ?`,
+		articleID, since.UTC().Format(sqliteTime),
 	).Scan(&vc.Upvotes, &vc.Downvotes)
 	if err != nil {
 		return nil, err

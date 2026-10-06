@@ -37,10 +37,10 @@ copied off the server.
 | `internal/web` | Public site, admin dashboard, sign-up and unsubscribe, JSON API, error pages, caching headers |
 | `internal/scheduler` | Cron jobs: scan, enrichment, revision reconciler, newsletter build and send, mail polling |
 | `internal/newsletter` | Weekly issue: build, AI pick, Card of the Week, per-reader send; the admin's manual send |
-| `internal/mail` | Outbound SMTP (`outbound.go`: confirmations, newsletters with per-reader `List-Unsubscribe`, vote alerts) and the IMAP review-reply poller (`inbound.go`, not running in production) |
+| `internal/mail` | Outbound SMTP (`outbound.go`: confirmations, newsletters with per-reader `List-Unsubscribe`, vote alerts to `votes.alert_email`) and the IMAP review-reply poller (`inbound.go`, not running in production) |
 | `internal/offer` | Reads an offer's end date from its key details (`expires_on`) and decides, in Hawaii time, whether it has ended |
 | `internal/metrics` | Prometheus metrics served at `/metrics` |
-| `internal/vote` | Reader votes with downvote-ratio alerts |
+| `internal/vote` | Reader votes with downvote alerts: counted over `votes.alert_window`, recorded in `vote_alerts` for the admin Published page |
 | `internal/config` | YAML config; `${NAME}` expands only when it is a whole value |
 | `internal/seeddata` | Real card data plus made-up articles for tests and local previews, never production data |
 
@@ -70,6 +70,7 @@ start and are idempotent.
 | `article_image_requests` | Pending or failed "Find a new image" requests, with the admin's search words and a sequence number |
 | `article_rejected_images` | Pictures an admin turned down for an article, never picked for it again |
 | `article_votes` | Reader up and down votes, one per hashed IP |
+| `vote_alerts` | Articles whose recent votes crossed the alert line, with the counts, until the admin acknowledges them (at most one open per article) |
 | `newsletters` | Issues with their HTML, status and send time |
 | `newsletter_candidates` | The articles ranked for a weekly issue, and which is featured |
 | `subscribers` | Newsletter addresses, confirmation and unsubscribe state |

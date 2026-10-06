@@ -32,14 +32,6 @@ import (
 	"github.com/kumaranik/milesahead/internal/web"
 )
 
-// stubTokenResolver is a placeholder TokenResolver for the mail poller.
-// A real implementation would look up review tokens in the database.
-type stubTokenResolver struct{}
-
-func (s *stubTokenResolver) Resolve(token string) (int64, string, error) {
-	return 0, "", fmt.Errorf("token resolution not yet implemented")
-}
-
 // newImageScoring builds the image searcher and scorer. With an endpoint for
 // vision scoring configured, the searcher warms the thumbnails the scorer is
 // about to send: Wikimedia renders a new size before the vision endpoint
@@ -159,6 +151,14 @@ func warnIfSMTPUnset(c config.SMTPConfig, unset bool) {
 	if unset {
 		slog.Warn("mail: SMTP is not configured; no newsletter or confirmation email will be sent",
 			"host", c.Host, "from_set", c.From != "")
+	}
+}
+
+// logReviewByEmail says once, at startup, that review by email is off and
+// why. Only whether IMAP looks set is logged, never its settings.
+func logReviewByEmail(c config.IMAPConfig) {
+	if on, why := mail.ReviewByEmail(c); !on {
+		slog.Info("review by email is off (" + why + ")")
 	}
 }
 
@@ -347,7 +347,15 @@ func main() {
 	// Image scoring, the newsletter pick and card-update detection, all on the
 	// short-call chain.
 	mailSender := mail.NewSender(cfg.Mail.SMTP)
-	mailSender.SetNewsletterSchedule(newsletter.WeeklySendWhen)
+	// When the weekly goes out, from newsletter.send_day, send_time and
+	// timezone (checked by config.Load): the cron lines below and what
+	// readers are told both come from it.
+	weekly, err := newsletter.ScheduleFor(cfg.Newsletter)
+	if err != nil {
+		slog.Error("newsletter schedule", "error", err)
+		os.Exit(1)
+	}
+	mailSender.SetNewsletterSchedule(weekly.When())
 	if err := mailSender.SetUnsubscribeMailbox(cfg.Newsletter.UnsubscribeMailbox); err != nil {
 		slog.Warn("mail: List-Unsubscribe will have no mailto", "error", err)
 	}
@@ -378,13 +386,13 @@ func main() {
 	// Services
 	scnr := scanner.NewScanner(database, cfg.Scanner.UserAgent)
 	articleMgr := article.NewManager(database, pipeline)
-	mailPoller := mail.NewPoller(cfg.Mail.IMAP, articleMgr, &stubTokenResolver{})
-	voteSvc := vote.NewService(database, cfg.Votes, func(articleID int64) {
-		a, _ := database.GetGeneratedArticle(articleID)
-		if a != nil {
-			mailSender.SendVoteAlert(cfg.Mail.SMTP.From, articleID, a.Title)
-		}
-	})
+	// Vote alerts are recorded for the admin Published page by the vote
+	// service; this emails them too when votes.alert_email is set.
+	var onVoteAlert func(vote.Alert)
+	if notify := voteAlertMailer(cfg, database, mailSender, smtpUnset); notify != nil {
+		onVoteAlert = func(a vote.Alert) { go notify(a) }
+	}
+	voteSvc := vote.NewService(database, cfg.Votes, onVoteAlert)
 	newsletterSvc := side.newsletter
 	// With no SMTP, the weekly send is skipped (a warning, not a failure)
 	// and the admin's Send says why, rather than dialling a relay that is
@@ -418,33 +426,29 @@ func main() {
 		// Cluster and generate articles from multi-source topics.
 		clusterGen.run()
 	})
-	if cfg.Mail.IMAP.Host != "localhost" && cfg.Mail.IMAP.Password != "placeholder" {
-		sched.AddMailPollJob(time.Duration(cfg.Mail.IMAP.PollInterval)*time.Second, func() {
-			slog.Info("scheduled job started", "job", "mail_poll")
-			if err := mailPoller.Poll(); err != nil {
-				slog.Error("scheduled job failed", "job", "mail_poll", "error", err)
-			}
-		})
-	} else {
-		slog.Info("mail polling disabled", "reason", "IMAP not configured")
-	}
-	// Friday 20:00 ET — build newsletter
+	// Review by email (replying APPROVE, REJECT or feedback to a review
+	// email) is not built yet, so the IMAP poller never starts; see
+	// mail.ReviewByEmail and ROADMAP.md.
+	logReviewByEmail(cfg.Mail.IMAP)
+	// Built at 20:00 the evening before the send (Friday, by default),
+	// sent on the send day (Saturday 08:00 New York time, by default).
 	sched.AddWeeklyJob("newsletter-build",
-		"CRON_TZ=America/New_York 0 0 20 * * 5",
+		weekly.BuildCron(),
 		func() {
 			if _, err := newsletterSvc.BuildWeekly(); err != nil {
 				slog.Error("newsletter build failed", "error", err)
 			}
 		})
 
-	// Saturday 08:00 ET — send newsletter
 	sched.AddWeeklyJob("newsletter-send",
-		newsletter.WeeklySendSchedule,
+		weekly.SendCron(),
 		func() {
 			if err := newsletterSvc.SendWeekly(); err != nil {
 				slog.Error("newsletter send failed", "error", err)
 			}
 		})
+	slog.Info("weekly newsletter scheduled", "send", weekly.When(),
+		"send_cron", weekly.SendCron(), "build_cron", weekly.BuildCron())
 	enrichInterval := time.Duration(cfg.AI.EnrichmentInterval) * time.Minute
 	if enrichInterval <= 0 {
 		enrichInterval = 15 * time.Minute

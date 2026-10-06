@@ -1,9 +1,12 @@
 package web
 
 import (
+	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/newsletter"
 )
@@ -113,12 +116,34 @@ func TestSubscribePage_SaysWhatHowOftenAndWhy(t *testing.T) {
 	body := getPage(t, app, "/subscribe")
 	for _, want := range []string{
 		"The week&rsquo;s best miles, points and credit card deals, and the ones about to end.",
-		"One email, " + newsletter.WeeklySendWhen + ".",
+		"One email, " + newsletter.DefaultSchedule().When() + ".",
 		"One email a week. Unsubscribe anytime. We only use your address to send the newsletter.",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("sign-up page should say %q", want)
 		}
+	}
+}
+
+// The sign-up page follows newsletter.send_day, send_time and timezone.
+func TestSubscribePage_FollowsTheConfiguredSchedule(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	cfg := &config.Config{
+		Server:     config.ServerConfig{Port: 8080, Domain: "localhost"},
+		Newsletter: config.NewsletterConfig{SendDay: "sun", SendTime: "18:30", Timezone: "America/Los_Angeles"},
+	}
+	app, err := NewAppWithTemplateDir(cfg, database, nil, nil, nil, nil, context.Background(), filepath.Join("..", "..", "templates"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(app.WaitBackground)
+	body := getPage(t, openSignup(app), "/subscribe")
+	if want := "One email, every Sunday at 6:30 PM PT."; !strings.Contains(body, want) {
+		t.Errorf("sign-up page should say %q", want)
 	}
 }
 

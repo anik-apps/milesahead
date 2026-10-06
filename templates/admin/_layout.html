@@ -24,7 +24,7 @@
         {{with .Nav}}
         <nav class="admin-tabs" aria-label="Admin">
             <a href="/admin/dashboard"{{if eq .Tab "review"}} class="on" aria-current="page"{{end}}>Review{{if .Decide}} <span class="tab-n alert" title="{{.Decide}} need a decision">{{.Decide}}</span>{{end}}{{if .Ready}} <span class="tab-n" title="{{.Ready}} ready to review">{{.Ready}}</span>{{end}}</a>
-            <a href="/admin/published"{{if eq .Tab "published"}} class="on" aria-current="page"{{end}}>Published</a>
+            <a href="/admin/published"{{if eq .Tab "published"}} class="on" aria-current="page"{{end}}>Published{{if .VoteAlerts}} <span class="tab-n alert" title="{{.VoteAlerts}} with many downvotes since you last looked">{{.VoteAlerts}}</span>{{end}}</a>
             <a href="/admin/cards"{{if eq .Tab "cards"}} class="on" aria-current="page"{{end}}>Cards{{if .CardWork}} <span class="tab-n" title="{{.CardWork}} card updates and flags to look at">{{.CardWork}}</span>{{end}}</a>
             <a href="/admin/newsletter"{{if eq .Tab "newsletter"}} class="on" aria-current="page"{{end}}>Newsletter{{if .Newsletter}} <span class="tab-n{{if .NewsletterAlert}} warn{{end}}">{{.Newsletter}}</span>{{end}}</a>
             <a href="/admin/sources"{{if eq .Tab "sources"}} class="on" aria-current="page"{{end}}>Sources{{if .StaleSources}} <span class="tab-n alert" title="{{.StaleSources}} sources with nothing new for days">{{.StaleSources}}</span>{{end}}</a>

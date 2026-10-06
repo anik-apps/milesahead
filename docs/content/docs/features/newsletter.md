@@ -7,12 +7,14 @@ A weekly, newspaper-style email: Scout's Pick, Card of the Week and the week's a
 
 ## Schedule
 
-| When (New York time) | Job | What happens |
-|---|---|---|
-| Friday 20:00 | `newsletter-build` (`BuildWeekly`) | Builds the issue for the next Saturday from the week's live articles. Ended offers are dropped first. The short-call AI chain ranks the articles by reader value (original order if it fails); the top 3 become candidates (`newsletter_candidates`), rank 1 is Scout's Pick, and Card of the Week is the published card this week's articles mention most. The issue is stored as `auto_approved`. Idempotent: a second run returns the existing issue. |
-| Saturday 08:00 | `newsletter-send` (`SendWeekly`) | Sends the Saturday issue to every confirmed subscriber if its status is `approved` or `auto_approved`. The issue is rendered again at send time, from live articles, so an offer that ended overnight or an article unpublished since is left out, and a Scout's Pick that ended hands its slot to the top article still being sent. |
+By default (and in production) the issue is built Friday at 20:00 and sent Saturday at 08:00, New York time:
 
-The send schedule is fixed in code: `newsletter.WeeklySendSchedule` is `CRON_TZ=America/New_York 0 0 8 * * 6`, and `WeeklySendWhen` ("every Saturday at 8:00 AM ET") is the same in words for the confirmation email and the admin page; a test holds them together. `newsletter.timezone` sets which day counts as "today" for issue dates.
+| When | Job | What happens |
+|---|---|---|
+| The day before the send, 20:00 (Friday) | `newsletter-build` (`BuildWeekly`) | Builds the issue for the next send day from the week's live articles. Ended offers are dropped first. The short-call AI chain ranks the articles by reader value (original order if it fails); the top 3 become candidates (`newsletter_candidates`), rank 1 is Scout's Pick, and Card of the Week is the published card this week's articles mention most. The issue is stored as `auto_approved`. Idempotent: a second run returns the existing issue. |
+| `send_day` at `send_time` (Saturday 08:00) | `newsletter-send` (`SendWeekly`) | Sends that day's issue to every confirmed subscriber if its status is `approved` or `auto_approved`. The issue is rendered again at send time, from live articles, so an offer that ended overnight or an article unpublished since is left out, and a Scout's Pick that ended hands its slot to the top article still being sent. |
+
+The schedule comes from `newsletter.send_day`, `send_time` and `timezone` (defaults `saturday`, `08:00`, `America/New_York`). `newsletter.ScheduleFor` turns them into both cron lines and into words, "every Saturday at 8:00 AM ET", for the sign-up page, the confirmation email and the admin Newsletter and Settings pages; tests hold the words to when the cron lines fire. US zones get their short name (ET, CT, MT, PT); any other zone is named after its city ("7:05 AM London time"). `config.Load` rejects a day, time or zone it cannot read, so `-check-config` fails the deploy rather than the send. `timezone` also dates the issues and decides which day counts as "today" on the admin page. The startup log line `weekly newsletter scheduled` shows the cron lines in use.
 
 Between the build and the send, the admin's Newsletter page shows the issue and says "Goes out Sat Oct 3, 8:00 AM ET, to N confirmed subscribers", or why it will not. The admin can feature a different candidate, override the Card of the Week, or hold or skip the issue (`POST /admin/newsletter/feature`, `/card-override`, `/status`).
 

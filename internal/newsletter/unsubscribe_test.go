@@ -9,6 +9,7 @@ import (
 	netmail "net/mail"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
@@ -137,7 +138,7 @@ func TestSendWeekly_PassesEachReadersUnsubscribeLink(t *testing.T) {
 	sender := &mockSender{}
 	svc := NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "America/New_York"}, nil, nil, "milesahead.example")
 	if _, err := database.CreateNewsletter(&db.Newsletter{
-		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &live,
+		Date: svc.thisSendDate(), Subject: "MilesAhead Weekly", Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &live,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +220,7 @@ func TestSend_MailUnavailable(t *testing.T) {
 	svc := NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "America/New_York"}, nil, nil, "milesahead.example")
 	svc.SetMailUnavailable(true)
 	if _, err := database.CreateNewsletter(&db.Newsletter{
-		Date: svc.thisSaturday(), Subject: "MilesAhead Weekly", Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &live,
+		Date: svc.thisSendDate(), Subject: "MilesAhead Weekly", Status: "auto_approved", ArticleCount: 1, ScoutsPickArticleID: &live,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -233,11 +234,15 @@ func TestSend_MailUnavailable(t *testing.T) {
 	if d := emailCount(t, metrics.EmailFailed) - failed0; d != 0 {
 		t.Errorf("a skipped send counted %v failures, want 0", d)
 	}
-	if nl, _ := database.GetNewsletterByDate(svc.thisSaturday()); nl == nil || nl.Status != "auto_approved" {
+	if nl, _ := database.GetNewsletterByDate(svc.thisSendDate()); nl == nil || nl.Status != "auto_approved" {
 		t.Errorf("the weekly should stay unsent, got %+v", nl)
 	}
 
 	daily := NewServiceWithAI(database, sender, config.NewsletterConfig{Timezone: "UTC"}, nil, nil, "milesahead.example")
+	// Pinned to a Wednesday: on a Saturday "today's" issue is the weekly
+	// one created above, and SendDaily refuses it for that reason first,
+	// so the test failed every Saturday.
+	daily.now = func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }
 	daily.SetMailUnavailable(true)
 	if err := daily.SendDaily(); !errors.Is(err, ErrMailUnavailable) {
 		t.Errorf("SendDaily() = %v, want ErrMailUnavailable", err)

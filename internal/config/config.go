@@ -2,10 +2,17 @@ package config
 
 import (
 	"fmt"
+	netmail "net/mail"
 	"os"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
+	// The zone database is built in, so newsletter.timezone is read the
+	// same way by -check-config in CI and by the service on the server,
+	// whatever zone files either machine has.
+	_ "time/tzdata"
 
 	"gopkg.in/yaml.v3"
 )
@@ -121,6 +128,15 @@ type MailConfig struct {
 }
 
 type NewsletterConfig struct {
+	// SendDay, SendTime and Timezone are when the weekly issue goes out:
+	// the day of the week ("saturday" by default; a full English name or
+	// its first three letters, any case), the time of day as 24-hour
+	// "HH:MM" ("08:00" by default) and the IANA zone both are read in
+	// ("America/New_York" by default). The issue is built at 20:00 the day
+	// before. Timezone also dates the issues and decides which day counts
+	// as "today" on the admin newsletter page. Load fills in the defaults
+	// and rejects a value it cannot read.
+	SendDay  string `yaml:"send_day"`
 	SendTime string `yaml:"send_time"`
 	Timezone string `yaml:"timezone"`
 	// SignupEnabled opens newsletter sign-up: the header, footer, home and
@@ -139,6 +155,10 @@ type VotesConfig struct {
 	AlertThreshold int     `yaml:"alert_threshold"`
 	AlertRatio     float64 `yaml:"alert_ratio"`
 	AlertWindow    int     `yaml:"alert_window"`
+	// AlertEmail, when set, is where vote alerts are also emailed. Every
+	// alert is listed on the admin Published page either way; empty (the
+	// default), none is emailed.
+	AlertEmail string `yaml:"alert_email"`
 }
 
 type SiteConfig struct {
@@ -209,6 +229,18 @@ func Load(path string) (*Config, error) {
 			cfg.AI.EnrichmentInfographics, InfographicsOff, InfographicsPreview, InfographicsOn)
 	}
 
+	if err := cfg.Newsletter.normalize(); err != nil {
+		return nil, err
+	}
+
+	// A typo would send every alert nowhere, so it is a load error.
+	cfg.Votes.AlertEmail = strings.TrimSpace(cfg.Votes.AlertEmail)
+	if cfg.Votes.AlertEmail != "" {
+		if a, err := netmail.ParseAddress(cfg.Votes.AlertEmail); err != nil || a.Address != cfg.Votes.AlertEmail {
+			return nil, fmt.Errorf("votes.alert_email: %q is not a plain email address", cfg.Votes.AlertEmail)
+		}
+	}
+
 	if cfg.Site.PersonaName == "" {
 		cfg.Site.PersonaName = "Scout"
 	}
@@ -242,4 +274,76 @@ func expandEnv(v reflect.Value) {
 			}
 		}
 	}
+}
+
+// The weekly newsletter's schedule when newsletter.send_day, send_time or
+// timezone is unset: Saturday at 08:00 New York time.
+const (
+	DefaultSendDay  = "saturday"
+	DefaultSendTime = "08:00"
+	DefaultTimezone = "America/New_York"
+)
+
+// normalize fills in the schedule defaults and checks that each value can
+// be read, so a typo fails the load (and the deploy's -check-config)
+// rather than moving or stopping the send.
+func (n *NewsletterConfig) normalize() error {
+	if strings.TrimSpace(n.SendDay) == "" {
+		n.SendDay = DefaultSendDay
+	}
+	if strings.TrimSpace(n.SendTime) == "" {
+		n.SendTime = DefaultSendTime
+	}
+	if strings.TrimSpace(n.Timezone) == "" {
+		n.Timezone = DefaultTimezone
+	}
+	if _, err := ParseWeekday(n.SendDay); err != nil {
+		return fmt.Errorf("newsletter.send_day: %w", err)
+	}
+	if _, _, err := ParseClock(n.SendTime); err != nil {
+		return fmt.Errorf("newsletter.send_time: %w", err)
+	}
+	if _, err := time.LoadLocation(strings.TrimSpace(n.Timezone)); err != nil {
+		return fmt.Errorf("newsletter.timezone: %q is not an IANA time zone name such as %q", n.Timezone, DefaultTimezone)
+	}
+	n.Timezone = strings.TrimSpace(n.Timezone)
+	return nil
+}
+
+// ParseWeekday reads a day of the week: its English name or the first
+// three letters of it, in any case ("saturday", "Sat").
+func ParseWeekday(s string) (time.Weekday, error) {
+	v := strings.ToLower(strings.TrimSpace(s))
+	for d := time.Sunday; d <= time.Saturday; d++ {
+		name := strings.ToLower(d.String())
+		if v == name || v == name[:3] {
+			return d, nil
+		}
+	}
+	return 0, fmt.Errorf("%q is not a day of the week (e.g. %q)", s, DefaultSendDay)
+}
+
+// ParseClock reads a 24-hour time of day, "HH:MM" ("08:00", "8:00",
+// "20:30").
+func ParseClock(s string) (hour, minute int, err error) {
+	bad := fmt.Errorf("%q is not a 24-hour time such as %q", s, DefaultSendTime)
+	h, m, ok := strings.Cut(strings.TrimSpace(s), ":")
+	if !ok || len(m) != 2 || len(h) < 1 || len(h) > 2 || !allDigits(h+m) {
+		return 0, 0, bad
+	}
+	hour, err1 := strconv.Atoi(h)
+	minute, err2 := strconv.Atoi(m)
+	if err1 != nil || err2 != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
+		return 0, 0, bad
+	}
+	return hour, minute, nil
+}
+
+func allDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

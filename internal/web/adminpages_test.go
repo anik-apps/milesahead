@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 )
 
@@ -95,6 +96,25 @@ func TestAdminSettings_NestedValuesAreRows(t *testing.T) {
 	}
 	if strings.Contains(body, "s3cret-value") {
 		t.Error("settings shows a password")
+	}
+}
+
+// The settings page says what the ops settings come to: review by email is
+// off (and why), where vote alerts go, and the newsletter schedule in words.
+func TestAdminSettings_SaysWhatIsOff(t *testing.T) {
+	app, _ := realTemplateApp(t)
+	app.cfg.Mail.IMAP = config.IMAPConfig{Host: "localhost", Port: 993, User: "placeholder", Password: "placeholder"}
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	body := doAdminGET(t, app, "/admin/settings", session).Body.String()
+	for _, want := range []string{
+		`<td class="setting-key">Review by email</td>`,
+		"off (mail.imap not configured)",
+		"not set: vote alerts are shown on the Published page only",
+		"every Saturday at 8:00 AM ET (built Friday 8:00 PM)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("settings should show %q", want)
+		}
 	}
 }
 

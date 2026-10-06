@@ -17,6 +17,40 @@
     {{if eq .Message "republished"}}<div class="message success" role="status">Back on the site.</div>{{end}}
     {{if .MessageText}}<div class="message success" role="status">{{.MessageText}}</div>{{end}}
 
+    {{if .VoteAlerts}}
+    {{/* Articles whose recent votes crossed votes.alert_threshold and
+         alert_ratio, until acknowledged. Acknowledging only clears the
+         alert: the article stays published. */}}
+    <section class="vote-alerts" id="vote-alerts" aria-labelledby="vote-alerts-head">
+        <div class="vote-alerts-head">
+            <h2 id="vote-alerts-head">Many downvotes <span class="tab-n alert">{{len .VoteAlerts}}</span></h2>
+            {{if gt (len .VoteAlerts) 1}}
+            <form method="POST" action="/admin/vote-alerts/acknowledge-all" class="inline-form">
+                {{template "csrf_field" $}}
+                <input type="hidden" name="sort" value="{{$.Sort}}">
+                <button type="submit" class="btn btn-sm">Acknowledge all</button>
+            </form>
+            {{end}}
+        </div>
+        <p class="vote-alerts-note">Readers have been voting these down: each crossed the alert line {{.VoteAlertWindow}}. They are still published. Look at the article, then acknowledge the alert; it comes back only if new downvotes cross the line again.{{if .VoteAlertEmailed}} Also emailed to <code>votes.alert_email</code>.{{else}} Not emailed: <code>votes.alert_email</code> is not set.{{end}}</p>
+        <ul class="vote-alerts-list">
+            {{range .VoteAlerts}}
+            <li>
+                <span class="vote-alerts-main">
+                    {{if .Live}}<a href="/article/{{.Slug}}" target="_blank" rel="noopener" title="Open the live article">{{.Title}} <span aria-hidden="true">&#8599;</span></a>{{else}}<span>{{if .Title}}{{.Title}}{{else}}Article #{{.ArticleID}}{{end}}</span> <span class="chip chip-mute">{{if .Status}}{{statusLabel .Status}}{{else}}deleted{{end}}</span>{{end}}
+                    <span class="q-sub"><span title="Upvotes">&#9650; {{.Upvotes}}</span> <span title="Downvotes">&#9660; {{.Downvotes}}</span> &middot; <span title="{{.UpdatedAt.Format "Jan 2, 2006 3:04 PM"}} UTC">{{.Age}}</span> &middot; #{{.ArticleID}}</span>
+                </span>
+                <form method="POST" action="/admin/vote-alerts/{{.ID}}/acknowledge" class="inline-form">
+                    {{template "csrf_field" $}}
+                    <input type="hidden" name="sort" value="{{$.Sort}}">
+                    <button type="submit" class="btn btn-sm">Acknowledge<span class="visually-hidden"> the alert on {{if .Title}}{{.Title}}{{else}}article #{{.ArticleID}}{{end}}</span></button>
+                </form>
+            </li>
+            {{end}}
+        </ul>
+    </section>
+    {{end}}
+
     {{if .Articles}}
     <ol class="q-list">
         {{range .Articles}}

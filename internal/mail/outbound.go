@@ -78,7 +78,7 @@ func (s *Sender) SendAdminNotification(toEmail string, article *db.GeneratedArti
 
 // SetNewsletterSchedule sets how the confirmation email says the
 // newsletter comes, "every Saturday at 8:00 AM ET"
-// (newsletter.WeeklySendWhen). Unset, it says "once a week".
+// (newsletter.Schedule.When). Unset, it says "once a week".
 func (s *Sender) SetNewsletterSchedule(when string) {
 	s.newsletterWhen = when
 }
@@ -199,9 +199,32 @@ func (s *Sender) SetUnsubscribeMailbox(addr string) error {
 	return nil
 }
 
-// SendVoteAlert notifies the admin of high downvotes on an article.
-func (s *Sender) SendVoteAlert(toEmail string, articleID int64, articleTitle string) error {
-	subject := fmt.Sprintf("Vote Alert: %s", articleTitle)
+// VoteAlert is what a vote alert email says about the article.
+type VoteAlert struct {
+	ArticleID          int64
+	Title              string
+	Upvotes, Downvotes int
+	// WindowHours is how far back the counts go; 0 for all votes.
+	WindowHours int
+	// AdminURL is the admin Published page, where the alert is listed and
+	// acknowledged; ArticleURL the live article.
+	AdminURL, ArticleURL string
+}
+
+// SendVoteAlert emails the owner (votes.alert_email) that an article's
+// recent votes crossed the alert threshold. The admin Published page lists
+// the same alert whether or not this is sent.
+func (s *Sender) SendVoteAlert(toEmail string, a VoteAlert) error {
+	period := "in all"
+	if a.WindowHours > 0 {
+		period = fmt.Sprintf("in the last %d hours", a.WindowHours)
+	}
+	summary := fmt.Sprintf("%q (#%d) has had %d downvotes and %d upvotes %s.",
+		a.Title, a.ArticleID, a.Downvotes, a.Upvotes, period)
+	text := summary + "\n\nThe article is still published. Review it and acknowledge the alert on the admin Published page:\n" +
+		a.AdminURL + "\n\nLive article: " + a.ArticleURL + "\n\nAutomated alert from MilesAhead.\n"
+
+	e := html.EscapeString
 	body := fmt.Sprintf(`<!DOCTYPE html>
 <html>
 <body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">
@@ -209,13 +232,11 @@ func (s *Sender) SendVoteAlert(toEmail string, articleID int64, articleTitle str
 <tr><td align="center" style="padding:20px 0;">
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;">
 <tr><td style="background-color:#c62828;padding:24px 32px;">
-<h1 style="margin:0;color:#ffffff;font-size:20px;">Vote Alert</h1>
+<h1 style="margin:0;color:#ffffff;font-size:20px;">Vote alert</h1>
 </td></tr>
 <tr><td style="padding:32px;">
-<h2 style="margin:0 0 16px 0;color:#1a1a2e;">High Downvotes Detected</h2>
-<p style="color:#555;font-size:15px;line-height:1.6;">
-The article <strong>"%s"</strong> (ID: %d) has received a high number of downvotes and may need attention.
-</p>
+<p style="color:#1a1a2e;font-size:15px;line-height:1.6;margin:0 0 16px 0;">%s</p>
+<p style="color:#555;font-size:15px;line-height:1.6;margin:0 0 16px 0;">The article is still published. Review it and acknowledge the alert on the <a href="%s">admin Published page</a>. <a href="%s">Live article</a>.</p>
 </td></tr>
 <tr><td style="background-color:#f8f9fa;padding:16px 32px;border-top:1px solid #e0e0e0;">
 <p style="margin:0;color:#999;font-size:12px;">Automated alert from MilesAhead.</p>
@@ -224,13 +245,14 @@ The article <strong>"%s"</strong> (ID: %d) has received a high number of downvot
 </td></tr>
 </table>
 </body>
-</html>`, articleTitle, articleID)
+</html>`, e(summary), e(a.AdminURL), e(a.ArticleURL))
 
 	m := gomail.NewMessage()
 	m.SetHeader("From", s.from)
 	m.SetHeader("To", toEmail)
-	m.SetHeader("Subject", subject)
-	m.SetBody("text/html", body)
+	m.SetHeader("Subject", "Vote alert: "+a.Title)
+	m.SetBody("text/plain", text)
+	m.AddAlternative("text/html", body)
 
 	return s.send(m)
 }

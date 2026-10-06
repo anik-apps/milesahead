@@ -14,10 +14,13 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/article"
+	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/linker"
+	"github.com/kumaranik/milesahead/internal/mail"
 	"github.com/kumaranik/milesahead/internal/newsletter"
 	"github.com/kumaranik/milesahead/internal/offer"
+	"github.com/kumaranik/milesahead/internal/vote"
 )
 
 // sem limits concurrent card update detection goroutines.
@@ -140,12 +143,13 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		total = counts[db.StatusApproved]
 	}
 
-	threshold := app.cfg.Votes.AlertThreshold
-	if threshold == 0 {
-		threshold = 5
+	now := app.clock()
+	alerts := app.openVoteAlerts(now)
+	alerted := make(map[int64]bool, len(alerts))
+	for _, a := range alerts {
+		alerted[a.ArticleID] = true
 	}
 
-	now := time.Now()
 	var rows []adminArticleRow
 	for _, a := range articles {
 		row := adminArticleRow{
@@ -164,9 +168,11 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		if vc, err := app.db.GetVoteCounts(a.ID); err == nil {
 			row.Upvotes = vc.Upvotes
 			row.Downvotes = vc.Downvotes
-			if vc.Downvotes >= threshold {
-				row.Flagged = true
-			}
+			// Many downvotes: an open alert, or the alert rule applied to
+			// all of its votes.
+			row.Flagged = alerted[a.ID] || vote.Exceeds(app.cfg.Votes, vc.Upvotes, vc.Downvotes)
+		} else {
+			row.Flagged = alerted[a.ID]
 		}
 
 		rows = append(rows, row)
@@ -186,6 +192,10 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		"MessageID":    queryInt(r, "id"),
 		"Sort":         string(order),
 		"Sorts":        sortChoices(order, publishedSorts),
+		// Open vote alerts, for the banner above the list.
+		"VoteAlerts":       alerts,
+		"VoteAlertWindow":  app.voteAlertWindowLabel(),
+		"VoteAlertEmailed": app.cfg.Votes.AlertEmail != "",
 	}
 	switch data["Message"] {
 	case "image_requested":
@@ -194,6 +204,8 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		data["MessageText"] = chartRemovedMessage
 	case "chart_redraw":
 		data["MessageText"] = chartRedrawMessage
+	case "alert_acknowledged":
+		data["MessageText"] = "Alert acknowledged. The article alerts again only on downvotes cast from now on."
 	}
 	// After a plain unpublish, the toast offers to put it back: approving
 	// the revision that was live, which needs that revision number.
@@ -629,15 +641,20 @@ func (app *App) handleAdminSettings(w http.ResponseWriter, r *http.Request) {
 			"IMAP user":          app.cfg.Mail.IMAP.User,
 			"IMAP password":      maskString(app.cfg.Mail.IMAP.Password),
 			"IMAP poll interval": app.cfg.Mail.IMAP.PollInterval,
+			"Review by email":    reviewByEmailSetting(app.cfg.Mail.IMAP),
 		},
 		"Newsletter": map[string]interface{}{
+			"SendDay":  app.cfg.Newsletter.SendDay,
 			"SendTime": app.cfg.Newsletter.SendTime,
 			"Timezone": app.cfg.Newsletter.Timezone,
+			// What the three come to, as readers are told it.
+			"Schedule": app.schedule.When() + " (built " + app.schedule.BuildDay().String() + " 8:00 PM)",
 		},
 		"Votes": map[string]interface{}{
 			"AlertThreshold": app.cfg.Votes.AlertThreshold,
 			"AlertRatio":     app.cfg.Votes.AlertRatio,
 			"AlertWindow":    app.cfg.Votes.AlertWindow,
+			"AlertEmail":     voteAlertEmailSetting(app.cfg.Votes.AlertEmail),
 		},
 	}
 
@@ -789,7 +806,7 @@ func (app *App) handleAdminNewsletter(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":             "Newsletter",
 		"PersonaName":       app.cfg.Site.PersonaName,
-		"StatusNote":        newsletterStatusNote(currentNL, confirmed, app.newsletterToday()),
+		"StatusNote":        newsletterStatusNote(currentNL, confirmed, app.newsletterToday(), app.schedule),
 		"IssuePassed":       currentNL != nil && currentNL.Status != "sent" && currentNL.Date < app.newsletterToday(),
 		"Confirmed":         confirmed,
 		"PreviewHTML":       previewHTML,
@@ -899,12 +916,12 @@ func (app *App) handleNewsletterHistory(w http.ResponseWriter, r *http.Request) 
 
 // newsletterStatusNote says what will happen to the issue: whether and when
 // it goes out, and to how many people. SendWeekly sends only an approved or
-// auto-approved issue, on its Saturday.
+// auto-approved issue, on its send day (sched).
 //
 // today ("2006-01-02", the newsletter's zone) marks an unsent issue whose
-// date has passed: SendWeekly only sends its own Saturday's issue, so it
+// date has passed: SendWeekly only sends its own send day's issue, so it
 // will never go out, whatever its status.
-func newsletterStatusNote(nl *db.Newsletter, confirmed int, today string) string {
+func newsletterStatusNote(nl *db.Newsletter, confirmed int, today string, sched newsletter.Schedule) string {
 	if nl == nil {
 		return ""
 	}
@@ -913,7 +930,7 @@ func newsletterStatusNote(nl *db.Newsletter, confirmed int, today string) string
 		if d, err := time.Parse("2006-01-02", nl.Date); err == nil {
 			when = d.Format("Mon Jan 2")
 		}
-		return fmt.Sprintf("Not sent: this issue was for %s, which has passed, so it will not go out. The next issue is built on Friday evening.", when)
+		return fmt.Sprintf("Not sent: this issue was for %s, which has passed, so it will not go out. The next issue is built on %s evening.", when, sched.BuildDay())
 	}
 	when := nl.Date
 	if d, err := time.Parse("2006-01-02", nl.Date); err == nil {
@@ -925,9 +942,9 @@ func newsletterStatusNote(nl *db.Newsletter, confirmed int, today string) string
 	}
 	switch nl.Status {
 	case "approved", "auto_approved":
-		return fmt.Sprintf("Goes out %s, %s, to %s.", when, newsletter.WeeklySendLabel, people)
+		return fmt.Sprintf("Goes out %s, %s, to %s.", when, sched.Label(), people)
 	case "draft":
-		return fmt.Sprintf("Draft: it will not go out on %s unless you approve it. Approving sends it at %s to %s.", when, newsletter.WeeklySendLabel, people)
+		return fmt.Sprintf("Draft: it will not go out on %s unless you approve it. Approving sends it at %s to %s.", when, sched.Label(), people)
 	case "hold":
 		return fmt.Sprintf("On hold: it will not go out on %s unless you approve it.", when)
 	case "skipped":
@@ -1831,4 +1848,21 @@ func (app *App) weekHasLiveArticle(sendDate string) bool {
 		}
 	}
 	return false
+}
+
+// voteAlertEmailSetting is votes.alert_email for the settings page.
+func voteAlertEmailSetting(addr string) string {
+	if addr == "" {
+		return "not set: vote alerts are shown on the Published page only"
+	}
+	return addr
+}
+
+// reviewByEmailSetting says whether review by email runs, for the settings
+// page: it does not yet (mail.ReviewByEmail).
+func reviewByEmailSetting(c config.IMAPConfig) string {
+	if on, why := mail.ReviewByEmail(c); !on {
+		return "off (" + why + ")"
+	}
+	return "on"
 }

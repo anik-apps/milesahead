@@ -31,10 +31,10 @@ server's `config.yaml`.
 | Sign-up confirmation | `internal/web/subscribe.go` through `mail.Sender.SendConfirmation` | The address that signed up, at most once per 10 minutes |
 | Weekly newsletter | `newsletter.SendWeekly` through `mail.Sender.SendNewsletter` | Every confirmed subscriber, one copy each |
 | Daily digest | The admin's manual Send on the Newsletter page (`SendDaily`) | Every confirmed subscriber |
-| Vote alert | `internal/vote`, when an article's downvote ratio crosses the threshold | `mail.smtp.from` itself |
+| Vote alert | `cmd/milesahead/votealerts.go` through `mail.Sender.SendVoteAlert`, when an article's recent downvotes cross the alert line | `votes.alert_email` (the `ALERT_EMAIL` secret); not sent when it is empty or SMTP is unset. The admin Published page lists every alert either way |
 
 Review emails with a reply address exist in the code (`SendAdminNotification`) but
-nothing sends them; see [Inbound mail](#inbound-mail).
+nothing sends them, and review by email is off; see [Inbound mail](#inbound-mail).
 
 Every reader email (confirmation, newsletter, digest) carries the reader's own
 `https://milesahead.kumaranik.com/unsubscribe?token=...` link, in the body and in
@@ -86,6 +86,7 @@ A test message from the server to Gmail passed SPF, DKIM
 | `SMTP_PASSWORD` | yes | `mail.smtp.password` |
 | `SMTP_PORT` | no | `mail.smtp.port`, default 587; must be numeric |
 | `SMTP_FROM` | no | `mail.smtp.from`, default `noreply@milesahead.kumaranik.com` |
+| `ALERT_EMAIL` | no | `votes.alert_email`, where vote alerts are emailed; empty by default (alerts are then shown in the admin only) |
 
 The deploy's config job writes them into `config.yaml` on the runner, each
 JSON-encoded with `jq` so any character in a password survives, runs
@@ -140,25 +141,33 @@ So every reader email carries the app's own per-reader https link and one-click
 header, which OCI leaves alone; an unsubscribe then reaches `POST /unsubscribe`
 and the app marks the reader unsubscribed.
 
-Admin emails (the vote alert) have no app link, so they still get OCI's header. Do
-not use a mail client's Unsubscribe button on them: it would suppress the address
-at OCI.
+Admin emails (the vote alert, sent to `votes.alert_email`) have no app link, so
+they still get OCI's header, and Gmail may show an Unsubscribe link beside them.
+Do not click it: it would put the owner's address on OCI's suppression list, and
+no further alert (or any other mail from the app) would reach it. If that happens,
+remove the address from the suppression list in the OCI console (Email Delivery,
+Suppression List).
 
 OCI also suppresses addresses that hard-bounce or complain. Those are dropped by
 OCI and still count as sent in the app's metric.
 
 ## Inbound Mail
 
-The code has a review-by-email loop: a review email with a `review+TOKEN@` reply
-address (`SendAdminNotification`), and an IMAP poller (`internal/mail/inbound.go`)
-that reads replies and treats `APPROVE`, `REJECT`, `UNPUBLISH` or anything else
-as rewrite feedback. **It is not running in production:**
+The code has half of a review-by-email loop: a review email with a `review+TOKEN@`
+reply address (`SendAdminNotification`), and an IMAP poller
+(`internal/mail/inbound.go`) that reads replies and treats `APPROVE`, `REJECT`,
+`UNPUBLISH` or anything else as rewrite feedback. **It is off:**
 
-- the deploy config sets `mail.imap` to `localhost` with placeholder credentials,
-  so startup logs `mail polling disabled`;
-- the token resolver in `cmd/milesahead/main.go` is a placeholder that resolves
-  nothing;
-- nothing calls `SendAdminNotification`, so no review emails go out.
+- nothing calls `SendAdminNotification`, so no review emails go out;
+- nothing resolves a reply's token to its article;
+- so the poller never starts, even with a mailbox configured (it would only mark
+  that mailbox's unread mail as read). The deploy config sets `mail.imap` to
+  `localhost` with placeholder credentials, and startup logs
+  `review by email is off (mail.imap not configured)`; the admin settings page
+  shows "Review by email: off".
+
+OCI Email Delivery only sends, so replies would need a real mailbox (IMAP, e.g.
+Gmail) or an inbound webhook service. ROADMAP.md (Future) lists what it would take.
 
 Articles are reviewed in the admin dashboard. Mail sent to
 `noreply@milesahead.kumaranik.com` is not read by the app.

@@ -31,6 +31,7 @@
     <div class="q-refresh" role="status" hidden>The queue has changed since this page loaded. <a href="/admin/dashboard" class="q-refresh-link">Refresh</a> <span class="dim">(anything you typed is kept)</span></div>
 
     {{if .MessageText}}<div class="message success" role="status">{{.MessageText}}</div>{{end}}
+    {{with .Nav}}{{if .VoteAlerts}}<p class="vote-alert-line"><span class="chip chip-bad">Many downvotes</span> {{.VoteAlerts}} published article{{if gt .VoteAlerts 1}}s{{end}} crossed the downvote alert line. <a href="/admin/published#vote-alerts">Review on Published</a></p>{{end}}{{end}}
     {{if eq .Message "changed"}}
     <div class="message error" role="alert">Article #{{.MessageID}} changed after you opened it: it is now revision {{.MessageRev}}. Nothing was approved or rejected. Review the new version first.</div>
     {{end}}
