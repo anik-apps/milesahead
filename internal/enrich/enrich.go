@@ -28,7 +28,6 @@ import (
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/images"
 	"github.com/kumaranik/milesahead/internal/metrics"
-	"github.com/kumaranik/milesahead/internal/svg"
 )
 
 // MinImageScore is the relevance score below which a candidate image is
@@ -87,6 +86,9 @@ type Service struct {
 	// retries, since the answer is far longer than any other enrichment call
 	// and would otherwise inherit the generator's timeout.
 	InfographicClient ai.HFClientInterface
+	// InfographicModels is the chain charts are drawn with
+	// (ai.infographic_model); empty uses the enrichment chain.
+	InfographicModels []string
 
 	// startedAt records when the in-flight pass began, so a skip can report how
 	// long the pass it is yielding to has been running.
@@ -566,7 +568,22 @@ func (s *Service) drawInfographic(u *db.EnrichmentUpdate, a db.ArticleNeedingEnr
 	if client == nil {
 		client = s.client
 	}
-	markup, err := ai.GenerateInfographic(client, s.models, a.Title, a.TLDR, details)
+	// The chart's words are public text derived from the article, like
+	// Scout's Take, and nothing revises them after this point, so they get
+	// the same guards: a chart naming a news site is refused, and so is one
+	// showing a figure the article does not state, which would be published
+	// as fact (see ai.UnsupportedChartNumbers). A refused chart goes to the
+	// next model in the chain, then to a later pass.
+	accept := func(words string) error {
+		if ms := s.outletMatcher().DerivedTextMentions(words, a.Title); len(ms) > 0 {
+			return fmt.Errorf("infographic names a news site (%s): %q", ms[0].Outlet, ms[0].Text)
+		}
+		if bad := ai.UnsupportedChartNumbers(words, a.Title, a.TLDR, details, ai.VisibleText(a.Content)); len(bad) > 0 {
+			return fmt.Errorf("infographic shows numbers the article does not: %q", bad)
+		}
+		return nil
+	}
+	markup, err := ai.GenerateInfographic(client, s.infographicModels(), a.Title, a.TLDR, details, accept)
 	if errors.Is(err, ai.ErrNoInfographic) {
 		slog.Info("enrichment: article has nothing chartable",
 			"article_id", a.ID)
@@ -577,29 +594,22 @@ func (s *Service) drawInfographic(u *db.EnrichmentUpdate, a db.ArticleNeedingEnr
 	if err != nil {
 		return false, err
 	}
-	// The chart's words are public text derived from the article, like
-	// Scout's Take, and nothing revises them after this point: one that
-	// names a news site is refused and tried again on a later pass.
-	words, err := svg.Text(markup)
-	if err != nil {
-		return false, err
-	}
-	if ms := s.outletMatcher().DerivedTextMentions(words, a.Title); len(ms) > 0 {
-		return false, fmt.Errorf("infographic names a news site (%s): %q", ms[0].Outlet, ms[0].Text)
-	}
-	// Every figure must be one the article states: a made-up or miscopied
-	// number would be published as fact. See ai.UnsupportedChartNumbers.
-	if bad := ai.UnsupportedChartNumbers(words, a.Title, a.TLDR, details, ai.VisibleText(a.Content)); len(bad) > 0 {
-		return false, fmt.Errorf("infographic shows numbers the article does not: %q", bad)
-	}
 	u.InfographicSVG = &markup
 	return true, nil
+}
+
+// infographicModels is the chain charts are drawn with.
+func (s *Service) infographicModels() []string {
+	if len(s.InfographicModels) > 0 {
+		return s.InfographicModels
+	}
+	return s.models
 }
 
 // infographicBudget is how long a chart may take: every model in the chain
 // timing out in turn (see ai.InfographicCallTimeout).
 func (s *Service) infographicBudget() time.Duration {
-	return ai.InfographicCallTimeout * time.Duration(max(len(s.models), 1))
+	return ai.InfographicCallTimeout * time.Duration(max(len(s.infographicModels()), 1))
 }
 
 // failImageRequest tells the admin their request for a new image found

@@ -204,15 +204,15 @@ func TestGenerateInfographic_RefusesNumberedSourceRefs(t *testing.T) {
 			`<text x="1" y="20">` + label + `</text></svg>`
 	}
 	c := &mockHFClient{response: chart("$895 (Source 1)")}
-	if _, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]"); err == nil {
+	if _, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]", nil); err == nil {
 		t.Error("a chart that refers to Source 1 was accepted")
 	}
 	c.response = chart("Annual fee $895")
-	if got, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]"); err != nil || !strings.Contains(got, "Annual fee $895") {
+	if got, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]", nil); err != nil || !strings.Contains(got, "Annual fee $895") {
 		t.Errorf("clean chart = %q, %v", got, err)
 	}
 	c.response = "NO_INFOGRAPHIC"
-	if _, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]"); !errors.Is(err, ErrNoInfographic) {
+	if _, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]", nil); !errors.Is(err, ErrNoInfographic) {
 		t.Errorf("NO_INFOGRAPHIC = %v, want ErrNoInfographic", err)
 	}
 }

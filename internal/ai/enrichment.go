@@ -206,22 +206,58 @@ func GenerateImageQueries(client HFClientInterface, models []string, title, tldr
 	return queries, nil
 }
 
-// GenerateInfographic asks a model to draw the article's numbers, and returns
-// markup that has been through the allowlist sanitiser.
+// GenerateInfographic asks each model in turn to draw the article's numbers,
+// and returns the first chart that passes every check, as markup that has
+// been through the allowlist sanitiser.
 //
 // Nothing here trusts the model's output. svg.Sanitize bounds and rewrites
-// it, and, as with Scout's Take, a chart whose words refer to a source by
-// number is refused so a later pass can try again. Outlet names are checked
-// by the caller, which holds the outlet table.
-func GenerateInfographic(client HFClientInterface, models []string, title, tldr, keyDetailsJSON string) (string, error) {
-	raw, err := TryModels(client, models,
-		InfographicPrompt(title, tldr, keyDetailsJSON), InfographicTokens)
-	if err != nil {
-		return "", err
+// it; a chart whose words refer to a source by number is refused, as with
+// Scout's Take; so is one whose text runs past its edges, where the image
+// clips it (svg.Overflow). accept, when set, is the caller's own check of the
+// chart's words: the outlet and number guards, which need the outlet table
+// and the article.
+//
+// A refused chart moves on to the next model, as a failed call does. The
+// models draw differently, and charts are refused often enough -- five of
+// the first nine for clipped text alone -- that waiting a whole pass to try
+// again would leave many articles without one. It is an error only when no
+// model's chart is usable, and the reconciler tries again on a later pass. A
+// model that answers NO_INFOGRAPHIC ends the chain: that is a judgement about
+// the article, not a failure.
+func GenerateInfographic(client HFClientInterface, models []string, title, tldr, keyDetailsJSON string, accept func(words string) error) (string, error) {
+	if len(models) == 0 {
+		return "", fmt.Errorf("no models configured")
 	}
-	if strings.Contains(raw, "NO_INFOGRAPHIC") && !strings.Contains(raw, "<svg") {
-		return "", ErrNoInfographic
+	prompt := InfographicPrompt(title, tldr, keyDetailsJSON)
+	var failures []string
+	for i, m := range models {
+		raw, err := client.Generate(m, prompt, InfographicTokens)
+		if err == nil {
+			if strings.Contains(raw, "NO_INFOGRAPHIC") && !strings.Contains(raw, "<svg") {
+				return "", ErrNoInfographic
+			}
+			var clean string
+			if clean, err = checkInfographic(raw, accept); err == nil {
+				if i > 0 {
+					slog.Info("infographic drawn by a fallback model", "model", m, "primary", models[0])
+				}
+				return clean, nil
+			}
+		} else if !shouldTryAnotherModel(err) {
+			return "", err
+		}
+		failures = append(failures, fmt.Sprintf("%s: %v", m, err))
+		if i < len(models)-1 {
+			slog.Warn("infographic not usable, trying next model",
+				"failed", m, "next", models[i+1], "err", err)
+		}
 	}
+	return "", fmt.Errorf("no usable infographic from %d model(s): %s", len(models), strings.Join(failures, "; "))
+}
+
+// checkInfographic sanitises one model's chart and checks it, returning the
+// sanitised markup or why it was refused.
+func checkInfographic(raw string, accept func(words string) error) (string, error) {
 	clean, err := svg.Sanitize(raw)
 	if err != nil {
 		return "", fmt.Errorf("sanitising infographic: %w", err)
@@ -232,6 +268,18 @@ func GenerateInfographic(client HFClientInterface, models []string, title, tldr,
 	}
 	if refs := FindSourceRefs(words); len(refs) > 0 {
 		return "", fmt.Errorf("infographic refers to a source by number: %q", refs)
+	}
+	if accept != nil {
+		if err := accept(words); err != nil {
+			return "", err
+		}
+	}
+	clipped, err := svg.Overflow(clean)
+	if err != nil {
+		return "", fmt.Errorf("measuring infographic text: %w", err)
+	}
+	if len(clipped) > 0 {
+		return "", fmt.Errorf("infographic text runs past its edges: %s", strings.Join(clipped, "; "))
 	}
 	return clean, nil
 }

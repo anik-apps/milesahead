@@ -1,6 +1,7 @@
 package enrich
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -161,6 +162,7 @@ func TestInfographic_RefusedChartsAreNotStored(t *testing.T) {
 		"truncated":                 strings.TrimSuffix(drawnSVG, "</svg>"),
 		"invented number":           drawn("Annual fee $995"),
 		"derived number":            drawn("Fee over five years $4,475"),
+		"text past the edge":        drawn("Annual fee $895, against the airline credit, the hotel credit and lounge access"),
 	}
 	for name, reply := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -348,5 +350,61 @@ func TestInfographic_WaitsWhileAnImageIsRequested(t *testing.T) {
 	}
 	if got, _ := readInfographic(t, d, id); got != "" {
 		t.Errorf("chart stored: %q", got)
+	}
+}
+
+// chartsByModel answers the chart prompt per model, and every other prompt
+// as its scriptedClient does.
+type chartsByModel struct {
+	scriptedClient
+	charts map[string]string
+	order  []string // models asked for a chart, in order
+}
+
+func (c *chartsByModel) Generate(model, prompt string, maxTokens int) (string, error) {
+	if strings.Contains(prompt, designerPrompt) {
+		c.order = append(c.order, model)
+		if out, ok := c.charts[model]; ok {
+			return out, nil
+		}
+		return "", fmt.Errorf("no chart scripted for %s", model)
+	}
+	return c.scriptedClient.Generate(model, prompt, maxTokens)
+}
+
+// Charts are drawn with their own chain when one is set, and a chart the
+// first model gets wrong goes to the next in the same pass.
+func TestInfographic_OwnChainAndFallbackOnRefusal(t *testing.T) {
+	d := testDB(t)
+	id := seedArticle(t, d)
+
+	client := &chartsByModel{
+		scriptedClient: scriptedClient{reply: fullReplies(nil)},
+		charts: map[string]string{
+			"chart-a": drawn("Annual fee $995"), // not in the article
+			"chart-b": drawnSVG,
+		},
+	}
+	s := newInfographicService(d, client)
+	s.InfographicModels = []string{"chart-a", "chart-b"}
+	s.Run()
+
+	if got := strings.Join(client.order, ","); got != "chart-a,chart-b" {
+		t.Errorf("chart asked of %q, want chart-a then chart-b", got)
+	}
+	if got, _ := readInfographic(t, d, id); !strings.Contains(got, "Annual fee $895") {
+		t.Errorf("stored %q, want chart-b's chart", got)
+	}
+}
+
+// The pass reserves time for the chart's own chain, not the enrichment one.
+func TestInfographic_BudgetIsTheChartChain(t *testing.T) {
+	s := New(testDB(t), &scriptedClient{}, []string{"m1"}, "Scout", nil, nil)
+	if got := s.infographicBudget(); got != ai.InfographicCallTimeout {
+		t.Errorf("budget with the enrichment chain of one = %v", got)
+	}
+	s.InfographicModels = []string{"a", "b", "c"}
+	if got := s.infographicBudget(); got != 3*ai.InfographicCallTimeout {
+		t.Errorf("budget with a chart chain of three = %v, want %v", got, 3*ai.InfographicCallTimeout)
 	}
 }
