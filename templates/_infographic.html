@@ -8,7 +8,7 @@
     <h2>At a glance</h2>
     <p class="glance-headline">{{.Headline}}</p>
     {{if eq .Kind "change"}}
-    <div class="glance-change">
+    <div class="glance-change{{if .Stacked}} glance-change--stacked{{end}}">
         <div class="glance-was">
             {{with .First}}<span class="glance-lbl">{{.Label}}</span><span class="glance-big">{{.Value}}</span>{{if .Detail}}<span class="glance-sub">{{.Detail}}</span>{{end}}{{end}}
         </div>

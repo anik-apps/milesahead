@@ -48,7 +48,7 @@ func seed(t *testing.T) string {
 	}
 	// The first article's chart names an outlet in a label.
 	if _, err := database.DB().Exec(`UPDATE generated_articles SET infographic_json = ? WHERE slug = 'a'`,
-		`{"kind":"figures","headline":"Upgrade odds","rows":[{"label":"Odds per View from the Wing","value":"1 in 3"}]}`); err != nil {
+		`{"kind":"figures","headline":"Upgrade odds","rows":[{"label":"Odds per View from the Wing","value":"1 in 3"},{"label":"Fee","value":"$95"}]}`); err != nil {
 		t.Fatal(err)
 	}
 	return path

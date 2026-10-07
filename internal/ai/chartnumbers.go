@@ -43,7 +43,7 @@ func numbersIn(text string) []chartNumber {
 	return out
 }
 
-// tickLimit is the largest bare integer a chart may show without it
+// tickLimit is the largest bare integer a chart's words may show without it
 // appearing in the article. See UnsupportedChartNumbers.
 const tickLimit = 10
 
@@ -61,12 +61,23 @@ const tickLimit = 10
 // and miscopied figures, which is what models get wrong.
 //
 // Bare integers up to tickLimit (no currency, unit, separator or decimal)
-// are exempt: they are the axis ticks, ranks and small counts a chart may add
-// on its own ("0" at the base of an axis, "1" to "5" numbering rows). The
-// prompt asks for no numbered axes at all; this keeps a stray "0" from
-// costing a whole chart. A sum or difference the article does not state is
-// refused like any other number: the prompt forbids derived figures too.
+// are exempt: small counts a chart writes as digits where the article spells
+// them ("3 nights" for "three nights"), which would otherwise cost a whole
+// chart. The values a comparison draws as bars get no exemption (see
+// UnsupportedValues): there a small invented number is a bar length. A sum
+// or difference the article does not state is refused like any other number:
+// the prompt forbids derived figures too.
 func UnsupportedChartNumbers(chart string, sources ...string) []string {
+	return unsupported(chart, true, sources...)
+}
+
+// UnsupportedValues is UnsupportedChartNumbers for the values a chart draws
+// as bars, with no exemption for small numbers: every one must be stated.
+func UnsupportedValues(values []string, sources ...string) []string {
+	return unsupported(strings.Join(values, "\n"), false, sources...)
+}
+
+func unsupported(chart string, exemptSmall bool, sources ...string) []string {
 	// Rounded, so 1.2 x 1e6 and 1,200,000 meet despite float arithmetic.
 	key := func(f float64) float64 { return math.Round(f*1000) / 1000 }
 	known := map[float64]bool{}
@@ -78,7 +89,7 @@ func UnsupportedChartNumbers(chart string, sources ...string) []string {
 	}
 	var bad []string
 	for _, n := range numbersIn(chart) {
-		if n.bare && n.value <= tickLimit {
+		if exemptSmall && n.bare && n.value <= tickLimit {
 			continue
 		}
 		if known[key(n.value)] || known[key(n.value*n.scale)] {

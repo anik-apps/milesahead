@@ -40,3 +40,18 @@ func TestUnsupportedChartNumbers(t *testing.T) {
 		})
 	}
 }
+
+// Values drawn as bars get no small-number exemption: an invented "3" beside
+// a stated "8" would be a bar of the wrong length.
+func TestUnsupportedValues_NoSmallNumberExemption(t *testing.T) {
+	src := "Eight nights earn the bonus; 8 nights is the minimum. Lounge visits: 10."
+	if bad := UnsupportedChartNumbers("3 nights", src); len(bad) != 0 {
+		t.Errorf("chart text: %q; small counts in words are exempt", bad)
+	}
+	if bad := UnsupportedValues([]string{"3", "8"}, src); len(bad) != 1 || bad[0] != "3" {
+		t.Errorf("bar values = %q, want [3]", bad)
+	}
+	if bad := UnsupportedValues([]string{"8", "10"}, src); len(bad) != 0 {
+		t.Errorf("stated bar values refused: %q", bad)
+	}
+}

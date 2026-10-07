@@ -200,7 +200,7 @@ func TestExtractDetails_DropsNumberedSourceRefs(t *testing.T) {
 
 func TestGenerateInfographic_RefusesNumberedSourceRefs(t *testing.T) {
 	chart := func(label string) string {
-		return `{"kind":"figures","headline":"Fee","rows":[{"label":"` + label + `","value":"$895"}]}`
+		return `{"kind":"figures","headline":"Fee","rows":[{"label":"` + label + `","value":"$895"},{"label":"Renewal","value":"yearly"}]}`
 	}
 	c := &mockHFClient{response: chart("Fee (Source 1)")}
 	if _, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]", nil); err == nil {

@@ -217,8 +217,8 @@ func GenerateImageQueries(client HFClientInterface, models []string, title, tldr
 // must be single numbers in one unit, so no bar can compare a ratio with a
 // percentage -- and a chart whose words refer to a source by number is
 // refused, as with Scout's Take. accept, when set, is the caller's own check
-// of the chart's words: the outlet and number guards, which need the outlet
-// table and the article.
+// of the chart: the outlet and number guards, which need the outlet table
+// and the article.
 //
 // A refused chart moves on to the next model, as a failed call does: the
 // models answer differently, and waiting a whole pass to try again would
@@ -226,7 +226,7 @@ func GenerateImageQueries(client HFClientInterface, models []string, title, tldr
 // model's chart is usable, and the reconciler tries again on a later pass. A
 // model that answers NO_INFOGRAPHIC ends the chain: that is a judgement about
 // the article, not a failure.
-func GenerateInfographic(client HFClientInterface, models []string, title, tldr, keyDetailsJSON string, accept func(words string) error) (string, error) {
+func GenerateInfographic(client HFClientInterface, models []string, title, tldr, keyDetailsJSON string, accept func(infographic.Chart) error) (string, error) {
 	if len(models) == 0 {
 		return "", fmt.Errorf("no models configured")
 	}
@@ -259,17 +259,16 @@ func GenerateInfographic(client HFClientInterface, models []string, title, tldr,
 
 // checkInfographic reads one model's chart and checks it, returning the
 // JSON to store or why it was refused.
-func checkInfographic(raw string, accept func(words string) error) (string, error) {
+func checkInfographic(raw string, accept func(infographic.Chart) error) (string, error) {
 	chart, err := infographic.Parse(raw)
 	if err != nil {
 		return "", fmt.Errorf("infographic: %w", err)
 	}
-	words := chart.Text()
-	if refs := FindSourceRefs(words); len(refs) > 0 {
+	if refs := FindSourceRefs(chart.Text()); len(refs) > 0 {
 		return "", fmt.Errorf("infographic refers to a source by number: %q", refs)
 	}
 	if accept != nil {
-		if err := accept(words); err != nil {
+		if err := accept(chart); err != nil {
 			return "", err
 		}
 	}

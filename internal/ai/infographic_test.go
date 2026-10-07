@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/kumaranik/milesahead/internal/infographic"
 )
 
 // figuresChart is a one-figure chart showing label and value.
 func figuresChart(label, value string) string {
-	return `{"kind":"figures","headline":"The fee","rows":[{"label":"` + label + `","value":"` + value + `"}]}`
+	return `{"kind":"figures","headline":"The fee","rows":[{"label":"` + label + `","value":"` + value + `"},{"label":"Renewal","value":"yearly"}]}`
 }
 
 var (
@@ -25,7 +27,7 @@ var (
 func TestGenerateInfographic_RefusedChartTriesTheNextModel(t *testing.T) {
 	cases := map[string]struct {
 		first  string
-		accept func(string) error
+		accept func(infographic.Chart) error
 	}{
 		"bars in two units": {first: mixedUnitsChart},
 		"unparseable":       {first: `{"kind":"figures",`},
@@ -33,8 +35,8 @@ func TestGenerateInfographic_RefusedChartTriesTheNextModel(t *testing.T) {
 		"numbered source":   {first: figuresChart("Annual fee (Source 1)", "$895")},
 		"refused by the caller": {
 			first: figuresChart("Annual fee", "$995"),
-			accept: func(words string) error {
-				if strings.Contains(words, "$995") {
+			accept: func(c infographic.Chart) error {
+				if strings.Contains(c.Text(), "$995") {
 					return fmt.Errorf("invented number")
 				}
 				return nil

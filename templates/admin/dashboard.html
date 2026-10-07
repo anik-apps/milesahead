@@ -147,7 +147,6 @@
                         {{if .ArticleLinks}}<ul class="article-links">{{range .ArticleLinks}}<li><a href="{{.URL}}" target="_blank" rel="noopener">→ {{.Text}}</a></li>{{end}}</ul>{{end}}
                     </details>
                     {{end}}
-                    {{with .Infographic}}<div class="glance-phone">{{template "infographic-glance" .}}</div>{{end}}
                     {{if .ImageURL}}
                     <figure class="article-hero">
                         <img src="{{.ImageURL}}" alt="" width="1100" height="280">

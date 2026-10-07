@@ -31,7 +31,7 @@ const (
 	// KindCompare is two to five amounts of the same kind in the same unit,
 	// drawn as bars.
 	KindCompare = "compare"
-	// KindFigures is numbers that do not compare: a headline figure and up
+	// KindFigures is numbers that do not compare: a headline figure and one
 	// to four more.
 	KindFigures = "figures"
 	// KindTimeline is two to five dated steps.
@@ -146,9 +146,13 @@ func (c *Chart) tidy() {
 	}
 }
 
+// clean drops control and invisible format characters (zero-width spaces,
+// soft hyphens, direction overrides), which would let a chart show an
+// outlet's name or a number that the checks read differently, and collapses
+// whitespace.
 func clean(s string) string {
 	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+		if (unicode.IsControl(r) && !unicode.IsSpace(r)) || unicode.Is(unicode.Cf, r) {
 			return -1
 		}
 		return r
@@ -191,16 +195,27 @@ func (c Chart) Validate() error {
 		if n != 2 {
 			return fmt.Errorf("a change has two rows, before and after; this has %d", n)
 		}
+		if strings.EqualFold(c.Rows[0].Value, c.Rows[1].Value) {
+			return fmt.Errorf("a change from %q to the same value is not a change", c.Rows[0].Value)
+		}
+		if err := c.labelled(); err != nil {
+			return err
+		}
 	case KindCompare:
 		if n < 2 || n > 5 {
 			return fmt.Errorf("a comparison has two to five rows; this has %d", n)
+		}
+		if err := c.labelled(); err != nil {
+			return err
 		}
 		if _, err := c.amounts(); err != nil {
 			return err
 		}
 	case KindFigures:
-		if n < 1 || n > 5 {
-			return fmt.Errorf("figures has one to five rows; this has %d", n)
+		// One number alone is not worth a chart; the prompt asks for
+		// NO_INFOGRAPHIC then.
+		if n < 2 || n > 5 {
+			return fmt.Errorf("figures has two to five rows; this has %d", n)
 		}
 	case KindTimeline:
 		if n < 2 || n > 5 {
@@ -213,6 +228,16 @@ func (c Chart) Validate() error {
 		}
 	default:
 		return fmt.Errorf("unknown kind of chart %q", c.Kind)
+	}
+	return nil
+}
+
+// labelled checks every row names what its value is.
+func (c Chart) labelled() error {
+	for i, r := range c.Rows {
+		if r.Label == "" {
+			return fmt.Errorf("%s row %d has no label", c.Kind, i+1)
+		}
 	}
 	return nil
 }
@@ -287,7 +312,15 @@ type View struct {
 	Rows     []ViewRow
 	Note     string
 	Takeaway string
+	// Stacked sets a change's before and after one above the other: either
+	// value is too long to sit beside the other in the sidebar's width
+	// without breaking a number in two.
+	Stacked bool
 }
+
+// sideBySide is the longest change value, in characters, that still fits
+// beside the other at the change's size in the sidebar: "$1,250", "4:3".
+const sideBySide = 6
 
 // ViewRow is one row as drawn.
 type ViewRow struct {
@@ -316,7 +349,10 @@ func (c Chart) View() View {
 		}
 		top := largest(amounts...)
 		for i, a := range amounts {
-			v.Rows[i].Width = int(math.Max(minBar, math.Round(a/top*100)))
+			// Zero gets no bar at all; anything else at least a stub.
+			if a > 0 {
+				v.Rows[i].Width = int(math.Max(minBar, math.Round(a/top*100)))
+			}
 			v.Rows[i].Key = a == top
 		}
 	case KindTimeline:
@@ -330,6 +366,11 @@ func (c Chart) View() View {
 	default:
 		for i := range v.Rows {
 			v.Rows[i].Key = false
+		}
+		if c.Kind == KindChange {
+			for _, r := range c.Rows {
+				v.Stacked = v.Stacked || utf8.RuneCountInString(r.Value) > sideBySide
+			}
 		}
 	}
 	if len(v.Rows) > 0 {

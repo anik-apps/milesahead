@@ -16,7 +16,7 @@ const designerPrompt = "You are a data editor"
 // drawn is a model's chart whose takeaway says text, beside the fee the
 // scripted key details give.
 func drawn(text string) string {
-	return `{"kind":"figures","headline":"Fee vs value","rows":[{"label":"Annual fee","value":"$895"}],"takeaway":"` + text + `"}`
+	return `{"kind":"figures","headline":"Fee vs value","rows":[{"label":"Annual fee","value":"$895"},{"label":"Renewal","value":"yearly"}],"takeaway":"` + text + `"}`
 }
 
 var drawnChart = drawn("Annual fee $895")
@@ -157,7 +157,7 @@ func TestInfographic_RefusedChartsAreNotStored(t *testing.T) {
 		"names an outlet":           drawn("According to The Points Guy, $895"),
 		"names a configured source": drawn("Some Travel Blog says $895"),
 		"numbered source":           drawn("Source 1: $895"),
-		"outlet in the headline":    `{"kind":"figures","headline":"One Mile at a Time on the fee","rows":[{"label":"Annual fee","value":"$895"}]}`,
+		"outlet in the headline":    `{"kind":"figures","headline":"One Mile at a Time on the fee","rows":[{"label":"Annual fee","value":"$895"},{"label":"Renewal","value":"yearly"}]}`,
 		"truncated":                 strings.TrimSuffix(drawnChart, "}"),
 		"invented number":           drawn("Annual fee $995"),
 		"derived number":            drawn("Fee over five years $4,475"),

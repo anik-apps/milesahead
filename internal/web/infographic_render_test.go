@@ -142,7 +142,7 @@ func TestInfographic_ArticlePageShowsThePanelUnderKeyDetails(t *testing.T) {
 func TestInfographic_WordsAreEscaped(t *testing.T) {
 	app := setupRealTemplateApp(t, config.InfographicsOn)
 	createInfographicArticle(t, app, "escaped", db.StatusApproved,
-		`{"kind":"figures","headline":"<script>alert(1)</script>","rows":[{"label":"<img src=x onerror=alert(2)>","value":"$95"}]}`)
+		`{"kind":"figures","headline":"<script>alert(1)</script>","rows":[{"label":"<img src=x onerror=alert(2)>","value":"$95"},{"label":"Renewal","value":"yearly"}]}`)
 
 	body := get(t, app, "/article/escaped")
 	if !strings.Contains(body, glancePanel) {

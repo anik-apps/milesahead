@@ -3902,7 +3902,7 @@ figure.article-hero, .article-detail .article-hero, .preview-body .article-hero 
 /* Change: before, then after. */
 .glance-change { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.5rem; align-items: start; }
 .glance-lbl { display: block; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
-.glance-change .glance-big { display: block; font-size: 1.85rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; margin-top: 0.1rem; overflow-wrap: anywhere; }
+.glance-change .glance-big { display: block; font-size: 1.85rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; margin-top: 0.1rem; overflow-wrap: break-word; }
 .glance-was .glance-big {
     color: var(--text-muted);
     font-weight: 500;
@@ -3911,6 +3911,11 @@ figure.article-hero, .article-detail .article-hero, .preview-body .article-hero 
 }
 .glance-now .glance-big { color: var(--accent); }
 .glance-arrow { color: var(--text-muted); font-size: 1.2rem; padding-top: 1.35rem; }
+/* Values too long to sit side by side (Chart.View decides) go one above the
+   other, the arrow pointing down, so no number breaks in two. */
+.glance-change--stacked { grid-template-columns: minmax(0, 1fr); gap: 0.2rem; }
+.glance-change--stacked .glance-big { font-size: 1.45rem; }
+.glance-change--stacked .glance-arrow { padding: 0; line-height: 1; justify-self: start; margin-left: 0.35rem; transform: rotate(90deg); }
 
 /* Compare: bars whose lengths the site computed from the values. */
 .glance-bars { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.7rem; }
@@ -3924,7 +3929,7 @@ figure.article-hero, .article-detail .article-hero, .preview-body .article-hero 
 .glance-bars .glance-key .glance-val { color: var(--accent); }
 
 /* Figures: one headline number, the rest in a grid. */
-.glance-hero .glance-big { display: block; font-size: 2.05rem; font-weight: 750; letter-spacing: -0.025em; line-height: 1.1; color: var(--accent); overflow-wrap: anywhere; }
+.glance-hero .glance-big { display: block; font-size: 2.05rem; font-weight: 750; letter-spacing: -0.025em; line-height: 1.1; color: var(--accent); overflow-wrap: break-word; }
 .glance-hero .glance-sub { font-size: 0.82rem; margin-top: 0.25rem; }
 .glance-figs { list-style: none; padding: 0; margin: 0.85rem 0 0; display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); }
 .glance-figs li { padding: 0.6rem 0 0.15rem; min-width: 0; }
@@ -3932,7 +3937,7 @@ figure.article-hero, .article-detail .article-hero, .preview-body .article-hero 
 .glance-figs li:nth-child(even) { padding-left: 0.75rem; }
 .glance-figs li:nth-child(n+3) { border-top: 1px solid var(--border); }
 .glance-figs li:last-child:nth-child(odd) { border-right: none; }
-.glance-fig { display: block; font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.glance-fig { display: block; font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; overflow-wrap: break-word; }
 
 /* Timeline: dated steps, the one that matters marked. */
 .glance-timeline { list-style: none; margin: 0; padding: 0 0 0 1.25rem; position: relative; }
@@ -3962,11 +3967,23 @@ figure.article-hero, .article-detail .article-hero, .preview-body .article-hero 
     font-size: 0.78rem;
     font-weight: 500;
     background: var(--accent-subtle);
-    color: var(--accent);
+    /* Darker than the accent in the light theme, for AA contrast at this
+       size on the tinted pill. */
+    color: #1d4ed8;
     padding: 0.2rem 0.6rem;
     border-radius: 999px;
 }
+[data-theme="dark"] .glance-note { color: var(--accent); }
 .glance-take { margin: 0.85rem 0 0; padding-top: 0.75rem; border-top: 1px solid var(--border); font-size: 0.82rem; color: var(--text-muted); line-height: 1.45; }
+
+/* Forced colours (Windows High Contrast) drop background colours, which
+   would take the bars with them. */
+@media (forced-colors: active) {
+    .glance-track { forced-color-adjust: none; background: Canvas; outline: 1px solid CanvasText; }
+    .glance-fill { forced-color-adjust: none; background: CanvasText; }
+    .glance-bars .glance-key .glance-fill { background: Highlight; }
+    .glance-timeline li.glance-key::before { forced-color-adjust: none; background: Highlight; border-color: Highlight; }
+}
 
 /* A sidebar holding the chart can be taller than the window; stuck to the
    top, its lower half would stay out of reach while the story scrolls. */

@@ -273,9 +273,9 @@ date or condition) and takeaway. Four kinds:
 
 | Kind | For | Drawn as |
 |---|---|---|
-| `change` | one number that moved: a fee, a ratio, a price | before, crossed out, then after in the accent colour |
+| `change` | one number that moved: a fee, a ratio, a price | before, crossed out, then after in the accent colour; one above the other when either is too long to sit side by side |
 | `compare` | two to five amounts of the same kind and unit | bars, longest in the accent colour, lengths computed by the site |
-| `figures` | numbers that do not compare | one large headline figure, up to four more in a grid |
+| `figures` | numbers that do not compare | one large headline figure and one to four more in a grid |
 | `timeline` | dates | dated steps, the one that matters marked |
 
 The model chooses no colours, sizes or positions. It used to write the chart as
@@ -286,8 +286,10 @@ in the site's own type and colours, real dark mode included, and its text wraps
 instead of being clipped.
 
 A chart is refused when it does not fit its kind (`Chart.Validate`): the wrong
-number of rows, a field over its length limit, an unknown kind, and for
-`compare` any value that is not exactly one number, or rows in different units
+number of rows (a single figure is not worth a chart), a field over its length
+limit, an unknown kind, a row of a change or comparison with no label, a
+change to the same value, and for `compare` any value that is not exactly one
+number, or rows in different units
 (the value with its number taken out: "%", "$", "miles"). That is the rule
 against meaningless bars, enforced rather than only asked for: a ratio ("1:3"),
 a range ("7,000-24,000"), or a percentage beside a multiplier cannot be a bar.
@@ -339,8 +341,12 @@ Every number in the chart must also be one the article states
 Numbers are compared by value: thousands separators, currency signs and units
 are ignored, and a "$3k" matches "3,000". A made-up, miscopied or derived
 figure (a sum the article does not give) refuses the chart. The one exemption is
-bare integers up to 10 with no currency, unit or separator. The prompt asks for
-no derived figures, so a model is not refused for something it was not told.
+bare integers up to 10 with no currency, unit or separator in the chart's
+words, where the article may spell a small count out ("three nights"). A
+comparison's values get no exemption (`ai.UnsupportedValues`): they are bar
+lengths, and an invented "3" beside a stated "8" would draw a wrong one. The
+prompt asks for no derived figures, so a model is not refused for something it
+was not told.
 
 What no check can catch is a sentence that gets the article wrong, or a label
 on the wrong number. The prompt asks the takeaway to keep the article's rules
