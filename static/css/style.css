@@ -3887,40 +3887,93 @@ figure.article-hero, .article-detail .article-hero, .preview-body .article-hero 
     .card-embed-actions a { flex: 1; }
 }
 
-/* ---- Article infographic ------------------------------------------------ */
-/* A model-drawn chart of the key details, shown as an <img> of a data: URL
-   (never inline SVG; see internal/web/infographic.go). It is drawn on a
-   560-unit canvas and shown at that size at most, so its 18px labels stay
-   18px on desktop; phones scale it down with the column. */
-.article-infographic {
-    margin: 0 0 1.75rem;
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--bg);
-}
-.article-infographic img {
-    display: block;
-    width: 100%;
-    max-width: 560px;
-    height: auto;
-    margin: 0 auto;
-}
-.article-infographic figcaption {
-    margin-top: 8px;
+/* ---- Article "At a glance" chart --------------------------------------- */
+/* The numbers a model chose from the key details, drawn by the site in its
+   own type and colours (templates/_infographic.html): a panel like Key
+   Details, under it in the sidebar, and under the folded key details on
+   phones. One accent colour marks the number that matters; the rest is the
+   site's grey. */
+.glance { --glance-bar: #94a3b8; --glance-track: #e9eef5; }
+[data-theme="dark"] .glance { --glance-bar: #6e7681; --glance-track: #21262d; }
+.glance-headline { font-size: 0.95rem; font-weight: 650; line-height: 1.35; margin: -0.15rem 0 0.9rem; }
+.glance .glance-sub { display: block; font-size: 0.78rem; color: var(--text-muted); line-height: 1.4; }
+.glance-big, .glance-fig, .glance-val { font-variant-numeric: tabular-nums; }
+
+/* Change: before, then after. */
+.glance-change { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.5rem; align-items: start; }
+.glance-lbl { display: block; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.glance-change .glance-big { display: block; font-size: 1.85rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; margin-top: 0.1rem; overflow-wrap: anywhere; }
+.glance-was .glance-big {
     color: var(--text-muted);
-    font-size: 0.8rem;
-    text-align: center;
+    font-weight: 500;
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
 }
-/* An image cannot inherit the page's colours: its text is a fixed dark ink.
-   For the dark theme the whole chart is inverted and its hues turned back,
-   which keeps each bar's colour family and makes the ink light. */
-[data-theme="dark"] .article-infographic img {
-    filter: invert(1) hue-rotate(180deg);
+.glance-now .glance-big { color: var(--accent); }
+.glance-arrow { color: var(--text-muted); font-size: 1.2rem; padding-top: 1.35rem; }
+
+/* Compare: bars whose lengths the site computed from the values. */
+.glance-bars { list-style: none; padding: 0; margin: 0; display: grid; gap: 0.7rem; }
+.glance-row { display: flex; justify-content: space-between; align-items: baseline; gap: 0.6rem; }
+.glance-name { font-size: 0.85rem; font-weight: 550; }
+.glance-name small { display: block; font-size: 0.72rem; color: var(--text-muted); font-weight: 400; margin-top: 0.05rem; }
+.glance-val { font-size: 0.9rem; font-weight: 700; white-space: nowrap; }
+.glance-track { display: block; height: 8px; border-radius: 99px; background: var(--glance-track); margin-top: 0.3rem; overflow: hidden; }
+.glance-fill { display: block; height: 100%; border-radius: 99px; background: var(--glance-bar); }
+.glance-bars .glance-key .glance-fill { background: var(--accent); }
+.glance-bars .glance-key .glance-val { color: var(--accent); }
+
+/* Figures: one headline number, the rest in a grid. */
+.glance-hero .glance-big { display: block; font-size: 2.05rem; font-weight: 750; letter-spacing: -0.025em; line-height: 1.1; color: var(--accent); overflow-wrap: anywhere; }
+.glance-hero .glance-sub { font-size: 0.82rem; margin-top: 0.25rem; }
+.glance-figs { list-style: none; padding: 0; margin: 0.85rem 0 0; display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); }
+.glance-figs li { padding: 0.6rem 0 0.15rem; min-width: 0; }
+.glance-figs li:nth-child(odd) { padding-right: 0.6rem; border-right: 1px solid var(--border); }
+.glance-figs li:nth-child(even) { padding-left: 0.75rem; }
+.glance-figs li:nth-child(n+3) { border-top: 1px solid var(--border); }
+.glance-figs li:last-child:nth-child(odd) { border-right: none; }
+.glance-fig { display: block; font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+
+/* Timeline: dated steps, the one that matters marked. */
+.glance-timeline { list-style: none; margin: 0; padding: 0 0 0 1.25rem; position: relative; }
+.glance-timeline::before { content: ""; position: absolute; left: 5px; top: 0.4rem; bottom: 0.4rem; width: 2px; background: var(--border); }
+.glance-timeline li { position: relative; padding-bottom: 0.85rem; }
+.glance-timeline li:last-child { padding-bottom: 0; }
+.glance-timeline li::before {
+    content: "";
+    position: absolute;
+    left: -1.25rem;
+    top: 0.3rem;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--card-bg);
+    border: 2px solid var(--glance-bar);
+    box-sizing: border-box;
 }
-/* Forced colours (Windows High Contrast) would otherwise leave the chart's
-   fixed dark ink on whatever background the user's scheme sets. Keep the
-   chart's own colours and give it the white page it was drawn for. */
-@media (forced-colors: active) {
-    .article-infographic img { forced-color-adjust: none; background: #fff; filter: none; }
+.glance-timeline li.glance-key::before { background: var(--accent); border-color: var(--accent); }
+.glance-when { display: block; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); }
+.glance-what { display: block; font-size: 0.88rem; font-weight: 550; }
+.glance-timeline li.glance-key .glance-what { color: var(--accent); }
+
+.glance-note {
+    display: inline-block;
+    margin: 0.8rem 0 0;
+    font-size: 0.78rem;
+    font-weight: 500;
+    background: var(--accent-subtle);
+    color: var(--accent);
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+}
+.glance-take { margin: 0.85rem 0 0; padding-top: 0.75rem; border-top: 1px solid var(--border); font-size: 0.82rem; color: var(--text-muted); line-height: 1.45; }
+
+/* A sidebar holding the chart can be taller than the window; stuck to the
+   top, its lower half would stay out of reach while the story scrolls. */
+.article-sidebar.has-glance { position: static; }
+/* The phone copy, under the folded key details; desktop has the sidebar's. */
+.glance-phone { display: none; }
+@media (max-width: 768px) {
+    .glance-phone { display: block; }
+    .glance-phone .glance { margin: 0 0 1.25rem; }
 }

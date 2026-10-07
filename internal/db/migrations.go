@@ -306,10 +306,11 @@ func migrate(db *sql.DB) error {
 		// search and anything else built from content. Content is now
 		// stored without them; see package editornote.
 		`ALTER TABLE generated_articles ADD COLUMN editor_notes TEXT NOT NULL DEFAULT ''`,
-		// The article's infographic: SVG the sanitiser wrote, "none" when
-		// enrichment found nothing to chart (db.NoInfographic), or empty
-		// when not drawn yet. Only filled with ai.enrichment_infographics on.
-		`ALTER TABLE generated_articles ADD COLUMN infographic_svg TEXT DEFAULT ''`,
+		// The article's "At a glance" chart: its numbers as JSON (package
+		// infographic), "none" when enrichment found nothing to chart
+		// (db.NoInfographic), or empty when not drawn yet. Only filled with
+		// ai.enrichment_infographics on.
+		`ALTER TABLE generated_articles ADD COLUMN infographic_json TEXT DEFAULT ''`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kumaranik/milesahead/internal/svg"
+	"github.com/kumaranik/milesahead/internal/infographic"
 )
 
 // Token budgets for the enrichment calls.
@@ -24,16 +24,13 @@ const (
 	TagsTokens       = 512
 	KeyDetailTokens  = 1024
 
-	// InfographicTokens is far larger because the answer is markup, not a
-	// sentence: a labelled bar chart runs 2-4 KB, and a reasoning model
-	// spends most of its budget on layout arithmetic before it emits the
-	// first tag. Truncation here is total -- the sanitiser rejects an
-	// unterminated document, and a reply cut off mid-reasoning has no SVG in
-	// it at all -- so the ceiling is set well clear. It was 6,144: drawing
-	// ten real articles on 2026-10-06, nemotron-3-super ran out on 4 of 10
-	// and gpt-oss-20b on 2 of 3, returning nothing. At 12,288 none of 16
-	// calls ran out, and all answered in 6-86s. Time is bounded by
-	// InfographicCallTimeout, not by this.
+	// InfographicTokens is far larger than the other calls' because a
+	// reasoning model spends most of it deciding what to chart before it
+	// writes the answer, and a reply cut off mid-reasoning has no chart in it
+	// at all. When the model drew the chart as SVG, 6,144 ran out on 4 of 10
+	// real articles; at 12,288 none of 16 calls did. The answer is now a few
+	// hundred bytes of JSON, but the ceiling stays clear of the reasoning.
+	// Time is bounded by InfographicCallTimeout, not by this.
 	InfographicTokens = 12288
 )
 
@@ -211,21 +208,21 @@ func GenerateImageQueries(client HFClientInterface, models []string, title, tldr
 	return queries, nil
 }
 
-// GenerateInfographic asks each model in turn to draw the article's numbers,
-// and returns the first chart that passes every check, as markup that has
-// been through the allowlist sanitiser.
+// GenerateInfographic asks each model in turn for the article's "At a
+// glance" chart, and returns the first one that passes every check, as the
+// JSON to store (see package infographic).
 //
-// Nothing here trusts the model's output. svg.Sanitize bounds and rewrites
-// it; a chart whose words refer to a source by number is refused, as with
-// Scout's Take; so is one whose text runs past its edges, where the image
-// clips it (svg.Overflow). accept, when set, is the caller's own check of the
-// chart's words: the outlet and number guards, which need the outlet table
-// and the article.
+// Nothing here trusts the model's answer. infographic.Parse reads only the
+// chart's fields and checks them against its kind -- a comparison's values
+// must be single numbers in one unit, so no bar can compare a ratio with a
+// percentage -- and a chart whose words refer to a source by number is
+// refused, as with Scout's Take. accept, when set, is the caller's own check
+// of the chart's words: the outlet and number guards, which need the outlet
+// table and the article.
 //
-// A refused chart moves on to the next model, as a failed call does. The
-// models draw differently, and charts are refused often enough -- five of
-// the first nine for clipped text alone -- that waiting a whole pass to try
-// again would leave many articles without one. It is an error only when no
+// A refused chart moves on to the next model, as a failed call does: the
+// models answer differently, and waiting a whole pass to try again would
+// leave articles without a chart for nothing. It is an error only when no
 // model's chart is usable, and the reconciler tries again on a later pass. A
 // model that answers NO_INFOGRAPHIC ends the chain: that is a judgement about
 // the article, not a failure.
@@ -238,7 +235,7 @@ func GenerateInfographic(client HFClientInterface, models []string, title, tldr,
 	for i, m := range models {
 		raw, err := client.Generate(m, prompt, InfographicTokens)
 		if err == nil {
-			if strings.Contains(raw, "NO_INFOGRAPHIC") && !strings.Contains(raw, "<svg") {
+			if strings.Contains(raw, "NO_INFOGRAPHIC") && !strings.Contains(raw, "{") {
 				return "", ErrNoInfographic
 			}
 			var clean string
@@ -260,17 +257,14 @@ func GenerateInfographic(client HFClientInterface, models []string, title, tldr,
 	return "", fmt.Errorf("no usable infographic from %d model(s): %s", len(models), strings.Join(failures, "; "))
 }
 
-// checkInfographic sanitises one model's chart and checks it, returning the
-// sanitised markup or why it was refused.
+// checkInfographic reads one model's chart and checks it, returning the
+// JSON to store or why it was refused.
 func checkInfographic(raw string, accept func(words string) error) (string, error) {
-	clean, err := svg.Sanitize(raw)
+	chart, err := infographic.Parse(raw)
 	if err != nil {
-		return "", fmt.Errorf("sanitising infographic: %w", err)
+		return "", fmt.Errorf("infographic: %w", err)
 	}
-	words, err := svg.Text(clean)
-	if err != nil {
-		return "", fmt.Errorf("reading infographic text: %w", err)
-	}
+	words := chart.Text()
 	if refs := FindSourceRefs(words); len(refs) > 0 {
 		return "", fmt.Errorf("infographic refers to a source by number: %q", refs)
 	}
@@ -279,12 +273,5 @@ func checkInfographic(raw string, accept func(words string) error) (string, erro
 			return "", err
 		}
 	}
-	clipped, err := svg.Overflow(clean)
-	if err != nil {
-		return "", fmt.Errorf("measuring infographic text: %w", err)
-	}
-	if len(clipped) > 0 {
-		return "", fmt.Errorf("infographic text runs past its edges: %s", strings.Join(clipped, "; "))
-	}
-	return clean, nil
+	return chart.JSON(), nil
 }

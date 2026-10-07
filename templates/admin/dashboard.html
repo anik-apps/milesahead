@@ -147,6 +147,7 @@
                         {{if .ArticleLinks}}<ul class="article-links">{{range .ArticleLinks}}<li><a href="{{.URL}}" target="_blank" rel="noopener">→ {{.Text}}</a></li>{{end}}</ul>{{end}}
                     </details>
                     {{end}}
+                    {{with .Infographic}}<div class="glance-phone">{{template "infographic-glance" .}}</div>{{end}}
                     {{if .ImageURL}}
                     <figure class="article-hero">
                         <img src="{{.ImageURL}}" alt="" width="1100" height="280">
@@ -170,9 +171,9 @@
                             <button type="submit" class="btn btn-sm">{{if .ImageURL}}Find a new image{{else}}Find an image{{end}}</button>
                         </form>
                     </div>
-                    <div class="article-layout{{if not (or .KeyDetails .ArticleLinks)}} no-sidebar{{end}}">
-                        {{if or .KeyDetails .ArticleLinks}}
-                        <aside class="article-sidebar" aria-label="Key details">
+                    <div class="article-layout{{if not (or .KeyDetails .ArticleLinks .Infographic .InfographicNone .InfographicBroken)}} no-sidebar{{end}}">
+                        {{if or .KeyDetails .ArticleLinks .Infographic .InfographicNone .InfographicBroken}}
+                        <aside class="article-sidebar{{if .Infographic}} has-glance{{end}}" aria-label="Key details">
                             {{if .KeyDetails}}
                             <div class="sidebar-section">
                                 <h2>Key Details</h2>
@@ -181,6 +182,33 @@
                                     <li><strong>{{.Label}}:</strong> {{.Value}}</li>
                                     {{end}}
                                 </ul>
+                            </div>
+                            {{end}}
+                            {{/* The chart is shown here whatever ai.enrichment_infographics
+                                 is, so it can be reviewed before it is published. */}}
+                            {{with .Infographic}}{{template "infographic-glance" .}}{{end}}
+                            {{if not .Infographic}}{{if .InfographicNone}}
+                            <p class="preview-missing glance-status">No chart: enrichment found nothing in the key details to chart, or the chart was removed.</p>
+                            {{else if .InfographicBroken}}
+                            <p class="preview-missing glance-status">The stored chart is not one the site can draw, so it is not shown. Redraw it, or remove it.</p>
+                            {{else if and $.Infographics.Drawn .KeyDetails}}
+                            <p class="preview-missing glance-status">No chart yet. Enrichment draws one on a coming pass.</p>
+                            {{end}}{{end}}
+                            {{if and .Infographic (not $.Infographics.Shown)}}<p class="dim glance-status">Not on the site: ai.enrichment_infographics is not &ldquo;on&rdquo;.</p>{{end}}
+                            {{if or .Infographic .InfographicNone .InfographicBroken}}
+                            <div class="chart-tools">
+                                {{if or .Infographic .InfographicBroken}}
+                                <form method="POST" action="/admin/articles/{{.ID}}/chart/remove" class="inline-form">
+                                    {{template "csrf_field" $}}
+                                    <input type="hidden" name="sort" value="{{$.Sort}}">
+                                    <button type="submit" class="btn btn-sm">Remove chart</button>
+                                </form>
+                                {{end}}
+                                <form method="POST" action="/admin/articles/{{.ID}}/chart/redraw" class="inline-form">
+                                    {{template "csrf_field" $}}
+                                    <input type="hidden" name="sort" value="{{$.Sort}}">
+                                    <button type="submit" class="btn btn-sm">Redraw chart</button>
+                                </form>
                             </div>
                             {{end}}
                             {{if .ArticleLinks}}
@@ -198,37 +226,6 @@
                         <div class="article-main">
                             {{range .EditorNotes}}
                             <div class="editor-note"><strong>Editor note (not published):</strong> {{.}}</div>
-                            {{end}}
-                            {{/* The chart is shown here whatever ai.enrichment_infographics
-                                 is, so it can be reviewed before it is published. */}}
-                            {{with .Infographic}}
-                            <figure class="article-infographic">
-                                <img src="{{.Src}}" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}} decoding="async">
-                                <figcaption>Chart drawn automatically from this article&rsquo;s key details.{{if not $.Infographics.Shown}} <span class="dim">Not shown on the site: ai.enrichment_infographics is not &ldquo;on&rdquo;.</span>{{end}}</figcaption>
-                            </figure>
-                            {{end}}
-                            {{if not .Infographic}}{{if .InfographicNone}}
-                            <p class="preview-missing">No infographic: enrichment found nothing in the key details to chart, or the chart was removed.</p>
-                            {{else if .InfographicBroken}}
-                            <p class="preview-missing">The stored chart no longer passes the sanitiser, so it is not shown. Redraw it, or remove it.</p>
-                            {{else if $.Infographics.Drawn}}
-                            <p class="preview-missing">No infographic yet. Enrichment draws one once the key details are in.</p>
-                            {{end}}{{end}}
-                            {{if or .Infographic .InfographicNone .InfographicBroken}}
-                            <div class="chart-tools">
-                                {{if or .Infographic .InfographicBroken}}
-                                <form method="POST" action="/admin/articles/{{.ID}}/chart/remove" class="inline-form">
-                                    {{template "csrf_field" $}}
-                                    <input type="hidden" name="sort" value="{{$.Sort}}">
-                                    <button type="submit" class="btn btn-sm">Remove chart</button>
-                                </form>
-                                {{end}}
-                                <form method="POST" action="/admin/articles/{{.ID}}/chart/redraw" class="inline-form">
-                                    {{template "csrf_field" $}}
-                                    <input type="hidden" name="sort" value="{{$.Sort}}">
-                                    <button type="submit" class="btn btn-sm">Redraw chart</button>
-                                </form>
-                            </div>
                             {{end}}
                             <div class="article-content">
                                 {{.Content | safeHTML}}

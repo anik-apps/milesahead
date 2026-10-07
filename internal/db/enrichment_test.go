@@ -167,9 +167,9 @@ func TestInfographics_ListingAndLoading(t *testing.T) {
 	none := makeArticle(t, d, "no-chart")
 	setFields(t, d, none, complete)
 	drawn := makeArticle(t, d, "drawn")
-	setFields(t, d, drawn, complete+", infographic_svg = '<svg>chart</svg>'")
+	setFields(t, d, drawn, complete+", infographic_json = ?", `{"kind":"figures"}`)
 	nothing := makeArticle(t, d, "nothing-to-chart")
-	setFields(t, d, nothing, complete+", infographic_svg = ?", NoInfographic)
+	setFields(t, d, nothing, complete+", infographic_json = ?", NoInfographic)
 
 	if got, err := d.ListArticlesNeedingEnrichment(3, 10); err != nil || len(got) != 0 {
 		t.Errorf("without infographics listed %d (%v); a missing chart is not a gap", len(got), err)
@@ -189,7 +189,7 @@ func TestInfographics_ListingAndLoading(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(charts) != 2 || charts[drawn] != "<svg>chart</svg>" || charts[nothing] != NoInfographic {
+	if len(charts) != 2 || charts[drawn] != `{"kind":"figures"}` || charts[nothing] != NoInfographic {
 		t.Errorf("InfographicsFor = %v", charts)
 	}
 	if empty, err := d.InfographicsFor(nil); err != nil || len(empty) != 0 {

@@ -548,7 +548,7 @@ func (s *Service) findImage(u *db.EnrichmentUpdate, a db.ArticleNeedingEnrichmen
 // value that was actually written, never from a half-filled row.
 //
 // The three outcomes are distinct on purpose. An error is a failure worth
-// retrying; a drawing is a fill; and "this article has no numbers in it" is
+// retrying; a chart is a fill; and "this article has no numbers in it" is
 // neither. That last case writes a sentinel rather than leaving the column
 // empty, because otherwise every pass would pay for a model call to be told
 // the same thing again, and an article that is otherwise complete would burn
@@ -583,18 +583,18 @@ func (s *Service) drawInfographic(u *db.EnrichmentUpdate, a db.ArticleNeedingEnr
 		}
 		return nil
 	}
-	markup, err := ai.GenerateInfographic(client, s.infographicModels(), a.Title, a.TLDR, details, accept)
+	chart, err := ai.GenerateInfographic(client, s.infographicModels(), a.Title, a.TLDR, details, accept)
 	if errors.Is(err, ai.ErrNoInfographic) {
 		slog.Info("enrichment: article has nothing chartable",
 			"article_id", a.ID)
 		sentinel := db.NoInfographic
-		u.InfographicSVG = &sentinel
+		u.InfographicJSON = &sentinel
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	u.InfographicSVG = &markup
+	u.InfographicJSON = &chart
 	return true, nil
 }
 

@@ -543,54 +543,45 @@ Sources (for your reference only — do NOT cite or link to them):
 Write the revised article now.`, feedback, writingStyle, htmlFormat, sourceReferenceRule, previousOutput, criticIssues, formatSources(sources))
 }
 
-// InfographicPrompt asks for an SVG diagram of an article's key numbers.
+// InfographicPrompt asks for the numbers of an article's "At a glance"
+// chart, as JSON (see package infographic).
 //
-// The constraints are not stylistic. Everything the prompt forbids is
-// something internal/svg drops anyway, so asking for it up front is the
-// difference between a usable diagram and a sanitised husk -- a model that
-// leans on <defs> gradients and CSS gets its fills stripped and returns flat
-// grey boxes. Well-formed XML is demanded explicitly because the sanitiser
-// parses strictly and rejects the whole document on a single unquoted
-// attribute, which HTML habits produce constantly.
+// The model chooses the kind of chart, its words and its numbers, and
+// nothing else: the site draws it. When the model drew SVG itself, its charts
+// were inconsistent and often wrong in ways no check caught -- a ratio drawn
+// as a bar length, a percentage beside a multiplier on one scale -- and the
+// rules about which numbers may share a bar are now enforced when the answer
+// is read (infographic.Chart.Validate) as well as asked for here.
 //
 // The chart is public text derived from a finished article with no revision
 // pass after it, like Scout's Take, so it carries the same outlet rule; the
 // enrichment step checks its words as well (see enrich.drawInfographic).
 func InfographicPrompt(title, tldr, keyDetailsJSON string) string {
-	return fmt.Sprintf(`You are an information designer. Produce a single SVG infographic that lets a reader grasp this article's numbers at a glance.
+	return fmt.Sprintf(`You are a data editor. Pick the one set of numbers that carries this article and describe it as a small chart in JSON. The site draws the chart itself: you choose only the kind, the words and the numbers.
 
 ARTICLE
 Title: %s
 Summary: %s
 Key details (JSON): %s
 
-WHAT TO DRAW
-Pick the one comparison that carries the article and draw it. Usually that is a horizontal bar chart comparing two to five labelled amounts, but use a simple timeline if the story is about dates, or a small grid of stat cards if the numbers do not compare to each other.
-- Every number you draw must appear in the article above, written as the article writes it. Do not invent, round, extrapolate, add up or subtract figures: a chart showing a number the article does not state is thrown away.
-- Do not number the axes: no tick values, gridline values or scales. Bar lengths show the proportions; the value label on each bar gives the number.
-- Bars compare amounts of the same kind in the same unit: dollars with dollars, points with points, a percentage with a percentage of the same thing. Never draw a ratio (1:3), a multiplier or a rate as a bar, and never put a percentage beside a ratio, or one program's points beside another's, on one scale: the bar lengths would claim a comparison the numbers do not make. If the numbers do not share a unit, use stat cards instead.
-- Label every bar or row with both its name and its value. A chart nobody can read the numbers off is useless.
-- Include a short headline at the top and a one-line takeaway at the bottom. The takeaway must say what the article says: keep any rule, condition or order of steps exactly as the article puts it (activate before you spend, not after), or state a number instead.
-- If the article has no comparable numbers at all, output exactly: NO_INFOGRAPHIC
+KINDS
+- "change": one number that moved, such as a fee, a ratio or a price. Exactly two rows: before, then after. Example: {"kind":"change","headline":"The IHG Select fee doubles","rows":[{"label":"Old fee","value":"$49"},{"label":"New fee","value":"$99"}],"note":"From December 2, 2026"}
+- "compare": two to five amounts of the same kind in the same unit, drawn as bars: dollars with dollars, miles with miles, one percentage with another of the same thing. Each value is a single number with its unit ("50%%", "$95", "75,000 miles"): never a ratio ("1:3"), a range ("7,000-24,000") or two numbers, which belong in "label" or "detail". Never put a total beside the parts that make it up. Put the biggest first, unless the article has an order of its own (tiers, steps). Example: {"kind":"compare","headline":"Rove transfer bonuses","rows":[{"label":"Japan Airlines","value":"50%%","detail":"1.5 miles per point"},{"label":"Flying Blue","value":"40%%","detail":"1.4 miles per point"}],"note":"Through October 31, 2026"}
+- "figures": numbers that do not compare with each other. The first row is the headline figure; up to four more follow. Example: {"kind":"figures","headline":"Discover Q4 categories","rows":[{"label":"cash back on entertainment, restaurants and utilities","value":"5%%"},{"label":"quarterly cap on combined purchases","value":"$1,500"}],"takeaway":"Activate first: only purchases after activation count."}
+- "timeline": the story is about dates. Two to five rows in date order: "label" is the date, "value" what happens then. Mark the row that matters with "key": true.
+
+RULES
+- Every number must appear in the article above, written as the article writes it. Do not invent, round, add up or subtract figures: a chart showing a number the article does not state is thrown away.
+- "headline" says what the chart shows, in at most 60 characters. "label" at most 30 characters, "value" at most 24, "detail" at most 60.
+- A label names the thing: the airline, the tier's range, the fee. Do not repeat the value in it ("50%% tier" beside "50%%" says nothing).
+- "note" (optional): one short date or condition, such as "Through October 31, 2026".
+- "takeaway" (optional): one sentence the reader can act on, at most 140 characters. It must say what the article says: keep any rule, condition or order of steps exactly as the article puts it (activate before you spend, not after).
+- If the article has nothing worth charting -- no numbers, or only one -- output exactly: NO_INFOGRAPHIC
 
 WORDS IN THE CHART
 `+noOutletsRule+`
 If the article itself names a news site or blog outside those exceptions, do not repeat it. Never refer to sources by number or position ("Source 1", "the second source") either. Label things by what they are: the card, the airline, the hotel program, the fee.
 
-STRICT OUTPUT RULES
-- Output ONLY the SVG. No prose, no markdown fences, no explanation.
-- Root element: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360"> with no width or height attributes.
-- The first child must be <title>…</title> giving the diagram an accessible name.
-- Allowed elements ONLY: svg, title, desc, g, rect, circle, ellipse, line, polyline, polygon, path, text, tspan.
-- Allowed styling ONLY via presentation attributes: fill, stroke, stroke-width, opacity, font-family, font-size, font-weight, text-anchor, transform.
-- Forbidden and silently discarded: style attributes, <style>, <defs>, gradients, filters, <image>, <use>, <script>, <foreignObject>, class-based CSS, external fonts, url(...) values of any kind.
-- Colours must be literal hex (#1f6feb) or the keyword currentColor. Use currentColor for all text and axis lines; use hex only for the data marks themselves. The background is transparent: do not draw a full-size background rectangle.
-- Pick mid-tone data colours (for example #1f6feb, #2da44e, #cf222e, #8250df, #bf8700) that read on both a white and a near-black page.
-- font-family must be: sans-serif
-- Must be well-formed XML: quote every attribute value, close every tag (<rect ... /> or <text ...>…</text>), and escape & as &amp;.
-- Keep it under 60 elements and stay inside the 560x360 viewBox. Nothing outside it is rendered.
-- The chart is shown 560 wide on a computer and about 340 wide on a phone, so text must be large: font-size 22 for the headline, 18 for every label and value, never below 16. At most five rows.
-- Text does not wrap, and anything past the edge of the 560x360 frame is cut off, so a chart with any text running past an edge is thrown away. At font-size 18 a character is about 10 units wide, at 22 about 12: keep the headline to 40 characters, the takeaway to 50, and each row label to 16. Name the thing ("JAL", "Old fee") and leave the details to the value label or the takeaway.
-- Leave room for the value labels: end the longest bar at x=440 at most, so the value that follows it still fits. A label running past x=550 is clipped and its number is lost -- which defeats the diagram.
-- Left-hand row labels need room too: start the bars at x=180 or further right, and right-align those labels (text-anchor="end") just left of the bars.`, title, tldr, keyDetailsJSON)
+OUTPUT
+Only the JSON object: no prose, no markdown fences. Fields: "kind", "headline", "rows" (each with "label", "value" and optionally "detail" and, in a timeline, "key"), and optionally "note" and "takeaway".`, title, tldr, keyDetailsJSON)
 }

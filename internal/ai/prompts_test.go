@@ -281,24 +281,31 @@ func TestWritingStyleAndHTMLFormat_ForbidMarkdown(t *testing.T) {
 	}
 }
 
-// The infographic prompt states the rules the number check enforces, so a
-// model is not refused for something it was never told.
-func TestInfographicPrompt_StatesTheNumberRules(t *testing.T) {
+// The infographic prompt states the rules the checks enforce, so a model is
+// not refused for something it was never told, and asks for JSON only.
+func TestInfographicPrompt_StatesTheRules(t *testing.T) {
 	p := InfographicPrompt("T", "tldr", "[]")
 	for _, want := range []string{
-		"Every number you draw must appear in the article above",
+		"Every number must appear in the article above",
 		"add up or subtract",
-		"Do not number the axes",
-		// What the edge check enforces, with the limits a model can count to.
-		"text running past an edge is thrown away",
-		"keep the headline to 40 characters, the takeaway to 50, and each row label to 16",
-		// What no check can catch.
+		// What infographic.Chart.Validate enforces.
+		`"change"`, `"compare"`, `"figures"`, `"timeline"`,
 		"in the same unit",
-		"Never draw a ratio",
+		"Never put a total beside the parts",
+		"Do not repeat the value in it",
+		`never a ratio ("1:3"), a range ("7,000-24,000") or two numbers`,
+		// What no check can catch.
 		"order of steps exactly as the article puts it",
+		"Only the JSON object",
+		"NO_INFOGRAPHIC",
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("infographic prompt missing %q", want)
+		}
+	}
+	for _, gone := range []string{"<svg", "viewBox", "font-size"} {
+		if strings.Contains(p, gone) {
+			t.Errorf("infographic prompt still asks about drawing: %q", gone)
 		}
 	}
 }

@@ -3,9 +3,9 @@
 {{/* Order: what the story is (headline, whether the offer is still on, a
      one-paragraph summary), then the photo, then the story with its key
      details beside it, then Scout's Take, the cards it names and where to
-     go next. The infographic, when there is one, opens the story. Source
-     outlets are not named or linked on public pages; the admin preview
-     lists them. */}}
+     go next. The "At a glance" chart, when there is one, sits under the key
+     details. Source outlets are not named or linked on public pages; the
+     admin preview lists them. */}}
 <article class="article-detail">
     <a href="/" class="back-link">&larr; Back to all articles</a>
 
@@ -40,6 +40,9 @@
         {{if .Links}}{{if .KeyDetails}}<h2 class="article-facts-subhead">Links</h2>{{end}}{{template "article-links" .Links}}{{end}}
     </details>
     {{end}}
+    {{/* Phones: the chart goes open, under the folded key details and
+         before the photo. Desktop shows it in the sidebar instead. */}}
+    {{with .Infographic}}<div class="glance-phone">{{template "infographic-glance" .}}</div>{{end}}
 
     {{if .Article.ImageURL}}
     {{/* The photo is decorative (a stock picture of the subject), so alt="". */}}
@@ -49,15 +52,16 @@
     </figure>
     {{end}}
 
-    <div class="article-layout{{if not (or .KeyDetails .Links)}} no-sidebar{{end}}">
-        {{if or .KeyDetails .Links}}
-        <aside class="article-sidebar" aria-label="Key details">
+    <div class="article-layout{{if not (or .KeyDetails .Links .Infographic)}} no-sidebar{{end}}">
+        {{if or .KeyDetails .Links .Infographic}}
+        <aside class="article-sidebar{{if .Infographic}} has-glance{{end}}" aria-label="Key details">
             {{if .KeyDetails}}
             <div class="sidebar-section">
                 <h2>Key Details</h2>
                 {{template "article-key-details" .KeyDetails}}
             </div>
             {{end}}
+            {{with .Infographic}}{{template "infographic-glance" .}}{{end}}
             {{if .Links}}
             <div class="sidebar-section">
                 <h2>Links</h2>
@@ -67,7 +71,6 @@
         </aside>
         {{end}}
         <div class="article-main">
-            {{with .Infographic}}{{template "article-infographic" .}}{{end}}
             <div class="article-content">
                 {{.Content | safeHTML}}
             </div>
@@ -153,16 +156,6 @@
         </div>
     </div>
 </article>
-{{end}}
-
-{{/* A model-drawn chart of the key details, at the top of the story, beside
-     the Key Details list on desktop. It is an <img> of a data: URL, never
-     inline SVG; see internal/web/infographic.go. */}}
-{{define "article-infographic"}}
-<figure class="article-infographic">
-    <img src="{{.Src}}" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}} decoding="async">
-    <figcaption>Chart drawn automatically from this article&rsquo;s key details.</figcaption>
-</figure>
 {{end}}
 
 {{define "article-key-details"}}

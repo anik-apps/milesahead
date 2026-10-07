@@ -7,17 +7,17 @@ import (
 	"testing"
 )
 
-func infographicSVG(text string) string {
-	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360"><title>Fee</title>` + text + `</svg>`
+// figuresChart is a one-figure chart showing label and value.
+func figuresChart(label, value string) string {
+	return `{"kind":"figures","headline":"The fee","rows":[{"label":"` + label + `","value":"` + value + `"}]}`
 }
 
 var (
-	fitsChart = infographicSVG(`<text x="170" y="50" font-size="18" text-anchor="end">Annual fee</text>` +
-		`<text x="450" y="50" font-size="18">$895</text>`)
-	// The row label is right-aligned at x=170 and far too long, so it runs
-	// off the left edge, as the production models' labels did.
-	clippedChart = infographicSVG(`<text x="170" y="50" font-size="18" text-anchor="end">Qatar Airways Privilege Club 35% bonus</text>` +
-		`<text x="450" y="50" font-size="18">35%</text>`)
+	fitsChart = figuresChart("Annual fee", "$895")
+	// Bars that would compare a percentage with a multiplier, as one of the
+	// production models' charts did; the chart's reader refuses them.
+	mixedUnitsChart = `{"kind":"compare","headline":"Capital One to BA","rows":[` +
+		`{"label":"Bonus","value":"20%"},{"label":"Rate","value":"1.2x"}]}`
 )
 
 // A chart one model gets wrong is a chart the next model may get right, so a
@@ -27,11 +27,12 @@ func TestGenerateInfographic_RefusedChartTriesTheNextModel(t *testing.T) {
 		first  string
 		accept func(string) error
 	}{
-		"text past the edge": {first: clippedChart},
-		"unparseable":        {first: "<svg><rect></svg>"},
-		"numbered source":    {first: infographicSVG(`<text x="10" y="50" font-size="18">$895 (Source 1)</text>`)},
+		"bars in two units": {first: mixedUnitsChart},
+		"unparseable":       {first: `{"kind":"figures",`},
+		"an SVG":            {first: `<svg><text>Annual fee $895</text></svg>`},
+		"numbered source":   {first: figuresChart("Annual fee (Source 1)", "$895")},
 		"refused by the caller": {
-			first: infographicSVG(`<text x="10" y="50" font-size="18">Annual fee $995</text>`),
+			first: figuresChart("Annual fee", "$995"),
 			accept: func(words string) error {
 				if strings.Contains(words, "$995") {
 					return fmt.Errorf("invented number")
@@ -58,7 +59,7 @@ func TestGenerateInfographic_RefusedChartTriesTheNextModel(t *testing.T) {
 }
 
 func TestGenerateInfographic_FirstUsableChartWins(t *testing.T) {
-	mock := &perModelMockHFClient{responses: map[string]string{"first": fitsChart, "second": clippedChart}}
+	mock := &perModelMockHFClient{responses: map[string]string{"first": fitsChart, "second": mixedUnitsChart}}
 	if _, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -71,14 +72,14 @@ func TestGenerateInfographic_FirstUsableChartWins(t *testing.T) {
 // log shows what to fix in the prompt.
 func TestGenerateInfographic_EveryChartRefused(t *testing.T) {
 	mock := &perModelMockHFClient{
-		responses: map[string]string{"first": clippedChart},
+		responses: map[string]string{"first": mixedUnitsChart},
 		errs:      map[string]error{"second": fmt.Errorf("http request: context deadline exceeded")},
 	}
 	_, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", nil)
 	if err == nil {
 		t.Fatal("want an error when no chart is usable")
 	}
-	for _, want := range []string{"2 model(s)", "first: infographic text runs past its edges", "Qatar Airways", "left edge", "second: http request"} {
+	for _, want := range []string{"2 model(s)", "first: infographic: compare rows are in different units", `"20%"`, "second: http request"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}

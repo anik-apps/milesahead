@@ -55,7 +55,7 @@ type GeneratedArticle struct {
 	ImageURL           string     `json:"image_url"`
 	ImageThumbnail     string     `json:"image_thumbnail"`
 	ImageAttribution   string     `json:"image_attribution"`
-	InfographicSVG     string     `json:"infographic_svg"` // single-article reads only; see InfographicsFor
+	InfographicJSON    string     `json:"infographic_json"` // single-article reads only; see InfographicsFor
 	ScoutsTake         string     `json:"scouts_take"`
 	RelatedCardsJSON   string     `json:"related_cards_json"`
 	TagsJSON           string     `json:"tags_json"`

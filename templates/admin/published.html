@@ -63,16 +63,14 @@
                     {{if .ImageRequest.Pending}}<span class="chip chip-info" title="{{if .ImageRequest.Hint}}Searching for &ldquo;{{.ImageRequest.Hint}}&rdquo;. {{end}}The live image stays until a new one is found.">Finding a new image&hellip;</span>{{else if .ImageRequest.Failed}}<span class="chip chip-bad" title="{{.ImageRequest.LastError}}">No new image found &mdash; try other search words</span>{{end}}
                     <span class="q-sub" title="Published {{.PublishedAt}}">Published {{.Age}} &middot; <span title="Upvotes">&#9650; {{.Upvotes}}</span> <span title="Downvotes">&#9660; {{.Downvotes}}</span> &middot; #{{.ID}}</span>
                     {{if .InfographicNone}}<span class="chip" title="Enrichment found nothing in the key details to chart, or the chart was removed.">No chart</span>{{end}}
-                    {{if .InfographicBroken}}<span class="chip chip-bad" title="The stored chart no longer passes the sanitiser, so it is not shown.">Chart unusable</span>{{end}}
+                    {{if .InfographicBroken}}<span class="chip chip-bad" title="The stored chart is not one the site can draw, so it is not shown.">Chart unusable</span>{{end}}
                 </span>
                 {{/* Charts drawn for the archive in "preview" mode are checked
                      here before "on" publishes them. */}}
                 {{with .Infographic}}
                 <details class="p-chart">
                     <summary>Chart{{if not $.Infographics.Shown}} <span class="dim">(not on the site yet)</span>{{end}}</summary>
-                    <figure class="article-infographic">
-                        <img src="{{.Src}}" alt="{{.Alt}}"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}} loading="lazy" decoding="async">
-                    </figure>
+                    <div class="p-glance">{{template "infographic-glance" .}}</div>
                 </details>
                 {{end}}
             </span>

@@ -29,7 +29,7 @@ Measured on seeded data at 1280×800, the headline moved from 677 to 189 px down
 1. Type and tag badges, the headline, the ended-offer note if any, then a meta line: date, **By Scout** (`site.persona_name`) and tags.
 2. The TL;DR as a larger standfirst.
 3. The photo as a 280 px band (170 px on phones), `alt=""`, with width and height set, and a `srcset` when the two stored URLs are sizes of one picture.
-4. With `ai.enrichment_infographics: on`, a chart of the key details opens the story (see [Article Infographics](../../architecture/image-pipeline/#article-infographics)). Off in production.
+4. With `ai.enrichment_infographics: on`, an "At a glance" chart of the key details sits under Key Details in the sidebar, and under the folded key details on phones (see [Article Infographics](../../architecture/image-pipeline/#article-infographics)). Off in production.
 5. The story, about 73 characters per line. Only off-site links open a new tab (with `noopener`).
 6. **Key details** and links: a sticky sidebar on desktop, a "Key details (n)" disclosure on phones.
 7. **Scout's Take** as an h2, straight after the story.

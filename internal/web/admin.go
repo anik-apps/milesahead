@@ -16,6 +16,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/infographic"
 	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/mail"
 	"github.com/kumaranik/milesahead/internal/newsletter"
@@ -92,10 +93,10 @@ type adminArticleRow struct {
 	// InfographicNone says enrichment looked and found nothing to chart.
 	// The preview shows either whatever ai.enrichment_infographics is, so
 	// charts can be reviewed before they are published.
-	Infographic     *articleInfographic
+	Infographic     *infographic.View
 	InfographicNone bool
-	// InfographicBroken: a chart is stored but no longer passes the
-	// sanitiser, so it is shown nowhere; Redraw or Remove replaces it.
+	// InfographicBroken: a chart is stored but is not one the site can
+	// draw, so it is shown nowhere; Redraw or Remove replaces it.
 	InfographicBroken bool
 
 	// Queue row extras (dashboard.go).

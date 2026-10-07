@@ -33,9 +33,10 @@
 - [x] CI/CD refactored into separate build/deploy/seed/grafana jobs
 - [x] Admin rework — own shell with counts on the tabs, grouped review queue with decisions in the preview (revision-checked approve, approve-and-next, undo, shortcuts), source health, card editor with inline flags, card updates as a word diff
 - [x] Review queue sort (newest first by default, oldest, critic score) and per-row actions menus on Review and Published; compact type pills
-- [x] Article infographics (off until the item in Up Next) — a chart of the key details
-      drawn as SVG by the enrichment chain, shown as an `<img>` of a `data:` URL at the top
-      of the story. Re-sanitised at render; outlet and numbered-source guards on its words
+- [x] Article infographics (off until the item in Up Next) — an "At a glance" chart under
+      Key Details: a model picks the numbers as JSON (a change, a comparison, figures or a
+      timeline), and the site draws them in its own type and colours. Outlet, numbered-source
+      and unsupported-number guards on its words; a comparison's bars must share one unit
 - [x] Find a new image — an admin action (preview, Review and Published row menus) with optional search words; the enrichment pass finds a replacement first in line with a fresh budget, swaps it in only once found (the live image stays meanwhile), and never re-picks a turned-down image at any size. Rewrite feedback that mentions a picture points here, since rewrites only change the text
 
 ## Reliability & Hardening

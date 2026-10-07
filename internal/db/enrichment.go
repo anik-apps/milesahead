@@ -78,13 +78,13 @@ const emptyKeyDetails = `(key_details IS NULL OR key_details IN ('', '[]', 'null
 
 const emptyTags = `(tags_json IS NULL OR tags_json IN ('', '[]', 'null'))`
 
-// NoInfographic is written to infographic_svg when a model has looked at an
+// NoInfographic is written to infographic_json when a model has looked at an
 // article and found nothing worth charting. It distinguishes "asked, and the
 // answer was no" from "not asked yet", which is the difference between one
 // model call and one per pass forever.
 const NoInfographic = "none"
 
-const emptyInfographic = `(g.infographic_svg IS NULL OR g.infographic_svg = '')`
+const emptyInfographic = `(g.infographic_json IS NULL OR g.infographic_json = '')`
 
 // ListArticlesNeedingEnrichmentWithInfographics is ListArticlesNeedingEnrichment
 // with a missing infographic counted as a gap. It is separate because the
@@ -168,7 +168,7 @@ type EnrichmentUpdate struct {
 	ImageThumbnail   *string
 	ImageAttribution *string
 	TagsJSON         *string
-	InfographicSVG   *string
+	InfographicJSON  *string
 
 	// ImageRequestSeq is the admin's request this pass's image answers (see
 	// ArticleNeedingEnrichment), or 0. The image is written only if that is
@@ -213,7 +213,7 @@ func (d *Database) ApplyEnrichment(id int64, u EnrichmentUpdate) error {
 		args = append(args, nullIfEmpty(offer.EndDate(*u.KeyDetails, writtenAt(createdAt))))
 	}
 	add("tags_json", u.TagsJSON)
-	add("infographic_svg", u.InfographicSVG)
+	add("infographic_json", u.InfographicJSON)
 
 	// updated_at is deliberately NOT touched. It is used to tell when an
 	// article's content last changed, and a background enrichment pass is not
@@ -310,29 +310,29 @@ func (d *Database) CountDegradedArticles(maxAttempts int) (pending, exhausted in
 	return int(p.Int64), int(e.Int64), nil
 }
 
-// InfographicsFor returns the stored infographic_svg of each of ids that has
-// one, sentinel included. The list queries do not carry the column -- a chart
-// is a few kilobytes and only single-article views show it -- so the review
-// queue loads it for its rows in one query.
+// InfographicsFor returns the stored infographic_json of each of ids that has
+// one, sentinel included. The list queries do not carry the column -- only
+// single-article views show a chart -- so the review queue and Published load
+// it for their rows in one query.
 func (d *Database) InfographicsFor(ids []int64) (map[int64]string, error) {
 	out := map[int64]string{}
 	if len(ids) == 0 {
 		return out, nil
 	}
 	in, args := idPlaceholders(ids)
-	rows, err := d.db.Query(`SELECT id, infographic_svg FROM generated_articles
-		WHERE id IN (`+in+`) AND infographic_svg IS NOT NULL AND infographic_svg != ''`, args...)
+	rows, err := d.db.Query(`SELECT id, infographic_json FROM generated_articles
+		WHERE id IN (`+in+`) AND infographic_json IS NOT NULL AND infographic_json != ''`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing infographics: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id int64
-		var svg string
-		if err := rows.Scan(&id, &svg); err != nil {
+		var chart string
+		if err := rows.Scan(&id, &chart); err != nil {
 			return nil, err
 		}
-		out[id] = svg
+		out[id] = chart
 	}
 	return out, rows.Err()
 }
@@ -345,7 +345,7 @@ var ErrNoChart = errors.New("no such article, or it was rejected")
 // replaced by the sentinel, so it is not shown and not drawn again until
 // RedrawInfographic.
 func (d *Database) RemoveInfographic(id int64) error {
-	return d.setInfographic(id, `infographic_svg = ?`, NoInfographic)
+	return d.setInfographic(id, `infographic_json = ?`, NoInfographic)
 }
 
 // RedrawInfographic is the admin's "Redraw chart": the chart (or the
@@ -354,7 +354,7 @@ func (d *Database) RemoveInfographic(id int64) error {
 // -- as a new-image request gets a fresh budget. Any other field still
 // missing is retried with that budget too.
 func (d *Database) RedrawInfographic(id int64) error {
-	return d.setInfographic(id, `infographic_svg = '', enrichment_attempts = 0`)
+	return d.setInfographic(id, `infographic_json = '', enrichment_attempts = 0`)
 }
 
 func (d *Database) setInfographic(id int64, set string, args ...any) error {

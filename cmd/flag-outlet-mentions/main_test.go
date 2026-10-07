@@ -47,9 +47,8 @@ func seed(t *testing.T) string {
 		}
 	}
 	// The first article's chart names an outlet in a label.
-	if _, err := database.DB().Exec(`UPDATE generated_articles SET infographic_svg = ? WHERE slug = 'a'`,
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360"><title>Upgrade odds</title>`+
-			`<text x="1" y="20">Odds per View from the <tspan>Wing</tspan></text></svg>`); err != nil {
+	if _, err := database.DB().Exec(`UPDATE generated_articles SET infographic_json = ? WHERE slug = 'a'`,
+		`{"kind":"figures","headline":"Upgrade odds","rows":[{"label":"Odds per View from the Wing","value":"1 in 3"}]}`); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -147,7 +146,7 @@ func TestRun_MissingDatabaseIsNotCreated(t *testing.T) {
 	}
 }
 
-// A database from before infographics has no infographic_svg column; the
+// A database from before infographics has no infographic_json column; the
 // tool still reports everything else rather than failing.
 func TestRun_DatabaseWithoutTheInfographicColumn(t *testing.T) {
 	path := seed(t)
@@ -155,7 +154,7 @@ func TestRun_DatabaseWithoutTheInfographicColumn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.DB().Exec(`ALTER TABLE generated_articles DROP COLUMN infographic_svg`); err != nil {
+	if _, err := database.DB().Exec(`ALTER TABLE generated_articles DROP COLUMN infographic_json`); err != nil {
 		t.Fatalf("drop column: %v", err)
 	}
 	database.Close()

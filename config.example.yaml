@@ -136,11 +136,12 @@ ai:
   # than stuck. Checked between articles, so the real ceiling is this plus
   # one article's worst case.
   enrichment_max_duration: 10    # minutes
-  # Article infographics: an SVG chart of each article's key details, drawn
-  # by the infographic_model chain below (one more call per article, bounded
-  # at 120s per model in the chain -- up to 240s with two -- with no
-  # retries). A chart that fails a check (text past its edges, a number the
-  # article does not state, a news site named) goes to the next model.
+  # Article infographics: an "At a glance" chart of each article's key
+  # details, under Key Details. The infographic_model chain below picks the
+  # numbers (one more call per article, bounded at 120s per model in the
+  # chain -- up to 240s with two -- with no retries); the site draws them. A
+  # chart that fails a check (bars in two units, a number the article does
+  # not state, a news site named) goes to the next model.
   #   off      draw nothing; article pages show nothing (the default)
   #   preview  draw them; show them only in the admin (review preview and
   #            Published), where they can be removed or redrawn

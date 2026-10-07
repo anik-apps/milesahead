@@ -246,10 +246,11 @@ they use the thumbnail alone.
 
 ## Article Infographics
 
-Separately from the photo, enrichment can draw an article's `key_details` as an
-SVG chart: usually a horizontal bar chart, sometimes a timeline or a few stat
-cards. No text-to-image model is reachable with this project's credentials, so
-the chart is markup written by a text model, which suits numbers better anyway.
+Separately from the photo, enrichment can add an **"At a glance"** chart: a few
+numbers from the article's `key_details`, shown in a panel under Key Details.
+A model chooses the numbers; the site draws the chart. No text-to-image model
+is reachable with this project's credentials, and a chart of four numbers is
+better drawn by the site anyway.
 
 It is opt-in, with `ai.enrichment_infographics`:
 
@@ -264,25 +265,51 @@ enrichment, charged an attempt or charted. The admin still shows any chart that
 was stored before, so charts drawn in `preview` can be reviewed, removed or
 redrawn whatever the mode; only article pages depend on `on`.
 
+### What the model returns
+
+A small JSON object, read by `internal/infographic`: the kind of chart, a
+headline, its rows (label, value, an optional detail) and an optional note (a
+date or condition) and takeaway. Four kinds:
+
+| Kind | For | Drawn as |
+|---|---|---|
+| `change` | one number that moved: a fee, a ratio, a price | before, crossed out, then after in the accent colour |
+| `compare` | two to five amounts of the same kind and unit | bars, longest in the accent colour, lengths computed by the site |
+| `figures` | numbers that do not compare | one large headline figure, up to four more in a grid |
+| `timeline` | dates | dated steps, the one that matters marked |
+
+The model chooses no colours, sizes or positions. It used to write the chart as
+SVG, and its charts were inconsistent: colours picked from a list, filled boxes,
+labels cut off at the edge, and bars whose lengths claimed comparisons the
+numbers did not make. Drawn by the site, every chart uses the same four designs
+in the site's own type and colours, real dark mode included, and its text wraps
+instead of being clipped.
+
+A chart is refused when it does not fit its kind (`Chart.Validate`): the wrong
+number of rows, a field over its length limit, an unknown kind, and for
+`compare` any value that is not exactly one number, or rows in different units
+(the value with its number taken out: "%", "$", "miles"). That is the rule
+against meaningless bars, enforced rather than only asked for: a ratio ("1:3"),
+a range ("7,000-24,000"), or a percentage beside a multiplier cannot be a bar.
+
 ### The call
 
 One call per article on the `ai.infographic_model` chain (the
 `enrichment_model` chain when unset), after the image and only once key details
 exist. Production puts nemotron-3-super first and gpt-oss-20b second, the
-reverse of `enrichment_model`: drawing charts for ten real articles, gpt-oss-20b
-timed out at 120 seconds on 4 of 10, while nemotron-3-super answered all four
-calls that reached it, in 22 to 46 seconds. It asks for up to 12,288 tokens: at
-6,144, a second run had nemotron-3-super spend the whole budget reasoning, with
-no SVG written, on 4 of 10 articles, and none of 16 calls ran out at 12,288.
-That is more than the 30-second short-call class allows, so it has its own client: 120 seconds per model
-(`ai.InfographicCallTimeout`) and no retries, rather than the generator's
-`request_timeout` and retries. With production's two-model chain one chart can
-take up to 240 seconds.
+reverse of `enrichment_model`: when the model drew SVG, gpt-oss-20b timed out at
+120 seconds on 4 of 10 real articles, while nemotron-3-super answered every call
+that reached it. It asks for up to 12,288 tokens, since a reasoning model spends
+most of its budget before it answers and a reply cut off mid-reasoning has no
+chart in it. That is more than the 30-second short-call class allows, so it has
+its own client: 120 seconds per model (`ai.InfographicCallTimeout`) and no
+retries, rather than the generator's `request_timeout` and retries. With
+production's two-model chain one chart can take up to 240 seconds.
 
 The chain is the retry within a pass, and not only for failed calls: a chart
-that fails any check below goes to the next model too. Only when no model's
-chart is usable is the article left for the next pass. A model that answers
-that there is nothing to chart ends the chain.
+that fails any check goes to the next model too. Only when no model's chart is
+usable is the article left for the next pass. A model that answers that there is
+nothing to chart ends the chain.
 
 The chart is put off, without using an attempt, when the pass deadline has
 passed, when less of the pass is left than the whole chain could take (120
@@ -291,61 +318,43 @@ for the article (the new image is only saved once the article is done, so it
 should not wait on a chart). Only the first of these ends the pass; otherwise
 later articles still get their quicker fields.
 
-There are three outcomes. A chart is stored in `infographic_svg`. A failure
+There are three outcomes. A chart is stored in `infographic_json`. A failure
 (every model's call failed or its chart was refused) leaves the column empty
-for a later pass and uses an attempt. An article with
-nothing to compare gets the sentinel `none`, so it is not asked again.
+for a later pass and uses an attempt. An article with nothing to compare gets
+the sentinel `none`, so it is not asked again.
 
 Missing charts are not counted in `milesahead_articles_degraded`: every article
 written before the feature lacks one.
 
 ### Words and numbers in the chart
 
-The chart's title, description and every label are public text derived from
-the article, with no revision after them, like Scout's Take. They get the same
-checks (`svg.Text` reads them, whole, so a name split across two labels is still
-one name): a reference to a source by number ("Source 1") or a news-site name
-outside the subject exception refuses the chart, to be drawn again.
-`cmd/flag-outlet-mentions` reads stored charts too.
+The chart's headline, labels, values, details, note and takeaway are public text
+derived from the article, with no revision after them, like Scout's Take. They
+get the same checks, read whole (`Chart.Text`): a reference to a source by
+number ("Source 1") or a news-site name outside the subject exception refuses
+the chart. `cmd/flag-outlet-mentions` reads stored charts too.
 
 Every number in the chart must also be one the article states
 (`ai.UnsupportedChartNumbers`), in its title, summary, key details or body.
 Numbers are compared by value: thousands separators, currency signs and units
 are ignored, and a "$3k" matches "3,000". A made-up, miscopied or derived
 figure (a sum the article does not give) refuses the chart. The one exemption is
-bare integers up to 10 with no currency, unit or separator: axis ticks, row
-numbers and small counts. The prompt asks for no numbered axes and no derived
-figures, so a model is not refused for something it was not told.
+bare integers up to 10 with no currency, unit or separator. The prompt asks for
+no derived figures, so a model is not refused for something it was not told.
 
-### Text past the edges
-
-The chart is shown as an image, which clips at its 560x360 frame, so a label
-that runs past an edge loses whatever falls outside: on the first charts the
-production models drew, five of nine had row labels so long that the airline
-names or tier percentages were cut off, with every number still in the markup.
-`svg.Overflow` refuses those. It estimates each run of text's width from
-Helvetica's character widths (Arial's are the same), at the font size, weight,
-letter spacing and anchor the chart gives it, through any transforms, and
-refuses the chart when one runs more than 2 units past an edge. On those nine
-charts it refused exactly the five that were cut off. The estimate is for
-macOS, iOS and Windows; Android's Roboto is a little narrower, and Linux's
-DejaVu Sans about a tenth wider, so text that only just fits may clip there.
-The prompt gives the limits a model can count to: 40 characters for the
-headline, 50 for the takeaway, 16 for a row label.
-
-The prompt also asks for what no check can catch, and the review below is for
-those: bars only for amounts of the same kind and unit (never a ratio or a
-percentage beside points), and a takeaway that keeps the article's rules and
-conditions as it states them.
+What no check can catch is a sentence that gets the article wrong, or a label
+on the wrong number. The prompt asks the takeaway to keep the article's rules
+and conditions as it states them (activate before you spend, not after), and
+the review below is for the rest.
 
 ### Reviewing charts
 
-The review queue preview shows the article's chart above the story, with
-**Remove chart** and **Redraw chart**. Published articles are not in the queue,
-so the Published page shows each row's chart folded under "Chart" (with "(not
-on the site yet)" until the mode is `on`), and the same two actions in the row
-menu. This is how charts drawn for the archive in `preview` are checked before
-`on` publishes them.
+The review queue preview shows the article's chart where the page will, under
+Key Details, with **Remove chart** and **Redraw chart** beneath it. Published
+articles are not in the queue, so the Published page shows each row's chart
+folded under "Chart" (with "(not on the site yet)" until the mode is `on`), and
+the same two actions in the row menu. This is how charts drawn for the archive
+in `preview` are checked before `on` publishes them.
 
 - **Remove chart** stores `none`: the chart leaves the page at once and is not
   drawn again.
@@ -353,45 +362,20 @@ menu. This is how charts drawn for the archive in `preview` are checked before
   attempts, so the reconciler draws a new chart on a coming pass (any other
   field still missing is retried with that budget too).
 
-A stored chart that no longer passes the sanitiser is shown nowhere; the admin
-marks it "Chart unusable" and offers the same two actions, and the server logs
-it once rather than on every page view.
+A stored chart the site cannot draw (it no longer passes `Chart.Validate`, or a
+row edited by hand) is shown nowhere; the admin marks it "Chart unusable" and
+offers the same two actions, and the server logs it once rather than on every
+page view.
 
-### Why an image, and the sanitiser
+### Drawing and placement
 
-The page shows the chart as `<img src="data:image/svg+xml;base64,...">`, never
-as inline SVG. An SVG loaded as an image runs no script, loads nothing it
-references and has an opaque origin, and the site serves no URL that opens it
-as a document. A bug in the sanitiser therefore cannot become script running on
-the site.
+`templates/_infographic.html` draws the panel, shared by the article page, the
+review preview and Published; `.glance` in `static/css/style.css` styles it like
+the Key Details panel. The chart's words reach the page only as escaped text:
+nothing the model writes is markup. Bar lengths are percentages of the longest
+bar, computed by `Chart.View` from the values.
 
-`internal/svg` is still strict, at write and again at render (a row edited by
-hand is re-checked before it is shown). It parses with `encoding/xml` in strict
-mode, keeps only drawing elements and text (`svg`, `g`, `title`, `desc`,
-`rect`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `path`, `text`,
-`tspan`), drops an unknown element with everything inside it, keeps only
-presentation attributes whose values use a fixed alphabet (no colon, slash,
-quote, semicolon, backslash, ampersand or angle bracket, so no URL, `url()`,
-CSS or markup can be spelt), writes only the first of a repeated attribute,
-rejects namespaced attributes, and writes the result with its own encoder.
-`<title>` and `<desc>` keep text only. Comments, processing instructions, DTDs,
-`class`, `id`, `style`, anything after the root and nested `<svg>` are dropped.
-It rejects input or output over 64 KB, more than 400 elements, nesting deeper
-than 16, and a `viewBox` that is not four plain numbers with a size up to 4,000.
-
-The image's alt text is the root's own `<title>` and `<desc>` (direct children
-of `<svg>`; a chart without a root `<title>` is refused). A `<title>` deeper in
-the drawing is a tooltip on one shape and is not used.
-
-The cost of an image is theming: it cannot inherit the page's colours. The
-sanitiser pins `currentColor` to the light theme's text colour, and the dark
-theme inverts the image and turns its hues back (`filter: invert(1)
-hue-rotate(180deg)`), which keeps each bar's colour family. Under forced colours
-(Windows High Contrast) the chart keeps its own colours on a white background.
-
-### Placement
-
-At the top of the story, after the headline, summary and photo band, beside
-Key Details on desktop. The canvas is 560×360 with 18 px labels, shown at most
-560 px wide, so the labels stay about 11 px on a phone. It is not shown on the
-homepage: shrunk to a card thumbnail a chart cannot be read.
+On desktop the panel sits in the sidebar, between Key Details and Links. A
+sidebar holding a chart is not sticky, since it can be taller than the window.
+On phones, where the key details fold into one line under the summary, the panel
+follows that line, open, before the photo. It is not shown on the homepage.

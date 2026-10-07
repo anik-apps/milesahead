@@ -35,7 +35,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
-	"github.com/kumaranik/milesahead/internal/svg"
+	"github.com/kumaranik/milesahead/internal/infographic"
 )
 
 func main() {
@@ -120,13 +120,13 @@ type hit struct {
 // scan checks every article's title, TLDR, key details, body, Scout's Take,
 // links and the words of its infographic.
 func scan(conn *sql.DB, m *ai.OutletMatcher, only map[string]bool) ([]hit, error) {
-	// A database from before infographics has no infographic_svg column,
+	// A database from before infographics has no infographic_json column,
 	// and the tool opens it read-only, so no migration adds one.
 	chartCol := "''"
-	if ok, err := hasColumn(conn, "generated_articles", "infographic_svg"); err != nil {
+	if ok, err := hasColumn(conn, "generated_articles", "infographic_json"); err != nil {
 		return nil, err
 	} else if ok {
-		chartCol = "COALESCE(infographic_svg,'')"
+		chartCol = "COALESCE(infographic_json,'')"
 	}
 	rows, err := conn.Query(`SELECT id, status, COALESCE(title,''), COALESCE(tldr,''),
 		COALESCE(key_details,''), COALESCE(content,''), COALESCE(scouts_take,''), COALESCE(links,''),
@@ -171,12 +171,12 @@ func scan(conn *sql.DB, m *ai.OutletMatcher, only map[string]bool) ([]hit, error
 		}
 		check("scouts_take", take)
 		if chart != "" && chart != db.NoInfographic {
-			// A chart that is not well-formed is never shown, so there is
+			// A chart the site cannot draw is never shown, so there is
 			// nothing a reader could see to check.
 			// Checked whole, as enrichment checks it, so an outlet's name
-			// split across two labels is still found.
-			if words, err := svg.Text(chart); err == nil {
-				check("infographic", words)
+			// split across two fields is still found.
+			if c, err := infographic.Decode(chart); err == nil {
+				check("infographic", c.Text())
 			}
 		}
 		for _, l := range storedLinks(links) {

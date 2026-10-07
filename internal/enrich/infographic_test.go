@@ -11,23 +11,22 @@ import (
 )
 
 // designerPrompt identifies the infographic call among a pass's prompts.
-const designerPrompt = "information designer"
+const designerPrompt = "You are a data editor"
 
-func drawn(label string) string {
-	return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360">` +
-		`<title>Fee vs value</title>` +
-		`<rect x="10" y="10" width="300" height="24" fill="#1f6feb"/>` +
-		`<text x="10" y="60" font-size="18">` + label + `</text></svg>`
+// drawn is a model's chart whose takeaway says text, beside the fee the
+// scripted key details give.
+func drawn(text string) string {
+	return `{"kind":"figures","headline":"Fee vs value","rows":[{"label":"Annual fee","value":"$895"}],"takeaway":"` + text + `"}`
 }
 
-var drawnSVG = drawn("Annual fee $895")
+var drawnChart = drawn("Annual fee $895")
 
 func readInfographic(t *testing.T, d *db.Database, id int64) (string, int) {
 	t.Helper()
 	var svg string
 	var attempts int
 	if err := d.DB().QueryRow(
-		`SELECT COALESCE(infographic_svg,''), enrichment_attempts FROM generated_articles WHERE id = ?`,
+		`SELECT COALESCE(infographic_json,''), enrichment_attempts FROM generated_articles WHERE id = ?`,
 		id).Scan(&svg, &attempts); err != nil {
 		t.Fatalf("read back: %v", err)
 	}
@@ -55,21 +54,21 @@ func newInfographicService(d *db.Database, client ai.HFClientInterface) *Service
 	return s
 }
 
-func TestInfographic_StoresSanitizedMarkup(t *testing.T) {
+func TestInfographic_StoresTheChartAsJSON(t *testing.T) {
 	d := testDB(t)
 	id := seedArticle(t, d)
 
 	client := &scriptedClient{reply: fullReplies(map[string]string{
-		designerPrompt: "Here you go:\n```svg\n" + drawnSVG + "\n```",
+		designerPrompt: "Here you go:\n```json\n" + drawnChart + "\n```",
 	})}
 	newInfographicService(d, client).Run()
 
 	got, _ := readInfographic(t, d, id)
-	if !strings.HasPrefix(got, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360"`) {
-		t.Fatalf("stored markup is not the sanitiser's output:\n%s", got)
+	if !strings.HasPrefix(got, `{"kind":"figures","headline":"Fee vs value"`) {
+		t.Fatalf("stored chart is not the checked JSON:\n%s", got)
 	}
 	if !strings.Contains(got, "Annual fee $895") {
-		t.Errorf("stored markup lost its labels:\n%s", got)
+		t.Errorf("stored chart lost its words:\n%s", got)
 	}
 	// The prose and fence the model wrapped it in must not survive.
 	if strings.Contains(got, "```") || strings.Contains(got, "Here you go") {
@@ -83,7 +82,7 @@ func TestInfographic_OffMeansNoCallsAndNoBacklog(t *testing.T) {
 	d := testDB(t)
 	id := seedArticle(t, d)
 
-	client := &scriptedClient{reply: fullReplies(map[string]string{designerPrompt: drawnSVG})}
+	client := &scriptedClient{reply: fullReplies(map[string]string{designerPrompt: drawnChart})}
 	s := New(d, client, []string{"m1"}, "Scout", nil, nil)
 	s.Pace = 0
 	s.Run()
@@ -137,7 +136,7 @@ func TestInfographic_NoChartableNumbersIsRecordedNotRetried(t *testing.T) {
 	s.Run()
 
 	if got, _ := readInfographic(t, d, id); got != db.NoInfographic {
-		t.Fatalf("infographic_svg = %q, want the sentinel %q", got, db.NoInfographic)
+		t.Fatalf("infographic_json = %q, want the sentinel %q", got, db.NoInfographic)
 	}
 	before := client.promptCalls(designerPrompt)
 	s.Run()
@@ -149,20 +148,20 @@ func TestInfographic_NoChartableNumbersIsRecordedNotRetried(t *testing.T) {
 	}
 }
 
-// Markup the sanitiser rejects, or whose words break the outlet or
+// A reply that is not a chart the site can draw, or whose words break the outlet or
 // source-numbering rules, is not stored: the column stays empty so a later
 // pass can try again, and the failure is charged like any other.
 func TestInfographic_RefusedChartsAreNotStored(t *testing.T) {
 	cases := map[string]string{
-		"script only":               `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360"><script>alert(1)</script></svg>`,
+		"an SVG":                    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 360"><text>Annual fee $895</text></svg>`,
 		"names an outlet":           drawn("According to The Points Guy, $895"),
 		"names a configured source": drawn("Some Travel Blog says $895"),
 		"numbered source":           drawn("Source 1: $895"),
-		"outlet split over tspans":  drawn("Per One Mile at a <tspan>Time</tspan>"),
-		"truncated":                 strings.TrimSuffix(drawnSVG, "</svg>"),
+		"outlet in the headline":    `{"kind":"figures","headline":"One Mile at a Time on the fee","rows":[{"label":"Annual fee","value":"$895"}]}`,
+		"truncated":                 strings.TrimSuffix(drawnChart, "}"),
 		"invented number":           drawn("Annual fee $995"),
 		"derived number":            drawn("Fee over five years $4,475"),
-		"text past the edge":        drawn("Annual fee $895, against the airline credit, the hotel credit and lounge access"),
+		"bars in two units":         `{"kind":"compare","headline":"Fee","rows":[{"label":"Fee","value":"$895"},{"label":"Bonus","value":"80%"}]}`,
 	}
 	for name, reply := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -227,14 +226,14 @@ func TestInfographic_WaitsForKeyDetails(t *testing.T) {
 			"Scout":                "take",
 			"topic tags":           `["deals"]`,
 			"image search queries": `["plane"]`,
-			designerPrompt:         drawnSVG,
+			designerPrompt:         drawnChart,
 		},
 	}
 	s := newInfographicService(d, client)
 	s.Run()
 
 	if got, _ := readInfographic(t, d, id); got != "" {
-		t.Errorf("infographic_svg = %q, want empty while key details are missing", got)
+		t.Errorf("infographic_json = %q, want empty while key details are missing", got)
 	}
 	if n := client.promptCalls(designerPrompt); n != 0 {
 		t.Errorf("infographic was requested %d time(s) with no key details to chart", n)
@@ -248,7 +247,7 @@ func TestInfographic_UsesItsOwnClient(t *testing.T) {
 	id := seedArticle(t, d)
 
 	shared := &scriptedClient{reply: fullReplies(nil)}
-	own := &scriptedClient{reply: map[string]string{designerPrompt: drawnSVG}}
+	own := &scriptedClient{reply: map[string]string{designerPrompt: drawnChart}}
 	s := newInfographicService(d, shared)
 	s.InfographicClient = own
 	s.Run()
@@ -273,7 +272,7 @@ func TestInfographic_PutOffPastTheDeadline(t *testing.T) {
 		key_details = '[{"label":"Fee","value":"$95"}]', image_url = 'u', tags_json = '["deals"]' WHERE id = ?`, id); err != nil {
 		t.Fatal(err)
 	}
-	client := &scriptedClient{reply: map[string]string{designerPrompt: drawnSVG}}
+	client := &scriptedClient{reply: map[string]string{designerPrompt: drawnChart}}
 	s := newInfographicService(d, client)
 
 	arts, err := d.ListArticlesNeedingEnrichmentWithInfographics(s.MaxAttempts, 10)
@@ -304,7 +303,7 @@ func (e fakeErr) Error() string { return string(e) }
 func TestInfographic_PutOffWhenThePassCannotFitTheChain(t *testing.T) {
 	d := testDB(t)
 	id := seedArticle(t, d)
-	client := &scriptedClient{reply: fullReplies(map[string]string{designerPrompt: drawnSVG})}
+	client := &scriptedClient{reply: fullReplies(map[string]string{designerPrompt: drawnChart})}
 	s := newInfographicService(d, client)
 
 	arts, err := d.ListArticlesNeedingEnrichmentWithInfographics(s.MaxAttempts, 10)
@@ -335,7 +334,7 @@ func TestInfographic_PutOffWhenThePassCannotFitTheChain(t *testing.T) {
 func TestInfographic_WaitsWhileAnImageIsRequested(t *testing.T) {
 	d := testDB(t)
 	id := seedArticle(t, d)
-	client := &scriptedClient{reply: fullReplies(map[string]string{designerPrompt: drawnSVG})}
+	client := &scriptedClient{reply: fullReplies(map[string]string{designerPrompt: drawnChart})}
 	s := newInfographicService(d, client)
 
 	arts, err := d.ListArticlesNeedingEnrichmentWithInfographics(s.MaxAttempts, 10)
@@ -382,7 +381,7 @@ func TestInfographic_OwnChainAndFallbackOnRefusal(t *testing.T) {
 		scriptedClient: scriptedClient{reply: fullReplies(nil)},
 		charts: map[string]string{
 			"chart-a": drawn("Annual fee $995"), // not in the article
-			"chart-b": drawnSVG,
+			"chart-b": drawnChart,
 		},
 	}
 	s := newInfographicService(d, client)
