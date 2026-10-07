@@ -311,6 +311,10 @@ func migrate(db *sql.DB) error {
 		// (db.NoInfographic), or empty when not drawn yet. Only filled with
 		// ai.enrichment_infographics on.
 		`ALTER TABLE generated_articles ADD COLUMN infographic_json TEXT DEFAULT ''`,
+		// The admin's note on a chart they asked to be redrawn ("the cap is
+		// $1,500"), given to the model on the next draw and cleared once a
+		// chart or "nothing to chart" is stored. See RedrawInfographic.
+		`ALTER TABLE generated_articles ADD COLUMN infographic_note TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alterStatements {
 		_, err := db.Exec(stmt)

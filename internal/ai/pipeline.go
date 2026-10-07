@@ -299,6 +299,10 @@ func (p *Pipeline) buildResult(raw, articleType string, sources []SourceArticle)
 		"passed", verification.Score >= p.threshold, "issues", len(verification.Issues))
 
 	content, parsedTitle, tldr := p.finalizeContent(content)
+	// A rewrite's key details are stored with it (db.ApplyRevision), as
+	// public text with no pass after this one, so they get the outlet rule
+	// enrichment applies to extracted details.
+	keyDetails = dropOutletDetails(keyDetails, outlets, parsedTitle)
 
 	return &PipelineResult{
 		Content:         content,

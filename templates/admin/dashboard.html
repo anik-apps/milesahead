@@ -190,6 +190,8 @@
                             <p class="preview-missing glance-status">No chart: enrichment found nothing in the key details to chart, or the chart was removed.</p>
                             {{else if .InfographicBroken}}
                             <p class="preview-missing glance-status">The stored chart is not one the site can draw, so it is not shown. Redraw it, or remove it.</p>
+                            {{else if .InfographicNote}}
+                            <p class="preview-missing glance-status">Redrawing on a coming pass, with your note: &ldquo;{{.InfographicNote}}&rdquo;</p>
                             {{else if and $.Infographics.Drawn .KeyDetails}}
                             <p class="preview-missing glance-status">No chart yet. Enrichment draws one on a coming pass.</p>
                             {{end}}{{end}}
@@ -203,9 +205,12 @@
                                     <button type="submit" class="btn btn-sm">Remove chart</button>
                                 </form>
                                 {{end}}
-                                <form method="POST" action="/admin/articles/{{.ID}}/chart/redraw" class="inline-form">
+                                {{/* What was wrong goes to the model with the redraw. */}}
+                                <form method="POST" action="/admin/articles/{{.ID}}/chart/redraw" class="chart-redraw-form">
                                     {{template "csrf_field" $}}
                                     <input type="hidden" name="sort" value="{{$.Sort}}">
+                                    <label class="visually-hidden" for="chart-note-{{.ID}}">What is wrong with the chart? (optional)</label>
+                                    <input type="text" id="chart-note-{{.ID}}" name="note" maxlength="300" autocomplete="off" placeholder="What&rsquo;s wrong? (optional)" title="Given to the model on the redraw, e.g. &ldquo;label the bars by airline&rdquo;. Numbers still come from the article: to change one, request a rewrite." data-draft="chart-{{.ID}}">
                                     <button type="submit" class="btn btn-sm">Redraw chart</button>
                                 </form>
                             </div>

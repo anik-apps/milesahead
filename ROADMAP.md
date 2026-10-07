@@ -36,7 +36,9 @@
 - [x] Article infographics (off until the item in Up Next) — an "At a glance" chart under
       Key Details: a model picks the numbers as JSON (a change, a comparison, figures or a
       timeline), and the site draws them in its own type and colours. Outlet, numbered-source
-      and unsupported-number guards on its words; a comparison's bars must share one unit
+      and unsupported-number guards on its words; a comparison's bars must share one unit.
+      A rewrite stores its own key details and clears the chart to be redrawn from them;
+      Redraw chart takes an optional note for the model
 - [x] Find a new image — an admin action (preview, Review and Published row menus) with optional search words; the enrichment pass finds a replacement first in line with a fresh budget, swaps it in only once found (the live image stays meanwhile), and never re-picks a turned-down image at any size. Rewrite feedback that mentions a picture points here, since rewrites only change the text
 
 ## Reliability & Hardening

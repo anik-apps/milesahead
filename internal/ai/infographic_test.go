@@ -46,7 +46,7 @@ func TestGenerateInfographic_RefusedChartTriesTheNextModel(t *testing.T) {
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			mock := &perModelMockHFClient{responses: map[string]string{"first": c.first, "second": fitsChart}}
-			got, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", c.accept)
+			got, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", "", c.accept)
 			if err != nil {
 				t.Fatalf("err = %v, want the second model's chart", err)
 			}
@@ -62,7 +62,7 @@ func TestGenerateInfographic_RefusedChartTriesTheNextModel(t *testing.T) {
 
 func TestGenerateInfographic_FirstUsableChartWins(t *testing.T) {
 	mock := &perModelMockHFClient{responses: map[string]string{"first": fitsChart, "second": mixedUnitsChart}}
-	if _, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", nil); err != nil {
+	if _, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(mock.callsOrder) != 1 {
@@ -77,7 +77,7 @@ func TestGenerateInfographic_EveryChartRefused(t *testing.T) {
 		responses: map[string]string{"first": mixedUnitsChart},
 		errs:      map[string]error{"second": fmt.Errorf("http request: context deadline exceeded")},
 	}
-	_, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", nil)
+	_, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", "", nil)
 	if err == nil {
 		t.Fatal("want an error when no chart is usable")
 	}
@@ -92,7 +92,7 @@ func TestGenerateInfographic_EveryChartRefused(t *testing.T) {
 // a failure, so the chain stops there.
 func TestGenerateInfographic_NoInfographicEndsTheChain(t *testing.T) {
 	mock := &perModelMockHFClient{responses: map[string]string{"first": "NO_INFOGRAPHIC", "second": fitsChart}}
-	_, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", nil)
+	_, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", "", nil)
 	if !errors.Is(err, ErrNoInfographic) {
 		t.Errorf("err = %v, want ErrNoInfographic", err)
 	}
@@ -108,10 +108,21 @@ func TestGenerateInfographic_BadRequestEndsTheChain(t *testing.T) {
 		errs:      map[string]error{"first": &APIError{StatusCode: 400, Body: "bad request"}},
 		responses: map[string]string{"second": fitsChart},
 	}
-	if _, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", nil); err == nil {
+	if _, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", "", nil); err == nil {
 		t.Error("want the 400 returned")
 	}
 	if len(mock.callsOrder) != 1 {
 		t.Errorf("calls = %v, want only the first", mock.callsOrder)
+	}
+}
+
+// The note reaches the model in the prompt.
+func TestGenerateInfographic_SendsTheNote(t *testing.T) {
+	c := &mockHFClient{response: fitsChart}
+	if _, err := GenerateInfographic(c, []string{"m"}, "T", "tldr", "[]", "Label the fee", nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(c.lastPrompt, `wrote: "Label the fee"`) {
+		t.Error("the editor's note was not in the prompt")
 	}
 }

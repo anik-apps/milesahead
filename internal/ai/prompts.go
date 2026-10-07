@@ -556,7 +556,11 @@ Write the revised article now.`, feedback, writingStyle, htmlFormat, sourceRefer
 // The chart is public text derived from a finished article with no revision
 // pass after it, like Scout's Take, so it carries the same outlet rule; the
 // enrichment step checks its words as well (see enrich.drawInfographic).
-func InfographicPrompt(title, tldr, keyDetailsJSON string) string {
+//
+// note is what an editor said was wrong with the previous chart, when they
+// asked for it to be redrawn; empty for none. It is the editor's own words and
+// is followed, but it is not a source: numbers still come from the article.
+func InfographicPrompt(title, tldr, keyDetailsJSON, note string) string {
 	return fmt.Sprintf(`You are a data editor. Pick the one set of numbers that carries this article and describe it as a small chart in JSON. The site draws the chart itself: you choose only the kind, the words and the numbers.
 
 ARTICLE
@@ -583,5 +587,19 @@ WORDS IN THE CHART
 If the article itself names a news site or blog outside those exceptions, do not repeat it. Never refer to sources by number or position ("Source 1", "the second source") either. Label things by what they are: the card, the airline, the hotel program, the fee.
 
 OUTPUT
-Only the JSON object: no prose, no markdown fences. Fields: "kind", "headline", "rows" (each with "label", "value" and optionally "detail" and, in a timeline, "key"), and optionally "note" and "takeaway".`, title, tldr, keyDetailsJSON)
+Only the JSON object: no prose, no markdown fences. Fields: "kind", "headline", "rows" (each with "label", "value" and optionally "detail" and, in a timeline, "key"), and optionally "note" and "takeaway".`, title, tldr, keyDetailsJSON) + editorsChartNote(note)
+}
+
+// editorsChartNote is the prompt's section for an editor's note on the
+// previous chart, or nothing.
+func editorsChartNote(note string) string {
+	note = strings.Join(strings.Fields(note), " ")
+	if note == "" {
+		return ""
+	}
+	return `
+
+EDITOR'S NOTE ON THE PREVIOUS CHART
+An editor rejected the previous chart for this article and wrote: "` + note + `"
+Draw the chart again following the note. The rules above still hold: every number must appear in the article, so leave out any number the note gives that the article does not state.`
 }

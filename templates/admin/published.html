@@ -64,6 +64,7 @@
                     <span class="q-sub" title="Published {{.PublishedAt}}">Published {{.Age}} &middot; <span title="Upvotes">&#9650; {{.Upvotes}}</span> <span title="Downvotes">&#9660; {{.Downvotes}}</span> &middot; #{{.ID}}</span>
                     {{if .InfographicNone}}<span class="chip" title="Enrichment found nothing in the key details to chart, or the chart was removed.">No chart</span>{{end}}
                     {{if .InfographicBroken}}<span class="chip chip-bad" title="The stored chart is not one the site can draw, so it is not shown.">Chart unusable</span>{{end}}
+                    {{if and .InfographicNote (not .Infographic) (not .InfographicNone)}}<span class="chip chip-info" title="Your note: {{.InfographicNote}}">Redrawing chart&hellip;</span>{{end}}
                 </span>
                 {{/* Charts drawn for the archive in "preview" mode are checked
                      here before "on" publishes them. */}}
@@ -89,12 +90,7 @@
                     </form>
                     {{end}}
                     {{if or .Infographic .InfographicNone .InfographicBroken}}
-                    <form method="POST" action="/admin/articles/{{.ID}}/chart/redraw" class="row-menu-form">
-                        {{template "csrf_field" $}}
-                        <input type="hidden" name="sort" value="{{$.Sort}}">
-                        <input type="hidden" name="return" value="published">
-                        <button type="submit" role="menuitem" tabindex="-1">Redraw chart</button>
-                    </form>
+                    <button type="button" role="menuitem" tabindex="-1" data-reveal="chart-panel-{{.ID}}">Redraw chart&hellip;</button>
                     {{end}}
                     {{/* Unpublish at once; the toast that follows can undo it. */}}
                     <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="row-menu-form">
@@ -118,6 +114,21 @@
                     <button type="button" class="btn" data-hide="image-panel-{{.ID}}">Cancel</button>
                 </span>
             </form>
+            {{if or .Infographic .InfographicNone .InfographicBroken}}
+            {{/* What was wrong goes to the model with the redraw. */}}
+            <form method="POST" action="/admin/articles/{{.ID}}/chart/redraw" class="p-unpublish-panel p-image-panel" id="chart-panel-{{.ID}}" hidden>
+                {{template "csrf_field" $}}
+                <input type="hidden" name="sort" value="{{$.Sort}}">
+                <input type="hidden" name="return" value="published">
+                <label for="chart-note-{{.ID}}">Redraw the chart. What is wrong with it? (optional)</label>
+                <input type="text" id="chart-note-{{.ID}}" name="note" maxlength="300" autocomplete="off" placeholder="e.g. label the bars by airline" data-draft="chart-{{.ID}}">
+                <span class="p-image-note">The chart is cleared now and drawn again on a coming pass, usually within 15 minutes. Numbers still come from the article: to change one, request a rewrite.</span>
+                <span class="p-unpublish-buttons">
+                    <button type="submit" class="btn">Redraw chart</button>
+                    <button type="button" class="btn" data-hide="chart-panel-{{.ID}}">Cancel</button>
+                </span>
+            </form>
+            {{end}}
             <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="p-unpublish-panel" id="unpub-panel-{{.ID}}" hidden>
                 {{template "csrf_field" $}}
                 <input type="hidden" name="sort" value="{{$.Sort}}">

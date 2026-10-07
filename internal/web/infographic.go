@@ -81,12 +81,16 @@ func (app *App) attachInfographics(rows []adminArticleRow) {
 		if !ok {
 			continue
 		}
-		if s == db.NoInfographic {
+		rows[i].InfographicNote = s.Note
+		switch s.JSON {
+		case "":
+			// Not drawn yet: a redraw is waiting, with its note.
+		case db.NoInfographic:
 			rows[i].InfographicNone = true
-			continue
+		default:
+			rows[i].Infographic = infographicFor(s.JSON)
+			rows[i].InfographicBroken = rows[i].Infographic == nil
 		}
-		rows[i].Infographic = infographicFor(s)
-		rows[i].InfographicBroken = rows[i].Infographic == nil
 	}
 }
 
@@ -96,21 +100,39 @@ func (app *App) attachInfographics(rows []adminArticleRow) {
 const (
 	chartRemovedMessage = "Chart removed. It is not shown or drawn again unless you choose Redraw chart."
 	chartRedrawMessage  = "Chart cleared. Enrichment draws a new one on a coming pass (every 15 minutes) while ai.enrichment_infographics is preview or on."
+	chartNoteMessage    = "Chart cleared. Enrichment draws a new one with your note on a coming pass (every 15 minutes) while ai.enrichment_infographics is preview or on."
 )
+
+// maxChartNote bounds the admin's note on a redraw: a sentence or two about
+// what was wrong, not a second article.
+const maxChartNote = 300
 
 // handleRemoveChart stores the "nothing to chart" sentinel, so a chart the
 // admin judged wrong comes off the page at once and is not drawn again.
 func (app *App) handleRemoveChart(w http.ResponseWriter, r *http.Request) {
-	app.chartAction(w, r, app.db.RemoveInfographic, "chart_removed")
+	app.chartAction(w, r, app.db.RemoveInfographic, "chart_removed", "")
 }
 
 // handleRedrawChart clears the chart so the reconciler draws a new one, with
-// a fresh attempt budget. Until it does, the article has no chart.
+// a fresh attempt budget. Until it does, the article has no chart. The
+// optional "note" says what was wrong; the model is given it on that draw.
 func (app *App) handleRedrawChart(w http.ResponseWriter, r *http.Request) {
-	app.chartAction(w, r, app.db.RedrawInfographic, "chart_redraw")
+	note := strings.Join(strings.Fields(r.FormValue("note")), " ")
+	if runes := []rune(note); len(runes) > maxChartNote {
+		note = string(runes[:maxChartNote])
+	}
+	msg := "chart_redraw"
+	if note != "" {
+		msg = "chart_redraw_note"
+	}
+	// The note field keeps a draft (data-draft="chart-ID"), cleared once
+	// the server has it.
+	app.chartAction(w, r, func(id int64) error { return app.db.RedrawInfographic(id, note) }, msg, "chart")
 }
 
-func (app *App) chartAction(w http.ResponseWriter, r *http.Request, act func(int64) error, msg string) {
+// chartAction runs act on the article and redirects back with msg. draft,
+// when set, is the prefix of the form's saved draft, cleared on arrival.
+func (app *App) chartAction(w http.ResponseWriter, r *http.Request, act func(int64) error, msg, draft string) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.Error(w, "Invalid article ID", http.StatusBadRequest)
@@ -124,9 +146,13 @@ func (app *App) chartAction(w http.ResponseWriter, r *http.Request, act func(int
 		app.serverError(w, r, "admin: chart action failed", err)
 		return
 	}
+	sent := ""
+	if draft != "" {
+		sent = fmt.Sprintf("&sent=%s-%d", draft, id)
+	}
 	if r.FormValue("return") == "published" {
-		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/published?msg=%s&id=%d", msg, id), publishedSorts), http.StatusSeeOther)
+		http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/published?msg=%s&id=%d%s", msg, id, sent), publishedSorts), http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=%s&id=%d&open=%d", msg, id, id), queueSorts), http.StatusSeeOther)
+	http.Redirect(w, r, withSort(r, fmt.Sprintf("/admin/dashboard?msg=%s&id=%d%s&open=%d", msg, id, sent, id), queueSorts), http.StatusSeeOther)
 }

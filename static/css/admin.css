@@ -410,6 +410,8 @@ kbd {
 /* Remove / Redraw, and the chart's status, under the panel in the review
    preview's sidebar. */
 .chart-tools { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: -0.4rem 0 1rem; }
+.chart-redraw-form { display: flex; gap: 0.4rem; flex: 1 1 100%; }
+.chart-redraw-form input[type="text"] { flex: 1; min-width: 0; font: inherit; font-size: 0.82rem; padding: 0.3rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
 .glance-status { font-size: 0.82rem; margin: -0.4rem 0 0.75rem; }
 /* On a phone the review preview keeps its sidebar for the chart alone: the
    chart, its status and Remove / Redraw live there, and phones otherwise

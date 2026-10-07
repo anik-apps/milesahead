@@ -407,3 +407,32 @@ func TestInfographic_BudgetIsTheChartChain(t *testing.T) {
 		t.Errorf("budget with a chart chain of three = %v, want %v", got, 3*ai.InfographicCallTimeout)
 	}
 }
+
+// A redraw's note reaches the model, and is cleared once the chart is
+// stored.
+func TestInfographic_RedrawNoteReachesTheModel(t *testing.T) {
+	d := testDB(t)
+	id := seedArticle(t, d)
+	client := &scriptedClient{reply: fullReplies(map[string]string{designerPrompt: drawnChart})}
+	s := newInfographicService(d, client)
+	s.Run()
+	if err := d.RedrawInfographic(id, "Label the fee"); err != nil {
+		t.Fatal(err)
+	}
+	s.Run()
+
+	var noted bool
+	for _, p := range client.prompts {
+		noted = noted || (strings.Contains(p, designerPrompt) && strings.Contains(p, `wrote: "Label the fee"`))
+	}
+	if !noted {
+		t.Error("the redraw's note was not in the chart prompt")
+	}
+	charts, err := d.InfographicsFor([]int64{id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := charts[id]; got.JSON == "" || got.Note != "" {
+		t.Errorf("after the redraw: %+v; want a chart and the note cleared", got)
+	}
+}

@@ -201,7 +201,7 @@ func TestPrompts_NeverNameOutlets(t *testing.T) {
 		"critic2":     Critic2Prompt("<p>article</p>", src),
 		"scouts_take": ScoutsTakePrompt("Scout", "T", "tldr", "<p>body</p>"),
 		"details":     ExtractDetailsPrompt("T", "<p>body</p>"),
-		"infographic": InfographicPrompt("T", "tldr", `[{"label":"Fee","value":"$95"}]`),
+		"infographic": InfographicPrompt("T", "tldr", `[{"label":"Fee","value":"$95"}]`, ""),
 	}
 	exception1 := "1. The outlet is itself the subject of the story (e.g. a sale on Thrifty Traveler Premium)."
 	exception2 := `2. An unconfirmed report whose only source is that outlet — then one mention, phrased as a report ("reportedly, according to X").`
@@ -254,7 +254,7 @@ func TestEnrichmentPrompts_ForbidNumberedSources(t *testing.T) {
 	for name, p := range map[string]string{
 		"scouts_take": ScoutsTakePrompt("Scout", "T", "tldr", "<p>Source 1 notes it.</p>"),
 		"details":     ExtractDetailsPrompt("T", "<p>Source 1 notes it.</p>"),
-		"infographic": InfographicPrompt("T", "Source 1 notes it.", "[]"),
+		"infographic": InfographicPrompt("T", "Source 1 notes it.", "[]", ""),
 	} {
 		if !strings.Contains(p, "Never refer to sources by number or position") {
 			t.Errorf("%s prompt missing the numbered-source rule", name)
@@ -284,7 +284,7 @@ func TestWritingStyleAndHTMLFormat_ForbidMarkdown(t *testing.T) {
 // The infographic prompt states the rules the checks enforce, so a model is
 // not refused for something it was never told, and asks for JSON only.
 func TestInfographicPrompt_StatesTheRules(t *testing.T) {
-	p := InfographicPrompt("T", "tldr", "[]")
+	p := InfographicPrompt("T", "tldr", "[]", "")
 	for _, want := range []string{
 		"Every number must appear in the article above",
 		"add up or subtract",
@@ -306,6 +306,25 @@ func TestInfographicPrompt_StatesTheRules(t *testing.T) {
 	for _, gone := range []string{"<svg", "viewBox", "font-size"} {
 		if strings.Contains(p, gone) {
 			t.Errorf("infographic prompt still asks about drawing: %q", gone)
+		}
+	}
+}
+
+// An editor's note from Redraw chart is given to the model, tidied, with the
+// reminder that numbers still come from the article; without one there is
+// no such section.
+func TestInfographicPrompt_EditorsNote(t *testing.T) {
+	if p := InfographicPrompt("T", "tldr", "[]", ""); strings.Contains(p, "EDITOR'S NOTE") {
+		t.Error("a prompt without a note has a note section")
+	}
+	p := InfographicPrompt("T", "tldr", "[]", "  The cap is\n $1,500,  not $1,000 ")
+	for _, want := range []string{
+		"EDITOR'S NOTE ON THE PREVIOUS CHART",
+		`wrote: "The cap is $1,500, not $1,000"`,
+		"leave out any number the note gives that the article does not state",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("prompt with a note missing %q", want)
 		}
 	}
 }

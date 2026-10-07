@@ -226,11 +226,14 @@ func GenerateImageQueries(client HFClientInterface, models []string, title, tldr
 // model's chart is usable, and the reconciler tries again on a later pass. A
 // model that answers NO_INFOGRAPHIC ends the chain: that is a judgement about
 // the article, not a failure.
-func GenerateInfographic(client HFClientInterface, models []string, title, tldr, keyDetailsJSON string, accept func(infographic.Chart) error) (string, error) {
+//
+// note is the admin's note from Redraw chart, passed to the model; empty for
+// none.
+func GenerateInfographic(client HFClientInterface, models []string, title, tldr, keyDetailsJSON, note string, accept func(infographic.Chart) error) (string, error) {
 	if len(models) == 0 {
 		return "", fmt.Errorf("no models configured")
 	}
-	prompt := InfographicPrompt(title, tldr, keyDetailsJSON)
+	prompt := InfographicPrompt(title, tldr, keyDetailsJSON, note)
 	var failures []string
 	for i, m := range models {
 		raw, err := client.Generate(m, prompt, InfographicTokens)

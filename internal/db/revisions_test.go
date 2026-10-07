@@ -2,6 +2,7 @@ package db
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -245,5 +246,69 @@ func TestValidTransitions_RevisionRequestedToPending(t *testing.T) {
 	id, _ := newRevisionRequested(t, d, "rr-to-pending")
 	if err := d.UpdateArticleStatus(id, StatusPending); err != nil {
 		t.Errorf("revision_requested -> pending rejected: %v", err)
+	}
+}
+
+// A rewrite refreshes what is derived from the content: its own key details
+// replace the old ones (with the offer end date they state), the chart is
+// cleared to be drawn again from them, and the attempts are reset so
+// enrichment picks the article up.
+func TestApplyRevision_RefreshesKeyDetailsAndChart(t *testing.T) {
+	d := openTestDB(t)
+	id, fid := newRevisionRequested(t, d, "refresh")
+	if _, err := d.DB().Exec(`UPDATE generated_articles SET key_details = ?, infographic_json = ?, infographic_note = 'n', enrichment_attempts = 3 WHERE id = ?`,
+		`[{"Label":"Annual fee","Value":"$99"}]`, `{"kind":"figures"}`, id); err != nil {
+		t.Fatal(err)
+	}
+
+	next := time.Now().Year() + 1
+	details := fmt.Sprintf(`[{"Label":"Annual fee","Value":"$95"},{"Label":"Deadline","Value":"December 31, %d"}]`, next)
+	ok, err := d.ApplyRevision(AppliedRevision{ArticleID: id, BaseRevision: 1, FeedbackID: fid,
+		Title: "New", PreviousContent: "old", NewContent: "new", KeyDetails: details})
+	if err != nil || !ok {
+		t.Fatalf("apply = %v, %v", ok, err)
+	}
+	var kd, chart, note, expires string
+	var attempts int
+	if err := d.DB().QueryRow(`SELECT key_details, COALESCE(infographic_json,''), infographic_note, COALESCE(expires_on,''), enrichment_attempts FROM generated_articles WHERE id = ?`, id).
+		Scan(&kd, &chart, &note, &expires, &attempts); err != nil {
+		t.Fatal(err)
+	}
+	if kd != details || chart != "" || attempts != 0 {
+		t.Errorf("after the rewrite: key details %q, chart %q, attempts %d; want the rewrite's details, no chart, 0", kd, chart, attempts)
+	}
+	if want := fmt.Sprintf("%d-12-31", next); expires != want {
+		t.Errorf("expires_on = %q, want the end date the new key details state", expires)
+	}
+	// The admin's note on the old chart is kept for the next draw.
+	if note != "n" {
+		t.Errorf("redraw note = %q, want it kept", note)
+	}
+}
+
+// A rewrite that gave no key details clears the old ones, for enrichment to
+// extract from the new text; a chart that was removed, or found nothing to
+// chart, stays so.
+func TestApplyRevision_WithoutKeyDetailsClearsThemAndKeepsARemovedChart(t *testing.T) {
+	d := openTestDB(t)
+	id, fid := newRevisionRequested(t, d, "no-details")
+	if _, err := d.DB().Exec(`UPDATE generated_articles SET key_details = ?, infographic_json = ? WHERE id = ?`,
+		`[{"Label":"Annual fee","Value":"$99"}]`, NoInfographic, id); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := d.ApplyRevision(AppliedRevision{ArticleID: id, BaseRevision: 1, FeedbackID: fid,
+		Title: "New", PreviousContent: "old", NewContent: "new"}); err != nil || !ok {
+		t.Fatalf("apply = %v, %v", ok, err)
+	}
+	var kd, chart string
+	if err := d.DB().QueryRow(`SELECT key_details, infographic_json FROM generated_articles WHERE id = ?`, id).Scan(&kd, &chart); err != nil {
+		t.Fatal(err)
+	}
+	if kd != "" || chart != NoInfographic {
+		t.Errorf("key details %q, chart %q; want none, and the removed chart left removed", kd, chart)
+	}
+	arts, err := d.ListArticlesNeedingEnrichmentWithInfographics(3, 10)
+	if err != nil || len(arts) != 1 || !arts[0].MissingKeyDetails || arts[0].MissingInfographic {
+		t.Errorf("listed %+v, %v; want the article, for its key details only", arts, err)
 	}
 }
