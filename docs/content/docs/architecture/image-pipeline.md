@@ -256,8 +256,8 @@ It is opt-in, with `ai.enrichment_infographics`:
 
 | Mode | Drawn | Admin (review preview, Published) | Article page |
 |---|---|---|---|
-| `off` (default, production) | no | charts already stored | no |
-| `preview` | yes | yes | no |
+| `off` (default) | no | charts already stored | no |
+| `preview` (production since 2026-10-07) | yes | yes | no |
 | `on` | yes | yes | yes |
 
 Off, an article missing only its chart counts as complete: it is not listed for

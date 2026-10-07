@@ -300,21 +300,15 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 
 ## Up Next
 
-- [ ] **Turn on article infographics** — merged off (`ai.enrichment_infographics: "off"`
-      in config.example.yaml and deploy.yml; `TestDeployConfigMirrorsCritic` keeps the
-      two equal). Set both to `"preview"`, let a few passes run, and judge the charts in
-      the review queue preview and on Published (each row's "Chart"): numbers match the
-      Key Details, labels fit, nothing names a news site. Remove or redraw any that are
-      wrong, then set `"on"`. Checked locally against ten published articles with
-      the production models. First run (2026-10-05): 9 drawn, every number in its
-      article, but only 2-3 publishable: five had labels cut off at the edge, two
-      drew bars for things that do not compare, one reversed the article's rule in
-      its takeaway. After the edge check, the same-unit and takeaway rules, the
-      nemotron-3-super-first chain and 12,288 tokens (2026-10-06): 7 drawn, 3
-      correctly "nothing to chart", none cut off, misleading or wrong; 5 good, 2
-      correct but thin (a tier chart whose labels repeat its values, a two-date
-      timeline). One label was wrong in a way no check sees ("Max nights" on a
-      points bar), so review every chart in `preview` before `on`.
+- [ ] **Turn on article infographics** — in `preview` since 2026-10-07 (config.example.yaml
+      and deploy.yml; `TestDeployConfigMirrorsCritic` keeps the two equal): each enrichment
+      pass draws "At a glance" charts for about ten articles, shown only in the admin.
+      Judge them on Published (each row's "Chart") and in the review preview: the right
+      numbers, labels on the right values, a takeaway that says what the article says.
+      Remove or redraw any that are wrong, then set both to `"on"`. Locally, on ten
+      published articles with the production models (2026-10-06): 9 charts and 1 correctly
+      "nothing to chart", none cut off, misleading or wrong, all from the first model in
+      5-43 s.
 
 - [ ] **Fix stored articles that name news sites** — `cmd/flag-outlet-mentions`
       (read-only) found 33 on 2026-10-01: 6 approved, 18 pending, 6 draft, 2 rejected,

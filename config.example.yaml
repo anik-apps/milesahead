@@ -151,7 +151,7 @@ ai:
   # passes, ten at a time, until the archive is drawn or each article's
   # attempts run out. Going back to off takes the charts off article pages
   # and stops drawing; nothing is deleted.
-  enrichment_infographics: "off"
+  enrichment_infographics: "preview"
   # The chain charts are drawn with; empty uses enrichment_model. Reversed
   # from enrichment_model: drawing charts for ten real articles on
   # 2026-10-05, gpt-oss-20b timed out at 120s on 4 of 10 and took 46-70s

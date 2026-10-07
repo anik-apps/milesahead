@@ -20,7 +20,8 @@ func TestInfographicModels(t *testing.T) {
 }
 
 // Production draws charts with nemotron-3-super first and gpt-oss-20b behind
-// it (see config.example.yaml), and still draws none until the owner says so.
+// it (see config.example.yaml), in preview: drawn for the admin, not yet on
+// article pages.
 func TestDeployConfig_InfographicChain(t *testing.T) {
 	stubReachable(t, false)
 	cfg := deployConfig(t, nil)
@@ -28,8 +29,8 @@ func TestDeployConfig_InfographicChain(t *testing.T) {
 	if got := infographicModels(cfg, enrichmentModels(cfg)); !reflect.DeepEqual(got, want) {
 		t.Errorf("chart chain = %v, want %v", got, want)
 	}
-	if cfg.AI.DrawInfographics() {
-		t.Errorf("enrichment_infographics = %q; the deploy config should keep charts off", cfg.AI.EnrichmentInfographics)
+	if !cfg.AI.DrawInfographics() || cfg.AI.ShowInfographics() {
+		t.Errorf("enrichment_infographics = %q; the deploy config should draw charts for review and not publish them", cfg.AI.EnrichmentInfographics)
 	}
 }
 
