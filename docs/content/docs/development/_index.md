@@ -29,6 +29,8 @@ milesahead/
 │   ├── enrich/               # Enrichment reconciler (Scout's Take, details, tags,
 │   │                         # image, new-image requests) and stored-image resizing
 │   ├── images/               # Image search (4 APIs), sizing, probes, identity, scoring
+│   ├── infographic/          # An article's "At a glance" chart: reads and checks the
+│   │                         # model's numbers, lays them out for the template
 │   ├── linker/               # Links card mentions in articles to card pages
 │   ├── mail/                 # SMTP sender (newsletter, confirmation, alerts) and IMAP poller
 │   ├── metrics/              # Prometheus metric definitions

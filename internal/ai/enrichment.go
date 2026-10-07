@@ -2,9 +2,13 @@ package ai
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
+
+	"github.com/kumaranik/milesahead/internal/infographic"
 )
 
 // Token budgets for the enrichment calls.
@@ -19,7 +23,32 @@ const (
 	ScoutsTakeTokens = 512
 	TagsTokens       = 512
 	KeyDetailTokens  = 1024
+
+	// InfographicTokens is far larger than the other calls' because a
+	// reasoning model spends most of it deciding what to chart before it
+	// writes the answer, and a reply cut off mid-reasoning has no chart in it
+	// at all. When the model drew the chart as SVG, 6,144 ran out on 4 of 10
+	// real articles; at 12,288 none of 16 calls did. The answer is now a few
+	// hundred bytes of JSON, but the ceiling stays clear of the reasoning.
+	// Time is bounded by InfographicCallTimeout, not by this.
+	InfographicTokens = 12288
 )
+
+// InfographicCallTimeout bounds one infographic call.
+//
+// InfographicTokens is above the short-call threshold, so through the shared
+// client it would get the generator's timeout (900s in production) and its
+// retries -- one hung call could hold an enrichment pass for most of an hour.
+// The infographic gets its own client instead (HFClient.WithRequestTimeout,
+// no retries): a fast model writes a 2-4 KB chart well inside two minutes,
+// the model chain is the retry within a pass, and the reconciler is the retry
+// across passes. Nothing waits on a chart.
+const InfographicCallTimeout = 120 * time.Second
+
+// ErrNoInfographic means the model judged the article to have nothing worth
+// charting. That is a legitimate answer for a story with no numbers in it, and
+// is distinguished from failure so callers do not log it as one.
+var ErrNoInfographic = errors.New("article has no chartable numbers")
 
 // TryModels runs a prompt against each model in turn, moving on when the
 // failure is one another model might survive.
@@ -177,4 +206,71 @@ func GenerateImageQueries(client HFClientInterface, models []string, title, tldr
 		return nil, fmt.Errorf("no image queries returned")
 	}
 	return queries, nil
+}
+
+// GenerateInfographic asks each model in turn for the article's "At a
+// glance" chart, and returns the first one that passes every check, as the
+// JSON to store (see package infographic).
+//
+// Nothing here trusts the model's answer. infographic.Parse reads only the
+// chart's fields and checks them against its kind -- a comparison's values
+// must be single numbers in one unit, so no bar can compare a ratio with a
+// percentage -- and a chart whose words refer to a source by number is
+// refused, as with Scout's Take. accept, when set, is the caller's own check
+// of the chart: the outlet and number guards, which need the outlet table
+// and the article.
+//
+// A refused chart moves on to the next model, as a failed call does: the
+// models answer differently, and waiting a whole pass to try again would
+// leave articles without a chart for nothing. It is an error only when no
+// model's chart is usable, and the reconciler tries again on a later pass. A
+// model that answers NO_INFOGRAPHIC ends the chain: that is a judgement about
+// the article, not a failure.
+func GenerateInfographic(client HFClientInterface, models []string, title, tldr, keyDetailsJSON string, accept func(infographic.Chart) error) (string, error) {
+	if len(models) == 0 {
+		return "", fmt.Errorf("no models configured")
+	}
+	prompt := InfographicPrompt(title, tldr, keyDetailsJSON)
+	var failures []string
+	for i, m := range models {
+		raw, err := client.Generate(m, prompt, InfographicTokens)
+		if err == nil {
+			if strings.Contains(raw, "NO_INFOGRAPHIC") && !strings.Contains(raw, "{") {
+				return "", ErrNoInfographic
+			}
+			var clean string
+			if clean, err = checkInfographic(raw, accept); err == nil {
+				if i > 0 {
+					slog.Info("infographic drawn by a fallback model", "model", m, "primary", models[0])
+				}
+				return clean, nil
+			}
+		} else if !shouldTryAnotherModel(err) {
+			return "", err
+		}
+		failures = append(failures, fmt.Sprintf("%s: %v", m, err))
+		if i < len(models)-1 {
+			slog.Warn("infographic not usable, trying next model",
+				"failed", m, "next", models[i+1], "err", err)
+		}
+	}
+	return "", fmt.Errorf("no usable infographic from %d model(s): %s", len(models), strings.Join(failures, "; "))
+}
+
+// checkInfographic reads one model's chart and checks it, returning the
+// JSON to store or why it was refused.
+func checkInfographic(raw string, accept func(infographic.Chart) error) (string, error) {
+	chart, err := infographic.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("infographic: %w", err)
+	}
+	if refs := FindSourceRefs(chart.Text()); len(refs) > 0 {
+		return "", fmt.Errorf("infographic refers to a source by number: %q", refs)
+	}
+	if accept != nil {
+		if err := accept(chart); err != nil {
+			return "", err
+		}
+	}
+	return chart.JSON(), nil
 }

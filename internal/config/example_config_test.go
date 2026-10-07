@@ -116,6 +116,9 @@ func TestDeployConfigMirrorsCritic(t *testing.T) {
 		fmt.Sprintf("critic_model: %q", cfg.AI.CriticModel),
 		fmt.Sprintf("critic_disable_thinking: %v", cfg.AI.CriticDisableThinking),
 		fmt.Sprintf("story_dedup: %q", cfg.Scanner.StoryDedup),
+		// Infographics are off in both until the owner turns them on in both.
+		fmt.Sprintf("enrichment_infographics: %q", cfg.AI.EnrichmentInfographics),
+		fmt.Sprintf("infographic_model: %q", cfg.AI.InfographicModel),
 	}
 	for _, w := range want {
 		if !strings.Contains(deploy, w) {

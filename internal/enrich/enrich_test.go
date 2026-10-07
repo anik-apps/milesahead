@@ -19,13 +19,27 @@ import (
 // scriptedClient answers by prompt content, so one mock can serve the several
 // different enrichment calls a pass makes.
 type scriptedClient struct {
-	fail  map[string]error  // substring of prompt -> error to return
-	reply map[string]string // substring of prompt -> canned reply
-	calls []string
+	fail    map[string]error  // substring of prompt -> error to return
+	reply   map[string]string // substring of prompt -> canned reply
+	calls   []string
+	prompts []string
+}
+
+// promptCalls counts how many times a prompt containing frag was sent, which
+// is how tests assert that a step ran -- or, more usefully, that it did not.
+func (c *scriptedClient) promptCalls(frag string) int {
+	n := 0
+	for _, p := range c.prompts {
+		if strings.Contains(p, frag) {
+			n++
+		}
+	}
+	return n
 }
 
 func (c *scriptedClient) Generate(model, prompt string, maxTokens int) (string, error) {
 	c.calls = append(c.calls, model)
+	c.prompts = append(c.prompts, prompt)
 	for frag, err := range c.fail {
 		if strings.Contains(prompt, frag) {
 			return "", err

@@ -16,6 +16,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/article"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/infographic"
 	"github.com/kumaranik/milesahead/internal/linker"
 	"github.com/kumaranik/milesahead/internal/mail"
 	"github.com/kumaranik/milesahead/internal/newsletter"
@@ -88,6 +89,15 @@ type adminArticleRow struct {
 	// ImageRequest is the admin's "Find a new image", pending or failed;
 	// the zero value when there is none (see newimage.go).
 	ImageRequest db.ImageRequest
+	// Infographic is the article's chart, nil when it has none; and
+	// InfographicNone says enrichment looked and found nothing to chart.
+	// The preview shows either whatever ai.enrichment_infographics is, so
+	// charts can be reviewed before they are published.
+	Infographic     *infographic.View
+	InfographicNone bool
+	// InfographicBroken: a chart is stored but is not one the site can
+	// draw, so it is shown nowhere; Redraw or Remove replaces it.
+	InfographicBroken bool
 
 	// Queue row extras (dashboard.go).
 	Group        string // groupDecide, groupReady or groupRewriting
@@ -169,16 +179,20 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, row)
 	}
 	app.attachImageRequests(rows)
+	// Charts too, so ones drawn for the archive in "preview" mode can be
+	// checked here before "on" publishes them.
+	app.attachInfographics(rows)
 
 	data := map[string]interface{}{
-		"Title":     "Published Articles",
-		"Articles":  rows,
-		"Total":     total,
-		"CSRFToken": getCSRFToken(w, r),
-		"Message":   r.URL.Query().Get("msg"),
-		"MessageID": queryInt(r, "id"),
-		"Sort":      string(order),
-		"Sorts":     sortChoices(order, publishedSorts),
+		"Title":        "Published Articles",
+		"Infographics": infographicsState{Drawn: app.cfg.AI.DrawInfographics(), Shown: app.cfg.AI.ShowInfographics()},
+		"Articles":     rows,
+		"Total":        total,
+		"CSRFToken":    getCSRFToken(w, r),
+		"Message":      r.URL.Query().Get("msg"),
+		"MessageID":    queryInt(r, "id"),
+		"Sort":         string(order),
+		"Sorts":        sortChoices(order, publishedSorts),
 		// Open vote alerts, for the banner above the list.
 		"VoteAlerts":       alerts,
 		"VoteAlertWindow":  app.voteAlertWindowLabel(),
@@ -187,6 +201,10 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 	switch data["Message"] {
 	case "image_requested":
 		data["MessageText"] = imageRequestedMessage
+	case "chart_removed":
+		data["MessageText"] = chartRemovedMessage
+	case "chart_redraw":
+		data["MessageText"] = chartRedrawMessage
 	case "alert_acknowledged":
 		data["MessageText"] = "Alert acknowledged. The article alerts again only on downvotes cast from now on."
 	}

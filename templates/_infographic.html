@@ -1,0 +1,44 @@
+{{/* An article's "At a glance" chart, drawn from the numbers a model chose
+     (package infographic). It is page text in the site's own type and
+     colours, styled like the Key Details panel it sits under; the bars are
+     decoration, and every number is in the text beside them. Shared by the
+     article page, the review preview and Published. */}}
+{{define "infographic-glance"}}
+<section class="sidebar-section glance glance--{{.Kind}}" aria-label="At a glance">
+    <h2>At a glance</h2>
+    <p class="glance-headline">{{.Headline}}</p>
+    {{if eq .Kind "change"}}
+    <div class="glance-change{{if .Stacked}} glance-change--stacked{{end}}">
+        <div class="glance-was">
+            {{with .First}}<span class="glance-lbl">{{.Label}}</span><span class="glance-big">{{.Value}}</span>{{if .Detail}}<span class="glance-sub">{{.Detail}}</span>{{end}}{{end}}
+        </div>
+        <span class="glance-arrow" aria-hidden="true">&rarr;</span>
+        <div class="glance-now">
+            {{range .Rest}}<span class="glance-lbl">{{.Label}}</span><span class="glance-big">{{.Value}}</span>{{if .Detail}}<span class="glance-sub">{{.Detail}}</span>{{end}}{{end}}
+        </div>
+    </div>
+    {{else if eq .Kind "compare"}}
+    <ul class="glance-bars">
+        {{range .Rows}}
+        <li{{if .Key}} class="glance-key"{{end}}>
+            <span class="glance-row"><span class="glance-name">{{.Label}}{{if .Detail}}<small>{{.Detail}}</small>{{end}}</span><span class="glance-val">{{.Value}}</span></span>
+            <span class="glance-track" aria-hidden="true"><span class="glance-fill" style="width: {{.Width}}%"></span></span>
+        </li>
+        {{end}}
+    </ul>
+    {{else if eq .Kind "figures"}}
+    <div class="glance-hero">{{with .First}}<span class="glance-big">{{.Value}}</span>{{if .Label}}<span class="glance-sub">{{.Label}}</span>{{end}}{{if .Detail}}<span class="glance-sub">{{.Detail}}</span>{{end}}{{end}}</div>
+    {{if .Rest}}
+    <ul class="glance-figs">
+        {{range .Rest}}<li><span class="glance-fig">{{.Value}}</span>{{if .Label}}<span class="glance-sub">{{.Label}}</span>{{end}}{{if .Detail}}<span class="glance-sub">{{.Detail}}</span>{{end}}</li>{{end}}
+    </ul>
+    {{end}}
+    {{else if eq .Kind "timeline"}}
+    <ol class="glance-timeline">
+        {{range .Rows}}<li{{if .Key}} class="glance-key"{{end}}><span class="glance-when">{{.Label}}</span><span class="glance-what">{{.Value}}</span>{{if .Detail}}<span class="glance-sub">{{.Detail}}</span>{{end}}</li>{{end}}
+    </ol>
+    {{end}}
+    {{if .Note}}<p class="glance-note">{{.Note}}</p>{{end}}
+    {{if .Takeaway}}<p class="glance-take">{{.Takeaway}}</p>{{end}}
+</section>
+{{end}}

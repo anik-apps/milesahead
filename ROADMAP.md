@@ -33,6 +33,10 @@
 - [x] CI/CD refactored into separate build/deploy/seed/grafana jobs
 - [x] Admin rework — own shell with counts on the tabs, grouped review queue with decisions in the preview (revision-checked approve, approve-and-next, undo, shortcuts), source health, card editor with inline flags, card updates as a word diff
 - [x] Review queue sort (newest first by default, oldest, critic score) and per-row actions menus on Review and Published; compact type pills
+- [x] Article infographics (off until the item in Up Next) — an "At a glance" chart under
+      Key Details: a model picks the numbers as JSON (a change, a comparison, figures or a
+      timeline), and the site draws them in its own type and colours. Outlet, numbered-source
+      and unsupported-number guards on its words; a comparison's bars must share one unit
 - [x] Find a new image — an admin action (preview, Review and Published row menus) with optional search words; the enrichment pass finds a replacement first in line with a fresh budget, swaps it in only once found (the live image stays meanwhile), and never re-picks a turned-down image at any size. Rewrite feedback that mentions a picture points here, since rewrites only change the text
 
 ## Reliability & Hardening
@@ -295,6 +299,22 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       rows. `cmd/repair-editor-notes` moves them out of stored content (dry run by default).
 
 ## Up Next
+
+- [ ] **Turn on article infographics** — merged off (`ai.enrichment_infographics: "off"`
+      in config.example.yaml and deploy.yml; `TestDeployConfigMirrorsCritic` keeps the
+      two equal). Set both to `"preview"`, let a few passes run, and judge the charts in
+      the review queue preview and on Published (each row's "Chart"): numbers match the
+      Key Details, labels fit, nothing names a news site. Remove or redraw any that are
+      wrong, then set `"on"`. Checked locally against ten published articles with
+      the production models. First run (2026-10-05): 9 drawn, every number in its
+      article, but only 2-3 publishable: five had labels cut off at the edge, two
+      drew bars for things that do not compare, one reversed the article's rule in
+      its takeaway. After the edge check, the same-unit and takeaway rules, the
+      nemotron-3-super-first chain and 12,288 tokens (2026-10-06): 7 drawn, 3
+      correctly "nothing to chart", none cut off, misleading or wrong; 5 good, 2
+      correct but thin (a tier chart whose labels repeat its values, a two-date
+      timeline). One label was wrong in a way no check sees ("Max nights" on a
+      points bar), so review every chart in `preview` before `on`.
 
 - [ ] **Fix stored articles that name news sites** — `cmd/flag-outlet-mentions`
       (read-only) found 33 on 2026-10-01: 6 approved, 18 pending, 6 draft, 2 rejected,

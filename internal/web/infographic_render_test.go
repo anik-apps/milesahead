@@ -1,0 +1,345 @@
+package web
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/kumaranik/milesahead/internal/article"
+	"github.com/kumaranik/milesahead/internal/config"
+	"github.com/kumaranik/milesahead/internal/db"
+	"github.com/kumaranik/milesahead/internal/vote"
+)
+
+// setupRealTemplateApp builds an App against the repository's actual
+// templates, with ai.enrichment_infographics set to mode.
+//
+// Stubs cannot answer what these tests ask -- where the chart lands on the
+// page and in what form -- because that is a property of the shipped markup.
+func setupRealTemplateApp(t *testing.T, mode string) *App {
+	t.Helper()
+
+	database, err := db.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("testpassword123"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("hash: %v", err)
+	}
+	cfg := &config.Config{
+		Admin:  config.AdminConfig{PasswordHash: string(hash)},
+		Server: config.ServerConfig{Port: 8080, Domain: "localhost"},
+		Votes:  config.VotesConfig{AlertThreshold: 5},
+		AI:     config.AIConfig{EnrichmentInfographics: mode},
+		Site:   config.SiteConfig{PersonaName: "Scout"},
+	}
+
+	app, err := NewAppWithTemplateDir(cfg, database, article.NewManager(database, nil),
+		vote.NewService(database, cfg.Votes, nil), nil, nil, context.Background(), "../../templates")
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+	t.Cleanup(app.WaitBackground)
+	return app
+}
+
+// createInfographicArticle creates an article in status carrying the stored
+// chart, with a summary, key details, links and a photo so the page has its
+// full layout.
+func createInfographicArticle(t *testing.T, app *App, slug, status, chart string) int64 {
+	t.Helper()
+	id, err := app.db.CreateGeneratedArticle(&db.GeneratedArticle{
+		Title: "Amex Platinum fee math " + slug, Slug: slug, Content: "<p>Body.</p>",
+		Type: "analysis", Status: status, SourcesJSON: "[]", RevisionNumber: 1,
+		TLDR:       "The credits cover the fee if you use them.",
+		KeyDetails: `[{"Label":"Annual fee","Value":"$895"}]`,
+		Links:      `[{"Text":"Rove","URL":"https://www.rovemiles.com/"}]`,
+		ImageURL:   "https://images.pexels.com/photos/1/p.jpeg",
+	})
+	if err != nil {
+		t.Fatalf("create article: %v", err)
+	}
+	if _, err := app.db.DB().Exec(
+		`UPDATE generated_articles SET infographic_json = ?, published_at = ? WHERE id = ?`,
+		chart, time.Now(), id); err != nil {
+		t.Fatalf("set infographic: %v", err)
+	}
+	return id
+}
+
+func get(t *testing.T, app *App, path string) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET %s = %d", path, rec.Code)
+	}
+	return rec.Body.String()
+}
+
+// glancePanel marks the "At a glance" panel in a page.
+const glancePanel = `aria-label="At a glance"`
+
+// With infographics on, the article page shows the chart as an "At a
+// glance" panel under Key Details in the sidebar, above Links, and a copy
+// for phones under the folded key details, before the photo. It is page
+// text and bars, not an image.
+func TestInfographic_ArticlePageShowsThePanelUnderKeyDetails(t *testing.T) {
+	app := setupRealTemplateApp(t, config.InfographicsOn)
+	createInfographicArticle(t, app, "rove-bonuses", db.StatusApproved, storedChart)
+
+	body := get(t, app, "/article/rove-bonuses")
+	if n := strings.Count(body, glancePanel); n != 2 {
+		t.Fatalf("found %d chart panels, want the sidebar's and the phone copy", n)
+	}
+	phone := strings.Index(body, `<div class="glance-phone">`)
+	if phone == -1 {
+		t.Fatal("no phone copy of the chart")
+	}
+	if facts := strings.Index(body, `class="article-facts"`); facts == -1 || facts > phone {
+		t.Error("the phone copy should come after the folded key details")
+	}
+	if hero := strings.Index(body, `class="article-hero"`); hero == -1 || hero < phone {
+		t.Error("the phone copy should come before the photo")
+	}
+
+	sidebar := body[strings.Index(body, `<aside class="article-sidebar has-glance"`):]
+	sidebar = sidebar[:strings.Index(sidebar, "</aside>")]
+	keyDetails, panel, links := strings.Index(sidebar, "<h2>Key Details</h2>"), strings.Index(sidebar, glancePanel), strings.Index(sidebar, "<h2>Links</h2>")
+	if keyDetails == -1 || panel == -1 || links == -1 || keyDetails > panel || panel > links {
+		t.Errorf("sidebar order: Key Details at %d, chart at %d, Links at %d; want the chart between them", keyDetails, panel, links)
+	}
+
+	for _, want := range []string{
+		`<p class="glance-headline">Rove transfer bonuses</p>`,
+		`<li class="glance-key">`, `<span class="glance-val">50%</span>`, `style="width: 100%"`,
+		`<span class="glance-val">40%</span>`, `style="width: 80%"`,
+		`<small>1.5 miles per point</small>`, `<p class="glance-note">Through October 31, 2026</p>`,
+	} {
+		if !strings.Contains(sidebar, want) {
+			t.Errorf("chart panel missing %q", want)
+		}
+	}
+	// The site's own icons are inline SVG; the chart is not.
+	if strings.Contains(body, "data:image/svg") || strings.Contains(sidebar, "<svg") || strings.Contains(sidebar, "<img") {
+		t.Error("the chart is drawn as page text now, not an SVG image")
+	}
+}
+
+// The chart's words reach the page only as escaped text.
+func TestInfographic_WordsAreEscaped(t *testing.T) {
+	app := setupRealTemplateApp(t, config.InfographicsOn)
+	createInfographicArticle(t, app, "escaped", db.StatusApproved,
+		`{"kind":"figures","headline":"<script>alert(1)</script>","rows":[{"label":"<img src=x onerror=alert(2)>","value":"$95"},{"label":"Renewal","value":"yearly"}]}`)
+
+	body := get(t, app, "/article/escaped")
+	if !strings.Contains(body, glancePanel) {
+		t.Fatal("the chart was not shown")
+	}
+	if strings.Contains(body, "<script>alert(1)") || strings.Contains(body, "<img src=x") {
+		t.Error("the chart's words were written as markup")
+	}
+	if !strings.Contains(body, "&lt;script&gt;alert(1)&lt;/script&gt;") {
+		t.Error("the headline should appear as escaped text")
+	}
+}
+
+// "off" and "preview" keep the chart off public pages, and the homepage never
+// shows one.
+func TestInfographic_HiddenUnlessOnAndNeverOnTheHomepage(t *testing.T) {
+	for _, mode := range []string{config.InfographicsOff, config.InfographicsPreview, config.InfographicsOn} {
+		t.Run(mode, func(t *testing.T) {
+			app := setupRealTemplateApp(t, mode)
+			for _, slug := range []string{"featured-filler", "sidebar-filler", "rove-bonuses"} {
+				createInfographicArticle(t, app, slug, db.StatusApproved, storedChart)
+			}
+			if strings.Contains(get(t, app, "/"), glancePanel) {
+				t.Error("the homepage shows a chart")
+			}
+			page := get(t, app, "/article/rove-bonuses")
+			if shown, want := strings.Contains(page, glancePanel), mode == config.InfographicsOn; shown != want {
+				t.Errorf("article page shows the chart = %v, want %v", shown, want)
+			}
+			// The sidebar stays sticky without a chart in it.
+			if mode != config.InfographicsOn && strings.Contains(page, "has-glance") {
+				t.Error("the sidebar is marked as holding a chart when it does not")
+			}
+		})
+	}
+}
+
+// A stored row that is not a chart the site can draw is not shown.
+func TestInfographic_UndrawableRowIsNotRendered(t *testing.T) {
+	app := setupRealTemplateApp(t, config.InfographicsOn)
+	createInfographicArticle(t, app, "tampered", db.StatusApproved,
+		`<svg onload="alert(1)"><script>alert(1)</script><text>x</text></svg>`)
+
+	body := get(t, app, "/article/tampered")
+	if strings.Contains(body, "onload=") || strings.Contains(body, "alert(1)") || strings.Contains(body, glancePanel) {
+		t.Fatal("an undrawable row reached the article page")
+	}
+}
+
+// The sentinel means "asked, nothing to chart": no panel, not the word.
+func TestInfographic_SentinelRendersNothing(t *testing.T) {
+	app := setupRealTemplateApp(t, config.InfographicsOn)
+	createInfographicArticle(t, app, "no-numbers", db.StatusApproved, db.NoInfographic)
+
+	if body := get(t, app, "/article/no-numbers"); strings.Contains(body, glancePanel) {
+		t.Error("the sentinel rendered a chart")
+	}
+}
+
+// The admin preview shows the chart before it is published -- that is what
+// "preview" is for -- and says when the site will not show it, or why there
+// is none.
+func TestInfographic_AdminPreview(t *testing.T) {
+	cases := []struct {
+		mode, stored string
+		want, absent []string
+	}{
+		{config.InfographicsPreview, storedChart,
+			[]string{glancePanel, `<p class="glance-headline">Rove transfer bonuses</p>`, `Not on the site: ai.enrichment_infographics is not &ldquo;on&rdquo;.`, "Remove chart", "Redraw chart"},
+			[]string{"No chart"}},
+		{config.InfographicsOn, storedChart,
+			[]string{glancePanel},
+			[]string{"Not on the site", "No chart"}},
+		{config.InfographicsOn, db.NoInfographic,
+			[]string{"No chart: enrichment found nothing in the key details to chart, or the chart was removed.", "Redraw chart"},
+			[]string{glancePanel, "Remove chart"}},
+		{config.InfographicsPreview, "",
+			[]string{"No chart yet."},
+			[]string{glancePanel}},
+		{config.InfographicsOff, "",
+			nil,
+			[]string{glancePanel, "No chart"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.mode+"/"+tc.stored[:min(len(tc.stored), 8)], func(t *testing.T) {
+			app := setupRealTemplateApp(t, tc.mode)
+			createInfographicArticle(t, app, "pending-chart", db.StatusPending, tc.stored)
+			session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+			rec := doAdminGET(t, app, "/admin/dashboard", session)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("dashboard status %d", rec.Code)
+			}
+			body := rec.Body.String()
+			for _, w := range tc.want {
+				if !strings.Contains(body, w) {
+					t.Errorf("preview missing %q", w)
+				}
+			}
+			for _, a := range tc.absent {
+				if strings.Contains(body, a) {
+					t.Errorf("preview should not contain %q", a)
+				}
+			}
+		})
+	}
+}
+
+// Approved articles are not in the review queue, so charts drawn for the
+// archive in "preview" mode are checked on Published: each row with a chart
+// has it folded under "Chart", with Remove and Redraw in its menu.
+func TestInfographic_PublishedRowsShowChartsAndActions(t *testing.T) {
+	app := setupRealTemplateApp(t, config.InfographicsPreview)
+	drawn := createInfographicArticle(t, app, "drawn", db.StatusApproved, storedChart)
+	createInfographicArticle(t, app, "nothing", db.StatusApproved, db.NoInfographic)
+	createInfographicArticle(t, app, "broken", db.StatusApproved, `<svg><script>alert(1)</script></svg>`)
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	rec := doAdminGET(t, app, "/admin/published", session)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("published status %d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		`<details class="p-chart">`, `(not on the site yet)`, `<div class="p-glance">`, glancePanel,
+		`action="/admin/articles/` + idStr(drawn) + `/chart/remove"`,
+		`action="/admin/articles/` + idStr(drawn) + `/chart/redraw"`,
+		`>No chart</span>`, `>Chart unusable</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("published page missing %q", want)
+		}
+	}
+	if strings.Count(body, `<details class="p-chart">`) != 1 {
+		t.Error("only the article with a usable chart should have a Chart disclosure")
+	}
+	if strings.Contains(body, "alert(1)") {
+		t.Error("the broken chart reached the page")
+	}
+}
+
+// Remove stores the sentinel (off the page at once, not drawn again); Redraw
+// clears it with a fresh attempt budget. Both are CSRF-protected POSTs.
+func TestInfographic_RemoveAndRedraw(t *testing.T) {
+	app := setupRealTemplateApp(t, config.InfographicsOn)
+	id := createInfographicArticle(t, app, "chart", db.StatusApproved, storedChart)
+	if _, err := app.db.DB().Exec(`UPDATE generated_articles SET enrichment_attempts = 3 WHERE id = ?`, id); err != nil {
+		t.Fatal(err)
+	}
+	read := func() (string, int) {
+		var s string
+		var n int
+		if err := app.db.DB().QueryRow(`SELECT infographic_json, enrichment_attempts FROM generated_articles WHERE id = ?`, id).Scan(&s, &n); err != nil {
+			t.Fatal(err)
+		}
+		return s, n
+	}
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+
+	// Without the CSRF token the action is refused and nothing changes.
+	req := httptest.NewRequest(http.MethodPost, "/admin/articles/"+idStr(id)+"/chart/remove", nil)
+	req.AddCookie(&http.Cookie{Name: "session", Value: session})
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	if rec.Code < 400 {
+		t.Errorf("remove without a CSRF token = %d, want refused", rec.Code)
+	}
+	if got, _ := read(); got != storedChart {
+		t.Fatalf("chart changed without a CSRF token: %q", got)
+	}
+
+	rec = doAdminPOST(t, app, "/admin/articles/"+idStr(id)+"/chart/remove", session, "", url.Values{"return": {"published"}})
+	if rec.Code != http.StatusSeeOther || !strings.HasPrefix(rec.Header().Get("Location"), "/admin/published?msg=chart_removed") {
+		t.Errorf("remove = %d to %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if got, _ := read(); got != db.NoInfographic {
+		t.Errorf("after remove, infographic_json = %q", got)
+	}
+	if strings.Contains(get(t, app, "/article/chart"), glancePanel) {
+		t.Error("a removed chart is still on the article page")
+	}
+
+	rec = doAdminPOST(t, app, "/admin/articles/"+idStr(id)+"/chart/redraw", session, "", nil)
+	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "msg=chart_redraw") ||
+		!strings.Contains(rec.Header().Get("Location"), "open="+idStr(id)) {
+		t.Errorf("redraw = %d to %q", rec.Code, rec.Header().Get("Location"))
+	}
+	if got, attempts := read(); got != "" || attempts != 0 {
+		t.Errorf("after redraw: %q with %d attempts; want empty and a fresh budget", got, attempts)
+	}
+	arts, err := app.db.ListArticlesNeedingEnrichmentWithInfographics(3, 10)
+	if err != nil || len(arts) != 1 || !arts[0].MissingInfographic {
+		t.Errorf("after redraw the article should be listed for a chart: %+v, %v", arts, err)
+	}
+
+	rejected := createInfographicArticle(t, app, "rejected", db.StatusRejected, storedChart)
+	if rec := doAdminPOST(t, app, "/admin/articles/"+idStr(rejected)+"/chart/redraw", session, "", nil); rec.Code != http.StatusBadRequest {
+		t.Errorf("redraw on a rejected article = %d, want 400", rec.Code)
+	}
+}
+
+func idStr(id int64) string { return strconv.FormatInt(id, 10) }

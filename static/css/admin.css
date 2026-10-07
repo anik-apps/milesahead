@@ -400,6 +400,24 @@ kbd {
 .p-unpublish-panel label { font-size: 0.82rem; font-weight: 600; color: var(--text-muted); }
 .p-unpublish-panel textarea { font: inherit; font-size: 0.88rem; padding: 0.4rem 0.6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); resize: vertical; }
 .p-unpublish-buttons { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+/* A row's chart, folded until opened, so charts drawn for the archive in
+   "preview" mode can be checked before they are published. */
+.p-chart { margin-top: 0.3rem; }
+.p-chart summary { cursor: pointer; font-size: 0.82rem; font-weight: 600; color: var(--text-muted); }
+/* The same "At a glance" panel as the article page, at the sidebar's width. */
+.p-chart .p-glance { max-width: 300px; margin: 0.5rem 0 0.2rem; }
+.p-chart .p-glance .glance { margin: 0; }
+/* Remove / Redraw, and the chart's status, under the panel in the review
+   preview's sidebar. */
+.chart-tools { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: -0.4rem 0 1rem; }
+.glance-status { font-size: 0.82rem; margin: -0.4rem 0 0.75rem; }
+/* On a phone the review preview keeps its sidebar for the chart alone: the
+   chart, its status and Remove / Redraw live there, and phones otherwise
+   hide the sidebar (the key details fold under the summary instead). */
+@media (max-width: 768px) {
+    .preview-body .article-layout > .article-sidebar { display: block; }
+    .preview-body .article-sidebar > .sidebar-section:not(.glance) { display: none; }
+}
 @media (max-width: 760px) {
     .p-row { grid-template-columns: minmax(0, 1fr); padding-right: 3rem; }
     .p-row .q-title { white-space: normal; }

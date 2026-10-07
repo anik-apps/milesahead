@@ -43,6 +43,23 @@ type ScannerConfig struct {
 	StoryDedup string `yaml:"story_dedup"`
 }
 
+// Infographic modes; see AIConfig.EnrichmentInfographics.
+const (
+	InfographicsOff     = "off"
+	InfographicsPreview = "preview"
+	InfographicsOn      = "on"
+)
+
+// DrawInfographics reports whether enrichment draws infographics.
+func (c AIConfig) DrawInfographics() bool {
+	return c.EnrichmentInfographics == InfographicsPreview || c.EnrichmentInfographics == InfographicsOn
+}
+
+// ShowInfographics reports whether article pages show them.
+func (c AIConfig) ShowInfographics() bool {
+	return c.EnrichmentInfographics == InfographicsOn
+}
+
 // Story-level duplicate check modes; see ScannerConfig.StoryDedup.
 const (
 	StoryDedupOff    = "off"
@@ -72,15 +89,25 @@ type AIConfig struct {
 	// EnrichmentMaxAttempts bounds passes per article before it is left alone.
 	EnrichmentMaxAttempts int `yaml:"enrichment_max_attempts"`
 	// EnrichmentMaxDuration bounds a single pass, in minutes.
-	EnrichmentMaxDuration int    `yaml:"enrichment_max_duration"`
-	Critic2Model          string `yaml:"critic2_model"`
-	HFAPIToken            string `yaml:"hf_api_token"`
-	HFBaseURL             string `yaml:"hf_base_url"`
-	CriticThreshold       int    `yaml:"critic_threshold"`
-	MaxRetries            int    `yaml:"max_retries"`
-	CacheTTL              int    `yaml:"cache_ttl"`
-	UnsplashKey           string `yaml:"unsplash_key"`
-	PexelsKey             string `yaml:"pexels_key"`
+	EnrichmentMaxDuration int `yaml:"enrichment_max_duration"`
+	// EnrichmentInfographics is what the infographic step does: "off" (the
+	// default) draws nothing; "preview" has enrichment draw each article's
+	// key details as an SVG chart, shown only in the admin; "on" also shows
+	// it on the article page. The admin shows stored charts in every mode.
+	// See config.example.yaml.
+	EnrichmentInfographics string `yaml:"enrichment_infographics"`
+	// InfographicModel is the chain charts are drawn with. Comma-separated;
+	// tried in order, and a chart one model gets wrong goes to the next.
+	// Empty uses enrichment_model.
+	InfographicModel string `yaml:"infographic_model"`
+	Critic2Model     string `yaml:"critic2_model"`
+	HFAPIToken       string `yaml:"hf_api_token"`
+	HFBaseURL        string `yaml:"hf_base_url"`
+	CriticThreshold  int    `yaml:"critic_threshold"`
+	MaxRetries       int    `yaml:"max_retries"`
+	CacheTTL         int    `yaml:"cache_ttl"`
+	UnsplashKey      string `yaml:"unsplash_key"`
+	PexelsKey        string `yaml:"pexels_key"`
 }
 
 type SMTPConfig struct {
@@ -190,6 +217,20 @@ func Load(path string) (*Config, error) {
 	default:
 		return nil, fmt.Errorf("scanner.story_dedup: %q is not one of %q, %q, %q",
 			cfg.Scanner.StoryDedup, StoryDedupShadow, StoryDedupBlock, StoryDedupOff)
+	}
+
+	// Unset means off: charting the archive costs a model call per article,
+	// so it is an explicit decision. A typo is an error, not a silent off.
+	switch mode := strings.ToLower(strings.TrimSpace(cfg.AI.EnrichmentInfographics)); mode {
+	case "", "false":
+		cfg.AI.EnrichmentInfographics = InfographicsOff
+	case "true":
+		cfg.AI.EnrichmentInfographics = InfographicsOn
+	case InfographicsOff, InfographicsPreview, InfographicsOn:
+		cfg.AI.EnrichmentInfographics = mode
+	default:
+		return nil, fmt.Errorf("ai.enrichment_infographics: %q is not one of %q, %q, %q",
+			cfg.AI.EnrichmentInfographics, InfographicsOff, InfographicsPreview, InfographicsOn)
 	}
 
 	if err := cfg.Newsletter.normalize(); err != nil {

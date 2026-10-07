@@ -62,7 +62,17 @@
                     {{if .Flagged}}<span class="chip chip-bad">Many downvotes</span>{{end}}
                     {{if .ImageRequest.Pending}}<span class="chip chip-info" title="{{if .ImageRequest.Hint}}Searching for &ldquo;{{.ImageRequest.Hint}}&rdquo;. {{end}}The live image stays until a new one is found.">Finding a new image&hellip;</span>{{else if .ImageRequest.Failed}}<span class="chip chip-bad" title="{{.ImageRequest.LastError}}">No new image found &mdash; try other search words</span>{{end}}
                     <span class="q-sub" title="Published {{.PublishedAt}}">Published {{.Age}} &middot; <span title="Upvotes">&#9650; {{.Upvotes}}</span> <span title="Downvotes">&#9660; {{.Downvotes}}</span> &middot; #{{.ID}}</span>
+                    {{if .InfographicNone}}<span class="chip" title="Enrichment found nothing in the key details to chart, or the chart was removed.">No chart</span>{{end}}
+                    {{if .InfographicBroken}}<span class="chip chip-bad" title="The stored chart is not one the site can draw, so it is not shown.">Chart unusable</span>{{end}}
                 </span>
+                {{/* Charts drawn for the archive in "preview" mode are checked
+                     here before "on" publishes them. */}}
+                {{with .Infographic}}
+                <details class="p-chart">
+                    <summary>Chart{{if not $.Infographics.Shown}} <span class="dim">(not on the site yet)</span>{{end}}</summary>
+                    <div class="p-glance">{{template "infographic-glance" .}}</div>
+                </details>
+                {{end}}
             </span>
             <div class="row-menu">
                 <button type="button" class="row-menu-btn" id="menu-btn-{{.ID}}" aria-haspopup="menu" aria-expanded="false" aria-controls="menu-{{.ID}}" title="Actions"><span aria-hidden="true">&#8943;</span><span class="visually-hidden">Actions for article #{{.ID}}: {{.Title}}</span></button>
@@ -70,6 +80,22 @@
                     <a role="menuitem" tabindex="-1" href="/article/{{.Slug}}" target="_blank" rel="noopener">View on the site</a>
                     <a role="menuitem" tabindex="-1" href="/admin/articles/{{.ID}}/cards">Linked cards</a>
                     <button type="button" role="menuitem" tabindex="-1" data-reveal="image-panel-{{.ID}}">Find a new image&hellip;</button>
+                    {{if or .Infographic .InfographicBroken}}
+                    <form method="POST" action="/admin/articles/{{.ID}}/chart/remove" class="row-menu-form">
+                        {{template "csrf_field" $}}
+                        <input type="hidden" name="sort" value="{{$.Sort}}">
+                        <input type="hidden" name="return" value="published">
+                        <button type="submit" role="menuitem" tabindex="-1">Remove chart</button>
+                    </form>
+                    {{end}}
+                    {{if or .Infographic .InfographicNone .InfographicBroken}}
+                    <form method="POST" action="/admin/articles/{{.ID}}/chart/redraw" class="row-menu-form">
+                        {{template "csrf_field" $}}
+                        <input type="hidden" name="sort" value="{{$.Sort}}">
+                        <input type="hidden" name="return" value="published">
+                        <button type="submit" role="menuitem" tabindex="-1">Redraw chart</button>
+                    </form>
+                    {{end}}
                     {{/* Unpublish at once; the toast that follows can undo it. */}}
                     <form method="POST" action="/admin/articles/{{.ID}}/unpublish" class="row-menu-form">
                         {{template "csrf_field" $}}

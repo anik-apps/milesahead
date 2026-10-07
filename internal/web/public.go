@@ -486,6 +486,7 @@ func (app *App) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"LinkedCards":        storyCardsFirst(app.buildLinkedCardEmbeds(article.RelatedCardsJSON), article.Title),
 		"LinkedCardsHeading": article.LinkedCardsHeading,
 		"ScoutsTake":         article.ScoutsTake,
+		"Infographic":        app.publicInfographic(article.InfographicJSON),
 		"OfferEnded":         offerEnded,
 		"OfferEndedNote":     endedNote(article.Type, article.ExpiresOn),
 		"PersonaName":        app.cfg.Site.PersonaName,

@@ -272,6 +272,7 @@ func (app *App) reviewQueue(all bool, order queueSort) []dashboardGroup {
 	for g := range out {
 		app.attachRevisionHistory(out[g].Rows)
 		app.attachImageRequests(out[g].Rows)
+		app.attachInfographics(out[g].Rows)
 		for i := range out[g].Rows {
 			pageOrder = append(pageOrder, &out[g].Rows[i])
 		}
@@ -297,6 +298,8 @@ var dashboardMessages = map[string]string{
 	"undone":             "Approval undone: the article is back in the queue and no longer on the site.",
 	"undo_expired":       "Too late to undo that approval. Use Unpublish on the Published page to take it down.",
 	"image_requested":    imageRequestedMessage,
+	"chart_removed":      chartRemovedMessage,
+	"chart_redraw":       chartRedrawMessage,
 }
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
@@ -325,6 +328,7 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"MessageRev":   queryInt(r, "rev"),
 		"OpenID":       queryInt(r, "open"),
 		"PersonaName":  app.cfg.Site.PersonaName,
+		"Infographics": infographicsState{Drawn: app.cfg.AI.DrawInfographics(), Shown: app.cfg.AI.ShowInfographics()},
 		"All":          all,
 		"Sort":         string(order),
 		"SortLabel":    order.label(),

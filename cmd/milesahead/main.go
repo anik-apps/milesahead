@@ -103,6 +103,46 @@ func newCriticClient(cfg *config.Config, hfClient *ai.HFClient) *ai.HFClient {
 	return c
 }
 
+// newInfographicClient returns the client the infographic call goes through:
+// hfClient bounded at ai.InfographicCallTimeout, with no retries. Its answer
+// is long enough to fall outside the short-call class, so through hfClient
+// itself it would inherit request_timeout (900s in production) and
+// max_retries; the model chain and the next pass are its retries instead.
+func newInfographicClient(hfClient *ai.HFClient) *ai.HFClient {
+	return hfClient.WithRequestTimeout(ai.InfographicCallTimeout).WithMaxRetries(0)
+}
+
+// infographicModels is the chain charts are drawn with: infographic_model,
+// or the enrichment chain when that is unset.
+func infographicModels(cfg *config.Config, enrichModels []string) []string {
+	if models := ai.SplitModels(cfg.AI.InfographicModel); len(models) > 0 {
+		return models
+	}
+	return enrichModels
+}
+
+// preflightEnrichmentModels is what the boot preflight checks under the
+// enrichment role: the enrichment chain, plus any chart model not already in
+// it while charts are drawn, so a retired or mistyped infographic_model is
+// reported at boot like any other model rather than on the first chart.
+func preflightEnrichmentModels(cfg *config.Config, enrichModels []string) []string {
+	out := append([]string(nil), enrichModels...)
+	if !cfg.AI.DrawInfographics() {
+		return out
+	}
+	seen := map[string]bool{}
+	for _, m := range out {
+		seen[m] = true
+	}
+	for _, m := range infographicModels(cfg, enrichModels) {
+		if !seen[m] {
+			seen[m] = true
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // criticChainRetries is how often each critic in a multi-critic chain retries.
 const criticChainRetries = 1
 
@@ -320,7 +360,7 @@ func main() {
 	go func() {
 		results := ai.PreflightAllWithCriticClient(hfClient, criticClient, cfg.AI.GeneratorModel,
 			ai.SplitModels(cfg.AI.FallbackGeneratorModel), criticModels(cfg),
-			[]string{visionModel}, enrichModels)
+			[]string{visionModel}, preflightEnrichmentModels(cfg, enrichModels))
 		switch {
 		case ai.PublishingViable(results):
 			slog.Info("ai preflight complete", "summary", ai.PreflightSummary(results))
@@ -362,6 +402,13 @@ func main() {
 	enricher := enrich.New(database, hfClient, enrichModels,
 		cfg.Site.PersonaName, side.imageSearcher, side.imageScorer)
 	enricher.Outlets = outlets
+	if cfg.AI.DrawInfographics() {
+		enricher.Infographics = true
+		enricher.InfographicClient = newInfographicClient(hfClient)
+		enricher.InfographicModels = infographicModels(cfg, enrichModels)
+		slog.Info("article infographics are drawn", "mode", cfg.AI.EnrichmentInfographics,
+			"models", enricher.InfographicModels)
+	}
 	if cfg.AI.EnrichmentMaxAttempts > 0 {
 		enricher.MaxAttempts = cfg.AI.EnrichmentMaxAttempts
 	}

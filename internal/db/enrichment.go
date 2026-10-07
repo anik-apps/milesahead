@@ -2,6 +2,7 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -23,6 +24,13 @@ type ArticleNeedingEnrichment struct {
 	MissingKeyDetails bool
 	MissingImage      bool
 	MissingTags       bool
+	// MissingInfographic is only ever set when the caller asked for
+	// infographics (see ListArticlesNeedingEnrichmentWithInfographics).
+	MissingInfographic bool
+
+	// KeyDetails is the chart's only source of numbers, so an article that
+	// still lacks it cannot have an infographic drawn yet.
+	KeyDetails string
 
 	// ImageRequestSeq is the admin's pending request for a new image (see
 	// RequestNewImage), or 0 for none. With one, MissingImage is set even
@@ -34,7 +42,8 @@ type ArticleNeedingEnrichment struct {
 
 // AnyMissing reports whether there is anything left to fill.
 func (a ArticleNeedingEnrichment) AnyMissing() bool {
-	return a.MissingScoutsTake || a.MissingKeyDetails || a.MissingImage || a.MissingTags
+	return a.MissingScoutsTake || a.MissingKeyDetails || a.MissingImage || a.MissingTags ||
+		a.MissingInfographic
 }
 
 // Missing names the gaps, for logging.
@@ -54,6 +63,9 @@ func (a ArticleNeedingEnrichment) Missing() string {
 	if a.MissingTags {
 		m = append(m, "tags")
 	}
+	if a.MissingInfographic {
+		m = append(m, "infographic")
+	}
 	return strings.Join(m, ",")
 }
 
@@ -66,20 +78,47 @@ const emptyKeyDetails = `(key_details IS NULL OR key_details IN ('', '[]', 'null
 
 const emptyTags = `(tags_json IS NULL OR tags_json IN ('', '[]', 'null'))`
 
+// NoInfographic is written to infographic_json when a model has looked at an
+// article and found nothing worth charting. It distinguishes "asked, and the
+// answer was no" from "not asked yet", which is the difference between one
+// model call and one per pass forever.
+const NoInfographic = "none"
+
+const emptyInfographic = `(g.infographic_json IS NULL OR g.infographic_json = '')`
+
+// ListArticlesNeedingEnrichmentWithInfographics is ListArticlesNeedingEnrichment
+// with a missing infographic counted as a gap. It is separate because the
+// infographic is opt-in (ai.enrichment_infographics): with it off, an article
+// that lacks only a chart is complete and must not be picked up, charged an
+// attempt or held out of the image pass.
+func (d *Database) ListArticlesNeedingEnrichmentWithInfographics(maxAttempts, limit int) ([]ArticleNeedingEnrichment, error) {
+	return d.listArticlesNeedingEnrichment(maxAttempts, limit, true)
+}
+
 // ListArticlesNeedingEnrichment returns articles with at least one enrichment
 // field missing that have not yet exhausted their attempts.
 //
 // Rejected articles are skipped: spending model calls to enrich something an
 // editor has already thrown out is pure waste.
 func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]ArticleNeedingEnrichment, error) {
+	return d.listArticlesNeedingEnrichment(maxAttempts, limit, false)
+}
+
+func (d *Database) listArticlesNeedingEnrichment(maxAttempts, limit int, infographics bool) ([]ArticleNeedingEnrichment, error) {
+	needInfographic := "0"
+	if infographics {
+		needInfographic = emptyInfographic
+	}
 	// An admin's pending request for a new image counts as a missing image,
 	// and is served first: someone is waiting on it.
 	query := fmt.Sprintf(`
 		SELECT g.id, g.title, COALESCE(g.tldr,''), g.content, g.enrichment_attempts,
+		       COALESCE(g.key_details,''),
 		       (g.scouts_take IS NULL OR g.scouts_take = '') AS need_take,
 		       %s AS need_details,
 		       (g.image_url IS NULL OR g.image_url = '' OR r.article_id IS NOT NULL) AS need_image,
 		       %s AS need_tags,
+		       %s AS need_infographic,
 		       COALESCE(r.seq, 0), COALESCE(r.hint, '')
 		FROM generated_articles g
 		LEFT JOIN article_image_requests r ON r.article_id = g.id AND r.state = ?
@@ -91,9 +130,11 @@ func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]Arti
 		     OR (g.image_url IS NULL OR g.image_url = '')
 		     OR r.article_id IS NOT NULL
 		     OR %s
+		     OR %s
 		  )
 		ORDER BY (r.article_id IS NOT NULL) DESC, g.created_at DESC
-		LIMIT ?`, emptyKeyDetails, emptyTags, emptyKeyDetails, emptyTags)
+		LIMIT ?`, emptyKeyDetails, emptyTags, needInfographic,
+		emptyKeyDetails, emptyTags, needInfographic)
 
 	rows, err := d.db.Query(query, ImageRequestPending, StatusRejected, maxAttempts, limit)
 	if err != nil {
@@ -104,9 +145,9 @@ func (d *Database) ListArticlesNeedingEnrichment(maxAttempts, limit int) ([]Arti
 	var out []ArticleNeedingEnrichment
 	for rows.Next() {
 		var a ArticleNeedingEnrichment
-		if err := rows.Scan(&a.ID, &a.Title, &a.TLDR, &a.Content, &a.Attempts,
+		if err := rows.Scan(&a.ID, &a.Title, &a.TLDR, &a.Content, &a.Attempts, &a.KeyDetails,
 			&a.MissingScoutsTake, &a.MissingKeyDetails, &a.MissingImage, &a.MissingTags,
-			&a.ImageRequestSeq, &a.ImageHint); err != nil {
+			&a.MissingInfographic, &a.ImageRequestSeq, &a.ImageHint); err != nil {
 			return nil, fmt.Errorf("scanning article needing enrichment: %w", err)
 		}
 		// The Scout's Take, key details and tags are written from the
@@ -127,6 +168,7 @@ type EnrichmentUpdate struct {
 	ImageThumbnail   *string
 	ImageAttribution *string
 	TagsJSON         *string
+	InfographicJSON  *string
 
 	// ImageRequestSeq is the admin's request this pass's image answers (see
 	// ArticleNeedingEnrichment), or 0. The image is written only if that is
@@ -171,6 +213,7 @@ func (d *Database) ApplyEnrichment(id int64, u EnrichmentUpdate) error {
 		args = append(args, nullIfEmpty(offer.EndDate(*u.KeyDetails, writtenAt(createdAt))))
 	}
 	add("tags_json", u.TagsJSON)
+	add("infographic_json", u.InfographicJSON)
 
 	// updated_at is deliberately NOT touched. It is used to tell when an
 	// article's content last changed, and a background enrichment pass is not
@@ -265,4 +308,66 @@ func (d *Database) CountDegradedArticles(maxAttempts int) (pending, exhausted in
 		return 0, 0, fmt.Errorf("counting degraded articles: %w", err)
 	}
 	return int(p.Int64), int(e.Int64), nil
+}
+
+// InfographicsFor returns the stored infographic_json of each of ids that has
+// one, sentinel included. The list queries do not carry the column -- only
+// single-article views show a chart -- so the review queue and Published load
+// it for their rows in one query.
+func (d *Database) InfographicsFor(ids []int64) (map[int64]string, error) {
+	out := map[int64]string{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	in, args := idPlaceholders(ids)
+	rows, err := d.db.Query(`SELECT id, infographic_json FROM generated_articles
+		WHERE id IN (`+in+`) AND infographic_json IS NOT NULL AND infographic_json != ''`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("listing infographics: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var chart string
+		if err := rows.Scan(&id, &chart); err != nil {
+			return nil, err
+		}
+		out[id] = chart
+	}
+	return out, rows.Err()
+}
+
+// ErrNoChart means a chart action named an article that does not exist or
+// was rejected.
+var ErrNoChart = errors.New("no such article, or it was rejected")
+
+// RemoveInfographic is the admin's "Remove chart": the article's chart is
+// replaced by the sentinel, so it is not shown and not drawn again until
+// RedrawInfographic.
+func (d *Database) RemoveInfographic(id int64) error {
+	return d.setInfographic(id, `infographic_json = ?`, NoInfographic)
+}
+
+// RedrawInfographic is the admin's "Redraw chart": the chart (or the
+// sentinel) is cleared so the reconciler draws a new one, and the article's
+// attempts are reset so it is picked up even if earlier passes used them all
+// -- as a new-image request gets a fresh budget. Any other field still
+// missing is retried with that budget too.
+func (d *Database) RedrawInfographic(id int64) error {
+	return d.setInfographic(id, `infographic_json = '', enrichment_attempts = 0`)
+}
+
+func (d *Database) setInfographic(id int64, set string, args ...any) error {
+	// updated_at is not touched: the article's content did not change.
+	res, err := d.db.Exec(`UPDATE generated_articles SET `+set+` WHERE id = ? AND status != ?`,
+		append(args, id, StatusRejected)...)
+	if err != nil {
+		return fmt.Errorf("updating the chart of article %d: %w", id, err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrNoChart
+	}
+	return nil
 }

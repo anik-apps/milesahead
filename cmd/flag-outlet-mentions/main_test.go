@@ -46,6 +46,11 @@ func seed(t *testing.T) string {
 			t.Fatal(err)
 		}
 	}
+	// The first article's chart names an outlet in a label.
+	if _, err := database.DB().Exec(`UPDATE generated_articles SET infographic_json = ? WHERE slug = 'a'`,
+		`{"kind":"figures","headline":"Upgrade odds","rows":[{"label":"Odds per View from the Wing","value":"1 in 3"},{"label":"Fee","value":"$95"}]}`); err != nil {
+		t.Fatal(err)
+	}
 	return path
 }
 
@@ -70,6 +75,7 @@ func TestRun_ListsEveryMention(t *testing.T) {
 		`id=1 status=approved title="American Changes Upgrades"`,
 		"content [The Points Guy]: American confirmed to The Points Guy: the change is permanent.",
 		"key_details [One Mile at a Time]: Value: ~1.41 cents according to One Mile at a Time",
+		"infographic [View from the Wing]: Odds per View from the Wing",
 		`id=2 status=pending title="OMAAT: Hyatt Sale"`,
 		"title [One Mile at a Time]: OMAAT: Hyatt Sale",
 		"content link [Some Travel Blog]: the sale page -> https://sometravelblog.net/x",
@@ -137,5 +143,28 @@ func TestRun_MissingDatabaseIsNotCreated(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err == nil {
 		t.Error("a missing database was created")
+	}
+}
+
+// A database from before infographics has no infographic_json column; the
+// tool still reports everything else rather than failing.
+func TestRun_DatabaseWithoutTheInfographicColumn(t *testing.T) {
+	path := seed(t)
+	database, err := db.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DB().Exec(`ALTER TABLE generated_articles DROP COLUMN infographic_json`); err != nil {
+		t.Fatalf("drop column: %v", err)
+	}
+	database.Close()
+
+	var out bytes.Buffer
+	if err := run([]string{"-db", path}, &out); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "content [The Points Guy]") || strings.Contains(got, "infographic [") {
+		t.Errorf("unexpected output without the column:\n%s", got)
 	}
 }

@@ -259,12 +259,15 @@ func (app *App) loadTemplates(dir string) error {
 
 	// Parse each page template separately with the layout so that each gets
 	// its own "content" block definition without conflicts.
-	// Admin pages also get the admin partials (navigation, shell).
+	// Every page gets the shared partials beside layout.html (the "At a
+	// glance" chart, shown on article pages and in the admin); admin pages
+	// also get the admin partials (navigation, shell).
+	sharedPartials, _ := filepath.Glob(filepath.Join(dir, "_*.html"))
 	adminDir := filepath.Join(dir, "admin")
 	adminPartials, _ := filepath.Glob(filepath.Join(adminDir, "_*.html"))
 	for _, pf := range pageFiles {
 		name := filepath.Base(pf)
-		files := []string{layoutFile}
+		files := append([]string{layoutFile}, sharedPartials...)
 		if filepath.Dir(pf) == adminDir {
 			files = append(files, adminPartials...)
 		}

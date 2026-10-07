@@ -201,6 +201,7 @@ func TestPrompts_NeverNameOutlets(t *testing.T) {
 		"critic2":     Critic2Prompt("<p>article</p>", src),
 		"scouts_take": ScoutsTakePrompt("Scout", "T", "tldr", "<p>body</p>"),
 		"details":     ExtractDetailsPrompt("T", "<p>body</p>"),
+		"infographic": InfographicPrompt("T", "tldr", `[{"label":"Fee","value":"$95"}]`),
 	}
 	exception1 := "1. The outlet is itself the subject of the story (e.g. a sale on Thrifty Traveler Premium)."
 	exception2 := `2. An unconfirmed report whose only source is that outlet — then one mention, phrased as a report ("reportedly, according to X").`
@@ -253,6 +254,7 @@ func TestEnrichmentPrompts_ForbidNumberedSources(t *testing.T) {
 	for name, p := range map[string]string{
 		"scouts_take": ScoutsTakePrompt("Scout", "T", "tldr", "<p>Source 1 notes it.</p>"),
 		"details":     ExtractDetailsPrompt("T", "<p>Source 1 notes it.</p>"),
+		"infographic": InfographicPrompt("T", "Source 1 notes it.", "[]"),
 	} {
 		if !strings.Contains(p, "Never refer to sources by number or position") {
 			t.Errorf("%s prompt missing the numbered-source rule", name)
@@ -276,5 +278,34 @@ func TestWritingStyleAndHTMLFormat_ForbidMarkdown(t *testing.T) {
 	}
 	if !strings.Contains(combined, "ASCII hyphens") {
 		t.Error("writingStyle+htmlFormat missing ASCII-hyphens rule")
+	}
+}
+
+// The infographic prompt states the rules the checks enforce, so a model is
+// not refused for something it was never told, and asks for JSON only.
+func TestInfographicPrompt_StatesTheRules(t *testing.T) {
+	p := InfographicPrompt("T", "tldr", "[]")
+	for _, want := range []string{
+		"Every number must appear in the article above",
+		"add up or subtract",
+		// What infographic.Chart.Validate enforces.
+		`"change"`, `"compare"`, `"figures"`, `"timeline"`,
+		"in the same unit",
+		"Never put a total beside the parts",
+		"Do not repeat the value in it",
+		`never a ratio ("1:3"), a range ("7,000-24,000") or two numbers`,
+		// What no check can catch.
+		"order of steps exactly as the article puts it",
+		"Only the JSON object",
+		"NO_INFOGRAPHIC",
+	} {
+		if !strings.Contains(p, want) {
+			t.Errorf("infographic prompt missing %q", want)
+		}
+	}
+	for _, gone := range []string{"<svg", "viewBox", "font-size"} {
+		if strings.Contains(p, gone) {
+			t.Errorf("infographic prompt still asks about drawing: %q", gone)
+		}
 	}
 }

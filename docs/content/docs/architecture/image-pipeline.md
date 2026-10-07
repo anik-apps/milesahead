@@ -243,3 +243,145 @@ other, each with the width its URL fixes, and only when:
 Phones and 1x screens, and every screen outside 769-1024 px, load the
 thumbnail as before. The sidebar cards are 100 px wide at every size, so
 they use the thumbnail alone.
+
+## Article Infographics
+
+Separately from the photo, enrichment can add an **"At a glance"** chart: a few
+numbers from the article's `key_details`, shown in a panel under Key Details.
+A model chooses the numbers; the site draws the chart. No text-to-image model
+is reachable with this project's credentials, and a chart of four numbers is
+better drawn by the site anyway.
+
+It is opt-in, with `ai.enrichment_infographics`:
+
+| Mode | Drawn | Admin (review preview, Published) | Article page |
+|---|---|---|---|
+| `off` (default, production) | no | charts already stored | no |
+| `preview` | yes | yes | no |
+| `on` | yes | yes | yes |
+
+Off, an article missing only its chart counts as complete: it is not listed for
+enrichment, charged an attempt or charted. The admin still shows any chart that
+was stored before, so charts drawn in `preview` can be reviewed, removed or
+redrawn whatever the mode; only article pages depend on `on`.
+
+### What the model returns
+
+A small JSON object, read by `internal/infographic`: the kind of chart, a
+headline, its rows (label, value, an optional detail) and an optional note (a
+date or condition) and takeaway. Four kinds:
+
+| Kind | For | Drawn as |
+|---|---|---|
+| `change` | one number that moved: a fee, a ratio, a price | before, crossed out, then after in the accent colour; one above the other when either is too long to sit side by side |
+| `compare` | two to five amounts of the same kind and unit | bars, longest in the accent colour, lengths computed by the site |
+| `figures` | numbers that do not compare | one large headline figure and one to four more in a grid |
+| `timeline` | dates | dated steps, the one that matters marked |
+
+The model chooses no colours, sizes or positions. It used to write the chart as
+SVG, and its charts were inconsistent: colours picked from a list, filled boxes,
+labels cut off at the edge, and bars whose lengths claimed comparisons the
+numbers did not make. Drawn by the site, every chart uses the same four designs
+in the site's own type and colours, real dark mode included, and its text wraps
+instead of being clipped.
+
+A chart is refused when it does not fit its kind (`Chart.Validate`): the wrong
+number of rows (a single figure is not worth a chart), a field over its length
+limit, an unknown kind, a row of a change or comparison with no label, a
+change to the same value, and for `compare` any value that is not exactly one
+number, or rows in different units
+(the value with its number taken out: "%", "$", "miles"). That is the rule
+against meaningless bars, enforced rather than only asked for: a ratio ("1:3"),
+a range ("7,000-24,000"), or a percentage beside a multiplier cannot be a bar.
+
+### The call
+
+One call per article on the `ai.infographic_model` chain (the
+`enrichment_model` chain when unset), after the image and only once key details
+exist. Production puts nemotron-3-super first and gpt-oss-20b second, the
+reverse of `enrichment_model`: when the model drew SVG, gpt-oss-20b timed out at
+120 seconds on 4 of 10 real articles, while nemotron-3-super answered every call
+that reached it. It asks for up to 12,288 tokens, since a reasoning model spends
+most of its budget before it answers and a reply cut off mid-reasoning has no
+chart in it. That is more than the 30-second short-call class allows, so it has
+its own client: 120 seconds per model (`ai.InfographicCallTimeout`) and no
+retries, rather than the generator's `request_timeout` and retries. With
+production's two-model chain one chart can take up to 240 seconds.
+
+The chain is the retry within a pass, and not only for failed calls: a chart
+that fails any check goes to the next model too. Only when no model's chart is
+usable is the article left for the next pass. A model that answers that there is
+nothing to chart ends the chain.
+
+The chart is put off, without using an attempt, when the pass deadline has
+passed, when less of the pass is left than the whole chain could take (120
+seconds per model), and while an admin's "Find a new image" request is pending
+for the article (the new image is only saved once the article is done, so it
+should not wait on a chart). Only the first of these ends the pass; otherwise
+later articles still get their quicker fields.
+
+There are three outcomes. A chart is stored in `infographic_json`. A failure
+(every model's call failed or its chart was refused) leaves the column empty
+for a later pass and uses an attempt. An article with nothing to compare gets
+the sentinel `none`, so it is not asked again.
+
+Missing charts are not counted in `milesahead_articles_degraded`: every article
+written before the feature lacks one.
+
+### Words and numbers in the chart
+
+The chart's headline, labels, values, details, note and takeaway are public text
+derived from the article, with no revision after them, like Scout's Take. They
+get the same checks, read whole (`Chart.Text`): a reference to a source by
+number ("Source 1") or a news-site name outside the subject exception refuses
+the chart. `cmd/flag-outlet-mentions` reads stored charts too.
+
+Every number in the chart must also be one the article states
+(`ai.UnsupportedChartNumbers`), in its title, summary, key details or body.
+Numbers are compared by value: thousands separators, currency signs and units
+are ignored, and a "$3k" matches "3,000". A made-up, miscopied or derived
+figure (a sum the article does not give) refuses the chart. The one exemption is
+bare integers up to 10 with no currency, unit or separator in the chart's
+words, where the article may spell a small count out ("three nights"). A
+comparison's values get no exemption (`ai.UnsupportedValues`): they are bar
+lengths, and an invented "3" beside a stated "8" would draw a wrong one. The
+prompt asks for no derived figures, so a model is not refused for something it
+was not told.
+
+What no check can catch is a sentence that gets the article wrong, or a label
+on the wrong number. The prompt asks the takeaway to keep the article's rules
+and conditions as it states them (activate before you spend, not after), and
+the review below is for the rest.
+
+### Reviewing charts
+
+The review queue preview shows the article's chart where the page will, under
+Key Details, with **Remove chart** and **Redraw chart** beneath it. Published
+articles are not in the queue, so the Published page shows each row's chart
+folded under "Chart" (with "(not on the site yet)" until the mode is `on`), and
+the same two actions in the row menu. This is how charts drawn for the archive
+in `preview` are checked before `on` publishes them.
+
+- **Remove chart** stores `none`: the chart leaves the page at once and is not
+  drawn again.
+- **Redraw chart** clears the column and resets the article's enrichment
+  attempts, so the reconciler draws a new chart on a coming pass (any other
+  field still missing is retried with that budget too).
+
+A stored chart the site cannot draw (it no longer passes `Chart.Validate`, or a
+row edited by hand) is shown nowhere; the admin marks it "Chart unusable" and
+offers the same two actions, and the server logs it once rather than on every
+page view.
+
+### Drawing and placement
+
+`templates/_infographic.html` draws the panel, shared by the article page, the
+review preview and Published; `.glance` in `static/css/style.css` styles it like
+the Key Details panel. The chart's words reach the page only as escaped text:
+nothing the model writes is markup. Bar lengths are percentages of the longest
+bar, computed by `Chart.View` from the values.
+
+On desktop the panel sits in the sidebar, between Key Details and Links. A
+sidebar holding a chart is not sticky, since it can be taller than the window.
+On phones, where the key details fold into one line under the summary, the panel
+follows that line, open, before the photo. It is not shown on the homepage.

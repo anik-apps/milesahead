@@ -136,6 +136,30 @@ ai:
   # than stuck. Checked between articles, so the real ceiling is this plus
   # one article's worst case.
   enrichment_max_duration: 10    # minutes
+  # Article infographics: an "At a glance" chart of each article's key
+  # details, under Key Details. The infographic_model chain below picks the
+  # numbers (one more call per article, bounded at 120s per model in the
+  # chain -- up to 240s with two -- with no retries); the site draws them. A
+  # chart that fails a check (bars in two units, a number the article does
+  # not state, a news site named) goes to the next model.
+  #   off      draw nothing; article pages show nothing (the default)
+  #   preview  draw them; show them only in the admin (review preview and
+  #            Published), where they can be removed or redrawn
+  #   on       draw them and show them on article pages
+  # The admin shows charts already stored in every mode.
+  # preview or on makes every article without a chart eligible for the next
+  # passes, ten at a time, until the archive is drawn or each article's
+  # attempts run out. Going back to off takes the charts off article pages
+  # and stops drawing; nothing is deleted.
+  enrichment_infographics: "off"
+  # The chain charts are drawn with; empty uses enrichment_model. Reversed
+  # from enrichment_model: drawing charts for ten real articles on
+  # 2026-10-05, gpt-oss-20b timed out at 120s on 4 of 10 and took 46-70s
+  # otherwise; nemotron-3-super answered all four calls that reached it, in
+  # 22-46s.
+  # The charts were of similar quality; the 503s that put nemotron-3-super
+  # second in enrichment_model fall through to gpt-oss-20b here.
+  infographic_model: "nvidia/nemotron-3-super-120b-a12b,openai/gpt-oss-20b"
   hf_api_token: "${HF_API_TOKEN}"
   critic_threshold: 70
   max_retries: 3
