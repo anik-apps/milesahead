@@ -258,7 +258,7 @@ It is opt-in, with `ai.enrichment_infographics`:
 |---|---|---|---|
 | `off` (default) | no | charts already stored | no |
 | `preview` | yes | yes | no |
-| `on` (production since 2026-10-08) | yes | yes | yes |
+| `on` (production since October 2026) | yes | yes | yes |
 
 Off, an article missing only its chart counts as complete: it is not listed for
 enrichment, charged an attempt or charted. The admin still shows any chart that

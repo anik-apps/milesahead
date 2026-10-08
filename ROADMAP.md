@@ -33,7 +33,7 @@
 - [x] CI/CD refactored into separate build/deploy/seed/grafana jobs
 - [x] Admin rework — own shell with counts on the tabs, grouped review queue with decisions in the preview (revision-checked approve, approve-and-next, undo, shortcuts), source health, card editor with inline flags, card updates as a word diff
 - [x] Review queue sort (newest first by default, oldest, critic score) and per-row actions menus on Review and Published; compact type pills
-- [x] Article infographics (on since 2026-10-08, after a night in `preview`) — an "At a glance" chart under
+- [x] Article infographics (on since October 2026, after a night in `preview`) — an "At a glance" chart under
       Key Details: a model picks the numbers as JSON (a change, a comparison, figures or a
       timeline), and the site draws them in its own type and colours. Outlet, numbered-source
       and unsupported-number guards on its words; a comparison's bars must share one unit.
