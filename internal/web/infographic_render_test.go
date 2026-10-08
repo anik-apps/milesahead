@@ -343,3 +343,81 @@ func TestInfographic_RemoveAndRedraw(t *testing.T) {
 }
 
 func idStr(id int64) string { return strconv.FormatInt(id, 10) }
+
+// Redraw chart with a note: the note is stored (tidied and capped) for the
+// next draw, the redirect clears its saved draft, and until the chart is
+// drawn the review preview and Published say a redraw with a note is coming.
+func TestInfographic_RedrawWithANote(t *testing.T) {
+	app := setupRealTemplateApp(t, config.InfographicsPreview)
+	id := createInfographicArticle(t, app, "noted", db.StatusPending, storedChart)
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+
+	rec := doAdminPOST(t, app, "/admin/articles/"+idStr(id)+"/chart/redraw", session, "",
+		url.Values{"note": {"  Label the bars\n by airline  "}})
+	loc := rec.Header().Get("Location")
+	if rec.Code != http.StatusSeeOther || !strings.Contains(loc, "msg=chart_redraw_note") || !strings.Contains(loc, "sent=chart-"+idStr(id)) {
+		t.Errorf("redraw = %d to %q", rec.Code, loc)
+	}
+	stored, err := app.db.InfographicsFor([]int64{id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stored[id]; got.JSON != "" || got.Note != "Label the bars by airline" {
+		t.Errorf("stored %+v; want no chart and the tidied note", got)
+	}
+
+	body := doAdminGET(t, app, loc, session).Body.String()
+	for _, want := range []string{
+		"Redrawing on a coming pass, with your note: &ldquo;Label the bars by airline&rdquo;",
+		"Chart cleared. Enrichment draws a new one with your note",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("review preview missing %q", want)
+		}
+	}
+
+	// A long note is cut to the limit.
+	long := strings.Repeat("x", maxChartNote+50)
+	doAdminPOST(t, app, "/admin/articles/"+idStr(id)+"/chart/redraw", session, "", url.Values{"note": {long}})
+	if stored, _ := app.db.InfographicsFor([]int64{id}); len([]rune(stored[id].Note)) != maxChartNote {
+		t.Errorf("note is %d characters, want %d", len([]rune(stored[id].Note)), maxChartNote)
+	}
+
+	// Without a note it is a plain redraw, and any old note goes.
+	rec = doAdminPOST(t, app, "/admin/articles/"+idStr(id)+"/chart/redraw", session, "", nil)
+	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "msg=chart_redraw&") {
+		t.Errorf("redraw without a note redirected to %q", loc)
+	}
+	if stored, _ := app.db.InfographicsFor([]int64{id}); stored[id].Note != "" {
+		t.Errorf("note = %q after a redraw without one", stored[id].Note)
+	}
+}
+
+// The review preview's Redraw has a note field; Published's row menu opens a
+// panel with one, and marks a row whose redraw with a note is waiting.
+func TestInfographic_NoteFields(t *testing.T) {
+	app := setupRealTemplateApp(t, config.InfographicsPreview)
+	pending := createInfographicArticle(t, app, "pending-note", db.StatusPending, storedChart)
+	live := createInfographicArticle(t, app, "live-note", db.StatusApproved, storedChart)
+	waiting := createInfographicArticle(t, app, "waiting-note", db.StatusApproved, storedChart)
+	if err := app.db.RedrawInfographic(waiting, "Use the fee"); err != nil {
+		t.Fatal(err)
+	}
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+
+	preview := doAdminGET(t, app, "/admin/dashboard?open="+idStr(pending), session).Body.String()
+	if !strings.Contains(preview, `id="chart-note-`+idStr(pending)+`" name="note"`) {
+		t.Error("the review preview's Redraw has no note field")
+	}
+	published := doAdminGET(t, app, "/admin/published", session).Body.String()
+	for _, want := range []string{
+		`data-reveal="chart-panel-` + idStr(live) + `">Redraw chart&hellip;</button>`,
+		`id="chart-panel-` + idStr(live) + `" hidden>`,
+		`id="chart-note-` + idStr(live) + `" name="note"`,
+		`title="Your note: Use the fee">Redrawing chart&hellip;</span>`,
+	} {
+		if !strings.Contains(published, want) {
+			t.Errorf("Published missing %q", want)
+		}
+	}
+}

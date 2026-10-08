@@ -189,10 +189,70 @@ func TestInfographics_ListingAndLoading(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(charts) != 2 || charts[drawn] != `{"kind":"figures"}` || charts[nothing] != NoInfographic {
+	if len(charts) != 2 || charts[drawn].JSON != `{"kind":"figures"}` || charts[nothing].JSON != NoInfographic {
 		t.Errorf("InfographicsFor = %v", charts)
 	}
 	if empty, err := d.InfographicsFor(nil); err != nil || len(empty) != 0 {
 		t.Errorf("InfographicsFor(nil) = %v, %v", empty, err)
 	}
+}
+
+// Redraw chart with a note: the chart is cleared, the attempts reset and the
+// note kept for the next draw, which clears it once it stores a chart or
+// "nothing to chart". A draw that fails keeps the note for the retry.
+func TestRedrawInfographic_NoteLastsUntilAChartIsStored(t *testing.T) {
+	d := openTestDB(t)
+	id := makeArticle(t, d, "redraw-note")
+	setFields(t, d, id, "infographic_json = ?, enrichment_attempts = 3", `{"kind":"figures"}`)
+
+	if err := d.RedrawInfographic(id, "The cap is $1,500"); err != nil {
+		t.Fatal(err)
+	}
+	charts, err := d.InfographicsFor([]int64{id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := charts[id]; got.JSON != "" || got.Note != "The cap is $1,500" {
+		t.Errorf("after redraw: %+v; want no chart and the note", got)
+	}
+	arts, err := d.ListArticlesNeedingEnrichmentWithInfographics(3, 10)
+	if err != nil || len(arts) != 1 || arts[0].InfographicNote != "The cap is $1,500" {
+		t.Fatalf("listed %+v, %v; want the article with its note", arts, err)
+	}
+
+	// A failed draw stores nothing and keeps the note.
+	if err := d.ApplyEnrichment(id, EnrichmentUpdate{}); err != nil {
+		t.Fatal(err)
+	}
+	if charts, _ := d.InfographicsFor([]int64{id}); charts[id].Note == "" {
+		t.Error("a failed draw dropped the note")
+	}
+
+	chart := `{"kind":"figures","headline":"H"}`
+	if err := d.ApplyEnrichment(id, EnrichmentUpdate{InfographicJSON: &chart}); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustInfographics(t, d, id); got.JSON != chart || got.Note != "" {
+		t.Errorf("after a chart is stored: %+v; want the chart and no note", got)
+	}
+
+	// Redraw without a note replaces an old one with nothing.
+	if err := d.RedrawInfographic(id, "old note"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.RedrawInfographic(id, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustInfographics(t, d, id); got.Note != "" {
+		t.Errorf("note = %q after a redraw without one", got.Note)
+	}
+}
+
+func mustInfographics(t *testing.T, d *Database, id int64) StoredInfographic {
+	t.Helper()
+	charts, err := d.InfographicsFor([]int64{id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return charts[id]
 }

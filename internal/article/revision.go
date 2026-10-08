@@ -243,6 +243,17 @@ func (m *Manager) processRevision(articleID int64) error {
 	if m.applyRevision != nil {
 		apply = m.applyRevision
 	}
+	// The rewrite's own key details replace the old ones, which described the
+	// old text; without any, the old ones are cleared for enrichment to
+	// extract again (see db.ApplyRevision).
+	var keyDetails string
+	if len(result.KeyDetails) > 0 {
+		b, err := json.Marshal(result.KeyDetails)
+		if err != nil {
+			return fmt.Errorf("marshaling key details: %w", err)
+		}
+		keyDetails = string(b)
+	}
 	applied, err := apply(db.AppliedRevision{
 		ArticleID:       articleID,
 		BaseRevision:    article.RevisionNumber,
@@ -250,6 +261,7 @@ func (m *Manager) processRevision(articleID int64) error {
 		Title:           result.Title,
 		PreviousContent: article.Content,
 		NewContent:      result.Content,
+		KeyDetails:      keyDetails,
 		EditorNotes:     result.EditorNotes,
 		Status:          newStatus,
 		Verification: &db.VerificationResult{

@@ -98,6 +98,8 @@ type adminArticleRow struct {
 	// InfographicBroken: a chart is stored but is not one the site can
 	// draw, so it is shown nowhere; Redraw or Remove replaces it.
 	InfographicBroken bool
+	// InfographicNote is the admin's note on a redraw still to come.
+	InfographicNote string
 
 	// Queue row extras (dashboard.go).
 	Group        string // groupDecide, groupReady or groupRewriting
@@ -205,6 +207,8 @@ func (app *App) handleAdminPublished(w http.ResponseWriter, r *http.Request) {
 		data["MessageText"] = chartRemovedMessage
 	case "chart_redraw":
 		data["MessageText"] = chartRedrawMessage
+	case "chart_redraw_note":
+		data["MessageText"] = chartNoteMessage
 	case "alert_acknowledged":
 		data["MessageText"] = "Alert acknowledged. The article alerts again only on downvotes cast from now on."
 	}

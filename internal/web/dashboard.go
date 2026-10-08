@@ -300,6 +300,7 @@ var dashboardMessages = map[string]string{
 	"image_requested":    imageRequestedMessage,
 	"chart_removed":      chartRemovedMessage,
 	"chart_redraw":       chartRedrawMessage,
+	"chart_redraw_note":  chartNoteMessage,
 }
 
 func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {

@@ -142,3 +142,28 @@ func TestPipeline_CriticNeverSeesEditorNotes(t *testing.T) {
 		}
 	}
 }
+
+// A rewrite's key details are stored with it (db.ApplyRevision), so one
+// naming a news site is dropped as enrichment drops extracted ones.
+func TestPipeline_ProcessWithFeedback_DropsOutletKeyDetails(t *testing.T) {
+	reply := `Wyndham Rewards 100% Points Bonus
+
+TLDR: Buy points at a 100% bonus through May 1.
+
+KEY_DETAILS_START
+- Bonus: 100%
+- Value: about 1.1 cents according to One Mile at a Time
+KEY_DETAILS_END
+
+<p>Wyndham is selling points with a 100% bonus.</p>`
+	critic := `{"score": 90, "issues": [], "factual_check": true, "attribution_check": true, "completeness_check": true, "hallucination_check": true}`
+	p := NewPipeline(NewGenerator(&mockHFClient{response: reply}, "gen", "", nil),
+		NewCritic(&mockHFClient{response: critic}, "critic"), 80)
+	res, err := p.ProcessWithFeedback(nil, "<p>old</p>", "fix it", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.KeyDetails) != 1 || res.KeyDetails[0].Label != "Bonus" {
+		t.Errorf("key details = %+v; want only the one that names no news site", res.KeyDetails)
+	}
+}

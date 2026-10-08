@@ -366,7 +366,28 @@ in `preview` are checked before `on` publishes them.
   drawn again.
 - **Redraw chart** clears the column and resets the article's enrichment
   attempts, so the reconciler draws a new chart on a coming pass (any other
-  field still missing is retried with that budget too).
+  field still missing is retried with that budget too). It takes an optional
+  note on what was wrong ("label the bars by airline"), up to 300 characters,
+  stored in `infographic_note` and given to the model on that draw; it is
+  cleared once a chart or "nothing to chart" is stored, and kept if the draw
+  fails. The note is followed but is not a source: numbers still come from
+  the article, so a wrong number in the article needs a rewrite. While the
+  redraw waits, the preview shows the note and Published marks the row
+  "Redrawing chart".
+
+### After a rewrite
+
+A rewrite ("Request rewrite", or "Unpublish and request a rewrite") changes
+the article's text, and its key details and chart are derived from that text,
+so they are refreshed with it (`db.ApplyRevision`). The rewrite's own key
+details, which the model writes with the article, replace the old ones, with
+the offer end date they state; if it wrote none, the old ones are cleared and
+enrichment extracts them again. The chart is cleared and drawn again from the
+new key details on the next pass, and the attempts are reset so enrichment
+picks the article up. A chart that was removed, or found nothing to chart,
+stays so; Redraw chart asks again. A redraw note waiting from before the
+rewrite is used on that draw. The summary and Scout's Take are not refreshed
+by a rewrite.
 
 A stored chart the site cannot draw (it no longer passes `Chart.Validate`, or a
 row edited by hand) is shown nowhere; the admin marks it "Chart unusable" and

@@ -2,10 +2,12 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/editornote"
+	"github.com/kumaranik/milesahead/internal/offer"
 )
 
 // maxRevisionErrorLen bounds the stored error. It is shown on the dashboard, and
@@ -116,6 +118,9 @@ type AppliedRevision struct {
 	Title           string
 	PreviousContent string
 	NewContent      string
+	// KeyDetails is the rewrite's own key details, as JSON, or empty when it
+	// gave none. See ApplyRevision.
+	KeyDetails string
 	// EditorNotes are the rewrite's remarks for the admin. Notes still inside
 	// NewContent are split out and added to them; together they replace the
 	// article's notes, which described the content being replaced.
@@ -144,6 +149,14 @@ type AppliedRevision struct {
 //     silently drop them. Instead it is discarded and the article stays
 //     revision_requested for the newer feedback.
 //
+// The article's key details and chart are derived from its content, so they
+// are refreshed with it: the rewrite's own key details replace the old ones
+// (or, when it gave none, the old ones are cleared for enrichment to extract
+// again), and the chart is cleared to be drawn again from them -- a chart
+// left from the old text would keep a number the rewrite corrected. A chart
+// that was removed, or that had nothing to chart, stays so; Redraw chart asks
+// again. The attempts are reset so enrichment picks the article up.
+//
 // Content, final status, the history row, the verification row and the retry
 // bookkeeping commit together. So a crash cannot leave an article in draft with
 // its old content, and there is no window after the store in which a separate
@@ -170,16 +183,36 @@ func (d *Database) ApplyRevision(r AppliedRevision) (bool, error) {
 	previousContent := editornote.Strip(r.PreviousContent)
 
 	newRevision := r.BaseRevision + 1
+	// New key details can state a new offer end date, so it is derived in the
+	// same write, as ApplyEnrichment does. Without new ones the old date stays
+	// until enrichment extracts them again.
+	endDate := "expires_on"
+	var endArgs []any
+	if r.KeyDetails != "" {
+		var createdAt any
+		if err := tx.QueryRow(`SELECT created_at FROM generated_articles WHERE id = ?`, r.ArticleID).Scan(&createdAt); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return false, nil
+			}
+			return false, fmt.Errorf("reading created_at for article %d: %w", r.ArticleID, err)
+		}
+		endDate = "?"
+		endArgs = append(endArgs, nullIfEmpty(offer.EndDate(r.KeyDetails, writtenAt(createdAt))))
+	}
+	args := []any{status, r.Title, newContent, notes, newRevision, r.KeyDetails}
+	args = append(args, endArgs...)
+	args = append(args, NoInfographic, r.ArticleID, StatusRevisionRequested, r.BaseRevision, r.ArticleID, r.FeedbackID)
 	res, err := tx.Exec(
 		`UPDATE generated_articles
 		 SET status = ?, title = ?, content = ?, editor_notes = ?, revision_number = ?,
+		     key_details = ?, expires_on = `+endDate+`,
+		     infographic_json = CASE WHEN infographic_json = ? THEN infographic_json ELSE '' END,
+		     enrichment_attempts = 0,
 		     revision_failures = 0, revision_retry_after = 0, revision_last_error = '',
 		     updated_at = CURRENT_TIMESTAMP
 		 WHERE id = ? AND status = ? AND revision_number = ?
 		   AND COALESCE((SELECT MAX(id) FROM admin_feedback WHERE generated_article_id = ?), 0) = ?`,
-		status, r.Title, newContent, notes, newRevision,
-		r.ArticleID, StatusRevisionRequested, r.BaseRevision,
-		r.ArticleID, r.FeedbackID,
+		args...,
 	)
 	if err != nil {
 		return false, fmt.Errorf("storing revision: %w", err)

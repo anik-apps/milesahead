@@ -597,7 +597,7 @@ func (s *Service) drawInfographic(u *db.EnrichmentUpdate, a db.ArticleNeedingEnr
 		}
 		return nil
 	}
-	chart, err := ai.GenerateInfographic(client, s.infographicModels(), a.Title, a.TLDR, details, accept)
+	chart, err := ai.GenerateInfographic(client, s.infographicModels(), a.Title, a.TLDR, details, a.InfographicNote, accept)
 	if errors.Is(err, ai.ErrNoInfographic) {
 		slog.Info("enrichment: article has nothing chartable",
 			"article_id", a.ID)

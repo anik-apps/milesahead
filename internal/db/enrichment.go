@@ -31,6 +31,8 @@ type ArticleNeedingEnrichment struct {
 	// KeyDetails is the chart's only source of numbers, so an article that
 	// still lacks it cannot have an infographic drawn yet.
 	KeyDetails string
+	// InfographicNote is the admin's note from Redraw chart, for the model.
+	InfographicNote string
 
 	// ImageRequestSeq is the admin's pending request for a new image (see
 	// RequestNewImage), or 0 for none. With one, MissingImage is set even
@@ -119,7 +121,7 @@ func (d *Database) listArticlesNeedingEnrichment(maxAttempts, limit int, infogra
 		       (g.image_url IS NULL OR g.image_url = '' OR r.article_id IS NOT NULL) AS need_image,
 		       %s AS need_tags,
 		       %s AS need_infographic,
-		       COALESCE(r.seq, 0), COALESCE(r.hint, '')
+		       COALESCE(r.seq, 0), COALESCE(r.hint, ''), COALESCE(g.infographic_note, '')
 		FROM generated_articles g
 		LEFT JOIN article_image_requests r ON r.article_id = g.id AND r.state = ?
 		WHERE g.status != ?
@@ -147,7 +149,7 @@ func (d *Database) listArticlesNeedingEnrichment(maxAttempts, limit int, infogra
 		var a ArticleNeedingEnrichment
 		if err := rows.Scan(&a.ID, &a.Title, &a.TLDR, &a.Content, &a.Attempts, &a.KeyDetails,
 			&a.MissingScoutsTake, &a.MissingKeyDetails, &a.MissingImage, &a.MissingTags,
-			&a.MissingInfographic, &a.ImageRequestSeq, &a.ImageHint); err != nil {
+			&a.MissingInfographic, &a.ImageRequestSeq, &a.ImageHint, &a.InfographicNote); err != nil {
 			return nil, fmt.Errorf("scanning article needing enrichment: %w", err)
 		}
 		// The Scout's Take, key details and tags are written from the
@@ -214,6 +216,11 @@ func (d *Database) ApplyEnrichment(id int64, u EnrichmentUpdate) error {
 	}
 	add("tags_json", u.TagsJSON)
 	add("infographic_json", u.InfographicJSON)
+	if u.InfographicJSON != nil {
+		// The admin's note was for this draw; a chart or "nothing to chart"
+		// answers it.
+		sets = append(sets, "infographic_note = ''")
+	}
 
 	// updated_at is deliberately NOT touched. It is used to tell when an
 	// article's content last changed, and a background enrichment pass is not
@@ -310,29 +317,37 @@ func (d *Database) CountDegradedArticles(maxAttempts int) (pending, exhausted in
 	return int(p.Int64), int(e.Int64), nil
 }
 
-// InfographicsFor returns the stored infographic_json of each of ids that has
-// one, sentinel included. The list queries do not carry the column -- only
-// single-article views show a chart -- so the review queue and Published load
-// it for their rows in one query.
-func (d *Database) InfographicsFor(ids []int64) (map[int64]string, error) {
-	out := map[int64]string{}
+// StoredInfographic is an article's chart as stored: the chart's JSON (or
+// NoInfographic, or empty when none is drawn yet), and the admin's note for
+// a redraw still to come.
+type StoredInfographic struct {
+	JSON string
+	Note string
+}
+
+// InfographicsFor returns the stored chart of each of ids that has one,
+// sentinel included, or a redraw note waiting. The list queries do not carry
+// the columns -- only single-article views show a chart -- so the review
+// queue and Published load them for their rows in one query.
+func (d *Database) InfographicsFor(ids []int64) (map[int64]StoredInfographic, error) {
+	out := map[int64]StoredInfographic{}
 	if len(ids) == 0 {
 		return out, nil
 	}
 	in, args := idPlaceholders(ids)
-	rows, err := d.db.Query(`SELECT id, infographic_json FROM generated_articles
-		WHERE id IN (`+in+`) AND infographic_json IS NOT NULL AND infographic_json != ''`, args...)
+	rows, err := d.db.Query(`SELECT id, COALESCE(infographic_json, ''), COALESCE(infographic_note, '') FROM generated_articles
+		WHERE id IN (`+in+`) AND (COALESCE(infographic_json, '') != '' OR COALESCE(infographic_note, '') != '')`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("listing infographics: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id int64
-		var chart string
-		if err := rows.Scan(&id, &chart); err != nil {
+		var s StoredInfographic
+		if err := rows.Scan(&id, &s.JSON, &s.Note); err != nil {
 			return nil, err
 		}
-		out[id] = chart
+		out[id] = s
 	}
 	return out, rows.Err()
 }
@@ -353,8 +368,11 @@ func (d *Database) RemoveInfographic(id int64) error {
 // attempts are reset so it is picked up even if earlier passes used them all
 // -- as a new-image request gets a fresh budget. Any other field still
 // missing is retried with that budget too.
-func (d *Database) RedrawInfographic(id int64) error {
-	return d.setInfographic(id, `infographic_json = '', enrichment_attempts = 0`)
+//
+// note is what the admin said was wrong, given to the model on the next
+// draw; empty for none. It replaces any earlier note.
+func (d *Database) RedrawInfographic(id int64, note string) error {
+	return d.setInfographic(id, `infographic_json = '', enrichment_attempts = 0, infographic_note = ?`, note)
 }
 
 func (d *Database) setInfographic(id int64, set string, args ...any) error {
