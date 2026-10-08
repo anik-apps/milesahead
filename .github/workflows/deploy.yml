@@ -236,9 +236,9 @@ jobs:
             enrichment_max_attempts: 3
             enrichment_max_duration: 10
             # "preview" draws charts for the admin preview only; "on" also
-            # publishes them. In preview since 2026-10-07: review them on
-            # Published before "on".
-            enrichment_infographics: "preview"
+            # publishes them. On since October 2026, after a night in preview.
+            # Remove chart and Redraw chart on Published fix a bad one.
+            enrichment_infographics: "on"
             # nemotron-3-super first: on real articles it drew in 22-46s,
             # where gpt-oss-20b timed out on 4 of 10. See config.example.yaml.
             infographic_model: "nvidia/nemotron-3-super-120b-a12b,openai/gpt-oss-20b"

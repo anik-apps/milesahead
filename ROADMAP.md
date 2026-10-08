@@ -33,7 +33,7 @@
 - [x] CI/CD refactored into separate build/deploy/seed/grafana jobs
 - [x] Admin rework — own shell with counts on the tabs, grouped review queue with decisions in the preview (revision-checked approve, approve-and-next, undo, shortcuts), source health, card editor with inline flags, card updates as a word diff
 - [x] Review queue sort (newest first by default, oldest, critic score) and per-row actions menus on Review and Published; compact type pills
-- [x] Article infographics (off until the item in Up Next) — an "At a glance" chart under
+- [x] Article infographics (on since October 2026, after a night in `preview`) — an "At a glance" chart under
       Key Details: a model picks the numbers as JSON (a change, a comparison, figures or a
       timeline), and the site draws them in its own type and colours. Outlet, numbered-source
       and unsupported-number guards on its words; a comparison's bars must share one unit.
@@ -301,16 +301,6 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       rows. `cmd/repair-editor-notes` moves them out of stored content (dry run by default).
 
 ## Up Next
-
-- [ ] **Turn on article infographics** — in `preview` since 2026-10-07 (config.example.yaml
-      and deploy.yml; `TestDeployConfigMirrorsCritic` keeps the two equal): each enrichment
-      pass draws "At a glance" charts for about ten articles, shown only in the admin.
-      Judge them on Published (each row's "Chart") and in the review preview: the right
-      numbers, labels on the right values, a takeaway that says what the article says.
-      Remove or redraw any that are wrong, then set both to `"on"`. Locally, on ten
-      published articles with the production models (2026-10-06): 9 charts and 1 correctly
-      "nothing to chart", none cut off, misleading or wrong, all from the first model in
-      5-43 s.
 
 - [ ] **Fix stored articles that name news sites** — `cmd/flag-outlet-mentions`
       (read-only) found 33 on 2026-10-01: 6 approved, 18 pending, 6 draft, 2 rejected,
