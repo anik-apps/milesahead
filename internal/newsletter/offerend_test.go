@@ -53,11 +53,24 @@ func publish(t *testing.T, database *db.Database, title, slug, deadline string, 
 // seed publishes the ended offer as the featured one, so without the filter it
 // would lead the daily and be ranked first -- and so made Scout's Pick -- in
 // the weekly.
+//
+// Among the two live articles, live is the newer, so it ranks first and is the
+// pick when no AI ranks them. Their publish times are set, not left to
+// CURRENT_TIMESTAMP: that has one-second resolution, so the order used to hold
+// only when both were published within the same second. Under -race in CI the
+// clock ticked between them, plain became the newest, and Deploy #117 failed.
 func seed(t *testing.T, database *db.Database) (ended, live, plain int64) {
 	t.Helper()
 	ended = publish(t, database, endedTitle, "citi-lhw", endedDeadline, true)
 	live = publish(t, database, liveTitle, "united-ihg", liveDeadline, false)
 	plain = publish(t, database, plainTitle, "freedom-flex", "", false)
+	now := time.Now().UTC()
+	for id, age := range map[int64]time.Duration{ended: 1 * time.Second, live: 2 * time.Second, plain: 3 * time.Second} {
+		if _, err := database.DB().Exec(`UPDATE generated_articles SET published_at = ? WHERE id = ?`,
+			now.Add(-age).Format("2006-01-02 15:04:05"), id); err != nil {
+			t.Fatalf("setting published_at: %v", err)
+		}
+	}
 	return
 }
 
