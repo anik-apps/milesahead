@@ -93,6 +93,31 @@ func TestCardUpdates_WordDiff(t *testing.T) {
 	}
 }
 
+// Drafts made before the detector saw whole sections were built from the first
+// 1,000 bytes, so approving one deletes everything after. The page warns on
+// any draft that removes more than one existing list item or table row.
+func TestCardUpdates_WarnsWhenADraftDropsItems(t *testing.T) {
+	app, database := realTemplateApp(t)
+	page := createEditableCard(t, database)
+	current := "<ul><li>A</li><li>B</li><li>C</li><li>D</li></ul>"
+	updates, _ := json.Marshal([]db.PendingUpdate{
+		{ID: 1, ArticleTitle: "Cut off", SectionKey: "fees", CurrentContent: current, ProposedContent: "<ul><li>A</li><li>New</li></ul>", Summary: "Added New"},
+		{ID: 2, ArticleTitle: "Fine", SectionKey: "fees", CurrentContent: current, ProposedContent: "<ul><li>A</li><li>B</li><li>C</li><li>D</li><li>New</li></ul>", Summary: "Added New"},
+	})
+	page.PendingUpdatesJSON = string(updates)
+	database.UpdateReferencePage(page)
+
+	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
+	body := doAdminGET(t, app, "/admin/cards/"+itoa(page.ID)+"/updates", session).Body.String()
+	first := body[strings.Index(body, `id="update-1"`):strings.Index(body, `id="update-2"`)]
+	if !strings.Contains(first, "2 fewer items than the current section") {
+		t.Errorf("draft 1 has two fewer items but carries no warning:\n%s", first)
+	}
+	if second := body[strings.Index(body, `id="update-2"`):]; strings.Contains(second, "fewer items") {
+		t.Error("draft 2 keeps every item and should not be flagged")
+	}
+}
+
 func TestAdminCards_NeedsAttentionFirst(t *testing.T) {
 	app, database := realTemplateApp(t)
 	page := createEditableCard(t, database)

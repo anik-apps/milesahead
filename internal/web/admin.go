@@ -14,6 +14,7 @@ import (
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/article"
+	"github.com/kumaranik/milesahead/internal/cardupdate"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/infographic"
@@ -1434,6 +1435,11 @@ type cardUpdateView struct {
 	SectionTitle  string
 	SectionExists bool   // the card still has a section with the update's key
 	ArticleSlug   string // the source article's slug, if it is published
+	// FewerItems is how many fewer list items and table rows the draft has
+	// than the section, set only when it is more than one ended benefit.
+	// Drafts made from a cut-off section look like this: approving one
+	// deletes what the model never saw.
+	FewerItems int
 }
 
 func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
@@ -1479,6 +1485,9 @@ func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
 	for _, u := range updates {
 		v := cardUpdateView{PendingUpdate: u, Diff: diffWords(u.CurrentContent, u.ProposedContent)}
 		v.SectionTitle, v.SectionExists = titles[u.SectionKey]
+		if n, many := cardupdate.DropsItems(u.CurrentContent, u.ProposedContent); many {
+			v.FewerItems = n
+		}
 		if a, err := app.db.GetGeneratedArticle(u.ArticleID); err == nil && a.Status == db.StatusApproved {
 			v.ArticleSlug = a.Slug
 		}

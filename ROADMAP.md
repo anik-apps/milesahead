@@ -21,6 +21,14 @@
 - [x] Scout's Take backfill script
 - [x] Full-text search (FTS5) with search page and nav search icon
 - [x] Auto-update detection (drafts card updates on article approval)
+- [x] **Card update drafts deleted the end of long sections** — the detection prompt showed the model only the
+      first 1,000 bytes of a section, yet asked for "the full updated section", and approving a draft replaces the
+      whole section. 153 of the 318 sections it checks (43 of 53 Key Benefits) are longer than that. So a draft
+      that meant to add one bullet removed every benefit after byte 1,000, and the admin diff showed them deleted.
+      The 1,024-token reply budget also ran gpt-oss-20b out of tokens. Fixed in October 2026:
+      the whole section goes in, the prompt says to keep what the article doesn't change, and the budget is 4,096.
+      The detector doesn't save a draft with more than one fewer list item or table row, and the updates page
+      warns on any that are already waiting
 - [x] Scout personality voice for article generation
 - [x] SEO (sitemap.xml, robots.txt, JSON-LD, Open Graph meta tags)
 - [x] Traffic analytics (path normalization, response size, unique visitors)

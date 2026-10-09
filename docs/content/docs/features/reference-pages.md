@@ -219,4 +219,9 @@ The card editor:
 
 **Card updates** (section changes drafted when an approved article affects a card) are shown as a word-level diff with the rendered before and after, and approved or rejected one by one. An update whose section no longer exists fails visibly.
 
+Approving an update replaces the whole section with the proposed text. So the model is shown the complete section and told to return all of it, keeping every item the article doesn't change; its reply budget is 4,096 tokens so a long section fits. Until October 2026 it saw only the first 1,000 bytes. That covered most Key Benefits and Travel Credits sections, so drafts for those sections dropped everything past that point. Two guards now catch a draft that loses content anyway:
+
+- **The detector** doesn't save a draft with more than one fewer list item or table row than the section. One fewer is allowed, because a single benefit can end.
+- **The updates page** shows a warning on any such draft already waiting, including those made before the fix. Reject them unless the article really ended those benefits.
+
 The reader-facing card index, card pages and compare tool are described in [Reader Site](../reader-site/#cards).
