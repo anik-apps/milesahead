@@ -21,4 +21,4 @@ groups:
       - {title: Article workflow, icon: clipboard-check, link: /docs/features/article-workflow/, text: "Statuses, the review queue, rewrites, undo and deduplication."}
       - {title: Reader site, icon: globe-alt, link: /docs/features/reader-site/, text: "What readers see: home, articles, cards, compare, search and sign-up."}
       - {title: Newsletter, icon: newspaper, link: /docs/features/newsletter/, text: "The weekly issue: how it is built, sent and unsubscribed from."}
-      - {title: Reference pages, icon: credit-card, link: /docs/features/reference-pages/, text: "The 52 credit card guides, their seed data and admin tools."}
+      - {title: Reference pages, icon: credit-card, link: /docs/features/reference-pages/, text: "The 53 credit card guides, their seed data and admin tools."}

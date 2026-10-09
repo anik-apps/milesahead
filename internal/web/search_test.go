@@ -13,7 +13,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/seeddata"
 )
 
-// searchApp is the real-template app holding the repository's 52 cards and
+// searchApp is the real-template app holding the repository's cards and
 // the made-up articles.
 func searchApp(t *testing.T) *App {
 	t.Helper()

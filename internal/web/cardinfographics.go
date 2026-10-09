@@ -477,7 +477,7 @@ var cardInfographics = map[string]cardInfographic{
 	"ihg-one-rewards-premier": {
 		Alt:     "IHG One Rewards Premier infographic: October 2026 changes, annual fee, earning, free nights, credits, status milestones and protections. The text version below lists every figure.",
 		Checked: "Oct 9, 2026",
-		Facts:   []string{"$150", "up to 24X", "50,000", "$25 voucher", "at least $250", "$15,000", "180,000"},
+		Facts:   []string{"from $99 to $150", "up to 24X", "50,000", "$25 voucher", "at least $250", "$15,000", "180,000"},
 		Text: []string{
 			"Annual fee: $150. U.S. personal card; figures checked October 9, 2026.",
 			"Key changes on October 1, 2026: the fee rose from $99 to $150, standard status changed from Platinum to Gold, and the anniversary night rose from 40,000 to 50,000 points. These are the published new-card terms; existing accounts should follow their Chase change notice, and annual fees adjust in 2027.",

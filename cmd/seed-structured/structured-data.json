@@ -4865,7 +4865,7 @@
     "title": "IHG One Rewards Premier",
     "issuer": "Chase",
     "annual_fee_amount": 150,
-    "annual_fee_note": "Increased from $99 on October 1, 2026",
+    "annual_fee_note": "Up from $99 for new cards Oct 1, 2026; existing cards in 2027",
     "welcome_bonus_text": "180,000 IHG One Rewards points after $3,000 spend in 3 months, plus 10,000 for adding an authorized user (launch offer through Nov 18, 2026)",
     "earning_rates": {
       "dining": {
@@ -4934,7 +4934,7 @@
     "credits": {
       "airline": {
         "amount": "$100/yr",
-        "note": "Statement credit once per calendar year after $250+ on flights bought directly from the airline, through 12/31/2027"
+        "note": "Statement credit once per calendar year after one purchase of at least $250 on flights bought directly from the airline, through 12/31/2027"
       },
       "hotel": {
         "amount": "$100/yr",
@@ -5118,7 +5118,7 @@
     "credits": {
       "airline": {
         "amount": "$200/yr",
-        "note": "Statement credit once per calendar year after $250+ on flights bought directly from the airline, through 12/31/2027"
+        "note": "Statement credit once per calendar year after one purchase of at least $250 on flights bought directly from the airline, through 12/31/2027"
       },
       "hotel": {
         "amount": "$300/yr",
@@ -5209,16 +5209,16 @@
         "note": "Lost luggage up to $3,000 per covered traveler; baggage delay $100/day for 3 days after 6 hours"
       },
       "car_rental": {
-        "value": "Not listed",
-        "note": "Chase's Premier Select page doesn't list rental car coverage; check the Guide to Benefits"
+        "value": "Secondary",
+        "note": "Secondary in U.S.; decline rental company CDW"
       },
       "purchase_protection": {
         "value": "$500/item",
         "note": "120 days from purchase (90 days for New York residents)"
       },
       "extended_warranty": {
-        "value": "Not listed",
-        "note": "Chase's Premier Select page doesn't list it"
+        "value": "1 year",
+        "note": "On warranties of 3 years or less"
       },
       "niche": [
         {

@@ -238,12 +238,12 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       source and its rows cleared for the enrichment reconciler to re-pick. Newly chosen
       images are now liveness-probed before they are stored, so a dead URL is caught at
       pick time instead of on the homepage.
-- [x] **Card infographics** — designed infographics (1024 px wide, 2:3 or taller) on thirty-one card pages: Amex
+- [x] **Card infographics** — designed infographics (1024 px wide, 2:3 or taller) on thirty-two card pages: Amex
       Platinum, Amex Gold, Amex Green, Bilt Palladium, Bilt Blue, Bilt Obsidian, Sapphire
       Reserve, Sapphire Preferred, Freedom Flex, Freedom Unlimited, Citi Strata Elite, Citi
       Strata Premier, Citi / AAdvantage Executive, Capital One Venture X, Capital One
       Venture, Capital One Savor, Capital One Quicksilver, Citi Double Cash, Discover it Cash Back, Hilton
-      Aspire, Marriott Bonvoy Brilliant, Marriott Bonvoy Boundless, IHG One Rewards Premier,
+      Aspire, Marriott Bonvoy Brilliant, Marriott Bonvoy Boundless, IHG One Rewards Premier and Premier Select,
       World of Hyatt, BoA Premium Rewards Elite, BoA Premium Rewards, Wells Fargo Autograph,
       Wells Fargo Active Cash, Atmos Rewards Summit, United Quest and Delta SkyMiles Reserve.
       Citi Double Cash is the first design taller than 2:3, at 1024x1818.
