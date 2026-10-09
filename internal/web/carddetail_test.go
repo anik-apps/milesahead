@@ -233,7 +233,7 @@ func TestCardDetailData_RivalsFallBackToCategory(t *testing.T) {
 	}
 }
 
-// Integration: every one of the 52 seed cards ends with next steps.
+// Integration: every one of the 53 seed cards ends with next steps.
 func TestHandleCard_NextStepsOnEveryPage(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
 	seedAllCards(t, app)
@@ -241,8 +241,8 @@ func TestHandleCard_NextStepsOnEveryPage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(pages) != 52 {
-		t.Fatalf("expected 52 seed cards, got %d", len(pages))
+	if len(pages) != 53 {
+		t.Fatalf("expected 53 seed cards, got %d", len(pages))
 	}
 	for _, p := range pages {
 		body := getCardPage(t, app, p.Slug)

@@ -4864,41 +4864,152 @@
     "slug": "ihg-one-rewards-premier",
     "title": "IHG One Rewards Premier",
     "issuer": "Chase",
-    "annual_fee_amount": 99,
-    "annual_fee_note": "$99 per year",
-    "welcome_bonus_text": "140,000 IHG One Rewards bonus points after $3,000 spend in 3 months (~$700-$840 hotel value)",
+    "annual_fee_amount": 150,
+    "annual_fee_note": "Increased from $99 on October 1, 2026",
+    "welcome_bonus_text": "180,000 IHG One Rewards points after $3,000 spend in 3 months, plus 10,000 for adding an authorized user (launch offer through Nov 18, 2026)",
     "earning_rates": {
-      "dining": "5x IHG points",
-      "groceries": "3x IHG points",
-      "gas": "5x IHG points",
-      "airlines_direct": "5x IHG points",
-      "airlines_portal": "N/A",
-      "hotels_direct": "10x IHG points (up to 26x total with member/elite bonuses at IHG properties)",
-      "hotels_portal": "N/A",
-      "car_rental_direct": "5x IHG points",
-      "car_rental_portal": "N/A",
-      "other_travel_direct": "5x IHG points",
-      "other_travel_portal": "N/A",
-      "streaming": "3x IHG points",
-      "base": "3x IHG points",
-      "niche": "N/A"
+      "dining": {
+        "rate": "5x",
+        "note": "Restaurants, including takeout and eligible delivery; IHG points (~0.5-0.6cpp)"
+      },
+      "groceries": {
+        "rate": "5x",
+        "note": "Grocery stores"
+      },
+      "gas": {
+        "rate": "5x",
+        "note": "Gas stations"
+      },
+      "airlines_direct": {
+        "rate": "5x",
+        "note": "Flights bought directly from the airline"
+      },
+      "airlines_portal": {
+        "rate": "3x",
+        "note": "Flights through travel sites and agencies: 5x on purchases posted through Dec 31, 2026, then 3x"
+      },
+      "hotels_direct": {
+        "rate": "10x",
+        "note": "At IHG hotels; up to 24x total with 10x IHG member points and a 4x Gold Elite bonus on direct bookings"
+      },
+      "hotels_portal": {
+        "rate": "3x",
+        "note": "Non-IHG hotels and travel sites: 5x on purchases posted through Dec 31, 2026, then 3x"
+      },
+      "car_rental_direct": {
+        "rate": "5x",
+        "note": "Car rental agencies"
+      },
+      "car_rental_portal": {
+        "rate": "3x",
+        "note": "Through travel sites: 5x on purchases posted through Dec 31, 2026, then 3x"
+      },
+      "other_travel_direct": {
+        "rate": "3x",
+        "note": "Trains, rideshare, parking, cruises and other travel: 5x on purchases posted through Dec 31, 2026, then 3x"
+      },
+      "other_travel_portal": {
+        "rate": "3x",
+        "note": "5x on purchases posted through Dec 31, 2026, then 3x"
+      },
+      "streaming": {
+        "rate": "3x",
+        "note": "Base rate"
+      },
+      "base": {
+        "rate": "3x",
+        "note": "All other purchases"
+      },
+      "niche": [
+        {
+          "label": "IHG stay stacking",
+          "note": "10x card + up to 10x IHG member points + 4x Gold Elite bonus (40%) = up to 24x; 26x once Platinum (60%)"
+        },
+        {
+          "label": "$15,000 annual spend",
+          "note": "15,000 bonus points, 5 Elite Night Credits and Platinum Elite each calendar year"
+        }
+      ]
     },
     "credits": {
-      "airline": "$50 United TravelBank Cash annually (after registration)",
-      "hotel": "Anniversary free night award (up to 40,000 points)",
-      "travel_other": "N/A",
-      "dining": "N/A",
-      "streaming": "N/A",
-      "niche": "$100 statement credit + 10,000 bonus points after $20,000 annual spend; Complimentary DashPass (1 year); $10/month Instacart credit with Instacart+ (through 12/31/2027)"
+      "airline": {
+        "amount": "$100/yr",
+        "note": "Statement credit once per calendar year after $250+ on flights bought directly from the airline, through 12/31/2027"
+      },
+      "hotel": {
+        "amount": "$100/yr",
+        "note": "IHG Food & Beverage Rewards: a $25 voucher each calendar quarter for food and drink on your room bill at participating IHG hotels; expires at quarter end"
+      },
+      "travel_other": {
+        "amount": "N/A",
+        "note": ""
+      },
+      "dining": {
+        "amount": "N/A",
+        "note": ""
+      },
+      "streaming": {
+        "amount": "N/A",
+        "note": ""
+      },
+      "niche": [
+        {
+          "label": "Anniversary Free Night",
+          "note": "Each year after the card anniversary, up to 50,000 points; add your own points for pricier hotels"
+        },
+        {
+          "label": "United TravelBank Cash",
+          "note": "Up to $50/yr ($25 per half-year) after registering the card with MileagePlus"
+        },
+        {
+          "label": "Instacart",
+          "note": "3 months of Instacart+ and a $10 monthly credit with an active Instacart+ membership, through 12/31/2027"
+        },
+        {
+          "label": "DashPass",
+          "note": "12 months of DashPass (activate by 12/31/2027) plus $10 off one non-restaurant order a month through 12/31/2027"
+        }
+      ]
     },
     "benefits": {
-      "lounge_access": "N/A",
-      "hotel_status": "Automatic Platinum Elite status (room upgrades, welcome amenity, extended checkout, bonus points, complimentary internet); Diamond Elite after $40K calendar-year spend",
-      "global_entry_tsa": "Up to $120 every 4 years",
-      "companion_cert": "N/A",
-      "free_checked_bags": "N/A",
-      "no_ftf": true,
-      "niche": "4th Night Free on IHG award stays (25% discount on 4+ night redemptions)"
+      "lounge_access": {
+        "value": "N/A",
+        "note": ""
+      },
+      "hotel_status": {
+        "value": "IHG Gold Elite",
+        "note": "Automatic: member rates, late checkout when available, 40% bonus on stay points; Platinum Elite after $15K and Diamond Elite after $40K of calendar-year spend"
+      },
+      "global_entry_tsa": {
+        "value": "$120 every 4 years",
+        "note": "Global Entry, TSA PreCheck or NEXUS application fee"
+      },
+      "companion_cert": {
+        "value": "N/A",
+        "note": ""
+      },
+      "free_checked_bags": {
+        "value": "N/A",
+        "note": ""
+      },
+      "no_ftf": {
+        "value": "Yes",
+        "note": "No foreign transaction fees"
+      },
+      "niche": [
+        {
+          "label": "4th Reward Night Free",
+          "note": "Every 4th night of a 4+ night reward stay at the same hotel costs 0 points"
+        },
+        {
+          "label": "Elite Night Credits",
+          "note": "15 a year, plus 2 per $5,000 spent and 5 more at $15,000"
+        },
+        {
+          "label": "30% off point purchases",
+          "note": "When you buy IHG points with the card"
+        }
+      ]
     },
     "protections": {
       "trip_delay": {
@@ -4907,7 +5018,7 @@
       },
       "baggage_delay_loss": {
         "value": "$3K/traveler",
-        "note": "Lost luggage up to $3,000/traveler; baggage delay $100/day x 3 days, 6hr trigger"
+        "note": "Lost luggage up to $3,000 per covered traveler; baggage delay $100/day for 3 days after 6 hours"
       },
       "car_rental": {
         "value": "Secondary",
@@ -4915,11 +5026,199 @@
       },
       "purchase_protection": {
         "value": "$500/item",
-        "note": "120 days from purchase date"
+        "note": "120 days from purchase (90 days for New York residents)"
       },
       "extended_warranty": {
         "value": "1 year",
         "note": "On warranties of 3 years or less"
+      },
+      "niche": [
+        {
+          "label": "Trip cancellation/interruption",
+          "note": "Up to $5,000 per traveler, $10,000 per trip"
+        }
+      ]
+    },
+    "transfer_partners": {
+      "program": "IHG One Rewards",
+      "count": "N/A",
+      "key_partners": [],
+      "note": "Earns IHG One Rewards directly, no transfer partners"
+    }
+  },
+  {
+    "slug": "ihg-one-rewards-premier-select",
+    "annual_fee_amount": 350,
+    "annual_fee_note": "",
+    "welcome_bonus_text": "200,000 IHG One Rewards points after $5,000 spend in 3 months, plus 10,000 for adding an authorized user (launch offer through Nov 18, 2026)",
+    "earning_rates": {
+      "dining": {
+        "rate": "6x",
+        "note": "Restaurants, including takeout and eligible delivery; IHG points (~0.5-0.6cpp)"
+      },
+      "groceries": {
+        "rate": "3x",
+        "note": "Base rate"
+      },
+      "gas": {
+        "rate": "3x",
+        "note": "Base rate"
+      },
+      "airlines_direct": {
+        "rate": "6x",
+        "note": "Travel, which covers all travel outside IHG hotels"
+      },
+      "airlines_portal": {
+        "rate": "6x",
+        "note": "Travel, which covers all travel outside IHG hotels, including travel sites and agencies"
+      },
+      "hotels_direct": {
+        "rate": "12x",
+        "note": "At IHG hotels; up to 28x total with 10x IHG member points and a 6x Platinum Elite bonus on direct bookings"
+      },
+      "hotels_portal": {
+        "rate": "6x",
+        "note": "Non-IHG hotels and travel sites earn the 6x travel rate"
+      },
+      "car_rental_direct": {
+        "rate": "6x",
+        "note": "Travel, which covers all travel outside IHG hotels"
+      },
+      "car_rental_portal": {
+        "rate": "6x",
+        "note": "Travel, which covers all travel outside IHG hotels"
+      },
+      "other_travel_direct": {
+        "rate": "6x",
+        "note": "All other travel, including rideshare"
+      },
+      "other_travel_portal": {
+        "rate": "6x",
+        "note": "Travel, which covers all travel outside IHG hotels"
+      },
+      "streaming": {
+        "rate": "3x",
+        "note": "Base rate"
+      },
+      "base": {
+        "rate": "3x",
+        "note": "All other purchases"
+      },
+      "niche": [
+        {
+          "label": "IHG stay stacking",
+          "note": "12x card + up to 10x IHG member points + 6x Platinum Elite bonus (60%) = up to 28x"
+        },
+        {
+          "label": "$15,000 annual spend",
+          "note": "20,000 bonus points and 5 Elite Night Credits each calendar year"
+        }
+      ]
+    },
+    "credits": {
+      "airline": {
+        "amount": "$200/yr",
+        "note": "Statement credit once per calendar year after $250+ on flights bought directly from the airline, through 12/31/2027"
+      },
+      "hotel": {
+        "amount": "$300/yr",
+        "note": "IHG Food & Beverage Rewards: a $75 voucher each calendar quarter for food and drink on your room bill at participating IHG hotels; expires at quarter end"
+      },
+      "travel_other": {
+        "amount": "N/A",
+        "note": ""
+      },
+      "dining": {
+        "amount": "N/A",
+        "note": ""
+      },
+      "streaming": {
+        "amount": "N/A",
+        "note": ""
+      },
+      "niche": [
+        {
+          "label": "Anniversary Free Night",
+          "note": "Each year after the card anniversary, up to 60,000 points; add your own points for pricier hotels"
+        },
+        {
+          "label": "Second Free Night",
+          "note": "Up to 60,000 points, each calendar year you spend $40,000"
+        },
+        {
+          "label": "United TravelBank Cash",
+          "note": "Up to $50/yr ($25 per half-year) after registering the card with MileagePlus"
+        },
+        {
+          "label": "Instacart",
+          "note": "3 months of Instacart+ and a $10 monthly credit with an active Instacart+ membership, through 12/31/2027"
+        },
+        {
+          "label": "DashPass",
+          "note": "12 months of DashPass (activate by 12/31/2027) plus $10 off one non-restaurant order a month through 12/31/2027"
+        }
+      ]
+    },
+    "benefits": {
+      "lounge_access": {
+        "value": "N/A",
+        "note": ""
+      },
+      "hotel_status": {
+        "value": "IHG Platinum Elite",
+        "note": "Automatic: room upgrades, welcome amenities, early check-in and late checkout when available, 60% bonus on stay points; Diamond Elite after $25K of calendar-year spend"
+      },
+      "global_entry_tsa": {
+        "value": "$120 every 4 years",
+        "note": "Global Entry, TSA PreCheck or NEXUS application fee"
+      },
+      "companion_cert": {
+        "value": "N/A",
+        "note": ""
+      },
+      "free_checked_bags": {
+        "value": "N/A",
+        "note": ""
+      },
+      "no_ftf": {
+        "value": "Yes",
+        "note": "No foreign transaction fees"
+      },
+      "niche": [
+        {
+          "label": "4th Reward Night Free",
+          "note": "Every 4th night of a 4+ night reward stay at the same hotel costs 0 points"
+        },
+        {
+          "label": "Elite Night Credits",
+          "note": "20 a year, plus 2 per $5,000 spent and 5 more at $15,000"
+        },
+        {
+          "label": "30% off point purchases",
+          "note": "When you buy IHG points with the card"
+        }
+      ]
+    },
+    "protections": {
+      "trip_delay": {
+        "value": "N/A",
+        "note": ""
+      },
+      "baggage_delay_loss": {
+        "value": "$3K/traveler",
+        "note": "Lost luggage up to $3,000 per covered traveler; baggage delay $100/day for 3 days after 6 hours"
+      },
+      "car_rental": {
+        "value": "Not listed",
+        "note": "Chase's Premier Select page doesn't list rental car coverage; check the Guide to Benefits"
+      },
+      "purchase_protection": {
+        "value": "$500/item",
+        "note": "120 days from purchase (90 days for New York residents)"
+      },
+      "extended_warranty": {
+        "value": "Not listed",
+        "note": "Chase's Premier Select page doesn't list it"
       },
       "niche": [
         {

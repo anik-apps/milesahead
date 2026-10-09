@@ -2,7 +2,7 @@
 // Usage: go run ./cmd/seed-cards [-db path/to/milesahead.db] [-force] [-slug a,b]
 //
 // By default, skips cards whose slug already exists. Use -force to overwrite, and
-// -slug to scope a forced rewrite to named cards instead of all 52.
+// -slug to scope a forced rewrite to named cards instead of every card.
 package main
 
 import (

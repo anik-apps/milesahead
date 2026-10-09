@@ -68,7 +68,7 @@ func TestParseSearchQuery_Match(t *testing.T) {
 	}
 }
 
-// seededDB opens a database with the repository's 52 cards and the made-up
+// seededDB opens a database with the repository's cards and the made-up
 // articles.
 func seededDB(t *testing.T) (*db.Database, string) {
 	t.Helper()

@@ -10,7 +10,7 @@ milesahead/
 ├── cmd/
 │   ├── milesahead/           # The application: main.go (wiring, scheduler, shutdown)
 │   │                         # and scan.go (clustering, duplicate checks, generation)
-│   ├── seed-cards/           # Reference page seed tool + cards.json (52 cards)
+│   ├── seed-cards/           # Reference page seed tool + cards.json (53 cards)
 │   ├── seed-structured/      # Structured comparison data seed tool + structured-data.json
 │   ├── ab-models/            # Measures candidate models on real clusters (read-only)
 │   ├── flag-outlet-mentions/ # Lists stored articles that name a news site (read-only)

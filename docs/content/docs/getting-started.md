@@ -92,7 +92,7 @@ Or use any bcrypt generator and paste the hash into `config.yaml` under `admin.p
 
 ## Seeding Reference Pages
 
-The project ships with 52 credit card reference pages in `cmd/seed-cards/cards.json`, and their structured comparison data in `cmd/seed-structured/structured-data.json`. Seed them into the database:
+The project ships with 53 credit card reference pages in `cmd/seed-cards/cards.json`, and their structured comparison data in `cmd/seed-structured/structured-data.json`. Seed them into the database:
 
 ```bash
 go run ./cmd/seed-cards -db ./data/milesahead.db
@@ -102,7 +102,7 @@ go run ./cmd/seed-structured -db ./data/milesahead.db
 Both skip cards that already exist. Use `-force` to overwrite, and `-slug` to limit that to named cards:
 
 ```bash
-# Overwrite only named cards -- -force alone rewrites all 52
+# Overwrite only named cards -- -force alone rewrites every card
 go run ./cmd/seed-cards -db ./data/milesahead.db -force -slug amex-platinum,amex-green
 ```
 
