@@ -7,14 +7,14 @@ Reference pages are curated, evergreen guides for credit cards. They provide str
 
 ## Card Coverage
 
-The project ships with 52 credit cards across 6 categories:
+The project ships with 53 credit cards across 6 categories:
 
 | Category | Count | Examples |
 |----------|-------|----------|
 | Airline | 14 | Delta SkyMiles Reserve, United Club Infinite, Alaska Visa Signature |
 | Travel | 10 | Amex Platinum, Chase Sapphire Reserve, Capital One Venture X |
 | Cash-back | 9 | Citi Double Cash, Chase Freedom Flex, Discover it Cash Back |
-| Hotel | 7 | Hilton Aspire, Marriott Bonvoy Brilliant, World of Hyatt |
+| Hotel | 8 | Hilton Aspire, Marriott Bonvoy Brilliant, World of Hyatt |
 | Business | 6 | Amex Business Platinum, Chase Ink Business Preferred |
 | Rewards | 6 | Bilt Mastercard, Bank of America Premium Rewards Elite |
 

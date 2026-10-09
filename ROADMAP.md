@@ -7,7 +7,7 @@
 - [x] Dual-model AI pipeline (Nemotron generator + Llama 70B critic)
 - [x] Image pipeline (5 sources + vision model scoring)
 - [x] Two-column article layout with TL;DR sidebar
-- [x] 52 credit card reference pages with Scout persona
+- [x] 53 credit card reference pages with Scout persona
 - [x] Auto-linking in competitor comparison sections
 - [x] Admin CRUD for reference pages
 - [x] CI/CD with GitHub Actions (build, test, deploy, seed)
@@ -29,7 +29,7 @@
 - [x] Weekly newsletter — Scout's Pick, Card of the Week, tag-grouped articles, newspaper-style template
 - [x] Newsletter admin workflow — AI picks candidates, admin approves, auto-approve fallback
 - [x] Card comparison tool — side-by-side comparison of 2-3 cards with structured data
-- [x] Structured card data — earning rates, credits, benefits, protections, transfer partners for 52 cards
+- [x] Structured card data — earning rates, credits, benefits, protections, transfer partners for 53 cards
 - [x] CI/CD refactored into separate build/deploy/seed/grafana jobs
 - [x] Admin rework — own shell with counts on the tabs, grouped review queue with decisions in the preview (revision-checked approve, approve-and-next, undo, shortcuts), source health, card editor with inline flags, card updates as a word diff
 - [x] Review queue sort (newest first by default, oldest, critic score) and per-row actions menus on Review and Published; compact type pills
@@ -39,6 +39,12 @@
       and unsupported-number guards on its words; a comparison's bars must share one unit.
       A rewrite stores its own key details and clears the chart to be redrawn from them;
       Redraw chart takes an optional note for the model
+- [x] **IHG cards after Chase's October 1, 2026 overhaul** — the IHG Premier page, its comparison data and its
+      infographic are rewritten from Chase's offer terms ($150 fee, Gold Elite instead of Platinum, a 50K free
+      night, food & beverage and airline credits, a note for existing cardmembers), and the new IHG One Rewards
+      Premier Select ($350, Platinum Elite) has its own page, card art, comparison data and infographic. The
+      Hilton Aspire, Marriott Brilliant, Boundless and Bold, and World of Hyatt comparisons carry the new figures;
+      Brilliant and Aspire now compare against the Premier Select
 - [x] Find a new image — an admin action (preview, Review and Published row menus) with optional search words; the enrichment pass finds a replacement first in line with a fresh budget, swaps it in only once found (the live image stays meanwhile), and never re-picks a turned-down image at any size. Rewrite feedback that mentions a picture points here, since rewrites only change the text
 
 ## Reliability & Hardening
@@ -232,12 +238,12 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       source and its rows cleared for the enrichment reconciler to re-pick. Newly chosen
       images are now liveness-probed before they are stored, so a dead URL is caught at
       pick time instead of on the homepage.
-- [x] **Card infographics** — designed infographics (1024 px wide, 2:3 or taller) on thirty-one card pages: Amex
+- [x] **Card infographics** — designed infographics (1024 px wide, 2:3 or taller) on thirty-two card pages: Amex
       Platinum, Amex Gold, Amex Green, Bilt Palladium, Bilt Blue, Bilt Obsidian, Sapphire
       Reserve, Sapphire Preferred, Freedom Flex, Freedom Unlimited, Citi Strata Elite, Citi
       Strata Premier, Citi / AAdvantage Executive, Capital One Venture X, Capital One
       Venture, Capital One Savor, Capital One Quicksilver, Citi Double Cash, Discover it Cash Back, Hilton
-      Aspire, Marriott Bonvoy Brilliant, Marriott Bonvoy Boundless, IHG One Rewards Premier,
+      Aspire, Marriott Bonvoy Brilliant, Marriott Bonvoy Boundless, IHG One Rewards Premier and Premier Select,
       World of Hyatt, BoA Premium Rewards Elite, BoA Premium Rewards, Wells Fargo Autograph,
       Wells Fargo Active Cash, Atmos Rewards Summit, United Quest and Delta SkyMiles Reserve.
       Citi Double Cash is the first design taller than 2:3, at 1024x1818.

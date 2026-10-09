@@ -11,7 +11,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/seeddata"
 )
 
-// compareApp is the real-template app holding the repository's 52 cards
+// compareApp is the real-template app holding the repository's cards
 // with their comparison data.
 func compareApp(t *testing.T) *App {
 	t.Helper()

@@ -329,7 +329,7 @@ func TestCardsURL(t *testing.T) {
 	}
 }
 
-// seedAllCards loads the 52 seed cards with their structured data, as
+// seedAllCards loads the 53 seed cards with their structured data, as
 // cmd/seed-cards and cmd/seed-structured do.
 func seedAllCards(t *testing.T, app *App) {
 	t.Helper()
@@ -388,24 +388,24 @@ func getPath(t *testing.T, app *App, path string) string {
 	return rec.Body.String()
 }
 
-// Integration: real templates and the 52 seed cards.
+// Integration: real templates and the 53 seed cards.
 func TestHandleCardsList_SeedCards(t *testing.T) {
 	app := setupRealTemplateCardApp(t)
 	seedAllCards(t, app)
 
 	body := getPath(t, app, "/cards/")
-	if got := strings.Count(body, `class="card-tile"`); got != 52 {
-		t.Fatalf("expected 52 tiles, got %d", got)
+	if got := strings.Count(body, `class="card-tile"`); got != 53 {
+		t.Fatalf("expected 53 tiles, got %d", got)
 	}
 	for _, want := range []string{
 		// One row of filters: category chips with counts, then the toggle.
 		`<div class="filter-bar cards-cat-bar" role="group" aria-label="Category">`,
-		`<a href="/cards/" class="filter-chip active" aria-current="true">All <span class="filter-count">52</span></a>`,
+		`<a href="/cards/" class="filter-chip active" aria-current="true">All <span class="filter-count">53</span></a>`,
 		`href="/cards/?cat=cash-back" class="filter-chip">Cash Back <span class="filter-count">9</span>`,
 		`<a href="/cards/?fee=none" class="filter-chip filter-toggle" role="button" aria-pressed="false">No annual fee</a>`,
 		// The results line: the count, then a labelled sort menu that
 		// defaults to the grouped view, with Go for browsers without JS.
-		`<span class="cards-results-count">52 cards</span>`,
+		`<span class="cards-results-count">53 cards</span>`,
 		`<label for="cards-sort-select">Sort</label>`,
 		`<select id="cards-sort-select" name="sort" data-sort-menu>`,
 		`<option value="" data-url="/cards/" selected>By category</option>`,
@@ -444,8 +444,8 @@ func TestHandleCardsList_SeedCards(t *testing.T) {
 	}
 	// Art: fixed size on every tile, lazy after the first rows.
 	imgs := regexp.MustCompile(`<span class="card-tile-art"><img [^>]*>`).FindAllString(body, -1)
-	if len(imgs) != 52 {
-		t.Fatalf("expected 52 tile images, got %d", len(imgs))
+	if len(imgs) != 53 {
+		t.Fatalf("expected 53 tile images, got %d", len(imgs))
 	}
 	for i, img := range imgs {
 		if !strings.Contains(img, `width="96" height="61"`) {
@@ -461,7 +461,7 @@ func TestHandleCardsList_SeedCards(t *testing.T) {
 		b := getPath(t, app, "/cards/?fee="+band.Key)
 		counts[band.Key] = strings.Count(b, `class="card-tile"`)
 	}
-	if counts["none"] != 12 || counts["under-100"] != 15 || counts["100-400"] != 13 || counts["over-400"] != 12 {
+	if counts["none"] != 12 || counts["under-100"] != 14 || counts["100-400"] != 15 || counts["over-400"] != 12 {
 		t.Errorf("fee band counts: %v", counts)
 	}
 }
@@ -533,7 +533,7 @@ func TestHandleCardsList_Sorts(t *testing.T) {
 	}
 	for _, sortBy := range []string{"name", "fee-asc", "fee-desc"} {
 		body := getPath(t, app, "/cards/?sort="+sortBy)
-		if strings.Count(body, `class="card-tile"`) != 52 || strings.Contains(body, `class="category-heading"`) {
+		if strings.Count(body, `class="card-tile"`) != 53 || strings.Contains(body, `class="category-heading"`) {
 			t.Errorf("sort=%s: every card, one list without headings", sortBy)
 		}
 		if !strings.Contains(body, `<option value="`+sortBy+`" data-url="/cards/?sort=`+sortBy+`" selected>`) {
@@ -552,11 +552,11 @@ func TestHandleCardsList_Sorts(t *testing.T) {
 		t.Errorf("by name: %v", names)
 	}
 	asc := fees(getPath(t, app, "/cards/?sort=fee-asc"))
-	if len(asc) != 52 || !sort.IntsAreSorted(asc) {
+	if len(asc) != 53 || !sort.IntsAreSorted(asc) {
 		t.Errorf("lowest fee first: %v", asc)
 	}
 	desc := fees(getPath(t, app, "/cards/?sort=fee-desc"))
-	if len(desc) != 52 || !sort.SliceIsSorted(desc, func(i, j int) bool { return desc[i] > desc[j] }) {
+	if len(desc) != 53 || !sort.SliceIsSorted(desc, func(i, j int) bool { return desc[i] > desc[j] }) {
 		t.Errorf("highest fee first: %v", desc)
 	}
 	// An unknown sort is the default grouped view.
