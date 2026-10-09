@@ -490,7 +490,7 @@ Section: %s
 Current Section Content (complete):
 %s
 
-If an update is needed, return ONLY a JSON object (no other text):
+Keep the section's existing HTML markup. If an update is needed, return ONLY a JSON object (no other text), and make it valid JSON: escape double quotes and newlines inside the HTML.
 {"updated_content": "<the complete updated section in HTML, including everything you kept>", "summary": "<1 sentence describing what changed>"}
 
 If no update is needed, return ONLY: NO_UPDATE`, articleTitle, truncatedArticle, cardTitle, sectionTitle, currentSectionContent)

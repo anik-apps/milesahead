@@ -135,6 +135,29 @@ func TestDetectAndDraft_SkipsADraftThatDropsBenefits(t *testing.T) {
 	}
 }
 
+// An article can end two benefits at once ("Chase drops the DoorDash and Lyft
+// credits"). That draft is saved; the updates page warns about it instead.
+func TestDetectAndDraft_SavesADraftThatEndsTwoBenefits(t *testing.T) {
+	client := &sectionEditor{edit: func(shown string) string {
+		for _, n := range []string{"3", "4"} {
+			shown = strings.Replace(shown, "<li><strong>Benefit "+n+"</strong> — a perk described at the length real card pages use.</li>", "", 1)
+		}
+		return shown
+	}}
+	if pending := draftFor(t, longBenefits(), client); len(pending) != 1 {
+		t.Errorf("pending updates = %d, want 1: ending two benefits is a real update", len(pending))
+	}
+}
+
+// A model that repeats the section unchanged, instead of answering NO_UPDATE,
+// would leave a draft that changes nothing.
+func TestDetectAndDraft_SkipsAnUnchangedEcho(t *testing.T) {
+	client := &sectionEditor{edit: func(shown string) string { return shown }}
+	if pending := draftFor(t, longBenefits(), client); len(pending) != 0 {
+		t.Errorf("saved a draft identical to the section: %+v", pending)
+	}
+}
+
 // Ending one benefit is a real update (a credit is discontinued), so a draft
 // that removes a single item is still offered for review.
 func TestDetectAndDraft_AllowsRemovingOneEndedBenefit(t *testing.T) {

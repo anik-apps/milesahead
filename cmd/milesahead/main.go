@@ -69,7 +69,8 @@ func sourceOutlets(database *db.Database) func() []ai.Outlet {
 // inline key-details call.
 //
 // Those calls asked for 512-2048 tokens, so HFClient bounds them at
-// ai.ShortCallTimeout (30s). Most of them used to go to the critic model, which
+// ai.ShortCallTimeout (30s). Card-update detection now returns a whole section
+// and asks for more, so it goes through newCardUpdateClient (120s) instead. Most of them used to go to the critic model, which
 // failed them all when mistralai/mistral-nemotron was retired on 2026-09-28;
 // its first replacement took minutes per reply and would have timed out every
 // one. The critic is for verification only.
@@ -110,6 +111,20 @@ func newCriticClient(cfg *config.Config, hfClient *ai.HFClient) *ai.HFClient {
 // max_retries; the model chain and the next pass are its retries instead.
 func newInfographicClient(hfClient *ai.HFClient) *ai.HFClient {
 	return hfClient.WithRequestTimeout(ai.InfographicCallTimeout).WithMaxRetries(0)
+}
+
+// newCardUpdateClient returns the client card-update detection goes through:
+// the shared client bounded at ai.CardUpdateCallTimeout, with one retry. The
+// reply is a whole card section, so it falls outside the short-call class, and
+// through the shared client it would inherit request_timeout (900s) and
+// max_retries. One retry, not none: detection runs once, when the article is
+// approved, so a check that fails is not tried again on a later pass. A client
+// that is not an *ai.HFClient (a test's) is used as it is.
+func newCardUpdateClient(client ai.HFClientInterface) ai.HFClientInterface {
+	if hf, ok := client.(*ai.HFClient); ok {
+		return hf.WithRequestTimeout(ai.CardUpdateCallTimeout).WithMaxRetries(1)
+	}
+	return client
 }
 
 // infographicModels is the chain charts are drawn with: infographic_model,
@@ -170,7 +185,7 @@ func newAISideJobs(cfg *config.Config, database *db.Database, client ai.HFClient
 		imageSearcher: searcher,
 		imageScorer:   scorer,
 		newsletter:    newsletter.NewServiceWithAI(database, sender, cfg.Newsletter, client, models, cfg.Server.Domain),
-		cardDetector:  cardupdate.NewDetector(database, client, models),
+		cardDetector:  cardupdate.NewDetector(database, newCardUpdateClient(client), models),
 	}
 }
 

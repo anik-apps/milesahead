@@ -5,32 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/db"
 )
-
-// cardUpdateTokens is the reply budget for one section check. The reply is the
-// whole section rewritten (the longest seed section is about 4.9 KB of HTML,
-// some 1,300 tokens) plus JSON, and reasoning models spend part of the budget
-// thinking first. At 1,024 gpt-oss-20b ran out in production
-// (finish_reason=length) and the update was lost.
-const cardUpdateTokens = 4096
-
-// listItem matches the opening tag of a list item or table row.
-var listItem = regexp.MustCompile(`(?i)<(li|tr)[\s>]`)
-
-// DropsItems reports how many fewer list items and table rows a draft has than
-// the current section, and whether that is more than a single ended benefit.
-// A draft replaces the whole section on approval, so the detector does not
-// save one that loses items in bulk, and the admin page flags any that exist.
-func DropsItems(current, proposed string) (int, bool) {
-	lost := len(listItem.FindAllStringIndex(current, -1)) - len(listItem.FindAllStringIndex(proposed, -1))
-	return lost, lost > 1
-}
 
 // keySections are the reference page sections checked for updates.
 var keySections = []string{
@@ -138,7 +118,7 @@ func (d *Detector) DetectAndDraft(ctx context.Context, articleID int64) error {
 			}
 
 			prompt := ai.CardUpdateDetectionPrompt(article.Title, article.Content, page.Title, sec.Title, sec.Content)
-			resp, err := ai.TryModels(d.hfClient, d.models, prompt, cardUpdateTokens)
+			resp, err := ai.TryModels(d.hfClient, d.models, prompt, ai.CardUpdateTokens)
 			if err != nil {
 				slog.Error("card update: AI call failed", "card_id", page.ID, "section", sec.Key, "error", err)
 				continue
@@ -166,16 +146,19 @@ func (d *Detector) DetectAndDraft(ctx context.Context, articleID int64) error {
 			}
 
 			if err := json.Unmarshal([]byte(jsonStr), &upd); err != nil {
-				slog.Warn("card update: failed to parse AI response", "card_id", page.ID, "section", sec.Key, "response", resp)
+				// The reply is a whole section now, up to ~16 KB; log its start.
+				slog.Warn("card update: failed to parse AI response", "card_id", page.ID, "section", sec.Key,
+					"response", truncate(resp, 500))
 				continue
 			}
 
-			if upd.UpdatedContent == "" {
+			if upd.UpdatedContent == "" || sameContent(sec.Content, upd.UpdatedContent) {
 				continue
 			}
-			if lost, tooMany := DropsItems(sec.Content, upd.UpdatedContent); tooMany {
-				slog.Warn("card update: draft drops existing items, not saved",
-					"card_id", page.ID, "section", sec.Key, "items_lost", lost, "summary", upd.Summary)
+			if loss := CompareItems(sec.Content, upd.UpdatedContent); loss.Bulk() {
+				slog.Warn("card update: draft drops most of the section's items, not saved",
+					"card_id", page.ID, "section", sec.Key, "items", loss.Current, "items_lost", loss.Lost,
+					"summary", upd.Summary)
 				continue
 			}
 

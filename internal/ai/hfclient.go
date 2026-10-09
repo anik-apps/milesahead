@@ -55,6 +55,8 @@ const initialBackoff = 2 * time.Second
 // image text-scoring (2048) and card-update detection (1024) all inherited the
 // 900s generation timeout, so the "fail over faster" intent missed its biggest
 // targets entirely. TestTimeoutFor_ClassifiesEveryRealCallSite pins this.
+// (Card-update detection has since outgrown the class: its reply is a whole
+// section, ai.CardUpdateTokens, bounded by its own client instead.)
 const shortCallTokens = 2048
 
 // ShortCallTimeout bounds those short calls.

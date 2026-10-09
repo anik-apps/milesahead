@@ -57,7 +57,8 @@ func (nopSender) SendNewsletter(string, string, []mail.Recipient) (int, error) {
 // TestSideJobs_UseTheEnrichmentChainNotTheCritic is the production wiring:
 // image text-scoring, the newsletter pick and card-update detection all ran on
 // the critic model, and all failed when it was retired on 2026-09-28. The
-// replacement critic takes minutes per reply, and these are 30s short calls,
+// replacement critic takes minutes per reply, and these are bounded calls
+// (30s, or 120s for card-update detection, whose reply is a whole section),
 // so they must run on the enrichment chain -- and fall over its retired first
 // entry to the next.
 func TestSideJobs_UseTheEnrichmentChainNotTheCritic(t *testing.T) {
@@ -131,5 +132,22 @@ func TestEnrichmentModels_CriticIsLastResort(t *testing.T) {
 	cfg.AI.EnrichmentModel = "e1,e2"
 	if got, want := enrichmentModels(cfg), []string{"e1", "e2"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("set: %v, want %v", got, want)
+	}
+}
+
+// TestNewCardUpdateClient_BoundsTheRealClient: card-update detection must not
+// run on the shared client, where its whole-section reply would get the
+// generator's 900s timeout and retries (the bound itself is pinned by
+// ai.TestWithRequestTimeout_BoundsTheCardUpdateCall). A test's fake client is
+// used as it is.
+func TestNewCardUpdateClient_BoundsTheRealClient(t *testing.T) {
+	shared := ai.NewHFClient("token", 3)
+	got, ok := newCardUpdateClient(shared).(*ai.HFClient)
+	if !ok || got == shared {
+		t.Errorf("newCardUpdateClient returned %T %p; want a bounded copy of the shared client", got, got)
+	}
+	fake := &modelLog{}
+	if newCardUpdateClient(fake) != ai.HFClientInterface(fake) {
+		t.Error("a fake client should pass through unchanged")
 	}
 }

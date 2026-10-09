@@ -1436,10 +1436,12 @@ type cardUpdateView struct {
 	SectionExists bool   // the card still has a section with the update's key
 	ArticleSlug   string // the source article's slug, if it is published
 	// FewerItems is how many fewer list items and table rows the draft has
-	// than the section, set only when it is more than one ended benefit.
-	// Drafts made from a cut-off section look like this: approving one
-	// deletes what the model never saw.
-	FewerItems int
+	// than the section, set only when it is more than one ended benefit, and
+	// EndingMissing says the section's last block is not in the draft. Drafts
+	// made from a cut-off section look like this: approving one deletes what
+	// the model never saw.
+	FewerItems    int
+	EndingMissing bool
 }
 
 func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
@@ -1485,9 +1487,10 @@ func (app *App) handleAdminCardUpdates(w http.ResponseWriter, r *http.Request) {
 	for _, u := range updates {
 		v := cardUpdateView{PendingUpdate: u, Diff: diffWords(u.CurrentContent, u.ProposedContent)}
 		v.SectionTitle, v.SectionExists = titles[u.SectionKey]
-		if n, many := cardupdate.DropsItems(u.CurrentContent, u.ProposedContent); many {
-			v.FewerItems = n
+		if loss := cardupdate.CompareItems(u.CurrentContent, u.ProposedContent); loss.Notable() {
+			v.FewerItems = loss.Lost
 		}
+		v.EndingMissing = cardupdate.EndingMissing(u.CurrentContent, u.ProposedContent)
 		if a, err := app.db.GetGeneratedArticle(u.ArticleID); err == nil && a.Status == db.StatusApproved {
 			v.ArticleSlug = a.Slug
 		}

@@ -26,6 +26,8 @@ func TestCardUpdateDetectionPrompt_SaysToKeepWhatTheArticleDoesNotChange(t *test
 	for _, want := range []string{
 		"keep every existing item",
 		"Never drop a benefit because the article doesn't mention it",
+		"Keep the section's existing HTML markup",
+		"escape double quotes and newlines",
 		"NO_UPDATE",
 	} {
 		if !strings.Contains(prompt, want) {

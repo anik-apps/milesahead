@@ -94,27 +94,50 @@ func TestCardUpdates_WordDiff(t *testing.T) {
 }
 
 // Drafts made before the detector saw whole sections were built from the first
-// 1,000 bytes, so approving one deletes everything after. The page warns on
-// any draft that removes more than one existing list item or table row.
-func TestCardUpdates_WarnsWhenADraftDropsItems(t *testing.T) {
+// 1,000 bytes, so approving one deletes everything after. The page warns on a
+// draft with more than one fewer list item or table row, and on one missing
+// the section's last block, which also catches prose sections.
+func TestCardUpdates_WarnsWhenADraftLosesContent(t *testing.T) {
 	app, database := realTemplateApp(t)
 	page := createEditableCard(t, database)
-	current := "<ul><li>A</li><li>B</li><li>C</li><li>D</li></ul>"
+	list := "<ul><li>Airport lounge access worldwide</li><li>B</li><li>C</li><li>No foreign transaction fees on purchases</li></ul>"
+	prose := "<p>The card's opening paragraph.</p><p>A closing paragraph the cut-off model never saw.</p>"
 	updates, _ := json.Marshal([]db.PendingUpdate{
-		{ID: 1, ArticleTitle: "Cut off", SectionKey: "fees", CurrentContent: current, ProposedContent: "<ul><li>A</li><li>New</li></ul>", Summary: "Added New"},
-		{ID: 2, ArticleTitle: "Fine", SectionKey: "fees", CurrentContent: current, ProposedContent: "<ul><li>A</li><li>B</li><li>C</li><li>D</li><li>New</li></ul>", Summary: "Added New"},
+		{ID: 1, ArticleTitle: "Cut off", SectionKey: "fees", CurrentContent: list,
+			ProposedContent: "<ul><li>Airport lounge access worldwide</li><li>New credit</li></ul>", Summary: "Added a credit"},
+		{ID: 2, ArticleTitle: "Prose cut off", SectionKey: "fees", CurrentContent: prose,
+			ProposedContent: "<p>The card's opening paragraph, with one new fact.</p>", Summary: "Added a fact"},
+		{ID: 3, ArticleTitle: "Fine", SectionKey: "fees", CurrentContent: list,
+			ProposedContent: "<ul><li>Airport lounge access worldwide</li><li>B</li><li>C</li><li>New credit</li><li>No foreign transaction fees on purchases</li></ul>", Summary: "Added a credit"},
 	})
 	page.PendingUpdatesJSON = string(updates)
-	database.UpdateReferencePage(page)
+	if err := database.UpdateReferencePage(page); err != nil {
+		t.Fatalf("saving pending updates: %v", err)
+	}
 
 	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
 	body := doAdminGET(t, app, "/admin/cards/"+itoa(page.ID)+"/updates", session).Body.String()
-	first := body[strings.Index(body, `id="update-1"`):strings.Index(body, `id="update-2"`)]
-	if !strings.Contains(first, "2 fewer items than the current section") {
-		t.Errorf("draft 1 has two fewer items but carries no warning:\n%s", first)
+	draft := func(id string) string {
+		t.Helper()
+		start := strings.Index(body, `id="update-`+id+`"`)
+		if start < 0 {
+			t.Fatalf("update %s is not on the page", id)
+		}
+		rest := body[start+1:]
+		if end := strings.Index(rest, `<article class="update-card"`); end >= 0 {
+			rest = rest[:end]
+		}
+		return rest
 	}
-	if second := body[strings.Index(body, `id="update-2"`):]; strings.Contains(second, "fewer items") {
-		t.Error("draft 2 keeps every item and should not be flagged")
+	if d := draft("1"); !strings.Contains(d, "2 fewer items than the current section.") ||
+		!strings.Contains(d, "The end of the current section is missing") {
+		t.Errorf("draft 1 lost two items and the last one, but the warning says otherwise:\n%s", d)
+	}
+	if d := draft("2"); !strings.Contains(d, "The end of the current section is missing") || strings.Contains(d, "fewer items") {
+		t.Errorf("draft 2 lost the closing paragraph of a prose section; want only the ending warning:\n%s", d)
+	}
+	if d := draft("3"); strings.Contains(d, `role="note"`) {
+		t.Errorf("draft 3 keeps everything and should carry no warning:\n%s", d)
 	}
 }
 

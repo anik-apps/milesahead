@@ -32,7 +32,23 @@ const (
 	// hundred bytes of JSON, but the ceiling stays clear of the reasoning.
 	// Time is bounded by InfographicCallTimeout, not by this.
 	InfographicTokens = 12288
+
+	// CardUpdateTokens is the reply ceiling for one card-update check. The
+	// reply is a whole section rewritten (the longest seed section is about
+	// 4.9 KB of HTML, some 1,300 tokens) plus JSON, written after the model
+	// reasons. At 1,024 gpt-oss-20b ran out in production (finish_reason=
+	// length) and the update was lost. Like InfographicTokens it is kept clear
+	// of the reasoning; time is bounded by CardUpdateCallTimeout, not by this.
+	CardUpdateTokens = 8192
 )
+
+// CardUpdateCallTimeout bounds one card-update check, through the detector's
+// own client (HFClient.WithRequestTimeout, one retry). CardUpdateTokens is
+// above the short-call threshold, so through the shared client a check would
+// get the generator's 900s and three retries -- up to an hour a section on a
+// hung model, across up to 18 sections an article. A fast model rewrites a
+// section well inside two minutes, and the model chain is the next retry.
+const CardUpdateCallTimeout = 120 * time.Second
 
 // InfographicCallTimeout bounds one infographic call.
 //
