@@ -25,6 +25,7 @@
             {{if not .Diff.TooLong}}<span class="update-meta">{{if .Diff.Same}}No change to the text{{else}}+{{.Diff.Added}} / &minus;{{.Diff.Removed}} words{{end}}</span>{{end}}
         </div>
         <p class="update-summary">{{.Summary}}</p>
+        {{if or .FewerItems .EndingMissing}}<div class="message error" role="note">{{if .FewerItems}}{{.FewerItems}} fewer items than the current section. {{end}}{{if .EndingMissing}}The end of the current section is missing from the proposed text. {{end}}Approving replaces the whole section, so anything missing from the proposed text is deleted. Check the diff before approving; if the summary only describes an addition, reject it.</div>{{end}}
 
         {{if .Diff.TooLong}}
         <p class="dim">This section is too long to compare word by word; compare the two versions below.</p>

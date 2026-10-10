@@ -118,7 +118,7 @@ func (d *Detector) DetectAndDraft(ctx context.Context, articleID int64) error {
 			}
 
 			prompt := ai.CardUpdateDetectionPrompt(article.Title, article.Content, page.Title, sec.Title, sec.Content)
-			resp, err := ai.TryModels(d.hfClient, d.models, prompt, 1024)
+			resp, err := ai.TryModels(d.hfClient, d.models, prompt, ai.CardUpdateTokens)
 			if err != nil {
 				slog.Error("card update: AI call failed", "card_id", page.ID, "section", sec.Key, "error", err)
 				continue
@@ -146,11 +146,19 @@ func (d *Detector) DetectAndDraft(ctx context.Context, articleID int64) error {
 			}
 
 			if err := json.Unmarshal([]byte(jsonStr), &upd); err != nil {
-				slog.Warn("card update: failed to parse AI response", "card_id", page.ID, "section", sec.Key, "response", resp)
+				// The reply is a whole section now, up to ~16 KB; log its start.
+				slog.Warn("card update: failed to parse AI response", "card_id", page.ID, "section", sec.Key,
+					"response", truncate(resp, 500))
 				continue
 			}
 
-			if upd.UpdatedContent == "" {
+			if upd.UpdatedContent == "" || sameContent(sec.Content, upd.UpdatedContent) {
+				continue
+			}
+			if loss := CompareItems(sec.Content, upd.UpdatedContent); loss.Bulk() {
+				slog.Warn("card update: draft drops most of the section's items, not saved",
+					"card_id", page.ID, "section", sec.Key, "items", loss.Current, "items_lost", loss.Lost,
+					"summary", upd.Summary)
 				continue
 			}
 

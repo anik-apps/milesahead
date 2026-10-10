@@ -465,18 +465,21 @@ Return ONLY your 1-2 sentence take, nothing else. No quotes, no labels, no prefi
 // approved article warrants an update to a specific section of a credit card
 // reference page. The AI returns either the literal string NO_UPDATE or a JSON
 // object with "updated_content" and "summary" keys.
+//
+// Approving a draft replaces the whole section with updated_content, so the
+// model is shown the whole section and told to return all of it. It used to
+// see only the first 1,000 bytes, and every draft for a longer section (most
+// Key Benefits and Travel Credits sections) dropped everything after that.
 func CardUpdateDetectionPrompt(articleTitle, articleContent, cardTitle, sectionTitle, currentSectionContent string) string {
 	truncatedArticle := articleContent
 	if len(truncatedArticle) > 2000 {
 		truncatedArticle = truncatedArticle[:2000]
 	}
-	truncatedSection := currentSectionContent
-	if len(truncatedSection) > 1000 {
-		truncatedSection = truncatedSection[:1000]
-	}
 	return fmt.Sprintf(`You are a credit card reference page editor. A new article has been published that may affect a credit card's reference page.
 
-Determine whether the section below needs to be updated based on the article content. If the article contains relevant new information for this section, return a JSON object with the updated content and a short summary of the change. If the article is NOT relevant to this section, return exactly: NO_UPDATE
+Decide whether the section below needs to change because of something new in the article. If the article is NOT relevant to this section, or adds nothing the section doesn't already say, return exactly: NO_UPDATE
+
+If it does need to change, return the COMPLETE section with your changes applied. The article covers only some of the card, so keep every existing item, sentence, link and table row that the article does not change, word for word and in its place. Never drop a benefit because the article doesn't mention it. Remove something only when the article says it has ended or been replaced.
 
 Article Title: %s
 Article Content:
@@ -484,13 +487,13 @@ Article Content:
 
 Card: %s
 Section: %s
-Current Section Content:
+Current Section Content (complete):
 %s
 
-If an update is needed, return ONLY a JSON object (no other text):
-{"updated_content": "<the full updated section content in HTML>", "summary": "<1 sentence describing what changed>"}
+Keep the section's existing HTML markup. If an update is needed, return ONLY a JSON object (no other text), and make it valid JSON: escape double quotes and newlines inside the HTML.
+{"updated_content": "<the complete updated section in HTML, including everything you kept>", "summary": "<1 sentence describing what changed>"}
 
-If no update is needed, return ONLY: NO_UPDATE`, articleTitle, truncatedArticle, cardTitle, sectionTitle, truncatedSection)
+If no update is needed, return ONLY: NO_UPDATE`, articleTitle, truncatedArticle, cardTitle, sectionTitle, currentSectionContent)
 }
 
 // ArticleSummary is a lightweight representation of an article for ranking prompts.

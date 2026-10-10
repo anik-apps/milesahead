@@ -113,7 +113,8 @@ ai:
   # article creation), image text-scoring, the newsletter pick, card-update
   # detection and the pipeline's inline key-details call. Comma-separated,
   # tried in order on a retryable error or a retired model. These calls are
-  # capped at 30s, so only fast models belong here.
+  # capped at 30s (card-update detection at 120s, as its reply is a whole card
+  # section), so only fast models belong here.
   #
   # Deliberately not led by the critic: the side jobs used to reuse it, so the
   # critic's retirement on 2026-09-28 took them all down with it. Enrichment

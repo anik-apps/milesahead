@@ -171,7 +171,9 @@ func TestTimeoutFor_ClassifiesEveryRealCallSite(t *testing.T) {
 		{"preflight probe, vision and enrichment (ai/preflight.go)", preflightMaxTokens, true},
 		{"preflight probe, generator/fallback/critic (ai/preflight.go)", articleProbeTokens, false},
 		{"image text scoring (images/scorer.go)", 2048, true},
-		{"card update detection (cardupdate/detector.go)", 1024, true},
+		// Not short since its reply became a whole section: its own bounded
+		// client instead (TestWithRequestTimeout_BoundsTheCardUpdateCall).
+		{"card update detection (cardupdate/detector.go)", CardUpdateTokens, false},
 		{"newsletter pick (newsletter/newsletter.go)", 512, true},
 		{"critic verify (ai/critic.go)", 4096, false},
 		{"article generation (ai/generator.go)", 4096, false},
@@ -412,5 +414,24 @@ func TestWithRequestTimeout_BoundsTheInfographicCall(t *testing.T) {
 	}
 	if got := shared.WithRequestTimeout(0).timeoutFor(InfographicTokens); got != 900*time.Second {
 		t.Errorf("a zero timeout changed the copy: %v", got)
+	}
+}
+
+// TestWithRequestTimeout_BoundsTheCardUpdateCall: a card-update check returns
+// a whole section, so it asks for more than a short call. Through the shared
+// client one hung check would wait 900s, three times, per model and section.
+// The detector's client (cmd/milesahead newCardUpdateClient) bounds it.
+func TestWithRequestTimeout_BoundsTheCardUpdateCall(t *testing.T) {
+	shared := NewHFClient("token", 3)
+	shared.SetRequestTimeout(900 * time.Second)
+	if got := shared.timeoutFor(CardUpdateTokens); got != 900*time.Second {
+		t.Fatalf("precondition: through the shared client a check gets %v, want the generator's 900s", got)
+	}
+	own := shared.WithRequestTimeout(CardUpdateCallTimeout).WithMaxRetries(1)
+	if got := own.timeoutFor(CardUpdateTokens); got != CardUpdateCallTimeout {
+		t.Errorf("card update call timeout = %v, want %v", got, CardUpdateCallTimeout)
+	}
+	if own.maxRetries != 1 {
+		t.Errorf("copy retries %d times, want 1", own.maxRetries)
 	}
 }
