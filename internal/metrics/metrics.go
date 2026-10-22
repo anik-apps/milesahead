@@ -224,6 +224,27 @@ var (
 		Name: "milesahead_daily_unique_visitors_total",
 		Help: "Approximate unique visitors (increments on first-seen IP hash)",
 	})
+
+	// ModelStepState is each model list's state: 0 ok, 1 degraded, 2 down.
+	// Absent for lists that are switched off.
+	ModelStepState = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "milesahead_model_step_state",
+		Help: "Model list state per step: 0 ok, 1 degraded (running on a backup), 2 down",
+	}, []string{"step"})
+
+	// ModelCheckLastSuccess is when the last model health check round
+	// finished. A rule on its age catches a stalled checker.
+	ModelCheckLastSuccess = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "milesahead_model_check_last_success_timestamp_seconds",
+		Help: "Unix time the last model health check round finished",
+	})
+
+	// ModelEventsDroppedTotal counts model-call outcomes dropped because the
+	// health worker's buffer was full. Recording never blocks an AI call.
+	ModelEventsDroppedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "milesahead_model_events_dropped_total",
+		Help: "Model call outcomes dropped because the health worker was behind",
+	})
 )
 
 // EmailsSentTotal labels.
@@ -259,6 +280,7 @@ func Init() {
 		ImageSelectedScore, ImageSelectedTotal,
 		ImageResizeTotal, ArticleImagesUnsized, ArticleImagesUnconvertible,
 		ResponseBytes, DailyUniqueVisitors, EmailsSentTotal,
+		ModelStepState, ModelCheckLastSuccess, ModelEventsDroppedTotal,
 	)
 }
 
