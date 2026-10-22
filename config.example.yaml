@@ -57,45 +57,51 @@ ai:
   # honours the critic JSON contract.
   # Kept deliberately more than one deep: the outage happened because the
   # primary AND the single configured fallback were retired in the same window.
-  # gpt-oss-20b is verified to generate and to honour the critic contract;
-  # nemotron-3-super-120b-a12b is a last resort only -- it answers quickly but
-  # returns 503 intermittently and leaks reasoning preamble, so it is placed
-  # after a model that does neither.
-  fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
+  # gpt-oss-20b is verified to generate and to honour the critic contract.
+  # The last resort was nemotron-3-super-120b-a12b, retired 2026-10-20 (404);
+  # its successor nemotron-3.5-super-vl-120b-a12b takes the place. It answers
+  # short prompts with thinking on in 1-2s (checked 2026-10-22) but has not
+  # been measured as a generator, so it stays behind gpt-oss-20b.
+  fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3.5-super-vl-120b-a12b"
   # Critic: a comma-separated chain, tried left to right on the same errors as
   # the generator fallbacks (429 / 5xx / timeout / 404 / 410). One reachable
   # critic is enough to publish. It must return parseable JSON: Critic.Verify
   # runs replies through extractJSON, so models that answer in prose
   # disqualify themselves regardless of judgement quality.
   #
-  # Re-selected 2026-09-30. deepseek-ai/deepseek-v4.1-flash, chosen on
-  # 2026-09-29 after mistralai/mistral-nemotron was retired (410 "end of
-  # life"), scored well on two lucky runs that day but its hosted endpoint is
-  # overloaded: every critic call since has ended in a gateway 504 after ~5
-  # minutes, and even a 36-token reply queues for 70-100s. A critic ERROR drops
-  # the article from the scan outright, so nothing was verified at all. (A
-  # score below critic_threshold is different: the article is saved as a
-  # draft, not lost -- see article.Manager.CreateFromPipeline.)
+  # Re-selected 2026-10-22. Both critics of the previous chain were retired
+  # upstream: moonshotai/kimi-k3 (410, end of life 2026-10-15) and
+  # nvidia/nemotron-3-super-120b-a12b (404 from 2026-10-20). With no critic
+  # left, every article was generated and then dropped, and production
+  # published nothing for 2.5 days. A critic ERROR drops the article from the
+  # scan outright. (A score below critic_threshold is different: the article
+  # is saved as a draft, not lost -- see article.Manager.CreateFromPipeline.)
   #
-  # Measured on the real critic prompt, two articles from the production
-  # generator, score after the pipeline's adjustScore, threshold 75:
-  #   nemotron-3-super-120b-a12b, thinking OFF   75 and 95        28s, 1.7s
-  #   moonshotai/kimi-k3, thinking OFF           62 and 62        44-50s
-  #   deepseek-v4.1-flash, thinking OFF          50 and 50        67-101s
-  #   nemotron-3-super-120b-a12b, thinking ON    45, then 503 overloaded
-  #   openai/gpt-oss-20b, reasoning_effort=low   ~30 and ~35      4-18s
-  #   google/gemma-4-31b-it                      504 and 504      302s
+  # Measured with `ab-models -critic-candidates`: every candidate graded the
+  # same 5 real articles from the production generator, thinking OFF, score
+  # after the pipeline's adjustScore, threshold 75:
+  #   critic                                  valid JSON  avg  >=75   avg time
+  #   nemotron-3.5-super-vl-120b-a12b         5/5         71   3/5    ~2s
+  #   nemotron-3.5-lightning-30b-a3b          4/5         78   3/5    ~3s
+  #   deepseek-v4.1-flash                     5/5         53   0/5    22s
+  #   z-ai/glm-5.3-flash                      ran out of tokens thinking, 3 tries
+  #   z-ai/glm-5.3                            timed out on every try
+  # super-vl, nemotron-3-super's successor, leads: it always returned valid
+  # JSON and failed the one weak article the others disagreed on. lightning is
+  # more lenient (85 where the others gave 18-22) and once returned JSON that
+  # would not parse -- a reply that won't parse drops the article rather than
+  # moving to the next critic, so it is the backup, not the lead. deepseek has
+  # been too strict and too slow since 2026-09-29 (gateway 504s after ~5 min).
   #
-  # Thinking off (critic_disable_thinking below) is what makes nemotron-super
-  # usable as a critic: with thinking on it truncates or leaks its reasoning
-  # into the JSON and scored 45. kimi-k3 is the fallback; it is stricter, so
-  # articles it grades mostly land as drafts (62 < 75).
+  # Thinking off (critic_disable_thinking below) is how every critic score
+  # here was measured; nemotron-3-super with thinking on leaked its reasoning
+  # into the JSON and scored 45.
   #
-  # Independence caveat: nemotron-3-super is the same family as the generator
-  # (not the same model), and it is also in fallback_generator_model -- when
-  # the generator falls back to it, the article is graded by the model that
-  # wrote it. Self-grading is not a quality gate; watch the approval rate.
-  critic_model: "nvidia/nemotron-3-super-120b-a12b,moonshotai/kimi-k3"
+  # Independence caveat: super-vl is the same family as the generator (not
+  # the same model), and it is also in fallback_generator_model -- when the
+  # generator falls back to it, the article is graded by the model that wrote
+  # it. Self-grading is not a quality gate; watch the approval rate.
+  critic_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3.5-lightning-30b-a3b"
   # Sends chat_template_kwargs {"enable_thinking": false} on critic requests
   # (critic_model and critic2_model) only; generation, enrichment, side jobs
   # and vision keep the model's default. Every critic measurement above that
@@ -119,16 +125,19 @@ ai:
   # Deliberately not led by the critic: the side jobs used to reuse it, so the
   # critic's retirement on 2026-09-28 took them all down with it. Enrichment
   # itself survived only because this was already a chain -- kept two deep for
-  # the same reason as fallback_generator_model. nemotron-3-super is in both
-  # chains since 2026-09-30, but first in only one of them, so an overloaded
-  # critic backend costs enrichment a fallback, not its primary.
+  # the same reason as fallback_generator_model. The first critic is in both
+  # chains, but first in only one of them, so an overloaded critic backend
+  # costs enrichment a fallback, not its primary.
   #
   # Checked 2026-09-29 on short real prompts (tags, image scoring, card-update
   # detection, Scout's Take): gpt-oss-20b 3-11s, all valid; nemotron-3-super
   # 2-11s, all valid, and its Scout's Take was clean prose with no reasoning
-  # preamble. It is second because it returns 503 intermittently. Rejected:
-  # gemma-4-31b-it (30s timeout on tags), deepseek-v4.1-flash (minutes).
-  enrichment_model: "openai/gpt-oss-20b,nvidia/nemotron-3-super-120b-a12b"
+  # preamble. Rejected: gemma-4-31b-it (30s timeout on tags),
+  # deepseek-v4.1-flash (minutes). nemotron-3-super was retired 2026-10-20;
+  # its successor nemotron-3.5-super-vl-120b-a12b takes its place as the
+  # second model, after a 512-token check with thinking on (1-2s, clean JSON,
+  # 2026-10-22). Not yet measured on the real short prompts.
+  enrichment_model: "openai/gpt-oss-20b,nvidia/nemotron-3.5-super-vl-120b-a12b"
   enrichment_interval: 15        # minutes
   enrichment_max_attempts: 3     # passes before an article is left alone
   # Bounds one pass. A pass has no limit of its own otherwise, and on a
@@ -160,7 +169,10 @@ ai:
   # 22-46s.
   # The charts were of similar quality; the 503s that put nemotron-3-super
   # second in enrichment_model fall through to gpt-oss-20b here.
-  infographic_model: "nvidia/nemotron-3-super-120b-a12b,openai/gpt-oss-20b"
+  # nemotron-3-super was retired 2026-10-20 and every chart has fallen through
+  # to gpt-oss-20b since. Its successor nemotron-3.5-super-vl-120b-a12b leads
+  # now, unmeasured on charts; a chart it gets wrong goes to gpt-oss-20b.
+  infographic_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,openai/gpt-oss-20b"
   hf_api_token: "${HF_API_TOKEN}"
   critic_threshold: 70
   max_retries: 3

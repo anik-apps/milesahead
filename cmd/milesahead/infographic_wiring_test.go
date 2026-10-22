@@ -19,12 +19,13 @@ func TestInfographicModels(t *testing.T) {
 	}
 }
 
-// Production draws charts with nemotron-3-super first and gpt-oss-20b behind
-// it (see config.example.yaml), and shows them on article pages.
+// Production draws charts with nemotron-3.5-super-vl first (nemotron-3-super's
+// successor) and gpt-oss-20b behind it (see config.example.yaml), and shows
+// them on article pages.
 func TestDeployConfig_InfographicChain(t *testing.T) {
 	stubReachable(t, false)
 	cfg := deployConfig(t, nil)
-	want := []string{"nvidia/nemotron-3-super-120b-a12b", "openai/gpt-oss-20b"}
+	want := []string{"nvidia/nemotron-3.5-super-vl-120b-a12b", "openai/gpt-oss-20b"}
 	if got := infographicModels(cfg, enrichmentModels(cfg)); !reflect.DeepEqual(got, want) {
 		t.Errorf("chart chain = %v, want %v", got, want)
 	}

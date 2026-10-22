@@ -21,9 +21,9 @@ A cluster needs posts from at least two different sites; with fewer the pipeline
 | Role | Config key | Model | Purpose |
 |------|------------|-------|---------|
 | Generator | `generator_model` | `nvidia/nemotron-3-ultra-550b-a55b` | Article generation and revision |
-| Generator fallbacks | `fallback_generator_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3-super-120b-a12b` | Tried in order when the generator fails or is retired |
-| Critic | `critic_model` | `nvidia/nemotron-3-super-120b-a12b`, `moonshotai/kimi-k3` | Factual verification and scoring only; tried in order, thinking off |
-| Short-call chain | `enrichment_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3-super-120b-a12b` | Story dedup, detail extraction, Scout's Take, tags, image queries, image text-scoring, newsletter pick, card-update detection |
+| Generator fallbacks | `fallback_generator_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3.5-super-vl-120b-a12b` | Tried in order when the generator fails or is retired |
+| Critic | `critic_model` | `nvidia/nemotron-3.5-super-vl-120b-a12b`, `nvidia/nemotron-3.5-lightning-30b-a3b` | Factual verification and scoring only; tried in order, thinking off |
+| Short-call chain | `enrichment_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3.5-super-vl-120b-a12b` | Story dedup, detail extraction, Scout's Take, tags, image queries, image text-scoring, newsletter pick, card-update detection |
 | Vision | `vision_model` | `meta/llama-3.2-11b-vision-instruct` | Image relevance scoring (Phase 2) |
 
 All models are accessed through the NVIDIA API at `https://integrate.api.nvidia.com/v1`. `config.example.yaml` records why each was chosen, with the measurements behind each choice. A chain is tried left to right on a retryable error (429, 5xx, timeout) or a model that is gone (404, 410); a `model fallback succeeded` or `model failed, trying next in chain` line is logged.
@@ -34,22 +34,22 @@ Generation and verification calls get the full `request_timeout` (900 s in produ
 
 The critic is used for verification and nothing else; the short calls run on the `enrichment_model` chain. Keeping them apart means a failed critic stops publication without taking image scoring, the newsletter and card updates down with it, as happened when `mistralai/mistral-nemotron` was retired on 2026-09-28.
 
-The critic is a chain because it failed as a single model twice in two days: retired on 2026-09-28, then its replacement, `deepseek-ai/deepseek-v4.1-flash`, answered every call with a gateway 504 from 2026-09-29. One reachable critic is enough to publish. With more than one critic, each retries once before the chain moves on, so a critic stuck on 5-minute gateway timeouts hands over after about 10 minutes instead of 20.
+The critic is a chain because it failed as a single model twice in two days: retired on 2026-09-28, then its replacement, `deepseek-ai/deepseek-v4.1-flash`, answered every call with a gateway 504 from 2026-09-29. A chain is not enough on its own: both critics of the next chain were retired upstream, `moonshotai/kimi-k3` on 2026-10-15 and `nvidia/nemotron-3-super-120b-a12b` on 2026-10-20, and production published nothing for 2.5 days until the chain was replaced. One reachable critic is enough to publish. With more than one critic, each retries once before the chain moves on, so a critic stuck on 5-minute gateway timeouts hands over after about 10 minutes instead of 20.
 
 A critic error drops the article from the scan; a score below `critic_threshold` only saves it as a draft. A critic that answers with JSON that cannot be parsed is an error, not a reason to try the next critic.
 
-With `critic_disable_thinking: true`, critic requests (and only those) carry `chat_template_kwargs: {"enable_thinking": false}`. They go through a copy of the client (`HFClient.WithThinkingDisabled`); generation, enrichment and vision use the original and never send it, even though nemotron-3-super is in their chains too. With thinking on, nemotron-3-super truncates or leaks its reasoning and scored a real article 45 instead of 75.
+With `critic_disable_thinking: true`, critic requests (and only those) carry `chat_template_kwargs: {"enable_thinking": false}`. They go through a copy of the client (`HFClient.WithThinkingDisabled`); generation, enrichment and vision use the original and never send it, even though nemotron-3.5-super-vl is in their chains too. With thinking on, the retired nemotron-3-super truncated or leaked its reasoning and scored a real article 45 instead of 75.
 
-Measured on the real critic prompt, two articles from the production generator, threshold 75:
+Measured on 2026-10-22 with `ab-models -critic-candidates`: every candidate graded the same 5 real articles from the production generator, thinking off, score after the pipeline's adjustment, threshold 75:
 
-| Critic, setting | Article 1 | Article 2 | Latency |
-|---|---|---|---|
-| nemotron-3-super-120b-a12b, thinking off | 75 | 95 | 28 s, 1.7 s |
-| moonshotai/kimi-k3, thinking off | 62 | 62 | 44-50 s |
-| deepseek-v4.1-flash, thinking off | 50 | 50 | 67-101 s |
-| nemotron-3-super-120b-a12b, thinking on | 45 | 503 | - |
+| Critic | Valid JSON | Average | At or above 75 | Latency |
+|---|---|---|---|---|
+| nemotron-3.5-super-vl-120b-a12b | 5 of 5 | 71 | 3 of 5 | ~2 s |
+| nemotron-3.5-lightning-30b-a3b | 4 of 5 | 78 | 3 of 5 | ~3 s |
+| deepseek-v4.1-flash | 5 of 5 | 53 | 0 of 5 | 22 s |
+| z-ai/glm-5.3-flash, z-ai/glm-5.3 | none: out of tokens thinking, or timed out | | | |
 
-nemotron-3-super is the same family as the generator and also a generator fallback, so an article the generator wrote on that fallback is graded by the model that wrote it -- watch the approval rate. kimi-k3, the fallback critic, grades more strictly, so articles it scores mostly land as drafts. The `critic scored` log line and `verification_results` name the model that scored.
+super-vl leads because it always returned valid JSON; lightning is more lenient and once returned JSON that would not parse, which drops the article instead of moving to the next critic. super-vl is the same family as the generator and also a generator fallback, so an article the generator wrote on that fallback is graded by the model that wrote it -- watch the approval rate. The `critic scored` log line and `verification_results` name the model that scored.
 
 ## Generation Process
 

@@ -182,6 +182,18 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       and 50 in 67-101s. The preflight probes every critic in the chain and publishing
       is viable if any answers; `critic scored` logs the model. Caveat: nemotron-super is
       also a generator fallback, so a fallback-written article is self-graded.
+- [x] **Both critics retired, nothing published for 2.5 days** — `moonshotai/kimi-k3`
+      reached end of life on 2026-10-15 (410), unseen because a backup is only called
+      when the first critic fails; `nvidia/nemotron-3-super-120b-a12b` returned 404 from
+      2026-10-20 01:08 UTC. Every article was then generated and dropped (~130 a day)
+      until 2026-10-22. `critic_model` is now `nvidia/nemotron-3.5-super-vl-120b-a12b`
+      then `nvidia/nemotron-3.5-lightning-30b-a3b`, chosen with `ab-models
+      -critic-candidates` on 5 real articles graded by every candidate (super-vl 5/5
+      valid JSON and 3/5 publishable, lightning 4/5 and 3/5, deepseek 0/5 publishable);
+      super-vl also replaces nemotron-3-super in the fallback, enrichment and
+      infographic chains. A test now fails when a known-retired model is in any chain
+      of `config.example.yaml` or `deploy.yml`, and every model chain must match
+      between the two.
 - [ ] **Alert when the startup preflight finds no reachable critic** — the 2026-09-28
       retirement logged `ai preflight: no CRITIC is reachable` at ERROR on every startup
       for about two days and nobody saw it. The preflight now exports
@@ -191,6 +203,12 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       fire here: the series is absent for the first minutes after every boot while a
       slow critic is probed. Also find out why the generation-drought rule, which should
       have fired about 25 hours into this outage, did not get anyone's attention.
+      It stayed silent again in the 2026-10-20 outage. Likely cause: the free Grafana
+      Cloud instance hibernates (the 2026-10-16 deploy logged "Instance is hibernating
+      … HTTP 503"), and a hibernating instance does not evaluate rules. Also, no
+      `ALERT_EMAIL` secret exists, so the app itself cannot email any alert. Being
+      replaced by in-app model health checks with email alerts and a drought alarm
+      (`feat/model-health`).
 - [x] **Deduplicate across clusters, not just within them** — the raw-ID dedupe
       (`HasArticleForRawIDs`) can only catch a cluster reusing a source article. When one
       story lands in two disjoint clusters, the clusters share no sources by construction
