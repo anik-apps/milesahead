@@ -21,6 +21,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/enrich"
+	"github.com/kumaranik/milesahead/internal/health"
 	"github.com/kumaranik/milesahead/internal/images"
 	"github.com/kumaranik/milesahead/internal/mail"
 	"github.com/kumaranik/milesahead/internal/metrics"
@@ -64,25 +65,9 @@ func sourceOutlets(database *db.Database) func() []ai.Outlet {
 	}
 }
 
-// enrichmentModels is the chain for every short AI call: enrichment, image
-// text-scoring, the newsletter pick, card-update detection and the pipeline's
-// inline key-details call.
-//
-// Those calls asked for 512-2048 tokens, so HFClient bounds them at
-// ai.ShortCallTimeout (30s). Card-update detection now returns a whole section
-// and asks for more, so it goes through newCardUpdateClient (120s) instead. Most of them used to go to the critic model, which
-// failed them all when mistralai/mistral-nemotron was retired on 2026-09-28;
-// its first replacement took minutes per reply and would have timed out every
-// one. The critic is for verification only.
-func enrichmentModels(cfg *config.Config) []string {
-	if models := ai.SplitModels(cfg.AI.EnrichmentModel); len(models) > 0 {
-		return models
-	}
-	// Unset: fall back to the generator fallback chain rather than silently
-	// doing nothing. Those models are the fast ones; the critic chain goes
-	// last.
-	return append(ai.SplitModels(cfg.AI.FallbackGeneratorModel), ai.SplitModels(cfg.AI.CriticModel)...)
-}
+// enrichmentModels is the chain for every short AI call; see
+// health.EnrichmentModels.
+func enrichmentModels(cfg *config.Config) []string { return health.EnrichmentModels(cfg) }
 
 // newCriticClient returns the client the critics call through. With
 // critic_disable_thinking set it is a copy of hfClient that asks for no
@@ -127,14 +112,9 @@ func newCardUpdateClient(client ai.HFClientInterface) ai.HFClientInterface {
 	return client
 }
 
-// infographicModels is the chain charts are drawn with: infographic_model,
-// or the enrichment chain when that is unset.
-func infographicModels(cfg *config.Config, enrichModels []string) []string {
-	if models := ai.SplitModels(cfg.AI.InfographicModel); len(models) > 0 {
-		return models
-	}
-	return enrichModels
-}
+// infographicModels is the chain charts are drawn with; see
+// health.InfographicModels.
+func infographicModels(cfg *config.Config, _ []string) []string { return health.InfographicModels(cfg) }
 
 // preflightEnrichmentModels is what the boot preflight checks under the
 // enrichment role: the enrichment chain, plus any chart model not already in

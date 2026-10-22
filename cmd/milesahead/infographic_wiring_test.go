@@ -10,6 +10,7 @@ import (
 func TestInfographicModels(t *testing.T) {
 	enrich := []string{"e1", "e2"}
 	cfg := &config.Config{}
+	cfg.AI.EnrichmentModel = "e1, e2"
 	if got := infographicModels(cfg, enrich); !reflect.DeepEqual(got, enrich) {
 		t.Errorf("unset: %v, want the enrichment chain", got)
 	}
