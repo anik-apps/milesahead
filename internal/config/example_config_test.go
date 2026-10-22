@@ -164,6 +164,7 @@ func TestDeployConfigMirrorsCritic(t *testing.T) {
 		fmt.Sprintf("enrichment_model: %q", cfg.AI.EnrichmentModel),
 		fmt.Sprintf("vision_model: %q", cfg.AI.VisionModel),
 		fmt.Sprintf("critic_model: %q", cfg.AI.CriticModel),
+		fmt.Sprintf("critic2_model: %q", cfg.AI.Critic2Model),
 		fmt.Sprintf("critic_disable_thinking: %v", cfg.AI.CriticDisableThinking),
 		fmt.Sprintf("story_dedup: %q", cfg.Scanner.StoryDedup),
 		// Infographics are set the same in both: changing one alone fails here.
