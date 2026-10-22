@@ -253,3 +253,45 @@ func TestWorker_SendTestAlert(t *testing.T) {
 		t.Errorf("err %v sent %d", err, s.count())
 	}
 }
+
+// After a restart, before the first check has measured the drought, a failed
+// call must not read as "the drought is over".
+func TestWorker_UnmeasuredDroughtKeepsItsStoredState(t *testing.T) {
+	d, s := openDB(t), &fakeSender{}
+	if err := d.SaveModelAlerts([]db.ModelAlert{{Key: "drought", State: "stopped", Since: t0, NotifiedAt: t0}}); err != nil {
+		t.Fatal(err)
+	}
+	w := newWorker(t, d, []Step{genStep, criticStep}, nil, s)
+	w.RecordModelCall(ai.ModelCall{Step: StepCritic, Model: "super", Source: ai.SourceCall, Outcome: ai.OutcomeRetired, At: t0})
+	w.Drain()
+	for _, a := range s.sent {
+		if strings.Contains(a.Subject, "generated again") {
+			t.Errorf("false recovery emailed: %q", a.Subject)
+		}
+		for _, it := range a.Items { // a recovery rides along in a digest
+			if strings.Contains(it.Title, "generated again") {
+				t.Errorf("false recovery in the digest: %q", it.Title)
+			}
+		}
+	}
+	if snap := w.Snapshot(); !snap.Stopped {
+		t.Error("the page lost the stored drought before it was measured")
+	}
+}
+
+// Once a check has measured the drought, its answer replaces the stored state:
+// a real recovery is still emailed.
+func TestWorker_MeasuredRecoveryIsEmailed(t *testing.T) {
+	d, s := openDB(t), &fakeSender{}
+	if err := d.SaveModelAlerts([]db.ModelAlert{{Key: "drought", State: "stopped", Since: t0, NotifiedAt: t0}}); err != nil {
+		t.Fatal(err)
+	}
+	w := newWorker(t, d, []Step{criticStep}, results(ok("critic", "super"), ok("critic", "kimi")), s)
+	w.RunCheck() // no sources added stories: no drought
+	if s.count() != 1 || !strings.Contains(s.sent[0].Subject, "generated again") {
+		t.Fatalf("sent %+v, want the recovery", s.sent)
+	}
+	if snap := w.Snapshot(); snap.Stopped {
+		t.Error("the page still shows a drought after it was measured as over")
+	}
+}

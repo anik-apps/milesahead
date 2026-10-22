@@ -53,7 +53,11 @@ type Worker struct {
 	to         string
 	notEmailed string
 	lastCheck  time.Time
-	drought    bool
+	// drought is the last measured drought. Until a check has measured it
+	// (droughtKnown), the stored alert state stands in: an unmeasured
+	// drought must not read as "no drought" and email a false recovery.
+	drought      bool
+	droughtKnown bool
 }
 
 // New returns a Worker. Call SetAlerting, then Run in a goroutine.
@@ -79,6 +83,14 @@ func (w *Worker) alerting() (AlertSender, string, string) {
 	w.view.Lock()
 	defer w.view.Unlock()
 	return w.sender, w.to, w.notEmailed
+}
+
+// measuredDrought is the drought as the last check measured it; known is
+// false until a check has.
+func (w *Worker) measuredDrought() (drought, known bool) {
+	w.view.Lock()
+	defer w.view.Unlock()
+	return w.drought, w.droughtKnown
 }
 
 // RecordModelCall queues a call's outcome. It never blocks: when the buffer
@@ -167,9 +179,9 @@ func (w *Worker) RunCheck() {
 	}
 	results := w.o.Check()
 	at := w.o.Now().UTC()
-	drought, err := w.droughtAt(at)
-	if err != nil {
-		slog.Warn("model health: drought check", "error", err)
+	drought, droughtErr := w.droughtAt(at)
+	if droughtErr != nil {
+		slog.Warn("model health: drought check", "error", droughtErr)
 	}
 
 	w.mu.Lock()
@@ -193,7 +205,10 @@ func (w *Worker) RunCheck() {
 		}
 	}
 	w.view.Lock()
-	w.lastCheck, w.drought = at, drought
+	w.lastCheck = at
+	if droughtErr == nil { // a failed measurement keeps the last known answer
+		w.drought, w.droughtKnown = drought, true
+	}
 	w.view.Unlock()
 	metrics.ModelCheckLastSuccess.Set(float64(at.Unix()))
 	w.evaluateLocked()
@@ -242,9 +257,10 @@ func (w *Worker) evaluateLocked() {
 		slog.Warn("model health: reading alert state", "error", err)
 		return
 	}
-	w.view.Lock()
-	drought := w.drought
-	w.view.Unlock()
+	drought, known := w.measuredDrought()
+	if !known {
+		drought = stored[droughtKey].State == droughtStopped
+	}
 	events, next := Plan(views, drought, stored, now)
 
 	sender, to, why := w.alerting()
@@ -325,8 +341,16 @@ func (w *Worker) Snapshot() Snapshot {
 	_, to, why := w.alerting()
 	w.view.Lock()
 	s := Snapshot{CheckEvery: w.o.Interval, Recipient: to, NotEmailed: why, LastCheck: w.lastCheck}
-	drought := w.drought
+	drought, droughtKnown := w.drought, w.droughtKnown
 	w.view.Unlock()
+
+	if !droughtKnown { // after a restart, before a check has measured it
+		stored, err := w.o.DB.ListModelAlerts()
+		if err != nil {
+			slog.Warn("model health: snapshot alert state", "error", err)
+		}
+		drought = stored[droughtKey].State == droughtStopped
+	}
 
 	rows, err := w.o.DB.ListModelHealth()
 	if err != nil {

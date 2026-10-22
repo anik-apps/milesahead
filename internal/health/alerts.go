@@ -44,6 +44,9 @@ const (
 	providerKey = "provider"
 	droughtKey  = "drought"
 	stateOK     = "ok"
+
+	// droughtStopped is the stored state of the drought alert while it lasts.
+	droughtStopped = "stopped"
 )
 
 func stepKey(step string) string          { return "step:" + step }
@@ -76,7 +79,7 @@ func Plan(views []StepView, drought bool, stored map[string]db.ModelAlert, now t
 		}
 	}
 	if drought {
-		p.urgent(droughtKey, "stopped", "No article in 24 hours",
+		p.urgent(droughtKey, droughtStopped, "No article in 24 hours",
 			"No article has been generated in 24 hours while sources kept adding stories. Publishing has stopped. Open the Models tab to see which list is failing.")
 	} else {
 		p.recovered(droughtKey, "Articles are being generated again")
