@@ -127,3 +127,14 @@ func TestCritic_ArticleRefusalIsNotErrCriticUnavailable(t *testing.T) {
 		t.Fatalf("err = %v, want a plain error that is not ErrCriticUnavailable", err)
 	}
 }
+
+// A retryable failure on every critic (here a gateway's status-less error) means
+// no critic answered, even though its outcome is "error".
+func TestCritic_RetryableErrorOnEveryModelIsErrCriticUnavailable(t *testing.T) {
+	busy := func(m string) error { return &APIError{Model: m, Body: "upstream busy", Kind: OutcomeError} }
+	mock := &perModelMockHFClient{errs: map[string]error{"a": busy("a"), "b": busy("b")}}
+	_, err := NewCritic(mock, "a,b").Verify("article", nil)
+	if !errors.Is(err, ErrCriticUnavailable) {
+		t.Fatalf("err = %v, want ErrCriticUnavailable", err)
+	}
+}

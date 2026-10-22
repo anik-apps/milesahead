@@ -73,10 +73,12 @@ func (c *Critic) verify(label, prompt string) (*VerificationResult, error) {
 	// timeout rather than ShortCallTimeout -- critics take tens of seconds.
 	resp, model, err := tryModels(c.client, c.models, prompt, 4096)
 	if err != nil {
-		// An article-specific refusal (a 400: prompt too large, content
-		// filter) is about this article, not the critic list, so it does
-		// not stop the scan; every other failure means no critic answered.
-		if OutcomeOf(err) == OutcomeError {
+		// An article-specific refusal is a non-retryable error the chain
+		// stopped on (a 400, 413 or 422: prompt too large, content filter). It
+		// is about this article, not the critic list, so it does not stop the
+		// scan. Anything the chain would retry, failing on every model, means
+		// no critic answered.
+		if OutcomeOf(err) == OutcomeError && !shouldTryAnotherModel(err) {
 			return nil, fmt.Errorf("%s: %w", label, err)
 		}
 		return nil, fmt.Errorf("%s: %w: %w", label, ErrCriticUnavailable, err)
