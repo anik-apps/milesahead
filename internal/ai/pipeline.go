@@ -722,6 +722,13 @@ func adjustScore(v *VerificationResult) int {
 	return score
 }
 
+// AdjustScore is adjustScore for tools that measure critics outside the
+// pipeline (cmd/ab-models), so they report the score production acts on
+// rather than the critic's raw number.
+func AdjustScore(v *VerificationResult) int {
+	return adjustScore(v)
+}
+
 // detectArticleType determines the article type from source content.
 // Deal: time-limited offers (bonuses, sales, discounts, signup offers)
 // Summary: news, changes, analysis, reviews
