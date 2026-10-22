@@ -177,6 +177,15 @@ ai:
   critic_threshold: 70
   max_retries: 3
   cache_ttl: 3600  # seconds
+  # Model health: every model in every list is checked this often, and each
+  # real call's outcome is recorded; the admin Models tab shows the result.
+  # Minutes; absent or 0 = 60; a negative value turns the hourly check off
+  # (one check still runs at boot).
+  health_check_interval: 60
+  # Where model-health alerts are emailed: a model dying, a list running on a
+  # backup or with nothing left, publishing stopped. Empty uses
+  # votes.alert_email; with neither, alerts are only shown in the admin.
+  alert_email: ""
 
 mail:
   smtp:

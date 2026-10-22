@@ -92,3 +92,19 @@ func TestLogReviewByEmail(t *testing.T) {
 		t.Errorf("startup log:\n%s", got)
 	}
 }
+
+// The deploy writes ai.alert_email from the same ALERT_EMAIL secret, and the
+// hourly check interval explicitly.
+func TestDeployConfig_ModelHealthSettings(t *testing.T) {
+	stubReachable(t, false)
+	cfg := deployConfig(t, map[string]string{"ALERT_EMAIL": "ops@example.com"})
+	if cfg.AI.AlertEmail != "ops@example.com" {
+		t.Errorf("ai.alert_email = %q", cfg.AI.AlertEmail)
+	}
+	if cfg.AI.HealthCheckInterval != 60 {
+		t.Errorf("health_check_interval = %d, want 60", cfg.AI.HealthCheckInterval)
+	}
+	if cfg := deployConfig(t, nil); cfg.AI.AlertEmail != "" {
+		t.Errorf("no secret: ai.alert_email = %q, want empty", cfg.AI.AlertEmail)
+	}
+}
