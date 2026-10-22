@@ -40,6 +40,10 @@ type HFClient struct {
 	// step and recorder label the client for model health; see WithStep.
 	step     string
 	recorder Recorder
+	// confirmOK: Generate does not record an ok itself; the caller confirms
+	// each usable reply with ReportOK, or reports ReportBadReply. See
+	// WithConfirmedOK.
+	confirmOK bool
 }
 
 // initialBackoff is the first retry delay; it doubles per attempt.
@@ -186,9 +190,30 @@ func (c *HFClient) WithStep(step string, rec Recorder) *HFClient {
 
 // ReportBadReply records that a call this client made answered, but with a
 // reply its caller could not use: a critic's JSON that will not parse.
-// Generate has already recorded the call itself as ok.
+// Unless the client was made with WithConfirmedOK, Generate has already
+// recorded the call itself as ok.
 func (c *HFClient) ReportBadReply(model, detail string) {
 	c.record(model, time.Now(), OutcomeBadReply, http.StatusOK, errors.New(detail))
+}
+
+// WithConfirmedOK returns a copy of the client whose successful calls are
+// recorded only when the caller confirms them with ReportOK. The critic uses
+// it: a reply that answers but will not parse is a failure, and recording ok
+// first would reset the model's failure streak on every call. Failures are
+// still recorded by Generate as usual.
+func (c *HFClient) WithConfirmedOK() *HFClient {
+	cp := *c
+	cp.confirmOK = true
+	return &cp
+}
+
+// ReportOK records a successful call that the caller has confirmed usable.
+// On a client without WithConfirmedOK, Generate has already recorded it, so
+// this records nothing.
+func (c *HFClient) ReportOK(model string) {
+	if c.confirmOK {
+		c.record(model, time.Now(), OutcomeOK, http.StatusOK, nil)
+	}
 }
 
 // record reports one finished call to the client's recorder, if it has one.
@@ -464,7 +489,9 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 		}
 
 		metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-		c.record(model, start, OutcomeOK, resp.StatusCode, nil)
+		if !c.confirmOK {
+			c.record(model, start, OutcomeOK, resp.StatusCode, nil)
+		}
 		return content, nil
 	}
 
