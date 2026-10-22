@@ -10,8 +10,8 @@ import (
 )
 
 // preflightMaxTokens bounds the probe response for models the app calls with
-// a short budget (vision, the enrichment chain). See the note in PreflightAll's
-// check function: too small a budget makes reasoning models look dead.
+// a short budget (vision, the enrichment chain). See the note on probe in
+// PreflightAllWithCriticClient: too small a budget makes reasoning models look dead.
 const preflightMaxTokens = 512
 
 // articleProbeTokens is the probe budget for models on the article path
@@ -112,12 +112,26 @@ func PreflightAllWithCriticClient(client, criticClient HFClientInterface, genera
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// The budget has to leave room for a reasoning model to think before it
+			// answers. At 16 tokens openai/gpt-oss-20b spends the whole allowance
+			// reasoning and returns empty content, which this check then reports as
+			// a dead model -- a false alarm on a model that generates articles
+			// perfectly well. Measured on that model: 16 tokens empty, 128 and
+			// above returns "OK". 512 leaves a wide margin without being a
+			// meaningful cost once per boot. Article-path models get more; see
+			// articleProbeTokens.
 			_, err := p.client.Generate(p.model, "Reply with the single word: OK", p.maxTokens)
 			out[i] = PreflightResult{Model: p.model, Role: p.role, OK: err == nil, Err: err}
 			if err == nil {
 				slog.Info("preflight ok", "role", p.role, "model", p.model)
 				return
 			}
+			// Every configured model is load-bearing: a dead critic stops
+			// publication just as completely as a dead generator, because
+			// Pipeline.Process returns an error when verification fails. So
+			// this is ERROR regardless of role and regardless of whether the
+			// cause looks permanent -- WARN-level reporting is what let the
+			// previous outage run for 26 days.
 			slog.Error("preflight FAILED: configured model did not answer",
 				"role", p.role, "model", p.model, "permanent", isModelUnavailableError(err),
 				"err", err)
