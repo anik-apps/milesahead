@@ -29,7 +29,7 @@ func TestEmailSeriesExistAtZero(t *testing.T) {
 		}
 		seen[labels["kind"]+"/"+labels["outcome"]] = true
 	}
-	for _, want := range []string{"confirmation/sent", "confirmation/failed", "newsletter/sent", "newsletter/failed"} {
+	for _, want := range []string{"confirmation/sent", "confirmation/failed", "newsletter/sent", "newsletter/failed", "model_alert/sent", "model_alert/failed"} {
 		if !seen[want] {
 			t.Errorf("series %s missing; have %v", want, seen)
 		}
