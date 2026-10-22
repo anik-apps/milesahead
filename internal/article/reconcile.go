@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
@@ -42,7 +43,10 @@ func isRevisionSkip(err error) bool {
 		errors.Is(err, ErrNotAwaitingRevision) ||
 		errors.Is(err, ErrRevisionSuperseded) ||
 		errors.Is(err, errRevisionNotDue) ||
-		errors.Is(err, errRevisionExhausted)
+		errors.Is(err, errRevisionExhausted) ||
+		// No critic answered: the rewrite did nothing wrong. It stays
+		// requested and is tried on a later pass, without using up its budget.
+		errors.Is(err, ai.ErrCriticUnavailable)
 }
 
 // Retry policy for failed rewrites.

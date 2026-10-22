@@ -25,12 +25,17 @@ import (
 type fakePipeline struct {
 	mu    sync.Mutex
 	calls int
+	err   error
 }
 
 func (p *fakePipeline) Process(_ string, sources []ai.SourceArticle) (*ai.PipelineResult, error) {
 	p.mu.Lock()
 	p.calls++
+	err := p.err
 	p.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
 	return &ai.PipelineResult{
 		Title: sources[0].Title, Content: "<p>body</p>", TLDR: "Summary of " + sources[0].Title,
 		Type: "news", Verification: &ai.VerificationResult{Score: 90}, PassedThreshold: true,
@@ -445,5 +450,33 @@ func TestClusterGenerator_UsesEnrichmentChain(t *testing.T) {
 	g := newClusterGenerator(cfg, nil, nil, nil, &storyAI{}, enrichmentModels(cfg), 0.3)
 	if strings.Join(g.stories.Models, ",") != "fast-a,fast-b" || g.storyMode != "shadow" {
 		t.Errorf("models = %v, mode = %q", g.stories.Models, g.storyMode)
+	}
+}
+
+// When every critic fails, the rest of the scan's clusters would each burn a
+// full generation only to fail the same way; the scan stops after one.
+func TestRun_StopsWhenEveryCriticFails(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		err       error
+		wantCalls int
+	}{
+		{"critics answer", nil, 2},
+		{"every critic fails", fmt.Errorf("critic: %w: all 2 model(s) failed", ai.ErrCriticUnavailable), 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newScanFixture(t, config.StoryDedupOff)
+			f.pipeline.err = tc.err
+			f.raw(0, "Chase Sapphire Reserve adds new airport lounge access benefit")
+			f.raw(1, "Chase Sapphire Reserve adds new airport lounge access benefit for cardholders")
+			f.raw(0, "United MileagePlus announces award chart devaluation for partners")
+			f.raw(2, "United MileagePlus announces award chart devaluation for partner flights")
+
+			f.gen.run()
+
+			if f.pipeline.calls != tc.wantCalls {
+				t.Errorf("pipeline calls = %d, want %d", f.pipeline.calls, tc.wantCalls)
+			}
+		})
 	}
 }

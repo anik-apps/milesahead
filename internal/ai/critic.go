@@ -23,10 +23,11 @@ type VerificationResult struct {
 }
 
 // ErrCriticUnavailable is wrapped by every critic error where no model in the
-// critic chain answered: retired, overloaded, timed out, refused. A reply that
-// came back but would not parse is a different error. The scan stops
-// generating when it sees this (a critic that cannot answer would fail every
-// remaining article too), and a revision treats it as "try later".
+// critic chain answered: retired, overloaded, timed out, or refused the key. A
+// reply that came back but would not parse is a different error, and so is an
+// article-specific refusal (a 400). The scan stops generating when it sees this
+// (a critic that cannot answer would fail every remaining article too), and a
+// revision treats it as "try later".
 var ErrCriticUnavailable = errors.New("no critic answered")
 
 // Critic uses an HF model to verify generated articles against their sources.
@@ -72,6 +73,12 @@ func (c *Critic) verify(label, prompt string) (*VerificationResult, error) {
 	// timeout rather than ShortCallTimeout -- critics take tens of seconds.
 	resp, model, err := tryModels(c.client, c.models, prompt, 4096)
 	if err != nil {
+		// An article-specific refusal (a 400: prompt too large, content
+		// filter) is about this article, not the critic list, so it does
+		// not stop the scan; every other failure means no critic answered.
+		if OutcomeOf(err) == OutcomeError {
+			return nil, fmt.Errorf("%s: %w", label, err)
+		}
 		return nil, fmt.Errorf("%s: %w: %w", label, ErrCriticUnavailable, err)
 	}
 

@@ -115,3 +115,15 @@ func TestPipeline_DetailClientCarriesTheKeyDetailsCall(t *testing.T) {
 		}
 	}
 }
+
+// A 400 is about this article (prompt too large, content filter), not the
+// critic list, so it must not trip the scan breaker.
+func TestCritic_ArticleRefusalIsNotErrCriticUnavailable(t *testing.T) {
+	mock := &perModelMockHFClient{errs: map[string]error{
+		"a": &APIError{StatusCode: 400, Model: "a", Body: "prompt too long"},
+	}}
+	_, err := NewCritic(mock, "a,b").Verify("article", nil)
+	if err == nil || errors.Is(err, ErrCriticUnavailable) {
+		t.Fatalf("err = %v, want a plain error that is not ErrCriticUnavailable", err)
+	}
+}

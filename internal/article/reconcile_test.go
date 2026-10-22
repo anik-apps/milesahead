@@ -745,3 +745,35 @@ func TestProcessRevisionIfDue_ExhaustedIsNotBackoff(t *testing.T) {
 		t.Errorf("processRevisionIfDue = %v, want errRevisionExhausted", err)
 	}
 }
+
+// criticGoneClient is fakeRevisionClient with every critic retired.
+type criticGoneClient struct{ *fakeRevisionClient }
+
+func (c criticGoneClient) Generate(model, prompt string, n int) (string, error) {
+	if model == fakeCriticModel {
+		return "", &ai.APIError{StatusCode: 404, Model: model, Body: "Not Found"}
+	}
+	return c.fakeRevisionClient.Generate(model, prompt, n)
+}
+
+// A critic outage is not the rewrite's fault: it must not use up the
+// article's retry budget and drop it into the admin's to-do.
+func TestProcessPendingRevisions_CriticOutageIsNotCharged(t *testing.T) {
+	database := setupFileDB(t)
+	client := criticGoneClient{&fakeRevisionClient{}}
+	mgr := NewManager(database, ai.NewPipeline(ai.NewGenerator(client, fakeGenModel, "", nil),
+		ai.NewCritic(client, fakeCriticModel), 80))
+	t.Cleanup(mgr.WaitRevisions)
+
+	id := createRevisableArticle(t, database, db.StatusPending)
+	if err := mgr.RequestRevision(id, "Add the annual fee", "admin"); err != nil {
+		t.Fatalf("RequestRevision: %v", err)
+	}
+	res := mgr.ProcessPendingRevisions(context.Background())
+	if res.Failed != 0 {
+		t.Errorf("pass = %+v, want no failure charged", res)
+	}
+	if p := pendingRevision(t, database, id); p.Failures != 0 {
+		t.Errorf("failures = %d, want 0", p.Failures)
+	}
+}
