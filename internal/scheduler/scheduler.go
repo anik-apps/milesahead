@@ -123,6 +123,17 @@ func (s *Scheduler) AddEnrichmentJob(interval time.Duration, enrichFunc func()) 
 	s.runAfterStartup("enrichment", s.startupDelay, enrichFunc)
 }
 
+// AddIntervalJob runs fn every interval, and once startupDelay after it is
+// added. A run still going when the next is due is skipped, not stacked.
+func (s *Scheduler) AddIntervalJob(name string, interval, startupDelay time.Duration, fn func()) {
+	job := skipIfRunning(name, fn)
+	if _, err := s.cron.AddFunc(fmt.Sprintf("@every %s", interval), job); err != nil {
+		slog.Error("failed to add interval job", "name", name, "error", err)
+		return
+	}
+	s.runAfterStartup(name, startupDelay, job)
+}
+
 // runAfterStartup runs fn once, delay after registration, unless Stop comes
 // first. Stop joins it if it has already begun.
 func (s *Scheduler) runAfterStartup(name string, delay time.Duration, fn func()) {

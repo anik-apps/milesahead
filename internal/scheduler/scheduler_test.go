@@ -282,3 +282,16 @@ func TestStop_CancelsPendingRevisionStartupPass(t *testing.T) {
 		t.Error("revision startup pass ran despite shutdown beginning first")
 	}
 }
+
+func TestAddIntervalJob_RunsAfterStartup(t *testing.T) {
+	s := New()
+	ran := make(chan struct{}, 1)
+	s.AddIntervalJob("model-health", time.Hour, 10*time.Millisecond, func() { ran <- struct{}{} })
+	s.Start()
+	defer s.Stop()
+	select {
+	case <-ran:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the job did not run after the startup delay")
+	}
+}
