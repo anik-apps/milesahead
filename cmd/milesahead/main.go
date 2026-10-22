@@ -404,6 +404,7 @@ func main() {
 	// detection, enrichment, clustering) goes through one labelled client.
 	enrichClient := hfClient.WithStep(health.StepEnrichment, worker)
 	side := newAISideJobs(cfg, database, enrichClient, mailSender, visionModel, enrichModels)
+	side.imageScorer.SetRecorder(worker)
 
 	// Enrichment runs as a reconciliation pass rather than inline in article
 	// creation. Inline, each step was a best-effort call that logged a warning

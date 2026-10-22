@@ -25,12 +25,19 @@ type Scorer struct {
 	textModels  []string
 	visionURL   string // e.g., "https://integrate.api.nvidia.com/v1"
 	visionToken string
-	visionModel string // e.g., "meta/llama-3.2-90b-vision-instruct"
-	httpClient  *http.Client
+	// visionModels are tried in order, e.g. "meta/llama-3.2-90b-vision-instruct";
+	// see visionScore.
+	visionModels []string
+	recorder     ai.Recorder // model health; nil records nothing
+	httpClient   *http.Client
 	// warmer, if set, is given the thumbnails about to go to the vision
 	// model before any of them is sent. See SetVisionModel.
 	warmer Warmer
 }
+
+// VisionStep is the model-health step vision calls are recorded under
+// (health.StepVision; a test in cmd/milesahead keeps the two equal).
+const VisionStep = "vision"
 
 // Warmer has an image host prepare files before another client fetches them.
 // *Searcher is one: its Warm has Wikimedia render new thumbnail sizes.
@@ -54,7 +61,8 @@ func NewScorer(textClient ai.HFClientInterface, textModels []string) *Scorer {
 	}
 }
 
-// SetVisionModel enables vision-based scoring for the final selection.
+// SetVisionModel enables vision-based scoring for the final selection. model
+// is one model or a comma-separated list, tried in order.
 //
 // warmer is handed the thumbnails Score is about to send, before any is sent
 // (the Searcher that found the candidates, in production). The vision
@@ -66,9 +74,12 @@ func NewScorer(textClient ai.HFClientInterface, textModels []string) *Scorer {
 func (s *Scorer) SetVisionModel(baseURL, token, model string, warmer Warmer) {
 	s.visionURL = baseURL
 	s.visionToken = token
-	s.visionModel = model
+	s.visionModels = ai.SplitModels(model)
 	s.warmer = warmer
 }
+
+// SetRecorder reports every vision call's outcome to model health.
+func (s *Scorer) SetRecorder(r ai.Recorder) { s.recorder = r }
 
 type scoreResponse struct {
 	Scores []struct {
@@ -89,7 +100,7 @@ func (s *Scorer) Score(title, tldr string, candidates []ImageCandidate) ([]Image
 
 	// Phase 2: Vision model scores the top candidates
 	// Try up to 5 candidates to ensure we get at least 3 successful vision scores
-	if s.visionModel != "" && s.visionURL != "" {
+	if len(s.visionModels) > 0 && s.visionURL != "" {
 		top := 5
 		if len(candidates) < top {
 			top = len(candidates)
@@ -252,6 +263,7 @@ func (s *Scorer) visionScore(title, tldr string, candidates []ImageCandidate) []
 			}
 		}
 	}()
+	mi := 0 // the vision model in use; moves down the list when one is down
 	for i, c := range candidates {
 		prompt := fmt.Sprintf(
 			`Reply with ONLY this JSON object and nothing before or after it:
@@ -281,82 +293,113 @@ Score this image 1-10 for how specifically it represents this topic.
 			continue
 		}
 
-		vReq := visionRequest{
-			Model: s.visionModel,
-			Messages: []visionMessage{
-				{Role: "user", Content: json.RawMessage(contentJSON)},
-			},
-			MaxTokens: visionMaxTokens,
-		}
-		reqBody, err := json.Marshal(vReq)
-		if err != nil {
-			slog.Warn("vision request marshal failed", "index", i, "error", err)
-			candidates[i].Score = candidates[i].Score * 0.6
-			continue
-		}
-
-		req, err := http.NewRequest("POST", s.visionURL+"/chat/completions", bytes.NewBuffer(reqBody))
-		if err != nil {
-			slog.Warn("vision request creation failed", "index", i, "error", err)
-			candidates[i].Score = candidates[i].Score * 0.6
-			continue
-		}
-		req.Header.Set("Authorization", "Bearer "+s.visionToken)
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := s.httpClient.Do(req)
-		if err != nil {
-			slog.Warn("vision request failed", "index", i, "error", err)
-			candidates[i].Score = candidates[i].Score * 0.6
-			continue
-		}
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		resp.Body.Close()
-
-		if resp.StatusCode != 200 {
-			body := string(respBody)
-			if len(body) > 200 {
-				body = body[:200]
+		for {
+			if mi >= len(s.visionModels) {
+				// Every vision model failed earlier in this call.
+				candidates[i].Score = candidates[i].Score * 0.6
+				break
 			}
-			slog.Warn("vision API error", "index", i, "status", resp.StatusCode, "body", body)
-			metrics.ImageScoringTotal.WithLabelValues("vision", "error").Inc()
+			model := s.visionModels[mi]
+			score, reason, outcome, err := s.visionCall(model, contentJSON)
+			if err == nil {
+				candidates[i].Score = score
+				visionSuccesses++
+				slog.Info("image vision-scored", "index", i, "model", model, "score", score,
+					"reason", reason, "attribution", c.Attribution)
+				metrics.ImageScoringTotal.WithLabelValues("vision", "success").Inc()
+				break
+			}
+			slog.Warn("vision scoring failed", "index", i, "model", model, "outcome", outcome, "error", err)
+			if outcome == ai.OutcomeRetired || outcome == ai.OutcomeTimeout || outcome == ai.OutcomeOverloaded {
+				mi++ // this model is down for the rest of the call; retry the candidate on the next
+				continue
+			}
 			candidates[i].Score = candidates[i].Score * 0.6
-			continue
+			break
 		}
-
-		var chatResp struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal(respBody, &chatResp); err != nil || len(chatResp.Choices) == 0 {
-			slog.Warn("vision response parse failed", "index", i, "error", err)
-			candidates[i].Score = candidates[i].Score * 0.6
-			continue
-		}
-
-		score, reason, ok := parseVisionScore(chatResp.Choices[0].Message.Content)
-		if !ok {
-			slog.Warn("vision score parse failed", "index", i,
-				"response", truncateForLog(chatResp.Choices[0].Message.Content))
-			candidates[i].Score = candidates[i].Score * 0.6
-			continue
-		}
-		result := struct {
-			Score  float64
-			Reason string
-		}{Score: score, Reason: reason}
-
-		candidates[i].Score = result.Score
-		visionSuccesses++
-		slog.Info("image vision-scored", "index", i, "score", result.Score, "reason", result.Reason, "attribution", c.Attribution)
-		metrics.ImageScoringTotal.WithLabelValues("vision", "success").Inc()
 	}
 
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].Score > candidates[j].Score
 	})
 	return candidates
+}
+
+// visionCall asks one vision model to score one image.
+func (s *Scorer) visionCall(model string, contentJSON []byte) (float64, string, ai.Outcome, error) {
+	start := time.Now()
+	fail := func(o ai.Outcome, status int, err error) (float64, string, ai.Outcome, error) {
+		s.recordVision(model, start, o, status, err)
+		return 0, "", o, err
+	}
+	reqBody, err := json.Marshal(visionRequest{
+		Model:     model,
+		Messages:  []visionMessage{{Role: "user", Content: json.RawMessage(contentJSON)}},
+		MaxTokens: visionMaxTokens,
+	})
+	if err != nil {
+		return fail(ai.OutcomeError, 0, err)
+	}
+	req, err := http.NewRequest("POST", s.visionURL+"/chat/completions", bytes.NewBuffer(reqBody))
+	if err != nil {
+		return fail(ai.OutcomeError, 0, err)
+	}
+	req.Header.Set("Authorization", "Bearer "+s.visionToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		e := fmt.Errorf("http request: %w", err)
+		return fail(ai.OutcomeOf(e), 0, e)
+	}
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body := string(respBody)
+		if len(body) > 200 {
+			body = body[:200]
+		}
+		metrics.ImageScoringTotal.WithLabelValues("vision", "error").Inc()
+		apiErr := &ai.APIError{StatusCode: resp.StatusCode, Model: model, Body: body}
+		o := ai.OutcomeOf(apiErr)
+		if o == ai.OutcomeError {
+			// A 4xx about the image (a thumbnail the provider could not fetch)
+			// is not the model's fault: not recorded against it.
+			return 0, "", o, apiErr
+		}
+		return fail(o, resp.StatusCode, apiErr)
+	}
+	var chatResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respBody, &chatResp); err != nil || len(chatResp.Choices) == 0 {
+		return fail(ai.OutcomeBadReply, resp.StatusCode, fmt.Errorf("vision response did not parse: %v", err))
+	}
+	score, reason, ok := parseVisionScore(chatResp.Choices[0].Message.Content)
+	if !ok {
+		return fail(ai.OutcomeBadReply, resp.StatusCode,
+			fmt.Errorf("vision score did not parse: %s", truncateForLog(chatResp.Choices[0].Message.Content)))
+	}
+	s.recordVision(model, start, ai.OutcomeOK, resp.StatusCode, nil)
+	return score, reason, ai.OutcomeOK, nil
+}
+
+func (s *Scorer) recordVision(model string, start time.Time, o ai.Outcome, status int, err error) {
+	if s.recorder == nil {
+		return
+	}
+	c := ai.ModelCall{Step: VisionStep, Model: model, Source: ai.SourceCall, Outcome: o,
+		HTTPStatus: status, At: time.Now().UTC(), Duration: time.Since(start)}
+	if err != nil {
+		c.Detail = err.Error()
+		if len(c.Detail) > 300 {
+			c.Detail = c.Detail[:300]
+		}
+	}
+	s.recorder.RecordModelCall(c)
 }

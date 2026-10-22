@@ -6,7 +6,16 @@ import (
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/config"
+	"github.com/kumaranik/milesahead/internal/health"
+	"github.com/kumaranik/milesahead/internal/images"
 )
+
+// The vision scorer records under the same step name health judges.
+func TestVisionStepName(t *testing.T) {
+	if images.VisionStep != health.StepVision {
+		t.Errorf("images.VisionStep %q != health.StepVision %q", images.VisionStep, health.StepVision)
+	}
+}
 
 func TestModelAlertRecipient(t *testing.T) {
 	cfg := &config.Config{}

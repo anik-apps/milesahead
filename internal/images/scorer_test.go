@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -150,5 +151,79 @@ func TestScorer_TextScoringFallsOverARetiredModel(t *testing.T) {
 	}
 	if scored[0].URL != "b" || scored[0].Score != 9 {
 		t.Errorf("top = %+v; want the fallback model's scores applied", scored[0])
+	}
+}
+
+type visionLog struct {
+	mu    sync.Mutex
+	calls []ai.ModelCall
+}
+
+func (l *visionLog) RecordModelCall(c ai.ModelCall) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.calls = append(l.calls, c)
+}
+
+// visionServer answers as a vision model would: 410 for dead-vision, a score
+// for anything else. It records which model each request named.
+func visionServer(t *testing.T) (*httptest.Server, *[]string) {
+	var mu sync.Mutex
+	models := []string{}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		mu.Lock()
+		models = append(models, req.Model)
+		mu.Unlock()
+		if req.Model == "dead-vision" {
+			w.WriteHeader(410)
+			w.Write([]byte(`{"detail":"end of life"}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\": 9, \"reason\": \"brand shown\"}"}}]}`))
+	}))
+	t.Cleanup(ts.Close)
+	return ts, &models
+}
+
+func TestVisionScore_MovesToTheNextModelWhenOneIsRetired(t *testing.T) {
+	ts, models := visionServer(t)
+	s := NewScorer(nil, nil)
+	s.SetVisionModel(ts.URL, "token", "dead-vision, live-vision", nil)
+	log := &visionLog{}
+	s.SetRecorder(log)
+
+	out := s.visionScore("Title", "Summary", []ImageCandidate{
+		{Thumbnail: "https://img.example/1.jpg", Score: 5},
+		{Thumbnail: "https://img.example/2.jpg", Score: 4},
+	})
+
+	if want := []string{"dead-vision", "live-vision", "live-vision"}; !reflect.DeepEqual(*models, want) {
+		t.Errorf("models asked %v, want %v", *models, want)
+	}
+	for i, c := range out {
+		if c.Score == 5 || c.Score == 4 {
+			t.Errorf("candidate %d kept its text score %v: vision did not score it", i, c.Score)
+		}
+	}
+	if len(log.calls) != 3 || log.calls[0].Outcome != ai.OutcomeRetired || log.calls[1].Outcome != ai.OutcomeOK ||
+		log.calls[0].Step != VisionStep {
+		t.Errorf("recorded %+v", log.calls)
+	}
+}
+
+func TestVisionScore_AllModelsGoneKeepsTextScores(t *testing.T) {
+	ts, _ := visionServer(t)
+	s := NewScorer(nil, nil)
+	s.SetVisionModel(ts.URL, "token", "dead-vision", nil)
+	out := s.visionScore("Title", "Summary", []ImageCandidate{
+		{Thumbnail: "https://img.example/1.jpg", Score: 5},
+		{Thumbnail: "https://img.example/2.jpg", Score: 4},
+	})
+	if out[0].Score != 5 || out[1].Score != 4 {
+		t.Errorf("scores %v, %v; want the text scores 5 and 4 restored", out[0].Score, out[1].Score)
 	}
 }
