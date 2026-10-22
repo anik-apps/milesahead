@@ -298,10 +298,11 @@ a range ("7,000-24,000"), or a percentage beside a multiplier cannot be a bar.
 
 One call per article on the `ai.infographic_model` chain (the
 `enrichment_model` chain when unset), after the image and only once key details
-exist. Production puts nemotron-3-super first and gpt-oss-20b second, the
-reverse of `enrichment_model`: when the model drew SVG, gpt-oss-20b timed out at
-120 seconds on 4 of 10 real articles, while nemotron-3-super answered every call
-that reached it. It asks for up to 12,288 tokens, since a reasoning model spends
+exist. Production puts a nemotron super model first and gpt-oss-20b second,
+the reverse of `enrichment_model`: when the model drew SVG, gpt-oss-20b timed
+out at 120 seconds on 4 of 10 real articles, while nemotron-3-super answered
+every call that reached it. nemotron-3-super was retired on 2026-10-20; its
+successor, nemotron-3.5-super-vl, now leads, not yet measured on charts. It asks for up to 12,288 tokens, since a reasoning model spends
 most of its budget before it answers and a reply cut off mid-reasoning has no
 chart in it. That is more than the 30-second short-call class allows, so it has
 its own client: 120 seconds per model (`ai.InfographicCallTimeout`) and no

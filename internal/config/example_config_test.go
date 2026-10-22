@@ -30,8 +30,8 @@ func TestExampleConfigLoads(t *testing.T) {
 	}
 	// The generator and critic must differ: a model grading its own output is
 	// not a quality gate. critic_model is a chain, so no critic in it may be
-	// the primary generator. (The generator FALLBACK chain does share
-	// nemotron-3-super with the critic chain; that caveat is documented in
+	// the primary generator. (The generator FALLBACK chain does share its
+	// last model with the critic chain; that caveat is documented in
 	// config.example.yaml rather than forbidden, because no other measured
 	// critic scores usable articles above the threshold.)
 	critics := ai.SplitModels(cfg.AI.CriticModel)
@@ -46,7 +46,8 @@ func TestExampleConfigLoads(t *testing.T) {
 		t.Errorf("critic chain is %d deep; configure at least two", len(critics))
 	}
 	// Every critic score in the example's rationale was measured with thinking
-	// off; with it on, nemotron-3-super scored 45 and leaked reasoning.
+	// off; with it on, nemotron-3-super (since retired) scored 45 and leaked
+	// reasoning.
 	if !cfg.AI.CriticDisableThinking {
 		t.Error("critic_disable_thinking must be true: the documented critic " +
 			"measurements were all taken with thinking off")
@@ -76,9 +77,8 @@ func TestExampleConfigLoads(t *testing.T) {
 	// retirement on 2026-09-28 took down every side job that shared it.
 	//
 	// This used to forbid the critic anywhere in enrichment_model. Both are
-	// chains now, and nvidia/nemotron-3-super-120b-a12b is legitimately in
-	// both: first critic (fast with thinking off) and enrichment's second
-	// model. What the rule protects is still enforced -- enrichment must not
+	// chains now, and the first critic is legitimately in both: first critic
+	// (fast with thinking off) and enrichment's second model. What the rule protects is still enforced -- enrichment must not
 	// be LED by the primary critic, so when the critic's backend degrades,
 	// enrichment's first choice is unaffected and the side jobs only lose a
 	// fallback. (Enrichment requests also never carry the critic's
@@ -99,6 +99,50 @@ func TestExampleConfigLoads(t *testing.T) {
 	}
 }
 
+// retiredModels are models the provider has retired, with the date each was
+// found gone. A model on this list in any configured chain fails every call
+// it gets; in the critic chain that stops publication outright.
+var retiredModels = map[string]string{
+	"openai/gpt-oss-120b":               "by 2026-09-21 (generator, retired upstream)",
+	"mistralai/mistral-nemotron":        "2026-09-28 (critic, 410 end of life)",
+	"moonshotai/kimi-k3":                "2026-10-15 (critic, 410 end of life)",
+	"nvidia/nemotron-3-super-120b-a12b": "2026-10-20 (critic, 404)",
+}
+
+// TestConfigs_NoRetiredModels keeps retired models out of every model list in
+// both config.example.yaml and deploy.yml. From 2026-10-20 production published
+// nothing for 2.5 days because both critics in its chain had been retired.
+func TestConfigs_NoRetiredModels(t *testing.T) {
+	cfg, err := Load("../../config.example.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, list := range map[string]string{
+		"generator_model":          cfg.AI.GeneratorModel,
+		"fallback_generator_model": cfg.AI.FallbackGeneratorModel,
+		"critic_model":             cfg.AI.CriticModel,
+		"critic2_model":            cfg.AI.Critic2Model,
+		"enrichment_model":         cfg.AI.EnrichmentModel,
+		"infographic_model":        cfg.AI.InfographicModel,
+		"vision_model":             cfg.AI.VisionModel,
+	} {
+		for _, m := range ai.SplitModels(list) {
+			if when, gone := retiredModels[m]; gone {
+				t.Errorf("config.example.yaml %s lists %s, retired %s", name, m, when)
+			}
+		}
+	}
+	raw, err := os.ReadFile("../../.github/workflows/deploy.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for m, when := range retiredModels {
+		if strings.Contains(string(raw), `"`+m) || strings.Contains(string(raw), ","+m) {
+			t.Errorf("deploy.yml lists %s, retired %s", m, when)
+		}
+	}
+}
+
 // TestDeployConfigMirrorsCritic pins the production critic settings to the
 // documented ones. deploy.yml writes its own config heredoc, so a change to
 // config.example.yaml alone would ship nothing.
@@ -113,7 +157,14 @@ func TestDeployConfigMirrorsCritic(t *testing.T) {
 	}
 	deploy := string(raw)
 	want := []string{
+		// Every model list, so a model swapped in one file and not the other
+		// fails here instead of shipping (deploy.yml is what production runs).
+		fmt.Sprintf("generator_model: %q", cfg.AI.GeneratorModel),
+		fmt.Sprintf("fallback_generator_model: %q", cfg.AI.FallbackGeneratorModel),
+		fmt.Sprintf("enrichment_model: %q", cfg.AI.EnrichmentModel),
+		fmt.Sprintf("vision_model: %q", cfg.AI.VisionModel),
 		fmt.Sprintf("critic_model: %q", cfg.AI.CriticModel),
+		fmt.Sprintf("critic2_model: %q", cfg.AI.Critic2Model),
 		fmt.Sprintf("critic_disable_thinking: %v", cfg.AI.CriticDisableThinking),
 		fmt.Sprintf("story_dedup: %q", cfg.Scanner.StoryDedup),
 		// Infographics are set the same in both: changing one alone fails here.
