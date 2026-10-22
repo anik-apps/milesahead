@@ -109,6 +109,11 @@ jobs:
       - name: Upload screenshots
         uses: actions/upload-artifact@v6
         if: always()
+        # The screenshots are for looking at, not the result: the test step
+        # above passes or fails on its own. Artifact storage is shared across
+        # the anik-apps organisation, and when it is full (it was on
+        # 2026-10-22) the upload fails and took a passing check down with it.
+        continue-on-error: true
         with:
           name: screenshots
           retention-days: 7
