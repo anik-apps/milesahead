@@ -37,6 +37,9 @@ type HFClient struct {
 	// disableThinking asks the model to answer without a reasoning phase; see
 	// WithThinkingDisabled.
 	disableThinking bool
+	// step and recorder label the client for model health; see WithStep.
+	step     string
+	recorder Recorder
 }
 
 // initialBackoff is the first retry delay; it doubles per attempt.
@@ -168,6 +171,37 @@ func (c *HFClient) WithRequestTimeout(d time.Duration) *HFClient {
 	return &cp
 }
 
+// WithStep returns a copy of the client that reports every finished call to
+// rec under the given model-health step (generator, critic, enrichment,
+// infographic). The receiver is not modified, so one base client can be
+// labelled once per step; copies made from a labelled client keep the label.
+// A client without a step reports nothing, which is what tests, ab-models and
+// the health check's own probes want.
+func (c *HFClient) WithStep(step string, rec Recorder) *HFClient {
+	cp := *c
+	cp.step = step
+	cp.recorder = rec
+	return &cp
+}
+
+// ReportBadReply records that a call this client made answered, but with a
+// reply its caller could not use: a critic's JSON that will not parse.
+// Generate has already recorded the call itself as ok.
+func (c *HFClient) ReportBadReply(model, detail string) {
+	c.record(model, time.Now(), OutcomeBadReply, http.StatusOK, errors.New(detail))
+}
+
+// record reports one finished call to the client's recorder, if it has one.
+func (c *HFClient) record(model string, start time.Time, o Outcome, status int, err error) {
+	if c.recorder == nil || c.step == "" {
+		return
+	}
+	c.recorder.RecordModelCall(ModelCall{
+		Step: c.step, Model: model, Source: SourceCall, Outcome: o, HTTPStatus: status,
+		Detail: outcomeDetail(err), At: time.Now().UTC(), Duration: time.Since(start),
+	})
+}
+
 // chatRequest is the OpenAI-compatible request format.
 type chatRequest struct {
 	Model       string        `json:"model"`
@@ -255,7 +289,9 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 	if err != nil {
 		metrics.AIAPIErrorsTotal.Inc()
 		metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-		return "", fmt.Errorf("marshal request: %w", err)
+		err = fmt.Errorf("marshal request: %w", err)
+		c.record(model, start, OutcomeError, 0, err)
+		return "", err
 	}
 
 	// Retries have to outlast a provider hiccup, not just a packet loss. The
@@ -281,7 +317,9 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 			cancel()
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", fmt.Errorf("create request: %w", err)
+			err = fmt.Errorf("create request: %w", err)
+			c.record(model, start, OutcomeError, 0, err)
+			return "", err
 		}
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		req.Header.Set("Content-Type", "application/json")
@@ -311,7 +349,9 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 			}
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", fmt.Errorf("http request: %w", err)
+			e := fmt.Errorf("http request: %w", err)
+			c.record(model, start, OutcomeOf(e), 0, e)
+			return "", e
 		}
 
 		respBody, err := io.ReadAll(resp.Body)
@@ -320,7 +360,9 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 		if err != nil {
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", fmt.Errorf("read response: %w", err)
+			e := fmt.Errorf("read response: %w", err)
+			c.record(model, start, OutcomeOf(e), resp.StatusCode, e)
+			return "", e
 		}
 
 		// Retry throttling and any 5xx. Previously only 429 and 503 were
@@ -338,21 +380,28 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 			}
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", &APIError{StatusCode: resp.StatusCode, Model: model,
-				Body: string(respBody), Retries: c.maxRetries}
+			apiErr := &APIError{StatusCode: resp.StatusCode, Model: model,
+				Body: string(respBody), Retries: c.maxRetries, Kind: classifyStatus(resp.StatusCode)}
+			c.record(model, start, apiErr.Kind, resp.StatusCode, apiErr)
+			return "", apiErr
 		}
 
 		if resp.StatusCode != http.StatusOK {
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", &APIError{StatusCode: resp.StatusCode, Model: model, Body: string(respBody)}
+			apiErr := &APIError{StatusCode: resp.StatusCode, Model: model,
+				Body: string(respBody), Kind: classifyStatus(resp.StatusCode)}
+			c.record(model, start, apiErr.Kind, resp.StatusCode, apiErr)
+			return "", apiErr
 		}
 
 		var chatResp chatResponse
 		if err := json.Unmarshal(respBody, &chatResp); err != nil {
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
+			e := fmt.Errorf("unmarshal response: %w (body: %s)", err, string(respBody))
+			c.record(model, start, OutcomeBadReply, resp.StatusCode, e)
+			return "", e
 		}
 
 		// HTTP 200 carrying an error object. This is how an OpenAI-compatible
@@ -362,13 +411,20 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 		if chatResp.Error != nil {
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", &APIError{Model: model, Body: chatResp.Error.Message}
+			apiErr := &APIError{Model: model, Body: chatResp.Error.Message, Kind: OutcomeError}
+			if apiErr.ModelGone() {
+				apiErr.Kind = OutcomeRetired
+			}
+			c.record(model, start, apiErr.Kind, resp.StatusCode, apiErr)
+			return "", apiErr
 		}
 
 		if len(chatResp.Choices) == 0 {
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", &APIError{Model: model, Body: "no choices in response"}
+			apiErr := &APIError{Model: model, Body: "no choices in response", Kind: OutcomeBadReply}
+			c.record(model, start, OutcomeBadReply, resp.StatusCode, apiErr)
+			return "", apiErr
 		}
 
 		content := chatResp.Choices[0].Message.Content
@@ -402,15 +458,20 @@ func (c *HFClient) Generate(model, prompt string, maxTokens int) (string, error)
 			}
 			metrics.AIAPIErrorsTotal.Inc()
 			metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-			return "", &APIError{Model: model, Body: why}
+			apiErr := &APIError{Model: model, Body: why, Kind: OutcomeBadReply}
+			c.record(model, start, OutcomeBadReply, resp.StatusCode, apiErr)
+			return "", apiErr
 		}
 
 		metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
+		c.record(model, start, OutcomeOK, resp.StatusCode, nil)
 		return content, nil
 	}
 
 	slog.Error("ai api failed", "model", model, "error", "max retries exceeded")
 	metrics.AIAPIErrorsTotal.Inc()
 	metrics.AIAPIDuration.Observe(time.Since(start).Seconds())
-	return "", fmt.Errorf("max retries exceeded")
+	err = fmt.Errorf("max retries exceeded")
+	c.record(model, start, OutcomeError, 0, err)
+	return "", err
 }

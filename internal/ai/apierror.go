@@ -20,6 +20,10 @@ type APIError struct {
 	Model      string
 	Body       string
 	Retries    int
+	// Kind is how model health classifies the failure, set where Generate
+	// returns it. It is empty on APIErrors built elsewhere (tests, fakes);
+	// OutcomeOf falls back to the status code then.
+	Kind Outcome
 }
 
 func (e *APIError) Error() string {
