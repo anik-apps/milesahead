@@ -864,13 +864,21 @@ func TestOpen_ReadThenWriteTransactionWaitsForOtherWriters(t *testing.T) {
 	}
 
 	// Another connection writes while the transaction is open. Under a
-	// deferred begin it commits straight away; under an immediate one it waits.
+	// deferred begin it commits straight away, and the write below then fails;
+	// under an immediate one it waits for the transaction to finish.
+	started := make(chan struct{})
 	other := make(chan error, 1)
 	go func() {
+		close(started)
 		_, err := d.DB().Exec(`UPDATE txlock_probe SET n = n + 10 WHERE id = 1`)
 		other <- err
 	}()
-	time.Sleep(200 * time.Millisecond)
+	<-started
+	select {
+	case err := <-other:
+		t.Fatalf("another connection wrote while the transaction was open (err: %v); it should wait for the transaction", err)
+	case <-time.After(200 * time.Millisecond):
+	}
 
 	if _, err := tx.Exec(`UPDATE txlock_probe SET n = ? WHERE id = 1`, n+1); err != nil {
 		t.Fatalf("write after read in a transaction failed while another connection wrote: %v", err)
