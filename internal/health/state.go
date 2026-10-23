@@ -54,6 +54,12 @@ func Apply(h db.ModelHealth, c ai.ModelCall) db.ModelHealth {
 		}
 		return h
 	}
+	// A call streak lasts while failures keep coming within callFailWindow of
+	// each other. Past that it has expired (StateOf ignores it), and the next
+	// failure, a check's or a call's, must not revive it: LastFail is shared.
+	if !h.LastFail.IsZero() && at.Sub(h.LastFail) > callFailWindow {
+		h.CallFailStreak = 0
+	}
 	h.LastFail = at
 	if h.FailingSince.IsZero() {
 		h.FailingSince = at

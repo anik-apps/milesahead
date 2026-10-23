@@ -510,8 +510,10 @@ func main() {
 	if every := healthInterval(cfg); every > 0 {
 		sched.AddIntervalJob("model-health", every, 30*time.Second, worker.RunCheck)
 	} else {
-		// The periodic check is off; still check once at boot, as the preflight always did.
-		go worker.RunCheck()
+		// The periodic check is off; still check once at boot, as the preflight
+		// always did. Through the scheduler, so shutdown joins it (bounded) like
+		// any other job rather than closing the database under it.
+		sched.AddStartupJob("model-health", 30*time.Second, worker.RunCheck)
 	}
 
 	sched.Start()

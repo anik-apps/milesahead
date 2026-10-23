@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -65,6 +66,34 @@ func TestModelAlertSend_KeepsTheLastAttempt(t *testing.T) {
 	got, msg, err := d.LastModelAlertSend()
 	if err != nil || !got.Equal(at.Add(time.Hour)) || msg != "" {
 		t.Errorf("last = %v %q %v", got, msg, err)
+	}
+}
+
+// A source switched off since it added stories is not scanned, so it does not
+// count towards the drought, as the scan's own clustering ignores it.
+func TestCountSourcesWithRawSince_OnlyActiveSources(t *testing.T) {
+	d := openTestDB(t)
+	since := time.Now().Add(-time.Hour)
+	var ids []int64
+	for i, name := range []string{"A", "B"} {
+		id, err := d.CreateSource(&Source{Name: name, URL: "https://" + name + ".example", Active: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for j := range 2 {
+			if _, err := d.CreateRawArticle(&RawArticle{SourceID: id, Title: "T",
+				URL: fmt.Sprintf("https://%s.example/%d-%d", name, i, j), Content: "c",
+				PublishedAt: time.Now(), Hash: fmt.Sprintf("h%s%d", name, j)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ids = append(ids, id)
+	}
+	if err := d.ToggleSourceActive(ids[1]); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := d.CountSourcesWithRawSince(since); err != nil || n != 1 {
+		t.Errorf("sources with raw = %d, %v; want 1 (the inactive source is not counted)", n, err)
 	}
 }
 

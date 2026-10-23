@@ -50,6 +50,29 @@ func TestStateOf_Debounces(t *testing.T) {
 	}
 }
 
+// Three failed calls 7 hours ago have expired. A failure now, a check's or a
+// call's, starts afresh rather than reviving them: one blip is not failing.
+func TestApply_ExpiredCallStreakIsNotRevived(t *testing.T) {
+	old := []ai.ModelCall{
+		call(ai.OutcomeTimeout, ai.SourceCall, t0), call(ai.OutcomeTimeout, ai.SourceCall, t0),
+		call(ai.OutcomeTimeout, ai.SourceCall, t0),
+	}
+	later := t0.Add(7 * time.Hour)
+	for _, src := range []string{ai.SourceCheck, ai.SourceCall} {
+		h := fold(append(old, call(ai.OutcomeTimeout, src, later))...)
+		if got := StateOf(h, true, later); got != ModelHealthy {
+			t.Errorf("one failed %s 7h after an expired call streak: %q (call streak %d), want healthy",
+				src, got, h.CallFailStreak)
+		}
+	}
+	// Within the window the streak carries on.
+	h := fold(call(ai.OutcomeTimeout, ai.SourceCall, t0), call(ai.OutcomeTimeout, ai.SourceCall, t0),
+		call(ai.OutcomeTimeout, ai.SourceCall, t0.Add(5*time.Hour)))
+	if got := StateOf(h, true, t0.Add(5*time.Hour)); got != ModelFailing {
+		t.Errorf("3 failed calls within 6h: %q, want failing", got)
+	}
+}
+
 func TestApply_TracksFailingSinceAndAnswered(t *testing.T) {
 	h := fold(call(ai.OutcomeOK, ai.SourceCall, t0), call(ai.OutcomeTimeout, ai.SourceCall, t0.Add(time.Minute)),
 		call(ai.OutcomeTimeout, ai.SourceCheck, t0.Add(2*time.Minute)))

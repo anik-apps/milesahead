@@ -134,6 +134,13 @@ func (s *Scheduler) AddIntervalJob(name string, interval, startupDelay time.Dura
 	s.runAfterStartup(name, startupDelay, job)
 }
 
+// AddStartupJob runs fn once, startupDelay after registration, and never again.
+// Like every other job, Stop cancels it if it has not begun and joins it if it
+// has, so it does not run on against a database main is about to close.
+func (s *Scheduler) AddStartupJob(name string, startupDelay time.Duration, fn func()) {
+	s.runAfterStartup(name, startupDelay, fn)
+}
+
 // runAfterStartup runs fn once, delay after registration, unless Stop comes
 // first. Stop joins it if it has already begun.
 func (s *Scheduler) runAfterStartup(name string, delay time.Duration, fn func()) {

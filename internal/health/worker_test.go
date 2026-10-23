@@ -170,6 +170,38 @@ func TestWorker_FailuresArrivingTogetherSendOneEmail(t *testing.T) {
 	}
 }
 
+// An ok that clears a failure is evaluated straight away: publishing resuming
+// must not wait for the next hourly check to be emailed.
+func TestWorker_RecoveringCallIsEvaluated(t *testing.T) {
+	d, s := openDB(t), &fakeSender{}
+	w := newWorker(t, d, []Step{genStep, criticStep}, nil, s)
+	for _, c := range []ai.ModelCall{
+		{Step: StepGenerator, Model: "gen", Source: ai.SourceCall, Outcome: ai.OutcomeOK, At: t0},
+		{Step: StepCritic, Model: "super", Source: ai.SourceCall, Outcome: ai.OutcomeRetired, At: t0},
+		{Step: StepCritic, Model: "kimi", Source: ai.SourceCall, Outcome: ai.OutcomeRetired, At: t0},
+	} {
+		w.RecordModelCall(c)
+	}
+	w.Drain()
+	if s.count() != 1 || !strings.Contains(s.sent[0].Subject, "Critic is down") {
+		t.Fatalf("sent %+v, want 'Critic is down'", s.sent)
+	}
+
+	w.RecordModelCall(ai.ModelCall{Step: StepCritic, Model: "super", Source: ai.SourceCall,
+		Outcome: ai.OutcomeOK, At: t0.Add(time.Minute)})
+	w.Drain()
+	if s.count() != 2 || !strings.Contains(s.sent[1].Subject, "publishing has resumed") {
+		t.Fatalf("sent %+v, want the recovery emailed", s.sent)
+	}
+
+	// An ok that clears nothing does not evaluate.
+	w.RecordModelCall(ai.ModelCall{Step: StepCritic, Model: "super", Source: ai.SourceCall,
+		Outcome: ai.OutcomeOK, At: t0.Add(2 * time.Minute)})
+	if w.apply(<-w.events) {
+		t.Error("a routine ok asked for an evaluation")
+	}
+}
+
 func TestWorker_RecordNeverBlocks(t *testing.T) {
 	w := New(Options{DB: openDB(t), Steps: []Step{criticStep}, Buffer: 1})
 	done := make(chan struct{})

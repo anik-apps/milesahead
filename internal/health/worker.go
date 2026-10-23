@@ -103,13 +103,13 @@ func (w *Worker) RecordModelCall(c ai.ModelCall) {
 	}
 }
 
-// evaluateDelay batches failures: a critic chain fails model after model
+// evaluateDelay batches outcomes: a critic chain fails model after model
 // within a second, and judging after the first would email "running on a
 // backup" moments before "down". One evaluation covers them all.
 const evaluateDelay = 5 * time.Second
 
 // Run applies queued outcomes until ctx is done, evaluating evaluateDelay
-// after the first failure of a batch.
+// after the first failure (or recovery, see apply) of a batch.
 func (w *Worker) Run(ctx context.Context) {
 	var due <-chan time.Time
 	for {
@@ -127,18 +127,18 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
-// Drain applies every queued outcome now, then evaluates once if any
-// failed. Tests use it instead of Run.
+// Drain applies every queued outcome now, then evaluates once if any asked
+// for it (see apply). Tests use it instead of Run.
 func (w *Worker) Drain() {
-	failed := false
+	needed := false
 	for {
 		select {
 		case c := <-w.events:
 			if w.apply(c) {
-				failed = true
+				needed = true
 			}
 		default:
-			if failed {
+			if needed {
 				w.evaluate()
 			}
 			return
@@ -146,15 +146,18 @@ func (w *Worker) Drain() {
 	}
 }
 
-// apply records one outcome and reports whether it was a failure.
+// apply records one outcome and reports whether to evaluate: after a failure,
+// and after an ok that clears one, so a recovery is not left for the next
+// check round.
 func (w *Worker) apply(c ai.ModelCall) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if err := w.applyLocked(c); err != nil {
+	cleared, err := w.applyLocked(c)
+	if err != nil {
 		slog.Warn("model health: recording a call", "step", c.Step, "model", c.Model, "error", err)
 		return false
 	}
-	return c.Outcome != ai.OutcomeOK
+	return c.Outcome != ai.OutcomeOK || cleared
 }
 
 func (w *Worker) evaluate() {
@@ -163,12 +166,16 @@ func (w *Worker) evaluate() {
 	w.evaluateLocked()
 }
 
-func (w *Worker) applyLocked(c ai.ModelCall) error {
-	row, _, err := w.o.DB.GetModelHealth(c.Step, c.Model)
+// applyLocked folds c into its row, reporting whether c is an ok that cleared
+// a failure (the row's last outcome was not ok).
+func (w *Worker) applyLocked(c ai.ModelCall) (cleared bool, err error) {
+	row, found, err := w.o.DB.GetModelHealth(c.Step, c.Model)
 	if err != nil {
-		return err
+		return false, err
 	}
-	return w.o.DB.UpsertModelHealth(Apply(row, c))
+	cleared = c.Outcome == ai.OutcomeOK && found &&
+		row.LastOutcome != "" && row.LastOutcome != string(ai.OutcomeOK)
+	return cleared, w.o.DB.UpsertModelHealth(Apply(row, c))
 }
 
 // RunCheck probes every model in every list that is on, records each result
@@ -199,7 +206,7 @@ func (w *Worker) RunCheck() {
 			if r.Err != nil {
 				c.Detail = cut(r.Err.Error(), 300)
 			}
-			if err := w.applyLocked(c); err != nil {
+			if _, err := w.applyLocked(c); err != nil { // evaluated below either way
 				slog.Warn("model health: recording a check", "step", s.Name, "model", m, "error", err)
 			}
 		}

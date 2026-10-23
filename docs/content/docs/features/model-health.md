@@ -86,7 +86,7 @@ The Review tab shows a one-line banner only while publishing has stopped or aler
 
 ## Emails
 
-The worker evaluates every list after each check round, and 5 seconds after the first failed call of a batch. The delay batches failures: a critic list fails model after model within a second, and judging after the first would send "running on a backup" moments before "down". It also covers every other failure that arrived in those 5 seconds, so one outage sends one email.
+The worker evaluates every list after each check round, and 5 seconds after the first failed call of a batch, or the first call that answers again after a failure, so publishing resuming is emailed without waiting for the next check. The delay batches failures: a critic list fails model after model within a second, and judging after the first would send "running on a backup" moments before "down". It also covers every other failure that arrived in those 5 seconds, so one outage sends one email.
 
 | Event | Severity |
 |---|---|
@@ -112,7 +112,7 @@ The rules:
 
 ## The drought alarm
 
-The one alarm that does not depend on knowing the cause. With each check round the worker asks two questions: has any `generated_articles` row of any status been created in the last 24 hours, and have 2 or more sources added raw articles in that time. No articles with 2 or more active sources is an urgent "No article in 24 hours" email, repeated daily.
+The one alarm that does not depend on knowing the cause. With each check round the worker asks two questions: has any `generated_articles` row of any status been created in the last 24 hours, and have 2 or more active sources added raw articles in that time (a source switched off is not scanned, so it does not count). No articles with 2 or more active sources is an urgent "No article in 24 hours" email, repeated daily.
 
 It catches what model health cannot see: a critic answering in prose, story dedup in `block` mode eating every cluster, a pipeline bug, a scanner fault. The page shows the stored result and never runs the count itself.
 

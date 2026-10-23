@@ -186,10 +186,13 @@ func (d *Database) CountArticlesCreatedSince(t time.Time) (int, error) {
 	return n, err
 }
 
-// CountSourcesWithRawSince counts sources that added a raw article at or after t.
+// CountSourcesWithRawSince counts active sources that added a raw article at or
+// after t. Inactive ones are left out, as the scan's clustering leaves them out.
 func (d *Database) CountSourcesWithRawSince(t time.Time) (int, error) {
 	var n int
-	err := d.db.QueryRow(`SELECT COUNT(DISTINCT source_id) FROM raw_articles WHERE created_at >= ?`,
+	err := d.db.QueryRow(`SELECT COUNT(DISTINCT r.source_id) FROM raw_articles r
+		JOIN sources s ON s.id = r.source_id
+		WHERE s.active = 1 AND r.created_at >= ?`,
 		t.UTC().Format(sqliteTime)).Scan(&n)
 	return n, err
 }
