@@ -98,11 +98,11 @@ The rules:
 
 - **One email per evaluation.** All the events of one evaluation go in one email, most severe first. The subject names the most severe, with "(+N more)".
 - **Urgent repeats daily** while it lasts, with "Still:" in front. Warnings never repeat: if things get worse, the urgent email is the reminder.
-- **A warning has a 24-hour cool-down.** After a warning is emailed, its list (or backup) sends no other warning for 24 hours; changes in that time are saved and shown on the tab. A list flapping between `degraded` and `ok` sends one email a day at most.
+- **A warning has a 24-hour cool-down.** After a warning is emailed, its list (or backup) sends no other warning for 24 hours; changes in that time are shown on the tab, not emailed. A list flapping between `degraded` and `ok` sends one email a day at most.
 - **Only urgent states email their recovery.** A list going back to `ok` from `degraded`, a list that does not stop publishing coming back, and a backup coming back are shown on the tab and not emailed.
-- **An alert is saved only after its email is sent.** State lives in `model_alerts`. A failed send saves nothing, is retried at the next evaluation, is shown under Alerts on the tab, and is counted in `milesahead_emails_sent_total{kind="model_alert",outcome="failed"}`. A restart does not re-send, because the state survives it.
+- **An alert is saved only after its email went out.** State lives in `model_alerts`. A failed send saves nothing, is retried at the next evaluation, is shown under Alerts on the tab, and is counted in `milesahead_emails_sent_total{kind="model_alert",outcome="failed"}`. When nothing can be sent, nothing is saved. A restart does not re-send, because the state survives it.
 - **Recipient:** `ai.alert_email`, else `votes.alert_email`. `deploy.yml` writes `ai.alert_email` from the `ALERT_EMAIL` secret and emits a deploy warning when it is empty.
-- **With no address, or no SMTP,** nothing is emailed. The events are logged at WARN as `model health alert not emailed`, and the tab and the Review banner say alerts are not emailed. The alert state is still saved, so adding the address later does not replay old events; an urgent one that is still true is emailed again within a day.
+- **With no address, or no SMTP,** nothing is emailed and nothing is saved. The events are logged at WARN as `model health alert not emailed` at every evaluation, and the tab and the Review banner say alerts are not emailed. The first email after an address is configured lists everything that is wrong at that moment; problems that cleared in the meantime are not mentioned.
 - **Send test alert** (`POST /admin/models/test-alert`, admin login and CSRF token required) sends a one-line email to the recipient, to prove the address and SMTP work. It does not change any alert state.
 
 ## The drought alarm

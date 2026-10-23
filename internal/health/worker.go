@@ -242,7 +242,9 @@ func (w *Worker) droughtAt(now time.Time) (bool, error) {
 
 // evaluateLocked judges every list, plans alerts, and sends one email. An
 // alert's state is saved only after its email went out; a failed send is
-// retried at the next evaluation.
+// retried at the next evaluation. With no address or no SMTP nothing can go
+// out, so nothing is saved either: the first evaluation after alerting is set
+// up emails everything that is still wrong.
 func (w *Worker) evaluateLocked() {
 	now := w.o.Now().UTC()
 	rows, err := w.o.DB.ListModelHealth()
@@ -268,6 +270,7 @@ func (w *Worker) evaluateLocked() {
 	case len(events) == 0:
 	case sender == nil || to == "":
 		slog.Warn("model health alert not emailed", "reason", why, "events", titles(events))
+		return
 	default:
 		if err := sender.SendModelAlert(to, Compose(events, w.o.AdminURL)); err != nil {
 			metrics.EmailsSentTotal.WithLabelValues(metrics.EmailModelAlert, metrics.EmailFailed).Inc()

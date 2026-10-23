@@ -246,6 +246,29 @@ func TestWorker_NotEmailed(t *testing.T) {
 	}
 }
 
+// With nothing able to send, nothing is marked sent: the first evaluation after
+// an address is set emails everything that is still wrong.
+func TestWorker_AddressAddedLaterSendsTheCurrentProblems(t *testing.T) {
+	d, s := openDB(t), &fakeSender{}
+	w := New(Options{DB: d, Steps: []Step{genStep, criticStep}, Check: criticGone,
+		Now: func() time.Time { return t0 }})
+	w.SetAlerting(nil, "", "no address: set the ALERT_EMAIL secret")
+	w.RunCheck()
+	stored, err := d.ListModelAlerts()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != 0 {
+		t.Fatalf("alert state saved with nothing to send it: %+v", stored)
+	}
+
+	w.SetAlerting(s, "ops@example.com", "")
+	w.RunCheck()
+	if s.count() != 1 || !s.sent[0].Urgent || !strings.Contains(s.sent[0].Subject, "Critic is down") {
+		t.Fatalf("sent %+v, want one urgent 'Critic is down'", s.sent)
+	}
+}
+
 func TestWorker_SendTestAlert(t *testing.T) {
 	s := &fakeSender{}
 	w := newWorker(t, openDB(t), []Step{criticStep}, nil, s)
