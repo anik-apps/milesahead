@@ -49,7 +49,12 @@ A model that has not been checked or called yet is `unknown`: shown as such, and
 
 **Recording never blocks an AI call.** Outcomes go into a buffered channel read by one goroutine, the health worker. When the buffer (1024) is full the outcome is dropped and counted in `milesahead_model_events_dropped_total`. The worker is the only writer, so SQLite's `busy_timeout` can never stall a model call. A client that has no step label (tests, `ab-models`) records nothing.
 
-**The check** is the same preflight that runs at boot. It runs 30 seconds after startup, then every `ai.health_check_interval` minutes, probing every model through the client its list really uses and under that model's real timeout. Probes run at the same time, so a round lasts as long as its slowest model, which for a slow critic can be minutes. A model that appears in several lists is probed once for each request shape, and the result is written for every step that uses that shape.
+**The check** is the same preflight that runs at boot. It runs 30 seconds after startup, then every `ai.health_check_interval` minutes. It probes each model once per preflight role, with that role's budget:
+
+- `generator`, `fallback` and `critic`: 4096 tokens, which gets the full request timeout. Critics are probed through the critic's client (thinking off).
+- `enrichment` and `vision`: 512 tokens, which gets 30 seconds.
+
+Probes run at the same time, so a round lasts as long as its slowest probe, which for a slow critic can be minutes. Each step takes the results of its own roles (the `generator` step takes `generator` and `fallback`), so a model in two lists with different roles can pass one check and fail the other. Infographic models are checked through the `enrichment` role: a slow chart model can fail its 30-second check while its real chart calls, which get 120 seconds, work.
 
 ## List states
 
@@ -103,7 +108,7 @@ The rules:
 - **An alert is saved only after its email went out.** State lives in `model_alerts`. A failed send saves nothing, is retried at the next evaluation, is shown under Alerts on the tab, and is counted in `milesahead_emails_sent_total{kind="model_alert",outcome="failed"}`. When nothing can be sent, nothing is saved. A restart does not re-send, because the state survives it.
 - **Recipient:** `ai.alert_email`, else `votes.alert_email`. `deploy.yml` writes `ai.alert_email` from the `ALERT_EMAIL` secret and emits a deploy warning when it is empty.
 - **With no address, or no SMTP,** nothing is emailed and nothing is saved. The events are logged at WARN as `model health alert not emailed` at every evaluation, and the tab and the Review banner say alerts are not emailed. The first email after an address is configured lists everything that is wrong at that moment; problems that cleared in the meantime are not mentioned.
-- **Send test alert** (`POST /admin/models/test-alert`, admin login and CSRF token required) sends a one-line email to the recipient, to prove the address and SMTP work. It does not change any alert state.
+- **Send test alert** (`POST /admin/models/test-alert`, admin login and CSRF token required) sends a one-line email to the recipient, to prove the address and SMTP work. It updates the last-send line under Alerts on the tab (and its error, if it failed) and the `milesahead_emails_sent_total{kind="model_alert"}` counter, as `sent` or `failed`. It does not change any alert state.
 
 ## The drought alarm
 
