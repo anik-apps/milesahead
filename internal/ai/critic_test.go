@@ -127,7 +127,7 @@ func TestCritic_ChainFallsOver(t *testing.T) {
 			for name, verify := range map[string]func(string, []SourceArticle) (*VerificationResult, error){
 				"Verify": critic.Verify, "Verify2": critic.Verify2,
 			} {
-				mock.callsOrder = nil
+				mock.resetCalls()
 				v, err := verify("article", sources1())
 				if err != nil {
 					t.Fatalf("%s: %v", name, err)
@@ -135,7 +135,7 @@ func TestCritic_ChainFallsOver(t *testing.T) {
 				if v.Score != 95 || v.Model != "second" {
 					t.Errorf("%s: score %d from %q; want 95 from second", name, v.Score, v.Model)
 				}
-				if got := strings.Join(mock.callsOrder, ","); got != "first,second" {
+				if got := strings.Join(mock.calls(), ","); got != "first,second" {
 					t.Errorf("%s: calls = %s; want first,second", name, got)
 				}
 			}
@@ -156,7 +156,7 @@ func TestCritic_ChainAllFail(t *testing.T) {
 	if !errors.As(err, &apiErr) || apiErr.StatusCode != 504 {
 		t.Errorf("err = %v; want it to wrap the first critic's 504", err)
 	}
-	if got := strings.Join(mock.callsOrder, ","); got != "first,second" {
+	if got := strings.Join(mock.calls(), ","); got != "first,second" {
 		t.Errorf("calls = %s; want first,second", got)
 	}
 }
@@ -171,7 +171,7 @@ func TestCritic_ChainStopsOnBadRequest(t *testing.T) {
 	if _, err := NewCritic(mock, "first,second").Verify("article", sources1()); err == nil {
 		t.Fatal("expected the 400 to be returned")
 	}
-	if got := strings.Join(mock.callsOrder, ","); got != "first" {
+	if got := strings.Join(mock.calls(), ","); got != "first" {
 		t.Errorf("calls = %s; want first only", got)
 	}
 }

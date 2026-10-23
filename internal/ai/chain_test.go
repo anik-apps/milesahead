@@ -106,10 +106,10 @@ func TestPipeline_DetailClientCarriesTheKeyDetailsCall(t *testing.T) {
 
 	p.extractDetails("Title", "Content")
 
-	if len(details.callsOrder) != 1 || details.callsOrder[0] != "details" {
-		t.Errorf("detail client calls = %v, want [details]", details.callsOrder)
+	if len(details.calls()) != 1 || details.calls()[0] != "details" {
+		t.Errorf("detail client calls = %v, want [details]", details.calls())
 	}
-	for _, m := range main.callsOrder {
+	for _, m := range main.calls() {
 		if m == "details" {
 			t.Error("the key-details call still went through the critic's client")
 		}
