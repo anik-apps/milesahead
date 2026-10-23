@@ -73,7 +73,7 @@ Between Sources and Subscribers. At the top, in order:
 
 1. **Publishing**: "working, last article ..." or "stopped since ..." with the reason, and a note that stories older than 48 hours are being lost.
 2. **Alerts**: who they go to, when the last email was sent and whether it failed, and the **Send test alert** button. When there is no address, or SMTP is not configured, it says why in red.
-3. **Last check**: how long ago, and "late" in red after two intervals. With the hourly check off it says so.
+3. **Last check**: when the last check round finished, as a UTC time ("Oct 22 14:02 UTC"), with the interval beside it ("every 60 min"). A red "late" chip appears when no check has finished for two intervals. With the hourly check off it says "hourly check off" instead of the interval.
 
 Below that, each list (down, degraded, ok with no working backup, ok, off) with its models in order: status, last OK, failing since, last error, which model answered the list's last real call, and what to do about a model that has failed (see below).
 
