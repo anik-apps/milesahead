@@ -64,11 +64,16 @@ jobs:
         run: |
           GOOS=linux GOARCH=arm64 go build -o seed-cards ./cmd/seed-cards
           GOOS=linux GOARCH=arm64 go build -o seed-structured ./cmd/seed-structured
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
+      # Handed to the deploy and seed jobs through the Actions cache, keyed by
+      # this run. They used to go as an artifact, but artifact storage is
+      # shared by every anik-apps repository, and when it filled up
+      # (2026-10-22) every deploy failed at this step. The cache has its own
+      # per-repository allowance. The path list must stay identical in the
+      # restore steps below: it is part of the cache's identity.
+      - name: Save binaries for the deploy and seed jobs
+        uses: actions/cache/save@v6
         with:
-          name: milesahead-arm64
-          retention-days: 7
+          key: milesahead-arm64-${{ github.run_id }}
           path: |
             milesahead
             seed-cards
@@ -307,9 +312,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v7
+      - name: Restore binaries from the build job
+        uses: actions/cache/restore@v6
         with:
-          name: milesahead-arm64
+          key: milesahead-arm64-${{ github.run_id }}
+          fail-on-cache-miss: true
+          path: |
+            milesahead
+            seed-cards
+            cmd/seed-cards/cards.json
+            seed-structured
+            cmd/seed-structured/structured-data.json
 
       - name: Setup SSH
         run: |
@@ -380,9 +393,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v7
+      - name: Restore binaries from the build job
+        uses: actions/cache/restore@v6
         with:
-          name: milesahead-arm64
+          key: milesahead-arm64-${{ github.run_id }}
+          fail-on-cache-miss: true
+          path: |
+            milesahead
+            seed-cards
+            cmd/seed-cards/cards.json
+            seed-structured
+            cmd/seed-structured/structured-data.json
 
       - name: Setup SSH
         run: |
