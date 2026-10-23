@@ -72,7 +72,7 @@
       - A drought alarm that does not depend on the cause: no article in 24 hours while 2 or more sources added
         stories is an urgent email.
       - A scan stops calling the generator once every critic has failed (about 130 wasted calls a day in the
-        outage), and a revision treats it as "try later" without using up its retries.
+        outage), and a revision treats it as "try later": an hour later, without using up its retries.
       - `vision_model` is a comma-separated list; a retired, timed-out or overloaded vision model hands the rest of
         the call to the next. The critic's client counts a reply only once its JSON parses, so a critic answering in
         prose counts as failing.

@@ -114,6 +114,13 @@ func (m *Manager) processGuarded(ctx context.Context, articleID int64, respectBa
 		break
 	}
 
+	if errors.Is(err, ai.ErrCriticUnavailable) {
+		// No critic answered, so the rewrite could not be checked. That is not
+		// the article's fault, so it is not charged; but it waits an hour
+		// rather than being regenerated on every pass while the outage lasts.
+		m.deferRevision(articleID)
+		return err
+	}
 	if err == nil || isRevisionSkip(err) {
 		return err
 	}

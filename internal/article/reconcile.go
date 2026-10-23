@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kumaranik/milesahead/internal/ai"
+	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
@@ -43,10 +44,22 @@ func isRevisionSkip(err error) bool {
 		errors.Is(err, ErrNotAwaitingRevision) ||
 		errors.Is(err, ErrRevisionSuperseded) ||
 		errors.Is(err, errRevisionNotDue) ||
-		errors.Is(err, errRevisionExhausted) ||
-		// No critic answered: the rewrite did nothing wrong. It stays
-		// requested and is tried on a later pass, without using up its budget.
-		errors.Is(err, ai.ErrCriticUnavailable)
+		errors.Is(err, errRevisionExhausted)
+}
+
+// criticOutageRetry is how long a revision waits after no critic answered. It
+// is not charged against the retry budget (see processGuarded).
+const criticOutageRetry = time.Hour
+
+// deferRevision puts the article's next rewrite off by criticOutageRetry.
+func (m *Manager) deferRevision(articleID int64) {
+	retryAfter := m.clock().Add(criticOutageRetry)
+	if err := m.db.DeferRevision(articleID, retryAfter); err != nil {
+		slog.Error("revision deferred, but the retry time could not be stored",
+			"article_id", articleID, "error", err)
+		return
+	}
+	slog.Warn("revision deferred: no critic answered", "article_id", articleID, "retry_after", retryAfter)
 }
 
 // Retry policy for failed rewrites.
@@ -150,6 +163,7 @@ type RevisionPassResult struct {
 	Backoff   int // failed recently, not due yet
 	Exhausted int // out of retries, left for the admin
 	Errors    int // could not check whether it was due; not attempted
+	Deferred  int // no critic answered; put off for an hour, not charged
 }
 
 // ProcessPendingRevisions rewrites every revision_requested article that is due.
@@ -184,7 +198,7 @@ func (m *Manager) ProcessPendingRevisions(ctx context.Context) RevisionPassResul
 	}
 
 	maxFailures := m.maxRevisionFailures()
-	for _, p := range pending {
+	for i, p := range pending {
 		if ctx.Err() != nil {
 			slog.Info("revision pass stopped by shutdown")
 			break
@@ -199,6 +213,18 @@ func (m *Manager) ProcessPendingRevisions(ctx context.Context) RevisionPassResul
 		}
 
 		err := m.processRevisionIfDue(ctx, p.ID)
+		if errors.Is(err, ai.ErrCriticUnavailable) {
+			// processGuarded has put this one off. The rest would be
+			// regenerated only to fail at the critic the same way, so they
+			// wait too, untried -- as the scan stops generating when its
+			// critic is down.
+			res.Deferred++
+			metrics.RevisionReconcileTotal.WithLabelValues("deferred").Inc()
+			res.Deferred += m.deferRemaining(pending[i+1:], maxFailures)
+			slog.Warn("revision pass stopped: no critic answered",
+				"deferred", res.Deferred, "retry_after", m.clock().Add(criticOutageRetry))
+			break
+		}
 		switch {
 		// The first two: failed since the list was read (e.g. a kick from a
 		// request), so now in backoff or out of retries.
@@ -226,12 +252,33 @@ func (m *Manager) ProcessPendingRevisions(ctx context.Context) RevisionPassResul
 
 	slog.Info("revision pass complete", "waiting", len(pending),
 		"processed", res.Processed, "failed", res.Failed, "skipped", res.Skipped,
-		"backoff", res.Backoff, "exhausted", res.Exhausted, "errors", res.Errors)
+		"backoff", res.Backoff, "exhausted", res.Exhausted, "errors", res.Errors,
+		"deferred", res.Deferred)
 	if res.Exhausted > 0 {
 		slog.Warn("articles stuck in revision after exhausting retries; re-request the revision, approve or reject them",
 			"count", res.Exhausted, "max_failures", maxFailures)
 	}
 	return res
+}
+
+// deferRemaining puts off, untried, the revisions a pass stopped before
+// reaching because no critic answered, and returns how many it put off. Those
+// out of retries are left alone; one already due later keeps its later time.
+func (m *Manager) deferRemaining(rest []db.PendingRevision, maxFailures int) int {
+	retryAfter := m.clock().Add(criticOutageRetry)
+	n := 0
+	for _, p := range rest {
+		if p.Failures >= maxFailures {
+			continue
+		}
+		if err := m.db.DeferRevision(p.ID, retryAfter); err != nil {
+			slog.Error("revision pass: could not put off a revision", "article_id", p.ID, "error", err)
+			continue
+		}
+		n++
+		metrics.RevisionReconcileTotal.WithLabelValues("deferred").Inc()
+	}
+	return n
 }
 
 // refreshRevisionsWaiting republishes the revisions-waiting gauge after a pass.

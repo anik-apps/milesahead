@@ -777,3 +777,56 @@ func TestProcessPendingRevisions_CriticOutageIsNotCharged(t *testing.T) {
 		t.Errorf("failures = %d, want 0", p.Failures)
 	}
 }
+
+// During a critic outage every pending revision would be regenerated with the
+// big generator on each five-minute pass, only to fail at the critic. The first
+// one to fail stops the pass, and none is tried again for an hour.
+func TestProcessPendingRevisions_CriticOutageBacksOffAnHour(t *testing.T) {
+	database := setupFileDB(t)
+	client := criticGoneClient{&fakeRevisionClient{}}
+	mgr := NewManager(database, ai.NewPipeline(ai.NewGenerator(client, fakeGenModel, "", nil),
+		ai.NewCritic(client, fakeCriticModel), 80))
+	t.Cleanup(mgr.WaitRevisions)
+	start := time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)
+	now := start
+	mgr.now = func() time.Time { return now }
+
+	var ids []int64
+	for range 2 {
+		id := createRevisableArticle(t, database, db.StatusPending)
+		if err := mgr.RequestRevision(id, "Add the annual fee", "admin"); err != nil {
+			t.Fatalf("RequestRevision: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	ctx := context.Background()
+
+	res := mgr.ProcessPendingRevisions(ctx)
+	if got := client.calls(); got != 1 {
+		t.Fatalf("first pass: generator calls = %d, want 1 (the pass stops at the first critic outage)", got)
+	}
+	if res.Failed != 0 {
+		t.Errorf("first pass = %+v, want no failure charged", res)
+	}
+	for _, id := range ids {
+		p := pendingRevision(t, database, id)
+		if p.Failures != 0 {
+			t.Errorf("article %d: failures = %d, want 0", id, p.Failures)
+		}
+		if want := start.Add(time.Hour); !p.RetryAfter.Equal(want) {
+			t.Errorf("article %d: retry after %v, want %v", id, p.RetryAfter, want)
+		}
+	}
+
+	now = start.Add(5 * time.Minute)
+	mgr.ProcessPendingRevisions(ctx)
+	if got := client.calls(); got != 1 {
+		t.Errorf("pass 5 minutes later: generator calls = %d, want still 1", got)
+	}
+
+	now = start.Add(61 * time.Minute)
+	mgr.ProcessPendingRevisions(ctx)
+	if got := client.calls(); got != 2 {
+		t.Errorf("pass an hour later: generator calls = %d, want 2 (tried again, stopped again)", got)
+	}
+}

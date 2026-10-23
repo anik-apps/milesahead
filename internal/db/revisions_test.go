@@ -150,6 +150,43 @@ func TestRecordRevisionFailure_IgnoresArticlesNoLongerWaiting(t *testing.T) {
 	}
 }
 
+// TestDeferRevision: putting a revision off is not a failure, keeps a later
+// retry already scheduled, and leaves articles no longer waiting alone.
+func TestDeferRevision(t *testing.T) {
+	d := openTestDB(t)
+	id, _ := newRevisionRequested(t, d, "deferred")
+	at := time.Unix(1_800_000_000, 0)
+
+	if err := d.DeferRevision(id, at); err != nil {
+		t.Fatalf("DeferRevision: %v", err)
+	}
+	p, _, _ := d.GetRevisionRetryState(id)
+	if p.Failures != 0 || !p.RetryAfter.Equal(at) || p.LastError != "" {
+		t.Errorf("after defer = %+v, want retry at %v and nothing charged", p, at)
+	}
+	if err := d.DeferRevision(id, at.Add(-time.Hour)); err != nil {
+		t.Fatalf("DeferRevision: %v", err)
+	}
+	if p, _, _ := d.GetRevisionRetryState(id); !p.RetryAfter.Equal(at) {
+		t.Errorf("retry after = %v; an earlier deferral must not bring it forward from %v", p.RetryAfter, at)
+	}
+
+	draft, _ := newRevisionRequested(t, d, "deferred-draft")
+	if err := d.UpdateArticleStatus(draft, StatusDraft); err != nil {
+		t.Fatalf("draft: %v", err)
+	}
+	if err := d.DeferRevision(draft, at); err != nil {
+		t.Fatalf("DeferRevision on a draft: %v", err)
+	}
+	var retryAfter int64
+	if err := d.db.QueryRow(`SELECT revision_retry_after FROM generated_articles WHERE id = ?`, draft).Scan(&retryAfter); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if retryAfter != 0 {
+		t.Errorf("draft revision_retry_after = %d, want untouched", retryAfter)
+	}
+}
+
 // TestApplyRevision_StoresStatusAndVerificationTogether: the final status and
 // the critic's result land in the same transaction as the content, so there is
 // no separate draft -> pending step that could overwrite feedback arriving in

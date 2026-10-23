@@ -31,14 +31,15 @@ var (
 	// RevisionReconcileTotal counts what the revision reconciler did with each
 	// article it looked at: processed (rewrite stored), failed (rewrite
 	// attempted and failed), skipped (already being revised, or no longer
-	// waiting), error (could not read its retry state; not attempted).
+	// waiting), error (could not read its retry state; not attempted),
+	// deferred (no critic answered; put off for an hour, not charged).
 	// pass_skipped counts whole passes skipped because the previous one was
 	// still running. Revisions used to run only from the Revise button's
 	// one-shot goroutine, so a failure or a deploy mid-run left the article in
 	// "Revising" for good with nothing counting it.
 	RevisionReconcileTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "milesahead_revision_reconcile_total",
-		Help: "Revision reconciler outcomes per article (processed, failed, skipped, error) and pass_skipped",
+		Help: "Revision reconciler outcomes per article (processed, failed, skipped, error, deferred) and pass_skipped",
 	}, []string{"outcome"})
 
 	// RevisionsWaiting is the current number of articles in revision_requested:
