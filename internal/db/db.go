@@ -23,6 +23,13 @@ type Database struct {
 //
 // journal_mode is persisted in the database file itself so it only has to be
 // set once, but it is harmless and clearer to state it alongside the others.
+//
+// _txlock=immediate makes every transaction BEGIN IMMEDIATE, taking the write
+// lock up front. Under the default DEFERRED begin, a transaction that reads
+// before it writes (ApplyRevision does) must upgrade its read snapshot, and if
+// another connection has written meanwhile SQLite fails the upgrade with
+// SQLITE_BUSY at once, without honouring busy_timeout. Taken at BEGIN, the
+// lock is waited for like any other write.
 func dsn(path string) string {
 	sep := "?"
 	if strings.Contains(path, "?") {
@@ -32,6 +39,7 @@ func dsn(path string) string {
 		"_pragma=busy_timeout(5000)",
 		"_pragma=journal_mode(WAL)",
 		"_pragma=foreign_keys(1)",
+		"_txlock=immediate",
 	}, "&")
 }
 

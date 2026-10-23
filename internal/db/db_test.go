@@ -833,6 +833,63 @@ func TestOpen_AppliesPragmasToEveryConnection(t *testing.T) {
 	}
 }
 
+// TestOpen_ReadThenWriteTransactionWaitsForOtherWriters guards the revision
+// save that failed in production with "database is locked".
+//
+// ApplyRevision reads inside its transaction before it writes. Under SQLite's
+// default DEFERRED begin the read takes a snapshot that the write must then
+// upgrade, and if another connection writes in between SQLite returns
+// SQLITE_BUSY at once -- busy_timeout is not consulted for that upgrade. The
+// model health worker writes right after every critic call, which is exactly
+// when a revision is saved, so the two collided on almost every revision.
+// Transactions must take the write lock when they begin, so the other writer
+// waits its turn instead.
+func TestOpen_ReadThenWriteTransactionWaitsForOtherWriters(t *testing.T) {
+	d := openTestDB(t)
+	if _, err := d.DB().Exec(`CREATE TABLE txlock_probe (id INTEGER PRIMARY KEY, n INTEGER NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.DB().Exec(`INSERT INTO txlock_probe (id, n) VALUES (1, 0)`); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := d.DB().Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow(`SELECT n FROM txlock_probe WHERE id = 1`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+
+	// Another connection writes while the transaction is open. Under a
+	// deferred begin it commits straight away; under an immediate one it waits.
+	other := make(chan error, 1)
+	go func() {
+		_, err := d.DB().Exec(`UPDATE txlock_probe SET n = n + 10 WHERE id = 1`)
+		other <- err
+	}()
+	time.Sleep(200 * time.Millisecond)
+
+	if _, err := tx.Exec(`UPDATE txlock_probe SET n = ? WHERE id = 1`, n+1); err != nil {
+		t.Fatalf("write after read in a transaction failed while another connection wrote: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-other; err != nil {
+		t.Fatalf("the other writer should have waited for the transaction, got: %v", err)
+	}
+
+	if err := d.DB().QueryRow(`SELECT n FROM txlock_probe WHERE id = 1`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 11 {
+		t.Errorf("n = %d, want 11: both writes should apply, one after the other", n)
+	}
+}
+
 // Unsubscribing keeps the row so the token still resolves; confirming is
 // idempotent and does not undo an unsubscribe; Resubscribe does.
 func TestSubscriber_States(t *testing.T) {
