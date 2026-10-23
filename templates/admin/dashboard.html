@@ -3,6 +3,7 @@
 <div class="admin-dashboard" data-state="{{.StateVersion}}" data-open="{{if .OpenID}}preview-{{.OpenID}}{{end}}">
     <div class="page-head">
         <h1>Review <span class="page-count">{{.Total}}</span></h1>
+        {{if .ModelBanner}}<div class="message error" role="alert">{{.ModelBanner}} <a href="/admin/models">Open the Models tab</a></div>{{end}}
         <div class="page-head-tools">
             <form method="get" action="/admin/dashboard" class="sort-form">
                 {{if .All}}<input type="hidden" name="all" value="1">{{end}}

@@ -63,6 +63,8 @@ func (app *App) setupRoutes() {
 	adminMux.HandleFunc("GET /admin/subscribers/export", app.handleExportSubscribers)
 	adminMux.HandleFunc("GET /admin/newsletter", app.handleAdminNewsletter)
 	adminMux.HandleFunc("GET /admin/settings", app.handleAdminSettings)
+	adminMux.HandleFunc("GET /admin/models", app.handleAdminModels)
+	adminMux.HandleFunc("POST /admin/models/test-alert", app.handleSendTestAlert)
 
 	// Article action routes.
 	adminMux.HandleFunc("GET /admin/articles/{id}/cards", app.handleAdminArticleCardsGET)

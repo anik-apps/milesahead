@@ -113,6 +113,9 @@ type App struct {
 	subscribeLimiter *rateLimiter
 	// schedule is when the weekly newsletter goes out, from the config.
 	schedule newsletter.Schedule
+	// modelHealth feeds the Models tab, its nav badge and the Review banner;
+	// nil until SetModelHealth.
+	modelHealth ModelHealth
 }
 
 // newsletterSchedule reads the weekly schedule from cfg. config.Load has

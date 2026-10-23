@@ -25,6 +25,10 @@ type adminNav struct {
 	// VoteAlerts counts articles whose recent votes crossed the alert
 	// threshold and that the admin has not acknowledged (Published page).
 	VoteAlerts int
+	// Models counts AI steps with a model list that needs a look; ModelsAlert
+	// is set when publishing has stopped.
+	Models      int
+	ModelsAlert bool
 }
 
 // adminTabs maps each admin page template to its tab. Pages that sit under
@@ -39,6 +43,7 @@ var adminTabs = map[string]string{
 	"card-updates.html":  "cards",
 	"newsletter.html":    "newsletter",
 	"settings.html":      "settings",
+	"models.html":        "models",
 	"article-cards.html": "review",
 }
 
@@ -94,6 +99,11 @@ func (app *App) adminNavFor(name string, data map[string]interface{}) *adminNav 
 		nav.StaleSources = n
 	} else {
 		slog.Warn("admin nav: stale sources", "error", err)
+	}
+
+	if app.modelHealth != nil {
+		s := app.modelHealth.Snapshot()
+		nav.Models, nav.ModelsAlert = s.NotOK, s.Stopped
 	}
 	return nav
 }

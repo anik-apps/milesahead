@@ -531,3 +531,11 @@ html:has(.editor-bar) { --sticky-offset: 112px; }
 /* The preview takes focus when it opens so keys reach it; that is not a
    keyboard target of its own, so it gets no ring. */
 .preview-modal:focus, .preview-modal:focus-visible { outline: none; }
+
+/* Models tab */
+.models-status { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 16px 0 24px; }
+.models-status > div { min-width: 0; }
+.models-label { display: block; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; opacity: .7; margin-bottom: 4px; }
+.models-step { margin-bottom: 28px; }
+.models-step h2 { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.models-advice { font-size: .85rem; opacity: .8; }

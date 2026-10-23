@@ -1,0 +1,50 @@
+{{template "admin_layout" .}}
+{{define "content"}}
+<div class="admin-models">
+    <h1>Models</h1>
+    {{if .Message}}<div class="message success" role="status">{{.Message}}</div>{{end}}
+    {{if .Error}}<div class="message error" role="alert">{{.Error}}</div>{{end}}
+
+    {{with .Status}}
+    {{if .Stopped}}
+    <div class="message error" role="alert"><strong>Publishing has stopped</strong> since {{.StoppedSince}}: {{.Reason}}. Stories older than 48 hours are being lost.</div>
+    {{end}}
+    <div class="models-status">
+        <div><span class="models-label">Publishing</span>
+            {{if .Stopped}}<span class="chip chip-bad">stopped</span>{{else}}<span class="chip chip-ok">working</span>{{end}}
+            <span class="dim">last article {{.LastArticle}}</span></div>
+        <div><span class="models-label">Alerts</span>
+            {{if .NotEmailed}}<span class="chip chip-bad">not emailed</span> <span class="dim">{{.NotEmailed}}</span>{{else}}emailed to {{.Recipient}}{{end}}
+            {{if .LastSendError}}<br><span class="health-flag">Last email failed: {{.LastSendError}}</span>{{else if .LastSent}}<br><span class="dim">last sent {{.LastSent}}</span>{{end}}
+            <form method="POST" action="/admin/models/test-alert" class="inline-form">{{template "csrf_field" $}}<button type="submit" class="btn btn-sm">Send test alert</button></form></div>
+        <div><span class="models-label">Last check</span>
+            {{if .CheckOff}}<span class="chip chip-mute">hourly check off</span> {{.LastCheck}}{{else}}{{if .CheckLate}}<span class="chip chip-bad">late</span> {{end}}{{.LastCheck}} <span class="dim">every {{.CheckEvery}}</span>{{end}}</div>
+    </div>
+    {{else}}
+    <p>Model health is not running.</p>
+    {{end}}
+
+    {{range .Steps}}
+    <section class="models-step">
+        <h2>{{.Label}} <span class="chip {{.Chip}}">{{.State}}{{if .Since}} since {{.Since}}{{end}}</span>
+            {{if .NoBackup}}<span class="chip chip-warn">no working backup</span>{{end}}
+            {{if .SingleModel}}<span class="chip chip-mute">no backup configured</span>{{end}}</h2>
+        <p class="dim">{{.Uses}}</p>
+        <table class="admin-table">
+            <thead><tr><th>#</th><th>Model</th><th>Status</th><th>Last OK</th><th>Last error</th></tr></thead>
+            <tbody>
+            {{range .Models}}
+            <tr>
+                <td>{{.Pos}}</td>
+                <td>{{.Model}}{{if .Answering}} <span class="dim">answering</span>{{end}}</td>
+                <td><span class="chip {{.Chip}}">{{.Status}}{{if .Since}} since {{.Since}}{{end}}</span></td>
+                <td>{{.LastOK}}</td>
+                <td>{{.LastError}}{{if .Advice}}<br><span class="models-advice">{{.Advice}}</span>{{end}}</td>
+            </tr>
+            {{end}}
+            </tbody>
+        </table>
+    </section>
+    {{end}}
+</div>
+{{end}}

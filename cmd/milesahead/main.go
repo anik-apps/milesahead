@@ -530,6 +530,7 @@ func main() {
 	// as the newsletter, only when newsletter.signup_enabled is on and SMTP
 	// is configured.
 	wireSignup(app, cfg, smtpUnset, mailSender)
+	app.SetModelHealth(worker)
 
 	// Web server with explicit Server struct for graceful shutdown
 	httpServer := &http.Server{

@@ -163,7 +163,7 @@ func normalizePath(p string) string {
 		"/admin/dashboard", "/admin/published", "/admin/sources",
 		"/admin/subscribers", "/admin/subscribers/export",
 		"/admin/newsletter", "/admin/newsletter/send", "/admin/newsletter/history",
-		"/admin/settings", "/admin/cards", "/admin/cards/new",
+		"/admin/settings", "/admin/models", "/admin/models/test-alert", "/admin/cards", "/admin/cards/new",
 		"/admin/sources/add":
 		return p
 	}
