@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log/slog"
 	"math"
 	"time"
@@ -40,6 +41,9 @@ type clusterGenerator struct {
 	stories   *storydedup.Checker
 	storyMode string
 	now       func() time.Time
+	// criticDown is set when a cluster's generation failed because no critic
+	// answered; run stops the scan's loop on it.
+	criticDown bool
 }
 
 // newClusterGenerator wires the story check to the short-call chain, like the
@@ -87,9 +91,18 @@ func (g *clusterGenerator) run() int {
 	slog.Info("clustering complete", "articles", len(clusterArticles), "clusters", len(clusters))
 
 	created := 0
-	for _, c := range clusters {
+	g.criticDown = false
+	for i, c := range clusters {
 		if g.generate(c) {
 			created++
+		}
+		if g.criticDown {
+			// Every remaining cluster would be generated and then fail the
+			// same way: about 130 wasted generator calls a day during the
+			// 2026-10-20 outage. The next scan tries again.
+			slog.Error("generation stopped for this scan: every critic failed",
+				"clusters_left", len(clusters)-i-1)
+			break
 		}
 	}
 	return created
@@ -162,6 +175,9 @@ func (g *clusterGenerator) generate(c cluster.ArticleCluster) bool {
 
 	result, err := g.pipeline.Process("auto", sa)
 	if err != nil {
+		if errors.Is(err, ai.ErrCriticUnavailable) {
+			g.criticDown = true
+		}
 		slog.Warn("article generation skipped", "topic", topic, "error", err)
 		return false
 	}

@@ -54,7 +54,7 @@ func main() {
 	topicCount := flag.Int("topics", 5, "number of source clusters to generate for")
 	days := flag.Int("days", 3, "look back this many days for source articles")
 	outPath := flag.String("out", "", "optional path to write JSON results")
-	criticCands := flag.String("critic-candidates", "", "comma-separated critics to probe for JSON-contract compliance, then exit")
+	criticCands := flag.String("critic-candidates", "", "comma-separated critics to grade the same -topics articles with (JSON contract, adjusted score, latency), then exit")
 	full := flag.Bool("full", false, "run the complete Pipeline (generate+verify+revise) and dump whole articles to -out")
 	dumpPrompt := flag.String("dump-prompt", "", "write the exact generation prompt for the first topic here and exit")
 	flag.Parse()
@@ -95,7 +95,7 @@ func main() {
 	}
 
 	if *criticCands != "" {
-		probeCritics(client, criticClient, cands[0], split(*criticCands), topics[0])
+		probeCritics(client, criticClient, cands[0], split(*criticCands), topics, cfg.AI.CriticThreshold)
 		return
 	}
 
@@ -208,26 +208,49 @@ func summarize(results []run, threshold int) {
 // A critic that scores well but returns prose is useless: Critic.Verify runs the
 // reply through extractJSON and fails the whole verification if no object is
 // found, which is how a reasoning-style model silently disqualifies itself.
-func probeCritics(client, criticClient *ai.HFClient, genModel string, critics []string, t topic) {
-	fmt.Printf("generating one article with %s to score...\n", genModel)
-	article, err := ai.NewGenerator(client, genModel, "", nil).Generate("deal", t.sources)
-	if err != nil || strings.TrimSpace(article) == "" {
-		fatal("could not produce an article to score: %v (empty=%v)", err, strings.TrimSpace(article) == "")
-	}
-	fmt.Printf("article: %d chars, topic %q\n\n", len(article), trunc(t.name, 50))
-	fmt.Printf("%-44s %8s %7s  %s\n", "CRITIC", "SECONDS", "SCORE", "RESULT")
-	for _, m := range critics {
-		start := time.Now()
-		v, vErr := ai.NewCritic(criticClient, m).Verify(article, t.sources)
-		secs := time.Since(start).Seconds()
-		if vErr != nil {
-			fmt.Printf("%-44s %8.1f %7s  FAIL %s\n", m, secs, "-", trunc(vErr.Error(), 70))
+//
+// One article is written per topic and every critic grades the same articles,
+// so the critics are compared on equal input. The summary uses the adjusted
+// score (ai.AdjustScore), the one the pipeline compares with the threshold;
+// each row shows the critic's raw score too. A topic the generator fails on is
+// skipped rather than ending the run.
+func probeCritics(client, criticClient *ai.HFClient, genModel string, critics []string, topics []topic, threshold int) {
+	gen := ai.NewGenerator(client, genModel, "", nil)
+	var results []run
+	for i, t := range topics {
+		fmt.Printf("\n[%d/%d] generating with %s: %q\n", i+1, len(topics), genModel, trunc(t.name, 60))
+		article, err := gen.Generate("deal", t.sources)
+		if err != nil || strings.TrimSpace(article) == "" {
+			fmt.Printf("  skipped: could not produce an article: %v (empty=%v)\n", err, strings.TrimSpace(article) == "")
 			continue
 		}
-		fmt.Printf("%-44s %8.1f %7d  ok (issues=%d, checks=%v)\n",
-			m, secs, v.Score, len(v.Issues),
-			[]bool{v.FactualCheck, v.AttributionCheck, v.CompletenessCheck, v.HallucinationCheck})
+		fmt.Printf("  article: %d chars\n", len(article))
+		fmt.Printf("  %-44s %8s %5s %5s  %s\n", "CRITIC", "SECONDS", "RAW", "ADJ", "RESULT")
+		for _, m := range critics {
+			r := run{Model: m, Topic: t.name, Chars: len(article)}
+			start := time.Now()
+			v, vErr := ai.NewCritic(criticClient, m).Verify(article, t.sources)
+			r.Latency = time.Since(start)
+			if vErr != nil {
+				r.Err = trunc(vErr.Error(), 120)
+				fmt.Printf("  %-44s %8.1f %5s %5s  FAIL %s\n", m, r.Latency.Seconds(), "-", "-", trunc(vErr.Error(), 70))
+				results = append(results, r)
+				continue
+			}
+			raw := v.Score
+			r.Score = ai.AdjustScore(v)
+			r.Issues = v.Issues
+			r.Checks = [4]bool{v.FactualCheck, v.AttributionCheck, v.CompletenessCheck, v.HallucinationCheck}
+			fmt.Printf("  %-44s %8.1f %5d %5d  ok (issues=%d, checks=%v)\n",
+				m, r.Latency.Seconds(), raw, r.Score, len(v.Issues), r.Checks)
+			results = append(results, r)
+		}
 	}
+	if len(results) == 0 {
+		fatal("no topic produced an article to score")
+	}
+	fmt.Println("\nAVG SCORE and PUBLISHABLE below use the adjusted score.")
+	summarize(results, threshold)
 }
 
 // dumpFullArticles runs the real Pipeline -- generate, verify, auto-revise --

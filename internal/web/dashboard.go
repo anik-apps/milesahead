@@ -335,6 +335,7 @@ func (app *App) handleAdminDashboard(w http.ResponseWriter, r *http.Request) {
 		"SortLabel":    order.label(),
 		"Sorts":        sortChoices(order, queueSorts),
 		"ShowAllURL":   withSort(r, "/admin/dashboard?all=1", queueSorts),
+		"ModelBanner":  app.modelBanner(),
 	}
 	if msg == "approved" {
 		if id := queryInt(r, "id"); id > 0 {

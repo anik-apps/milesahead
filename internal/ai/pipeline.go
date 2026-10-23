@@ -63,6 +63,9 @@ type Pipeline struct {
 	// detailModels is the chain for the inline key-details call; empty means
 	// the critic chain. See SetDetailModels.
 	detailModels []string
+	// detailClient carries the inline key-details call; nil uses the
+	// critic's client. See SetDetailClient.
+	detailClient HFClientInterface
 	// outlets lists the news sites and blogs articles are written from (the
 	// sources table), read once per article. See SetOutlets.
 	outlets func() []Outlet
@@ -90,6 +93,13 @@ func (p *Pipeline) SetCritic2(critic2 *Critic) {
 func (p *Pipeline) SetDetailModels(models []string) {
 	p.detailModels = models
 }
+
+// SetDetailClient sets the client the inline key-details call goes through.
+// Unset, it is the critic's client, as before. Production passes a copy of the
+// critic client labelled for the enrichment step: the call runs on
+// enrichment_model, so model health must count it against that list, not the
+// critic's.
+func (p *Pipeline) SetDetailClient(c HFClientInterface) { p.detailClient = c }
 
 // SetOutlets sets where the pipeline reads the outlets articles must not name
 // or link to: production passes every row of the sources table. The article's
@@ -240,7 +250,11 @@ func (p *Pipeline) extractDetails(title, content string) ([]KeyDetail, []Article
 	if len(models) == 0 {
 		models = p.critic.models
 	}
-	resp, err := TryModels(p.critic.client, models, prompt, 1024)
+	client := p.detailClient
+	if client == nil {
+		client = p.critic.client
+	}
+	resp, err := TryModels(client, models, prompt, 1024)
 	if err != nil {
 		slog.Warn("extract details failed", "error", err)
 		return nil, nil
@@ -720,6 +734,13 @@ func adjustScore(v *VerificationResult) int {
 	}
 
 	return score
+}
+
+// AdjustScore is adjustScore for tools that measure critics outside the
+// pipeline (cmd/ab-models), so they report the score production acts on
+// rather than the critic's raw number.
+func AdjustScore(v *VerificationResult) int {
+	return adjustScore(v)
 }
 
 // detectArticleType determines the article type from source content.

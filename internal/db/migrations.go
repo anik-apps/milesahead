@@ -194,6 +194,40 @@ func migrate(db *sql.DB) error {
 		rejected_at INTEGER NOT NULL,
 		PRIMARY KEY (article_id, image_url)
 	);
+
+	-- Model health: one row per (step, model), updated in place by the health
+	-- worker from real calls and hourly checks. Times are TEXT in the
+	-- CURRENT_TIMESTAMP layout, UTC; empty means never.
+	CREATE TABLE IF NOT EXISTS model_health (
+		step TEXT NOT NULL,
+		model TEXT NOT NULL,
+		last_ok_at TEXT NOT NULL DEFAULT '',
+		last_fail_at TEXT NOT NULL DEFAULT '',
+		failing_since TEXT NOT NULL DEFAULT '',
+		call_fail_streak INTEGER NOT NULL DEFAULT 0,
+		check_fail_streak INTEGER NOT NULL DEFAULT 0,
+		last_outcome TEXT NOT NULL DEFAULT '',
+		last_error TEXT NOT NULL DEFAULT '',
+		last_check_at TEXT NOT NULL DEFAULT '',
+		last_answered_at TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (step, model)
+	);
+
+	-- What the admin was last emailed about, per alert key, so a restart does
+	-- not send it again. Saved only after the email went out.
+	CREATE TABLE IF NOT EXISTS model_alerts (
+		alert_key TEXT PRIMARY KEY,
+		state TEXT NOT NULL,
+		since TEXT NOT NULL DEFAULT '',
+		notified_at TEXT NOT NULL DEFAULT ''
+	);
+
+	-- The last model-alert email attempt (one row), for the Models tab.
+	CREATE TABLE IF NOT EXISTS model_alert_sends (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		sent_at TEXT NOT NULL,
+		error TEXT NOT NULL DEFAULT ''
+	);
 	`)
 	if err != nil {
 		return err

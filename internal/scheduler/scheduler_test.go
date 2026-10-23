@@ -282,3 +282,48 @@ func TestStop_CancelsPendingRevisionStartupPass(t *testing.T) {
 		t.Error("revision startup pass ran despite shutdown beginning first")
 	}
 }
+
+// A one-off job (the boot health check with the hourly check off) is joined by
+// Stop like any other, rather than left running against a closed database.
+func TestAddStartupJob_RunsOnceAndStopJoinsIt(t *testing.T) {
+	s := New()
+	started := make(chan struct{})
+	var finished atomic.Bool
+	s.AddStartupJob("model-health", time.Millisecond, func() {
+		close(started)
+		time.Sleep(200 * time.Millisecond)
+		finished.Store(true)
+	})
+	s.Start()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the startup job did not run")
+	}
+	s.Stop()
+	if !finished.Load() {
+		t.Error("Stop returned while the startup job was still running")
+	}
+
+	cancelled := New()
+	var ran atomic.Bool
+	cancelled.AddStartupJob("model-health", 10*time.Second, func() { ran.Store(true) })
+	cancelled.Start()
+	cancelled.Stop()
+	if ran.Load() {
+		t.Error("the startup job ran although shutdown began before it was due")
+	}
+}
+
+func TestAddIntervalJob_RunsAfterStartup(t *testing.T) {
+	s := New()
+	ran := make(chan struct{}, 1)
+	s.AddIntervalJob("model-health", time.Hour, 10*time.Millisecond, func() { ran <- struct{}{} })
+	s.Start()
+	defer s.Stop()
+	select {
+	case <-ran:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the job did not run after the startup delay")
+	}
+}

@@ -96,6 +96,23 @@ func (d *Database) RecordRevisionFailure(id int64, errMsg string, nextAttempt fu
 	return failures, tx.Commit()
 }
 
+// DeferRevision puts off an article's next rewrite until retryAfter without
+// counting a failure: the rewrite could not be checked (no critic answered),
+// which says nothing about the article. A retry already scheduled later is
+// kept. Like RecordRevisionFailure it only touches articles still in
+// revision_requested.
+func (d *Database) DeferRevision(id int64, retryAfter time.Time) error {
+	_, err := d.db.Exec(
+		`UPDATE generated_articles SET revision_retry_after = MAX(revision_retry_after, ?)
+		 WHERE id = ? AND status = ?`,
+		retryAfter.Unix(), id, StatusRevisionRequested,
+	)
+	if err != nil {
+		return fmt.Errorf("deferring revision: %w", err)
+	}
+	return nil
+}
+
 // ResetRevisionFailures gives an article a fresh retry budget. Called when new
 // feedback arrives: the admin asking again is the signal to try again.
 func (d *Database) ResetRevisionFailures(id int64) error {

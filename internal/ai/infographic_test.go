@@ -53,8 +53,8 @@ func TestGenerateInfographic_RefusedChartTriesTheNextModel(t *testing.T) {
 			if !strings.Contains(got, "Annual fee") {
 				t.Errorf("got %q, want the second model's chart", got)
 			}
-			if strings.Join(mock.callsOrder, ",") != "first,second" {
-				t.Errorf("calls = %v", mock.callsOrder)
+			if strings.Join(mock.calls(), ",") != "first,second" {
+				t.Errorf("calls = %v", mock.calls())
 			}
 		})
 	}
@@ -65,8 +65,8 @@ func TestGenerateInfographic_FirstUsableChartWins(t *testing.T) {
 	if _, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", "", nil); err != nil {
 		t.Fatal(err)
 	}
-	if len(mock.callsOrder) != 1 {
-		t.Errorf("calls = %v; a usable first chart should end the chain", mock.callsOrder)
+	if len(mock.calls()) != 1 {
+		t.Errorf("calls = %v; a usable first chart should end the chain", mock.calls())
 	}
 }
 
@@ -96,8 +96,8 @@ func TestGenerateInfographic_NoInfographicEndsTheChain(t *testing.T) {
 	if !errors.Is(err, ErrNoInfographic) {
 		t.Errorf("err = %v, want ErrNoInfographic", err)
 	}
-	if len(mock.callsOrder) != 1 {
-		t.Errorf("calls = %v, want only the first", mock.callsOrder)
+	if len(mock.calls()) != 1 {
+		t.Errorf("calls = %v, want only the first", mock.calls())
 	}
 }
 
@@ -111,8 +111,8 @@ func TestGenerateInfographic_BadRequestEndsTheChain(t *testing.T) {
 	if _, err := GenerateInfographic(mock, []string{"first", "second"}, "T", "tldr", "[]", "", nil); err == nil {
 		t.Error("want the 400 returned")
 	}
-	if len(mock.callsOrder) != 1 {
-		t.Errorf("calls = %v, want only the first", mock.callsOrder)
+	if len(mock.calls()) != 1 {
+		t.Errorf("calls = %v, want only the first", mock.calls())
 	}
 }
 

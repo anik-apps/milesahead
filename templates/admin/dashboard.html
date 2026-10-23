@@ -27,6 +27,7 @@
         </div>
         </div>
     </div>
+    {{if .ModelBanner}}<div class="message error" role="alert">{{.ModelBanner}} <a href="/admin/models">Open the Models tab</a></div>{{end}}
 
     <div class="q-refresh" role="status" hidden>The queue has changed since this page loaded. <a href="/admin/dashboard" class="q-refresh-link">Refresh</a> <span class="dim">(anything you typed is kept)</span></div>
 

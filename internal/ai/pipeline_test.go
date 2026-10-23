@@ -295,7 +295,7 @@ func TestPipeline_DetailsUseTheirOwnChain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Process: %v", err)
 	}
-	if got := strings.Join(criticClient.callsOrder, ","); got != "critic,gone,live" {
+	if got := strings.Join(criticClient.calls(), ","); got != "critic,gone,live" {
 		t.Errorf("calls = %s; want the critic to verify, then details on gone then live", got)
 	}
 	if len(result.KeyDetails) != 1 || result.KeyDetails[0].Value != "40%" {

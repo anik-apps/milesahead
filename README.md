@@ -7,8 +7,9 @@ A self-hosted content aggregation platform that scans miles and points websites,
 ## Features
 
 - **Automated Scanning** — RSS scraping of 6+ miles/points sources every 2-4 hours
-- **AI Pipeline** — Nemotron 3 Ultra writes each article (with fallbacks); a critic chain (Nemotron 3 Super, then Kimi K3, thinking off) checks it against the sources, and one auto-revision fixes what it finds
+- **AI Pipeline** — Nemotron 3 Ultra writes each article (with fallbacks); a critic chain (Nemotron 3.5 Super, then Nemotron 3.5 Lightning, thinking off) checks it against the sources, and one auto-revision fixes what it finds
 - **Duplicate Stories** — Each scan clusters the last 48h of scanned posts by title and generates one article per multi-source cluster, after two checks. The raw-ID check skips a cluster that reuses a source some article was written from, and records the cluster's other posts in `covered_raws` so that late coverage cannot come back as a second article once the original sources age out. The story check (`internal/storydedup`, `scanner.story_dedup`) compares the cluster with every article from the last 7 days: a TF-IDF prefilter, then one short AI call on the enrichment chain ("same story? materially new?"). It runs in `shadow` mode, logging `story dedup decision` and counting `milesahead_story_dedup_decisions_total` without blocking, until its decisions have been reviewed
+- **Model Health** — Every model in every list (generator, critic, enrichment, infographic, vision) is checked hourly (`ai.health_check_interval`), and each real call's outcome is recorded (`internal/health`). The admin Models tab shows each list as ok, degraded or down, with a flag when a list's backups are all dead (a backup is only called when the model before it fails, so a dead one hides) and what to do about a retired model, a refused key or a failing one. The admin is emailed, one email per evaluation, when a model dies, a list runs on a backup, or a list has nothing left; a drought alarm, which does not depend on knowing the cause, emails when no article has been generated in 24 hours while sources kept adding stories. A scan stops calling the generator once every critic has failed. Alerts go to `ai.alert_email`, else `votes.alert_email`; the Models tab has a Send test alert button. See [Model Health](docs/content/docs/features/model-health.md)
 - **Image Pipeline** — 4-source search (Unsplash, Pexels, Openverse, Wikimedia) with vision model scoring
 - **Reference Pages** — 53 credit card guides across 6 categories with Scout persona verdicts. `/cards/` filters with one row of links (category chips and a "No annual fee" toggle; older `?fee=` band and `?issuer=` links still filter) and sorts from a menu on the results line (by category, name, lowest or highest fee); each card page opens with a summary (fee, welcome offer, best earning rates ranked by `rankEarnRates`, the verdict's first sentence, Apply and a Compare form) and ends with "Next steps"
 - **Card Comparison** — Side-by-side comparison of 2-3 cards (fee, welcome bonus, earning rates split into direct and travel-portal rows, credits, benefits, protections, rewards currency), every note shown under its value. A star marks the best value only when the cards' values are numbers in the same unit and the best isn't a top- or rotating-category rate. On phones each row's label sits above the values so all three cards fit
@@ -30,7 +31,7 @@ A self-hosted content aggregation platform that scans miles and points websites,
 
 - **Language:** Go 1.26+
 - **Database:** SQLite (WAL mode)
-- **AI:** NVIDIA API (Nemotron 3 Ultra and Super, Kimi K3, gpt-oss-20b, Llama 3.2 Vision)
+- **AI:** NVIDIA API (Nemotron 3 Ultra and 3.5 Super and Lightning, gpt-oss-20b, Llama 3.2 Vision)
 - **Deployment:** OCI ARM VM, Caddy, systemd, GitHub Actions CI/CD
 - **Observability:** Grafana Cloud (Prometheus + Loki via Alloy)
 
@@ -80,9 +81,11 @@ go run ./cmd/ab-models -full -generators model-a -critic model-c -out a.json
 python3 scripts/render_article_review.py a.json b.json > compare.html
 ```
 
-The app also runs a startup preflight against every configured model and logs
-`ERROR` if nothing can generate or no critic answers, so a retired model surfaces
-at boot rather than as articles quietly never appearing. Results are exported as
+The app also runs a preflight against every configured model at boot and every
+hour (`ai.health_check_interval`), and logs `ERROR` if nothing can generate or no
+critic answers, so a retired model surfaces rather than as articles quietly never
+appearing. The health worker turns each round into the Models tab and the alert
+emails (see Model Health above). Results are exported as
 `milesahead_ai_preflight_models_reachable{role}`; `role="critic"` at 0 means
 nothing can publish. Article-path models are probed under the full
 `request_timeout`, so with a slow critic the result arrives minutes after boot.
@@ -94,7 +97,9 @@ or gone; one reachable critic is enough to publish. `critic_disable_thinking:
 true` sends `chat_template_kwargs: {enable_thinking: false}` on critic requests
 only — with thinking on, the retired nemotron-3-super truncated or leaked its
 reasoning into the JSON. The
-`critic scored` log line names the model that scored.
+`critic scored` log line names the model that scored. Which critic is
+answering, and whether the backup still works, is on the admin Models tab; the
+admin is emailed when one dies.
 
 Any issue the critic returns triggers one auto-revision, so the critic prompts
 ask for fixes only — an empty `issues` list for a clean article — and

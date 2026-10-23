@@ -21,6 +21,7 @@ import (
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/db"
 	"github.com/kumaranik/milesahead/internal/enrich"
+	"github.com/kumaranik/milesahead/internal/health"
 	"github.com/kumaranik/milesahead/internal/images"
 	"github.com/kumaranik/milesahead/internal/mail"
 	"github.com/kumaranik/milesahead/internal/metrics"
@@ -64,25 +65,9 @@ func sourceOutlets(database *db.Database) func() []ai.Outlet {
 	}
 }
 
-// enrichmentModels is the chain for every short AI call: enrichment, image
-// text-scoring, the newsletter pick, card-update detection and the pipeline's
-// inline key-details call.
-//
-// Those calls asked for 512-2048 tokens, so HFClient bounds them at
-// ai.ShortCallTimeout (30s). Card-update detection now returns a whole section
-// and asks for more, so it goes through newCardUpdateClient (120s) instead. Most of them used to go to the critic model, which
-// failed them all when mistralai/mistral-nemotron was retired on 2026-09-28;
-// its first replacement took minutes per reply and would have timed out every
-// one. The critic is for verification only.
-func enrichmentModels(cfg *config.Config) []string {
-	if models := ai.SplitModels(cfg.AI.EnrichmentModel); len(models) > 0 {
-		return models
-	}
-	// Unset: fall back to the generator fallback chain rather than silently
-	// doing nothing. Those models are the fast ones; the critic chain goes
-	// last.
-	return append(ai.SplitModels(cfg.AI.FallbackGeneratorModel), ai.SplitModels(cfg.AI.CriticModel)...)
-}
+// enrichmentModels is the chain for every short AI call; see
+// health.EnrichmentModels.
+func enrichmentModels(cfg *config.Config) []string { return health.EnrichmentModels(cfg) }
 
 // newCriticClient returns the client the critics call through. With
 // critic_disable_thinking set it is a copy of hfClient that asks for no
@@ -127,14 +112,9 @@ func newCardUpdateClient(client ai.HFClientInterface) ai.HFClientInterface {
 	return client
 }
 
-// infographicModels is the chain charts are drawn with: infographic_model,
-// or the enrichment chain when that is unset.
-func infographicModels(cfg *config.Config, enrichModels []string) []string {
-	if models := ai.SplitModels(cfg.AI.InfographicModel); len(models) > 0 {
-		return models
-	}
-	return enrichModels
-}
+// infographicModels is the chain charts are drawn with; see
+// health.InfographicModels.
+func infographicModels(cfg *config.Config, _ []string) []string { return health.InfographicModels(cfg) }
 
 // preflightEnrichmentModels is what the boot preflight checks under the
 // enrichment role: the enrichment chain, plus any chart model not already in
@@ -335,19 +315,40 @@ func main() {
 	}
 	hfClient.SetRequestTimeout(time.Duration(cfg.AI.RequestTimeout) * time.Second)
 	cache := ai.NewCache(time.Duration(cfg.AI.CacheTTL) * time.Second)
-	generator := ai.NewGenerator(hfClient, cfg.AI.GeneratorModel, cfg.AI.FallbackGeneratorModel, cache)
 	// critic_model is a chain; see ai.Critic.
 	criticClient := newCriticClient(cfg, hfClient)
-	critic := ai.NewCritic(criticClient, cfg.AI.CriticModel)
+	// The short-call chain; see enrichmentModels.
+	enrichModels := enrichmentModels(cfg)
 	// Was hardcoded to meta/llama-3.2-90b-vision-instruct, which now times out
 	// on every call (120s+, reproducible) -- so each image scored burned the
 	// client's full request timeout before failing. Configurable now, so the
-	// next retirement is a config edit rather than a release. Declared here so
-	// the preflight below can probe it too.
-	visionModel := cfg.AI.VisionModel
-	if visionModel == "" {
-		visionModel = "meta/llama-3.2-11b-vision-instruct"
-	}
+	// next retirement is a config edit rather than a release. The default
+	// lives in health.DefaultVisionModel, so the health check probes the same
+	// model the scorer calls.
+	visionModels := health.VisionModels(cfg)
+	visionModel := strings.Join(visionModels, ",")
+	// Model health: every call made through a labelled client below, and a
+	// periodic check of every list, judged per step; see internal/health.
+	// hfClient and criticClient stay unlabelled: they are the check's probes.
+	// The worker starts after its alerting is set, below.
+	worker := health.New(health.Options{
+		DB:    database,
+		Steps: health.Steps(cfg),
+		Check: func() []ai.PreflightResult {
+			results := ai.PreflightAllWithCriticClient(hfClient, criticClient, cfg.AI.GeneratorModel,
+				ai.SplitModels(cfg.AI.FallbackGeneratorModel), criticModels(cfg),
+				visionModels, preflightEnrichmentModels(cfg, enrichModels))
+			logPreflight(results)
+			return results
+		},
+		AdminURL: "https://" + cfg.Server.Domain + "/admin/models",
+		Interval: healthInterval(cfg),
+	})
+	generator := ai.NewGenerator(hfClient.WithStep(health.StepGenerator, worker), cfg.AI.GeneratorModel, cfg.AI.FallbackGeneratorModel, cache)
+	// The critic's client confirms each success once the reply parses as a
+	// verdict; an unparseable one is a bad_reply, not an ok.
+	criticLabelled := criticClient.WithStep(health.StepCritic, worker).WithConfirmedOK()
+	critic := ai.NewCritic(criticLabelled, cfg.AI.CriticModel)
 
 	// Title-similarity threshold for treating two scanned articles as the same
 	// story. See cluster.DefaultThreshold for why it is not 0.5 any more.
@@ -356,39 +357,19 @@ func main() {
 		clusterThreshold = cluster.DefaultThreshold
 	}
 
-	// The short-call chain; see enrichmentModels.
-	enrichModels := enrichmentModels(cfg)
-
 	pipeline := ai.NewPipeline(generator, critic, cfg.AI.CriticThreshold)
 	pipeline.SetDetailModels(enrichModels)
+	// Key details run on enrichment_model through the critic's request shape.
+	// Built from the unconfirmed critic client: confirming is the Critic's job,
+	// and a confirmed copy here would never record a success.
+	pipeline.SetDetailClient(criticClient.WithStep(health.StepEnrichment, worker))
 	// Articles must not name or link to the sites they are written from.
 	outlets := sourceOutlets(database)
 	pipeline.SetOutlets(outlets)
 	if cfg.AI.Critic2Model != "" {
-		critic2 := ai.NewCritic(criticClient, cfg.AI.Critic2Model)
+		critic2 := ai.NewCritic(criticLabelled, cfg.AI.Critic2Model)
 		pipeline.SetCritic2(critic2)
 	}
-
-	// Confirm the configured models still exist before the scheduler starts
-	// calling them every three hours. A retired model answers 410 forever, and
-	// without this the only symptom is articles quietly never appearing.
-	go func() {
-		results := ai.PreflightAllWithCriticClient(hfClient, criticClient, cfg.AI.GeneratorModel,
-			ai.SplitModels(cfg.AI.FallbackGeneratorModel), criticModels(cfg),
-			[]string{visionModel}, preflightEnrichmentModels(cfg, enrichModels))
-		switch {
-		case ai.PublishingViable(results):
-			slog.Info("ai preflight complete", "summary", ai.PreflightSummary(results))
-		case ai.GenerationViable(results):
-			slog.Error("ai preflight: no CRITIC is reachable - articles will be "+
-				"generated but every one will fail verification and none will publish",
-				"summary", ai.PreflightSummary(results))
-		default:
-			slog.Error("ai preflight: NO generator model is reachable - "+
-				"article generation cannot run until config is fixed",
-				"summary", ai.PreflightSummary(results))
-		}
-	}()
 
 	// Image scoring, the newsletter pick and card-update detection, all on the
 	// short-call chain.
@@ -408,18 +389,33 @@ func main() {
 	// Checked once: it can dial a local relay.
 	smtpUnset := smtpLooksUnset(cfg.Mail.SMTP)
 	warnIfSMTPUnset(cfg.Mail.SMTP, smtpUnset)
-	side := newAISideJobs(cfg, database, hfClient, mailSender, visionModel, enrichModels)
+	alertTo, notEmailed := modelAlertRecipient(cfg, smtpUnset)
+	if notEmailed != "" {
+		slog.Warn("model health alerts are shown on the admin Models tab and not emailed: " + notEmailed)
+		worker.SetAlerting(nil, alertTo, notEmailed)
+	} else {
+		worker.SetAlerting(mailSender, alertTo, "")
+	}
+	// Started only now: an evaluation that ran before alerting was set would
+	// take the not-emailed path and save its alerts as sent. Calls recorded
+	// before this are queued and applied once it runs.
+	go worker.Run(ctx)
+	// Every short call (image scoring, the newsletter pick, card-update
+	// detection, enrichment, clustering) goes through one labelled client.
+	enrichClient := hfClient.WithStep(health.StepEnrichment, worker)
+	side := newAISideJobs(cfg, database, enrichClient, mailSender, visionModel, enrichModels)
+	side.imageScorer.SetRecorder(worker)
 
 	// Enrichment runs as a reconciliation pass rather than inline in article
 	// creation. Inline, each step was a best-effort call that logged a warning
 	// and moved on, so one slow response permanently cost the article a field.
 	// Reconciled, a miss is picked up on the next pass.
-	enricher := enrich.New(database, hfClient, enrichModels,
+	enricher := enrich.New(database, enrichClient, enrichModels,
 		cfg.Site.PersonaName, side.imageSearcher, side.imageScorer)
 	enricher.Outlets = outlets
 	if cfg.AI.DrawInfographics() {
 		enricher.Infographics = true
-		enricher.InfographicClient = newInfographicClient(hfClient)
+		enricher.InfographicClient = newInfographicClient(hfClient).WithStep(health.StepInfographic, worker)
 		enricher.InfographicModels = infographicModels(cfg, enrichModels)
 		slog.Info("article infographics are drawn", "mode", cfg.AI.EnrichmentInfographics,
 			"models", enricher.InfographicModels)
@@ -449,7 +445,7 @@ func main() {
 
 	// Clustering and generation, with both duplicate checks; see
 	// clusterGenerator.
-	clusterGen := newClusterGenerator(cfg, database, pipeline, articleMgr, hfClient, enrichModels, clusterThreshold)
+	clusterGen := newClusterGenerator(cfg, database, pipeline, articleMgr, enrichClient, enrichModels, clusterThreshold)
 	slog.Info("story dedup configured", "mode", cfg.Scanner.StoryDedup,
 		"window", storydedup.Window, "lexical_threshold", storydedup.LexicalThreshold,
 		"fallback_threshold", storydedup.FallbackThreshold, "models", enrichModels)
@@ -508,6 +504,18 @@ func main() {
 
 	scheduleRevisionReconciler(ctx, sched, articleMgr, revisionReconcileInterval)
 
+	// Confirm the configured models still exist, and keep confirming. A retired
+	// model answers 410 forever, and without this the only symptom is articles
+	// quietly never appearing.
+	if every := healthInterval(cfg); every > 0 {
+		sched.AddIntervalJob("model-health", every, 30*time.Second, worker.RunCheck)
+	} else {
+		// The periodic check is off; still check once at boot, as the preflight
+		// always did. Through the scheduler, so shutdown joins it (bounded) like
+		// any other job rather than closing the database under it.
+		sched.AddStartupJob("model-health", 30*time.Second, worker.RunCheck)
+	}
+
 	sched.Start()
 
 	// Card update detector
@@ -524,6 +532,7 @@ func main() {
 	// as the newsletter, only when newsletter.signup_enabled is on and SMTP
 	// is configured.
 	wireSignup(app, cfg, smtpUnset, mailSender)
+	app.SetModelHealth(worker)
 
 	// Web server with explicit Server struct for graceful shutdown
 	httpServer := &http.Server{

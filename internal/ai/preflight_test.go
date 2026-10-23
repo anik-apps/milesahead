@@ -135,3 +135,30 @@ func TestPreflight_CriticChain(t *testing.T) {
 		t.Errorf("reachable{role=\"critic\"} = %v, want 0", got)
 	}
 }
+
+type sleepyClient struct{ d time.Duration }
+
+func (c sleepyClient) Generate(string, string, int) (string, error) {
+	time.Sleep(c.d)
+	return "OK", nil
+}
+
+// A round lasts as long as its slowest model, not the sum: the hourly check
+// probes every list, and article-path models get the full request timeout.
+func TestPreflight_ProbesConcurrentlyInOrder(t *testing.T) {
+	start := time.Now()
+	res := PreflightAllWithCriticClient(sleepyClient{150 * time.Millisecond}, nil,
+		"gen", []string{"fb"}, []string{"c1", "c2"}, nil, []string{"e"})
+	if el := time.Since(start); el > 500*time.Millisecond {
+		t.Errorf("5 probes of 150ms took %v; they are not concurrent", el)
+	}
+	want := []string{"generator=gen", "fallback=fb", "critic=c1", "critic=c2", "enrichment=e"}
+	if len(res) != len(want) {
+		t.Fatalf("got %d results, want %d", len(res), len(want))
+	}
+	for i, r := range res {
+		if got := r.Role + "=" + r.Model; got != want[i] || !r.OK {
+			t.Errorf("result %d = %s ok=%v, want %s ok", i, got, r.OK, want[i])
+		}
+	}
+}

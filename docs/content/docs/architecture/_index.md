@@ -37,7 +37,8 @@ copied off the server.
 | `internal/web` | Public site, admin dashboard, sign-up and unsubscribe, JSON API, error pages, caching headers |
 | `internal/scheduler` | Cron jobs: scan, enrichment, revision reconciler, newsletter build and send, mail polling |
 | `internal/newsletter` | Weekly issue: build, AI pick, Card of the Week, per-reader send; the admin's manual send |
-| `internal/mail` | Outbound SMTP (`outbound.go`: confirmations, newsletters with per-reader `List-Unsubscribe`, vote alerts to `votes.alert_email`) and the IMAP review-reply poller (`inbound.go`, not running in production) |
+| `internal/mail` | Outbound SMTP (`outbound.go`: confirmations, newsletters with per-reader `List-Unsubscribe`, vote alerts to `votes.alert_email`, model-health alerts to `ai.alert_email`) and the IMAP review-reply poller (`inbound.go`, not running in production) |
+| `internal/health` | Model health: one worker records each model call's outcome and runs the hourly check, judges every model list (ok, degraded, down), emails the admin when that changes, and raises the publishing-drought alarm; the admin Models tab reads its snapshot |
 | `internal/offer` | Reads an offer's end date from its key details (`expires_on`) and decides, in Hawaii time, whether it has ended |
 | `internal/metrics` | Prometheus metrics served at `/metrics` |
 | `internal/vote` | Reader votes with downvote alerts: counted over `votes.alert_window`, recorded in `vote_alerts` for the admin Published page |
@@ -71,6 +72,9 @@ start and are idempotent.
 | `article_rejected_images` | Pictures an admin turned down for an article, never picked for it again |
 | `article_votes` | Reader up and down votes, one per hashed IP |
 | `vote_alerts` | Articles whose recent votes crossed the alert line, with the counts, until the admin acknowledges them (at most one open per article) |
+| `model_health` | One row per (model list, model): last OK, last failure, failing since, failure counts, last outcome and error, last check and last real answer |
+| `model_alerts` | The state last emailed for each model-health alert key, so a restart does not send it again; saved only after the email goes out |
+| `model_alert_sends` | The last model-alert email attempt and its error (one row), shown on the Models tab |
 | `newsletters` | Issues with their HTML, status and send time |
 | `newsletter_candidates` | The articles ranked for a weekly issue, and which is featured |
 | `subscribers` | Newsletter addresses, confirmation and unsubscribe state |

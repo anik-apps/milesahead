@@ -40,6 +40,7 @@ func TestAdminPages_ShareOneNavigation(t *testing.T) {
 		"/admin/cards/new":                       "Cards",
 		"/admin/newsletter":                      "Newsletter",
 		"/admin/settings":                        "Settings",
+		"/admin/models":                          "Models",
 		"/admin/articles/" + itoa(id) + "/cards": "Review",
 	} {
 		body := doAdminGET(t, app, path, session).Body.String()

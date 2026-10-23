@@ -2,6 +2,7 @@ package ai
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
@@ -148,18 +149,40 @@ func TestGenerator_GenerateWithFeedback(t *testing.T) {
 // perModelMockHFClient returns a different response (or error) per model.
 // Used by the fallback tests to assert which model the Generator actually
 // called and in what order.
+//
+// Generate is safe to call from several goroutines: the preflight probes its
+// models concurrently. responses and errs are read only, so a test sets them
+// before the first call; callsOrder is read through calls().
 type perModelMockHFClient struct {
-	responses  map[string]string
-	errs       map[string]error
+	responses map[string]string
+	errs      map[string]error
+
+	mu         sync.Mutex
 	callsOrder []string
 }
 
 func (m *perModelMockHFClient) Generate(model, prompt string, maxTokens int) (string, error) {
+	m.mu.Lock()
 	m.callsOrder = append(m.callsOrder, model)
+	m.mu.Unlock()
 	if err, ok := m.errs[model]; ok && err != nil {
 		return "", err
 	}
 	return m.responses[model], nil
+}
+
+// calls returns a copy of the models called so far, in call order.
+func (m *perModelMockHFClient) calls() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.callsOrder...)
+}
+
+// resetCalls forgets the calls made so far.
+func (m *perModelMockHFClient) resetCalls() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.callsOrder = nil
 }
 
 func sources1() []SourceArticle {
@@ -182,8 +205,8 @@ func TestGenerator_FallbackOnRateLimit(t *testing.T) {
 	if result != "Fallback Article\nBody" {
 		t.Errorf("expected fallback response, got %q", result)
 	}
-	if len(mock.callsOrder) != 2 || mock.callsOrder[0] != "primary" || mock.callsOrder[1] != "fallback" {
-		t.Errorf("expected calls [primary, fallback], got %v", mock.callsOrder)
+	if len(mock.calls()) != 2 || mock.calls()[0] != "primary" || mock.calls()[1] != "fallback" {
+		t.Errorf("expected calls [primary, fallback], got %v", mock.calls())
 	}
 }
 
@@ -202,8 +225,8 @@ func TestGenerator_FallbackOn5xx(t *testing.T) {
 	if result == "" {
 		t.Error("expected non-empty fallback result")
 	}
-	if len(mock.callsOrder) != 2 {
-		t.Errorf("expected 2 calls (primary then fallback), got %d", len(mock.callsOrder))
+	if len(mock.calls()) != 2 {
+		t.Errorf("expected 2 calls (primary then fallback), got %d", len(mock.calls()))
 	}
 }
 
@@ -220,8 +243,8 @@ func TestGenerator_FallbackOnNetworkTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected fallback success, got: %v", err)
 	}
-	if len(mock.callsOrder) != 2 {
-		t.Errorf("expected fallback to be tried, got calls: %v", mock.callsOrder)
+	if len(mock.calls()) != 2 {
+		t.Errorf("expected fallback to be tried, got calls: %v", mock.calls())
 	}
 }
 
@@ -248,8 +271,8 @@ func TestGenerator_NoFallbackOn4xx(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from primary to propagate, got nil")
 	}
-	if len(mock.callsOrder) != 1 {
-		t.Errorf("expected only primary to be called for a malformed request, got %v", mock.callsOrder)
+	if len(mock.calls()) != 1 {
+		t.Errorf("expected only primary to be called for a malformed request, got %v", mock.calls())
 	}
 }
 
@@ -268,8 +291,8 @@ func TestGenerator_NoFallbackWhenPrimarySucceeds(t *testing.T) {
 	if result != "Primary OK\nContent" {
 		t.Errorf("expected primary response, got %q", result)
 	}
-	if len(mock.callsOrder) != 1 || mock.callsOrder[0] != "primary" {
-		t.Errorf("expected only primary call, got %v", mock.callsOrder)
+	if len(mock.calls()) != 1 || mock.calls()[0] != "primary" {
+		t.Errorf("expected only primary call, got %v", mock.calls())
 	}
 }
 
@@ -285,8 +308,8 @@ func TestGenerator_NoFallbackWhenUnconfigured(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected primary error to propagate when no fallback configured")
 	}
-	if len(mock.callsOrder) != 1 {
-		t.Errorf("expected only 1 call when no fallback configured, got %d", len(mock.callsOrder))
+	if len(mock.calls()) != 1 {
+		t.Errorf("expected only 1 call when no fallback configured, got %d", len(mock.calls()))
 	}
 }
 
@@ -303,8 +326,8 @@ func TestGenerator_FallbackInRevision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected revision fallback to succeed, got: %v", err)
 	}
-	if len(mock.callsOrder) != 2 || mock.callsOrder[1] != "fallback" {
-		t.Errorf("expected revision to call fallback after primary failed, got %v", mock.callsOrder)
+	if len(mock.calls()) != 2 || mock.calls()[1] != "fallback" {
+		t.Errorf("expected revision to call fallback after primary failed, got %v", mock.calls())
 	}
 }
 
@@ -323,8 +346,8 @@ func TestGenerator_BothFail(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when both primary and fallback fail")
 	}
-	if len(mock.callsOrder) != 2 {
-		t.Errorf("expected both to be called, got %d calls", len(mock.callsOrder))
+	if len(mock.calls()) != 2 {
+		t.Errorf("expected both to be called, got %d calls", len(mock.calls()))
 	}
 }
 
@@ -349,8 +372,8 @@ func TestGenerator_FallbackOnRetiredModel(t *testing.T) {
 	if result != "Recovered\nContent" {
 		t.Errorf("expected fallback response, got %q", result)
 	}
-	if len(mock.callsOrder) != 2 || mock.callsOrder[1] != "fallback" {
-		t.Errorf("expected calls [primary, fallback], got %v", mock.callsOrder)
+	if len(mock.calls()) != 2 || mock.calls()[1] != "fallback" {
+		t.Errorf("expected calls [primary, fallback], got %v", mock.calls())
 	}
 }
 
@@ -366,8 +389,8 @@ func TestGenerator_FallbackOnMissingModel(t *testing.T) {
 	if _, err := gen.Generate("deal", sources1()); err != nil {
 		t.Fatalf("404 should fall back, got: %v", err)
 	}
-	if len(mock.callsOrder) != 2 {
-		t.Errorf("expected 2 calls, got %v", mock.callsOrder)
+	if len(mock.calls()) != 2 {
+		t.Errorf("expected 2 calls, got %v", mock.calls())
 	}
 }
 
@@ -390,12 +413,12 @@ func TestGenerator_WalksWholeFallbackChain(t *testing.T) {
 		t.Errorf("expected fb3 response, got %q", result)
 	}
 	want := []string{"primary", "fb1", "fb2", "fb3"}
-	if len(mock.callsOrder) != 4 {
-		t.Fatalf("expected calls %v, got %v", want, mock.callsOrder)
+	if len(mock.calls()) != 4 {
+		t.Fatalf("expected calls %v, got %v", want, mock.calls())
 	}
 	for i, m := range want {
-		if mock.callsOrder[i] != m {
-			t.Errorf("call %d: want %q, got %q", i, m, mock.callsOrder[i])
+		if mock.calls()[i] != m {
+			t.Errorf("call %d: want %q, got %q", i, m, mock.calls()[i])
 		}
 	}
 }
@@ -413,8 +436,8 @@ func TestGenerator_NoFallbackOnAuthError(t *testing.T) {
 	if _, err := gen.Generate("deal", sources1()); err == nil {
 		t.Fatal("expected auth error to propagate")
 	}
-	if len(mock.callsOrder) != 1 {
-		t.Errorf("auth error must not try fallbacks, got calls %v", mock.callsOrder)
+	if len(mock.calls()) != 1 {
+		t.Errorf("auth error must not try fallbacks, got calls %v", mock.calls())
 	}
 }
 

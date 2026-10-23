@@ -57,6 +57,27 @@
       Hilton Aspire, Marriott Brilliant, Boundless and Bold, and World of Hyatt comparisons carry the new figures;
       Brilliant and Aspire now compare against the Premier Select
 - [x] Find a new image — an admin action (preview, Review and Published row menus) with optional search words; the enrichment pass finds a replacement first in line with a fresh budget, swaps it in only once found (the live image stays meanwhile), and never re-picks a turned-down image at any size. Rewrite feedback that mentions a picture points here, since rewrites only change the text
+- [x] **Model health** — every one of the five model lists (generator, critic, enrichment, infographic, vision) is now
+      watched, so a dead backup or a retired model no longer goes unseen the way the 2026-10-20 outage did
+      (2.5 days with nothing published). Closes "Alert when the startup preflight finds no reachable critic" below.
+      - The preflight runs at boot and every hour (`ai.health_check_interval`), and the outcome of every real model
+        call is recorded, into one `model_health` row per list and model (`internal/health`). A model is failing after
+        2 failed checks or 3 failed calls in 6 hours; `retired` and `auth` count at once.
+      - The admin Models tab shows each list as ok, degraded or down, flags a list whose backups are all dead
+        ("no working backup"), and says what to do about a retired, refused or failing model. A badge, a Review banner
+        and a Settings link point to it.
+      - One digest email per evaluation when a model dies, a list runs on a backup, or a list has nothing left; urgent
+        ones repeat daily, a warning is followed by 24 quiet hours, only urgent states email their recovery, and an
+        alert is saved only after its email goes out. A provider-wide key or URL problem is
+        one email, not one per list. Send test alert proves the address and SMTP.
+      - A drought alarm that does not depend on the cause: no article in 24 hours while 2 or more sources added
+        stories is an urgent email.
+      - A scan stops calling the generator once every critic has failed (about 130 wasted calls a day in the
+        outage), and a revision treats it as "try later": an hour later, without using up its retries.
+      - `vision_model` is a comma-separated list; a retired, timed-out or overloaded vision model hands the rest of
+        the call to the next. The critic's client counts a reply only once its JSON parses, so a critic answering in
+        prose counts as failing.
+      - Lists stay in config; the Models tab is read-only. See `docs/content/docs/features/model-health.md`.
 
 ## Reliability & Hardening
 
@@ -194,21 +215,16 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       infographic chains. A test now fails when a known-retired model is in any chain
       of `config.example.yaml` or `deploy.yml`, and every model chain must match
       between the two.
-- [ ] **Alert when the startup preflight finds no reachable critic** — the 2026-09-28
-      retirement logged `ai preflight: no CRITIC is reachable` at ERROR on every startup
-      for about two days and nobody saw it. The preflight now exports
-      `milesahead_ai_preflight_models_reachable{role}` (set once per process when the
-      preflight finishes); add a rule to `deploy/grafana-alerts.json` on
-      `milesahead_ai_preflight_models_reachable{role="critic"} == 0`. NoData should NOT
-      fire here: the series is absent for the first minutes after every boot while a
-      slow critic is probed. Also find out why the generation-drought rule, which should
-      have fired about 25 hours into this outage, did not get anyone's attention.
-      It stayed silent again in the 2026-10-20 outage. Likely cause: the free Grafana
+- [x] **Alert when the startup preflight finds no reachable critic** — done by the **Model health** entry under
+      Completed (in-app hourly checks, email alerts and a drought alarm) rather than the Grafana rule first proposed
+      here. The 2026-09-28 retirement logged `ai preflight: no CRITIC is reachable` at ERROR on every startup
+      for about two days and nobody saw it. The generation-drought rule, which should
+      have fired about 25 hours into that outage, did not get anyone's attention, and stayed silent again in the
+      2026-10-20 outage. Likely cause: the free Grafana
       Cloud instance hibernates (the 2026-10-16 deploy logged "Instance is hibernating
       … HTTP 503"), and a hibernating instance does not evaluate rules. Also, no
-      `ALERT_EMAIL` secret exists, so the app itself cannot email any alert. Being
-      replaced by in-app model health checks with email alerts and a drought alarm
-      (`feat/model-health`).
+      `ALERT_EMAIL` secret existed, so the app itself could not email any alert. The Grafana gap is still open: see
+      "Keep Grafana alerting awake" under Up Next.
 - [x] **Deduplicate across clusters, not just within them** — the raw-ID dedupe
       (`HasArticleForRawIDs`) can only catch a cluster reusing a source article. When one
       story lands in two disjoint clusters, the clusters share no sources by construction
@@ -337,6 +353,12 @@ Found during the 2026-08-31 card-video review, ordered by severity.
 
 ## Up Next
 
+- [ ] Set the ALERT_EMAIL repository secret — until then the Models tab and Review banner say alerts are not emailed.
+- [ ] Add a vision backup model — vision_model takes a list now; probe live vision models with the preflight and add one.
+- [ ] Measure super-vl on charts and short prompts — it replaced nemotron-3-super in infographic_model and enrichment_model unmeasured.
+- [ ] Remove the unused critic2 path — combinedCritique and Verify2 have no callers.
+- [ ] Keep Grafana alerting awake, or move its rules — the free instance hibernates and does not evaluate rules.
+- [ ] Editing model lists in the admin — lists are config-only by decision (2026-10-22).
 - [ ] **Approving a card update doesn't check the section is still the one it was drafted from** —
       `handleApproveCardUpdate` writes `ProposedContent` without comparing the live section to the draft's
       `CurrentContent`. Two drafts for one section (two articles about the same card), approved one after the

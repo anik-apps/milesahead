@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/kumaranik/milesahead/internal/metrics"
 )
 
 // preflightMaxTokens bounds the probe response for models the app calls with
-// a short budget (vision, the enrichment chain). See the note in PreflightAll's
-// check function: too small a budget makes reasoning models look dead.
+// a short budget (vision, the enrichment chain). See the note on probe in
+// PreflightAllWithCriticClient: too small a budget makes reasoning models look dead.
 const preflightMaxTokens = 512
 
 // articleProbeTokens is the probe budget for models on the article path
@@ -74,26 +75,57 @@ func PreflightAll(client HFClientInterface, generator string, fallbacks, critics
 // PublishingViable, and the role="critic" gauge counts how many answered.
 func PreflightAllWithCriticClient(client, criticClient HFClientInterface, generator string,
 	fallbacks, critics, others, enrichment []string) []PreflightResult {
-	var out []PreflightResult
-
-	check := func(client HFClientInterface, model, role string, maxTokens int) {
-		if strings.TrimSpace(model) == "" {
-			return
+	type probe struct {
+		client      HFClientInterface
+		model, role string
+		maxTokens   int
+	}
+	var probes []probe
+	add := func(c HFClientInterface, model, role string, maxTokens int) {
+		if strings.TrimSpace(model) != "" {
+			probes = append(probes, probe{c, model, role, maxTokens})
 		}
-		// The budget has to leave room for a reasoning model to think before it
-		// answers. At 16 tokens openai/gpt-oss-20b spends the whole allowance
-		// reasoning and returns empty content, which this check then reports as
-		// a dead model -- a false alarm on a model that generates articles
-		// perfectly well. Measured on that model: 16 tokens empty, 128 and
-		// above returns "OK". 512 leaves a wide margin without being a
-		// meaningful cost once per boot. Article-path models get more; see
-		// articleProbeTokens.
-		_, err := client.Generate(model, "Reply with the single word: OK", maxTokens)
-		r := PreflightResult{Model: model, Role: role, OK: err == nil, Err: err}
-		switch {
-		case err == nil:
-			slog.Info("preflight ok", "role", role, "model", model)
-		default:
+	}
+	if criticClient == nil {
+		criticClient = client
+	}
+	add(client, generator, "generator", articleProbeTokens)
+	for _, f := range fallbacks {
+		add(client, f, "fallback", articleProbeTokens)
+	}
+	for _, c := range critics {
+		add(criticClient, c, "critic", articleProbeTokens)
+	}
+	for _, o := range others {
+		add(client, o, "vision", preflightMaxTokens)
+	}
+	for _, e := range enrichment {
+		add(client, e, "enrichment", preflightMaxTokens)
+	}
+
+	// Concurrently: the health check runs this every hour, and an article-path
+	// probe can take the full request timeout, so a round lasts as long as its
+	// slowest model rather than the sum of them. Results keep probe order.
+	out := make([]PreflightResult, len(probes))
+	var wg sync.WaitGroup
+	for i, p := range probes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// The budget has to leave room for a reasoning model to think before it
+			// answers. At 16 tokens openai/gpt-oss-20b spends the whole allowance
+			// reasoning and returns empty content, which this check then reports as
+			// a dead model -- a false alarm on a model that generates articles
+			// perfectly well. Measured on that model: 16 tokens empty, 128 and
+			// above returns "OK". 512 leaves a wide margin without being a
+			// meaningful cost once per boot. Article-path models get more; see
+			// articleProbeTokens.
+			_, err := p.client.Generate(p.model, "Reply with the single word: OK", p.maxTokens)
+			out[i] = PreflightResult{Model: p.model, Role: p.role, OK: err == nil, Err: err}
+			if err == nil {
+				slog.Info("preflight ok", "role", p.role, "model", p.model)
+				return
+			}
 			// Every configured model is load-bearing: a dead critic stops
 			// publication just as completely as a dead generator, because
 			// Pipeline.Process returns an error when verification fails. So
@@ -101,28 +133,11 @@ func PreflightAllWithCriticClient(client, criticClient HFClientInterface, genera
 			// cause looks permanent -- WARN-level reporting is what let the
 			// previous outage run for 26 days.
 			slog.Error("preflight FAILED: configured model did not answer",
-				"role", role, "model", model, "permanent", isModelUnavailableError(err),
+				"role", p.role, "model", p.model, "permanent", isModelUnavailableError(err),
 				"err", err)
-		}
-		out = append(out, r)
+		}()
 	}
-
-	if criticClient == nil {
-		criticClient = client
-	}
-	check(client, generator, "generator", articleProbeTokens)
-	for _, f := range fallbacks {
-		check(client, f, "fallback", articleProbeTokens)
-	}
-	for _, c := range critics {
-		check(criticClient, c, "critic", articleProbeTokens)
-	}
-	for _, o := range others {
-		check(client, o, "vision", preflightMaxTokens)
-	}
-	for _, e := range enrichment {
-		check(client, e, "enrichment", preflightMaxTokens)
-	}
+	wg.Wait()
 	recordPreflight(out)
 	return out
 }

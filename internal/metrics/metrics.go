@@ -31,14 +31,15 @@ var (
 	// RevisionReconcileTotal counts what the revision reconciler did with each
 	// article it looked at: processed (rewrite stored), failed (rewrite
 	// attempted and failed), skipped (already being revised, or no longer
-	// waiting), error (could not read its retry state; not attempted).
+	// waiting), error (could not read its retry state; not attempted),
+	// deferred (no critic answered; put off for an hour, not charged).
 	// pass_skipped counts whole passes skipped because the previous one was
 	// still running. Revisions used to run only from the Revise button's
 	// one-shot goroutine, so a failure or a deploy mid-run left the article in
 	// "Revising" for good with nothing counting it.
 	RevisionReconcileTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "milesahead_revision_reconcile_total",
-		Help: "Revision reconciler outcomes per article (processed, failed, skipped, error) and pass_skipped",
+		Help: "Revision reconciler outcomes per article (processed, failed, skipped, error, deferred) and pass_skipped",
 	}, []string{"outcome"})
 
 	// RevisionsWaiting is the current number of articles in revision_requested:
@@ -209,19 +210,41 @@ var (
 		Buckets: []float64{256, 1024, 4096, 16384, 65536, 262144, 1048576},
 	}, []string{"method", "path"})
 
-	// EmailsSentTotal counts reader emails by kind (confirmation,
-	// newsletter) and outcome (sent, failed). A newsletter counts one "sent"
+	// EmailsSentTotal counts emails by kind (confirmation, newsletter,
+	// model_alert) and outcome (sent, failed). A newsletter counts one "sent"
 	// per recipient reached and one "failed" when a send stops; a
-	// confirmation counts one of either. Every series is created at zero in
-	// Init, so an alert on increase() sees the first failure.
+	// confirmation or a model_alert counts one of either. Every series is
+	// created at zero in Init, so an alert on increase() sees the first
+	// failure.
 	EmailsSentTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "milesahead_emails_sent_total",
-		Help: "Reader emails by kind (confirmation, newsletter) and outcome (sent, failed)",
+		Help: "Emails by kind (confirmation, newsletter, model_alert) and outcome (sent, failed)",
 	}, []string{"kind", "outcome"})
 
 	DailyUniqueVisitors = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "milesahead_daily_unique_visitors_total",
 		Help: "Approximate unique visitors (increments on first-seen IP hash)",
+	})
+
+	// ModelStepState is each model list's state: 0 ok, 1 degraded, 2 down.
+	// Absent for lists that are switched off.
+	ModelStepState = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "milesahead_model_step_state",
+		Help: "Model list state per step: 0 ok, 1 degraded (running on a backup), 2 down",
+	}, []string{"step"})
+
+	// ModelCheckLastSuccess is when the last model health check round
+	// finished. A rule on its age catches a stalled checker.
+	ModelCheckLastSuccess = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "milesahead_model_check_last_success_timestamp_seconds",
+		Help: "Unix time the last model health check round finished",
+	})
+
+	// ModelEventsDroppedTotal counts model-call outcomes dropped because the
+	// health worker's buffer was full. Recording never blocks an AI call.
+	ModelEventsDroppedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "milesahead_model_events_dropped_total",
+		Help: "Model call outcomes dropped because the health worker was behind",
 	})
 )
 
@@ -229,6 +252,7 @@ var (
 const (
 	EmailConfirmation = "confirmation"
 	EmailNewsletter   = "newsletter"
+	EmailModelAlert   = "model_alert"
 	EmailSent         = "sent"
 	EmailFailed       = "failed"
 )
@@ -236,7 +260,7 @@ const (
 // initEmailSeries creates every EmailsSentTotal series at zero, so the
 // first failure is an increase an alert can see rather than a new series.
 func initEmailSeries() {
-	for _, kind := range []string{EmailConfirmation, EmailNewsletter} {
+	for _, kind := range []string{EmailConfirmation, EmailNewsletter, EmailModelAlert} {
 		for _, outcome := range []string{EmailSent, EmailFailed} {
 			EmailsSentTotal.WithLabelValues(kind, outcome)
 		}
@@ -257,6 +281,7 @@ func Init() {
 		ImageSelectedScore, ImageSelectedTotal,
 		ImageResizeTotal, ArticleImagesUnsized, ArticleImagesUnconvertible,
 		ResponseBytes, DailyUniqueVisitors, EmailsSentTotal,
+		ModelStepState, ModelCheckLastSuccess, ModelEventsDroppedTotal,
 	)
 }
 

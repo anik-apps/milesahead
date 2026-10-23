@@ -257,6 +257,69 @@ func (s *Sender) SendVoteAlert(toEmail string, a VoteAlert) error {
 	return s.send(m)
 }
 
+// ModelAlertItem is one change in a model-health alert.
+type ModelAlertItem struct {
+	Severity string // "URGENT", "Warning", "Recovered", "Test"
+	Title    string
+	Detail   string // may span lines
+}
+
+// ModelAlert is one model-health email: every change from one evaluation.
+type ModelAlert struct {
+	Subject  string
+	Urgent   bool
+	Items    []ModelAlertItem
+	AdminURL string // the admin Models tab
+}
+
+// SendModelAlert emails the owner the changes in model health. The admin
+// Models tab shows the same state whether or not this is sent.
+func (s *Sender) SendModelAlert(toEmail string, a ModelAlert) error {
+	e := html.EscapeString
+	var text, items strings.Builder
+	for _, it := range a.Items {
+		fmt.Fprintf(&text, "[%s] %s\n%s\n\n", it.Severity, it.Title, it.Detail)
+		fmt.Fprintf(&items, `<p style="color:#1a1a2e;font-size:15px;line-height:1.6;margin:0 0 16px 0;"><strong>%s: %s</strong><br>%s</p>`,
+			e(it.Severity), e(it.Title), strings.ReplaceAll(e(it.Detail), "\n", "<br>"))
+	}
+	if a.AdminURL != "" {
+		text.WriteString("Models tab: " + a.AdminURL + "\n\n")
+	}
+	text.WriteString("Automated alert from MilesAhead.\n")
+	color := "#8a5a00"
+	if a.Urgent {
+		color = "#c62828"
+	}
+	body := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f4;">
+<tr><td align="center" style="padding:20px 0;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;">
+<tr><td style="background-color:%s;padding:24px 32px;">
+<h1 style="margin:0;color:#ffffff;font-size:20px;">Model health</h1>
+</td></tr>
+<tr><td style="padding:32px;">%s
+<p style="color:#555;font-size:15px;line-height:1.6;margin:0;"><a href="%s">Open the Models tab</a></p>
+</td></tr>
+<tr><td style="background-color:#f8f9fa;padding:16px 32px;border-top:1px solid #e0e0e0;">
+<p style="margin:0;color:#999;font-size:12px;">Automated alert from MilesAhead.</p>
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>`, color, items.String(), e(a.AdminURL))
+
+	m := gomail.NewMessage()
+	m.SetHeader("From", s.from)
+	m.SetHeader("To", toEmail)
+	m.SetHeader("Subject", a.Subject)
+	m.SetBody("text/plain", text.String())
+	m.AddAlternative("text/html", body)
+	return s.send(m)
+}
+
 // send dials and sends a single message.
 func (s *Sender) send(m *gomail.Message) error {
 	sc, err := s.dialFn()

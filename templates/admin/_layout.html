@@ -28,6 +28,7 @@
             <a href="/admin/cards"{{if eq .Tab "cards"}} class="on" aria-current="page"{{end}}>Cards{{if .CardWork}} <span class="tab-n" title="{{.CardWork}} card updates and flags to look at">{{.CardWork}}</span>{{end}}</a>
             <a href="/admin/newsletter"{{if eq .Tab "newsletter"}} class="on" aria-current="page"{{end}}>Newsletter{{if .Newsletter}} <span class="tab-n{{if .NewsletterAlert}} warn{{end}}">{{.Newsletter}}</span>{{end}}</a>
             <a href="/admin/sources"{{if eq .Tab "sources"}} class="on" aria-current="page"{{end}}>Sources{{if .StaleSources}} <span class="tab-n alert" title="{{.StaleSources}} sources with nothing new for days">{{.StaleSources}}</span>{{end}}</a>
+            <a href="/admin/models"{{if eq .Tab "models"}} class="on" aria-current="page"{{end}}>Models{{if .Models}} <span class="tab-n {{if .ModelsAlert}}alert{{else}}warn{{end}}" title="{{.Models}} model lists need a look">{{.Models}}</span>{{end}}</a>
             <a href="/admin/subscribers"{{if eq .Tab "subscribers"}} class="on" aria-current="page"{{end}}>Subscribers</a>
             <a href="/admin/settings"{{if eq .Tab "settings"}} class="on" aria-current="page"{{end}}>Settings</a>
         </nav>

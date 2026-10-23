@@ -67,6 +67,9 @@ const (
 	StoryDedupBlock  = "block"
 )
 
+// DefaultHealthCheckInterval is ai.health_check_interval, in minutes, when unset.
+const DefaultHealthCheckInterval = 60
+
 type AIConfig struct {
 	GeneratorModel         string `yaml:"generator_model"`
 	FallbackGeneratorModel string `yaml:"fallback_generator_model"`
@@ -108,6 +111,13 @@ type AIConfig struct {
 	CacheTTL         int    `yaml:"cache_ttl"`
 	UnsplashKey      string `yaml:"unsplash_key"`
 	PexelsKey        string `yaml:"pexels_key"`
+	// AlertEmail is where model-health alerts go; empty uses
+	// votes.alert_email. See config.example.yaml.
+	AlertEmail string `yaml:"alert_email"`
+	// HealthCheckInterval is minutes between model health checks. Absent or
+	// 0 is DefaultHealthCheckInterval; a negative value turns the hourly
+	// check off (one still runs at boot).
+	HealthCheckInterval int `yaml:"health_check_interval"`
 }
 
 type SMTPConfig struct {
@@ -244,12 +254,30 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("votes.alert_email: %q is not a plain email address", cfg.Votes.AlertEmail)
 		}
 	}
+	cfg.AI.AlertEmail = strings.TrimSpace(cfg.AI.AlertEmail)
+	if cfg.AI.AlertEmail != "" {
+		if a, err := netmail.ParseAddress(cfg.AI.AlertEmail); err != nil || a.Address != cfg.AI.AlertEmail {
+			return nil, fmt.Errorf("ai.alert_email: %q is not a plain email address", cfg.AI.AlertEmail)
+		}
+	}
+	if cfg.AI.HealthCheckInterval == 0 {
+		cfg.AI.HealthCheckInterval = DefaultHealthCheckInterval
+	}
 
 	if cfg.Site.PersonaName == "" {
 		cfg.Site.PersonaName = "Scout"
 	}
 
 	return &cfg, nil
+}
+
+// ModelAlertEmail is where model-health alerts are emailed: ai.alert_email,
+// else votes.alert_email, else "" (shown in the admin only).
+func (c *Config) ModelAlertEmail() string {
+	if c.AI.AlertEmail != "" {
+		return c.AI.AlertEmail
+	}
+	return c.Votes.AlertEmail
 }
 
 // expandEnv replaces every string in v that is exactly ${NAME} with the

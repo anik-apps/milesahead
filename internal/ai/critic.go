@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -20,6 +21,14 @@ type VerificationResult struct {
 	// not necessarily the first. Set by the Critic, never parsed from the reply.
 	Model string `json:"-"`
 }
+
+// ErrCriticUnavailable is wrapped by every critic error where no model in the
+// critic chain answered: retired, overloaded, timed out, or refused the key. A
+// reply that came back but would not parse is a different error, and so is an
+// article-specific refusal (a 400). The scan stops generating when it sees this
+// (a critic that cannot answer would fail every remaining article too), and a
+// revision treats it as "try later".
+var ErrCriticUnavailable = errors.New("no critic answered")
 
 // Critic uses an HF model to verify generated articles against their sources.
 type Critic struct {
@@ -64,18 +73,29 @@ func (c *Critic) verify(label, prompt string) (*VerificationResult, error) {
 	// timeout rather than ShortCallTimeout -- critics take tens of seconds.
 	resp, model, err := tryModels(c.client, c.models, prompt, 4096)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", label, err)
+		// An article-specific refusal is a non-retryable error the chain
+		// stopped on (a 400, 413 or 422: prompt too large, content filter). It
+		// is about this article, not the critic list, so it does not stop the
+		// scan. Anything the chain would retry, failing on every model, means
+		// no critic answered.
+		if OutcomeOf(err) == OutcomeError && !shouldTryAnotherModel(err) {
+			return nil, fmt.Errorf("%s: %w", label, err)
+		}
+		return nil, fmt.Errorf("%s: %w: %w", label, ErrCriticUnavailable, err)
 	}
 
 	jsonStr := extractJSON(resp)
 	if jsonStr == "" {
+		c.reportBadReply(model, "no JSON object in critic reply")
 		return nil, fmt.Errorf("%s (model %s): no JSON object found in response: %s", label, model, resp)
 	}
 
 	var reply criticReply
 	if err := json.Unmarshal([]byte(jsonStr), &reply); err != nil {
+		c.reportBadReply(model, "critic JSON did not parse: "+err.Error())
 		return nil, fmt.Errorf("%s (model %s): parse response: %w", label, model, err)
 	}
+	c.reportOK(model)
 	result := reply.VerificationResult
 	result.Issues = make([]string, 0, len(reply.Issues))
 	for _, issue := range reply.Issues {
@@ -88,6 +108,22 @@ func (c *Critic) verify(label, prompt string) (*VerificationResult, error) {
 	}
 
 	return &result, nil
+}
+
+// reportBadReply tells model health that model answered with a reply the
+// critic could not use, when the client is a labelled HFClient.
+func (c *Critic) reportBadReply(model, detail string) {
+	if r, ok := c.client.(interface{ ReportBadReply(model, detail string) }); ok {
+		r.ReportBadReply(model, detail)
+	}
+}
+
+// reportOK confirms to model health that model's reply parsed, when the
+// client is a labelled HFClient that waits for confirmation.
+func (c *Critic) reportOK(model string) {
+	if r, ok := c.client.(interface{ ReportOK(model string) }); ok {
+		r.ReportOK(model)
+	}
 }
 
 // criticReply is a verdict as the critic sends it. Its issues field shadows

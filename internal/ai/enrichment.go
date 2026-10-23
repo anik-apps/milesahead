@@ -91,6 +91,7 @@ func tryModels(client HFClientInterface, models []string, prompt string, maxToke
 		return "", "", fmt.Errorf("no models configured")
 	}
 	var firstErr error
+	var failed []string
 	for i, m := range models {
 		result, err := client.Generate(m, prompt, maxTokens)
 		if err == nil {
@@ -102,15 +103,21 @@ func tryModels(client HFClientInterface, models []string, prompt string, maxToke
 		if firstErr == nil {
 			firstErr = err
 		}
+		failed = append(failed, fmt.Sprintf("%s (%s)", m, OutcomeOf(err)))
 		if !shouldTryAnotherModel(err) {
 			return "", "", err
 		}
 		if i < len(models)-1 {
 			slog.Warn("model failed, trying next in chain",
 				"failed", m, "next", models[i+1], "err", err)
+		} else {
+			// The last model's failure used to reach no log line at all:
+			// kimi-k3's 410 was invisible through the whole 2026-10-20 outage.
+			slog.Warn("model failed, no model left in chain", "failed", m, "err", err)
 		}
 	}
-	return "", "", fmt.Errorf("all %d model(s) failed, first error: %w", len(models), firstErr)
+	return "", "", fmt.Errorf("all %d model(s) failed: %s; first error: %w",
+		len(models), strings.Join(failed, "; "), firstErr)
 }
 
 // GenerateScoutsTake produces the persona commentary for an article.

@@ -186,8 +186,7 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM: ${{ secrets.SMTP_FROM }}
-          # Where vote alerts are emailed (votes.alert_email). Unset, they
-          # are shown on the admin Published page only.
+          # Where vote and model-health alerts are emailed (votes.alert_email, ai.alert_email). Unset, they are shown in the admin only.
           ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
         run: |
           set -eo pipefail
@@ -207,6 +206,10 @@ jobs:
           SMTP_PASSWORD_Q=$(q "${SMTP_PASSWORD:-placeholder}")
           SMTP_FROM_Q=$(q "${SMTP_FROM:-noreply@milesahead.kumaranik.com}")
           ALERT_EMAIL_Q=$(q "${ALERT_EMAIL}")
+
+          if [ -z "$ALERT_EMAIL" ]; then
+            echo "::warning title=ALERT_EMAIL is empty::Model health and vote alerts will be shown in the admin but not emailed. Add the ALERT_EMAIL repository secret."
+          fi
 
           cat > "$CONFIG_OUT" << CONFIGEOF
           server:
@@ -257,6 +260,8 @@ jobs:
             cache_ttl: 3600
             unsplash_key: ${UNSPLASH_KEY_Q}
             pexels_key: ${PEXELS_KEY_Q}
+            alert_email: ${ALERT_EMAIL_Q}
+            health_check_interval: 60
 
           mail:
             smtp:

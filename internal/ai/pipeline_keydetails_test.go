@@ -55,7 +55,7 @@ func keyDetailsPipeline(reply string, client *perModelMockHFClient) *Pipeline {
 }
 
 func calledModel(c *perModelMockHFClient, model string) bool {
-	for _, m := range c.callsOrder {
+	for _, m := range c.calls() {
 		if m == model {
 			return true
 		}
@@ -73,7 +73,7 @@ func TestPipeline_Process_UsesGeneratorKeyDetails(t *testing.T) {
 	}
 
 	if calledModel(client, "details") {
-		t.Errorf("extraction call made although the reply carried key details; calls = %v", client.callsOrder)
+		t.Errorf("extraction call made although the reply carried key details; calls = %v", client.calls())
 	}
 	wantDetails := []KeyDetail{
 		{Label: "Bonus", Value: "20% extra Avios on transfers"},
@@ -115,7 +115,7 @@ func TestPipeline_Process_FallsBackToExtraction(t *testing.T) {
 		t.Fatalf("Process: %v", err)
 	}
 	if !calledModel(client, "details") {
-		t.Fatalf("no extraction call for a reply without key details; calls = %v", client.callsOrder)
+		t.Fatalf("no extraction call for a reply without key details; calls = %v", client.calls())
 	}
 	if len(res.KeyDetails) != 1 || res.KeyDetails[0].Value != "20%" {
 		t.Errorf("key details = %+v", res.KeyDetails)
@@ -182,6 +182,6 @@ func TestPipeline_Process_GeneratorDetailWithUnmappableRef(t *testing.T) {
 		t.Errorf("key details = %+v; want the Source 7 bullet dropped", res.KeyDetails)
 	}
 	if calledModel(client, "details") {
-		t.Errorf("extraction call made although a key detail survived; calls = %v", client.callsOrder)
+		t.Errorf("extraction call made although a key detail survived; calls = %v", client.calls())
 	}
 }
