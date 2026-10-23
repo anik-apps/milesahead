@@ -54,7 +54,7 @@ All settings live in a single `config.yaml` file. `config.example.yaml` document
 | `ai` | `critic_model` | Model, or comma-separated chain tried in order, for verification only (`nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3.5-lightning-30b-a3b`) |
 | `ai` | `critic_disable_thinking` | Send `enable_thinking: false` on critic requests only (default `false`; production `true`) |
 | `ai` | `critic2_model` | Optional second critic; empty in production |
-| `ai` | `vision_model` | Image relevance scoring (default `meta/llama-3.2-11b-vision-instruct`) |
+| `ai` | `vision_model` | Image relevance scoring: a model, or a comma-separated list tried in order (default `meta/llama-3.2-11b-vision-instruct`) |
 | `ai` | `request_timeout` | Seconds per generation or verification call (900 in production) |
 | `ai` | `enrichment_model` | Comma-separated chain of fast models for every short AI call: story dedup, enrichment, image text-scoring, newsletter pick, card-update detection (`openai/gpt-oss-20b,nvidia/nemotron-3.5-super-vl-120b-a12b`). Unset, the generator fallbacks then the critics are used |
 | `ai` | `enrichment_interval` | Minutes between enrichment passes (default 15) |
@@ -67,6 +67,8 @@ All settings live in a single `config.yaml` file. `config.example.yaml` document
 | `ai` | `cache_ttl` | AI response cache TTL in seconds |
 | `ai` | `unsplash_key` | Unsplash API key for image search |
 | `ai` | `pexels_key` | Pexels API key for image search |
+| `ai` | `alert_email` | Where model-health alerts are emailed (a model dying, a list on a backup or empty, publishing stopped). Empty uses `votes.alert_email`; with neither, alerts show only on the admin Models tab. Production sets it from the `ALERT_EMAIL` secret. See [Model Health](../features/model-health/) |
+| `ai` | `health_check_interval` | Minutes between checks of every model list (absent or 0 is 60; negative turns the hourly check off, and one still runs at boot) |
 | `mail` | `smtp.host`, `smtp.port`, `smtp.user`, `smtp.password`, `smtp.from` | Outbound email; see [Email](../deployment/email/) |
 | `mail` | `imap.*` | Mailbox for review-by-email replies. Review by email is not built, so the poller never starts; startup logs `review by email is off (mail.imap not configured)` with the deploy's placeholders, and the settings page says "Review by email: off" |
 | `newsletter` | `send_day` | Day the weekly issue goes out: a weekday name or its first three letters (default `saturday`). The issue is built at 20:00 the day before |
