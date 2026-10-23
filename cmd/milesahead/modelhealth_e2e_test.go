@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/kumaranik/milesahead/internal/ai"
+	"github.com/kumaranik/milesahead/internal/cluster"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/health"
 	"github.com/kumaranik/milesahead/internal/mail"
@@ -68,10 +69,17 @@ func TestOutageReplay_DeadCriticsAlertOnceAndStopTheScan(t *testing.T) {
 	pipeline := ai.NewPipeline(ai.NewGenerator(base.WithStep(health.StepGenerator, worker), "gen", "", nil),
 		ai.NewCritic(base.WithStep(health.StepCritic, worker).WithConfirmedOK(), "super,kimi"), 75)
 	f.gen.pipeline = pipeline
-	f.raw(0, "Chase Sapphire Reserve adds new airport lounge access benefit")
-	f.raw(1, "Chase Sapphire Reserve adds new airport lounge access benefit for cardholders")
-	f.raw(0, "United MileagePlus announces award chart devaluation for partners")
-	f.raw(2, "United MileagePlus announces award chart devaluation for partner flights")
+	ids := []int64{
+		f.raw(0, "Chase Sapphire Reserve adds new airport lounge access benefit"),
+		f.raw(1, "Chase Sapphire Reserve adds new airport lounge access benefit for cardholders"),
+		f.raw(0, "United MileagePlus announces award chart devaluation for partners"),
+		f.raw(2, "United MileagePlus announces award chart devaluation for partner flights"),
+	}
+	// Without two stories to write, one generator call would not show the
+	// scan stopped.
+	if n := multiSourceClusters(t, f, ids); n != 2 {
+		t.Fatalf("precondition: the seeded titles form %d multi-source clusters, want 2", n)
+	}
 
 	f.gen.run()
 	worker.Drain()
@@ -92,4 +100,46 @@ func TestOutageReplay_DeadCriticsAlertOnceAndStopTheScan(t *testing.T) {
 	if !snap.Stopped {
 		t.Error("the Models tab does not show publishing stopped")
 	}
+
+	// The next scan tries once more and stops again; the outage is not
+	// emailed a second time.
+	f.gen.run()
+	worker.Drain()
+	mu.Lock()
+	calls = generatorCalls
+	mu.Unlock()
+	if calls != 2 {
+		t.Errorf("generator calls after a second scan = %d, want 2", calls)
+	}
+	alerts.mu.Lock()
+	n := len(alerts.sent)
+	alerts.mu.Unlock()
+	if n != 1 {
+		t.Errorf("emails after a second scan = %d, want still 1", n)
+	}
+}
+
+// multiSourceClusters clusters the raw articles as clusterGenerator.run does
+// and counts the clusters it would write from: those with two or more sources.
+func multiSourceClusters(t *testing.T, f *scanFixture, ids []int64) int {
+	t.Helper()
+	raws, err := f.db.GetRawArticlesByIDs(ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var articles []cluster.Article
+	for _, r := range raws {
+		articles = append(articles, cluster.Article{ID: r.ID, Title: r.Title, SourceID: r.SourceID, Content: r.Content})
+	}
+	n := 0
+	for _, c := range cluster.Cluster(articles, f.gen.threshold) {
+		sources := map[int64]bool{}
+		for _, a := range c.Articles {
+			sources[a.SourceID] = true
+		}
+		if len(sources) >= 2 {
+			n++
+		}
+	}
+	return n
 }

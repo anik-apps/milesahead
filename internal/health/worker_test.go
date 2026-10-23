@@ -18,10 +18,17 @@ type fakeSender struct {
 	sent []mail.ModelAlert
 	fail error
 	gate chan struct{} // when set, SendModelAlert waits for it
+	// entered, when set, is signalled as SendModelAlert starts waiting on gate.
+	// Give it a buffer: the signal never blocks.
+	entered chan struct{}
 }
 
 func (f *fakeSender) SendModelAlert(_ string, a mail.ModelAlert) error {
 	if f.gate != nil {
+		select {
+		case f.entered <- struct{}{}:
+		default:
+		}
 		<-f.gate
 	}
 	f.mu.Lock()
@@ -180,11 +187,23 @@ func TestWorker_RecordNeverBlocks(t *testing.T) {
 }
 
 func TestWorker_SnapshotDoesNotWaitForASend(t *testing.T) {
-	d, s := openDB(t), &fakeSender{gate: make(chan struct{})}
-	defer close(s.gate)
+	d, s := openDB(t), &fakeSender{gate: make(chan struct{}), entered: make(chan struct{}, 1)}
 	w := newWorker(t, d, []Step{genStep, criticStep}, criticGone, s)
-	go w.RunCheck()
-	time.Sleep(50 * time.Millisecond) // RunCheck is now waiting on the send
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		w.RunCheck()
+	}()
+	// Release the send and let RunCheck finish before the database closes.
+	defer func() {
+		close(s.gate)
+		<-done
+	}()
+	select {
+	case <-s.entered: // RunCheck holds the lock, waiting on the send
+	case <-time.After(2 * time.Second):
+		t.Fatal("RunCheck never reached the email send")
+	}
 	got := make(chan Snapshot, 1)
 	go func() { got <- w.Snapshot() }()
 	select {
