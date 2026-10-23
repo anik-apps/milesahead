@@ -91,12 +91,15 @@ The worker evaluates every list after each check round, and 5 seconds after the 
 | `enrichment`, `infographic` or `vision` becomes `down` | Warning |
 | Every model that has been seen, in every list, is `auth`, or every one is `retired` ("API key or provider problem"). Replaces all the per-list events | Urgent |
 | The publishing drought (below) | Urgent |
-| A list, the provider problem or the drought clears | Recovered |
+| `generator` or `critic` leaves `down` ("Critic is back: publishing has resumed", or "Critic answers again on a backup: publishing has resumed") | Recovered |
+| The provider problem or the drought clears | Recovered |
 
 The rules:
 
 - **One email per evaluation.** All the events of one evaluation go in one email, most severe first. The subject names the most severe, with "(+N more)".
-- **Urgent repeats daily** while it lasts, with "Still:" in front. Warnings never repeat: if things get worse, the urgent email is the reminder. A backup coming back is shown on the tab and not emailed.
+- **Urgent repeats daily** while it lasts, with "Still:" in front. Warnings never repeat: if things get worse, the urgent email is the reminder.
+- **A warning has a 24-hour cool-down.** After a warning is emailed, its list (or backup) sends no other warning for 24 hours; changes in that time are saved and shown on the tab. A list flapping between `degraded` and `ok` sends one email a day at most.
+- **Only urgent states email their recovery.** A list going back to `ok` from `degraded`, a list that does not stop publishing coming back, and a backup coming back are shown on the tab and not emailed.
 - **An alert is saved only after its email is sent.** State lives in `model_alerts`. A failed send saves nothing, is retried at the next evaluation, is shown under Alerts on the tab, and is counted in `milesahead_emails_sent_total{kind="model_alert",outcome="failed"}`. A restart does not re-send, because the state survives it.
 - **Recipient:** `ai.alert_email`, else `votes.alert_email`. `deploy.yml` writes `ai.alert_email` from the `ALERT_EMAIL` secret and emits a deploy warning when it is empty.
 - **With no address, or no SMTP,** nothing is emailed. The events are logged at WARN as `model health alert not emailed`, and the tab and the Review banner say alerts are not emailed. The alert state is still saved, so adding the address later does not replay old events; an urgent one that is still true is emailed again within a day.

@@ -37,7 +37,8 @@ type Event struct {
 	Detail   string
 }
 
-// repeatUrgentAfter: an urgent state is emailed again this long after the last time.
+// repeatUrgentAfter: an urgent state is emailed again this long after the last
+// time. It is also how long a warning key stays quiet after its last email.
 const repeatUrgentAfter = 24 * time.Hour
 
 const (
@@ -129,9 +130,13 @@ func (p *planner) urgent(key, state, title, detail string) {
 	}
 }
 
-// warning emails on entering state only.
+// warning emails on entering state, but at most once every repeatUrgentAfter
+// for the key: a list flapping between degraded and ok would otherwise email
+// on every swing. A change inside the cool-down is saved, and shown on the tab.
 func (p *planner) warning(key, state, title, detail string) {
-	if p.prev(key).State != state {
+	prev := p.prev(key)
+	coolingDown := !prev.NotifiedAt.IsZero() && p.now.Sub(prev.NotifiedAt) < repeatUrgentAfter
+	if prev.State != state && !coolingDown {
 		p.save(key, state, &Event{Severity: SeverityWarning, Title: title, Detail: detail})
 		return
 	}
@@ -152,17 +157,29 @@ func (p *planner) step(v StepView) {
 		return
 	}
 	key := stepKey(v.Name)
-	switch v.State {
-	case StepDown:
+	wasDown := p.prev(key).State == string(StepDown)
+	switch {
+	case v.State == StepDown:
 		if v.StopsPublishing {
 			p.urgent(key, string(StepDown), v.Label+" is down: publishing has stopped", downDetail(v))
 		} else {
 			p.warning(key, string(StepDown), v.Label+" is down: no model in its list works", downDetail(v))
 		}
-	case StepDegraded:
+	case v.StopsPublishing && wasDown:
+		// The urgent "publishing has stopped" is answered whatever the list
+		// came back as.
+		if v.State == StepDegraded {
+			p.save(key, string(StepDegraded), &Event{Severity: SeverityRecovered,
+				Title: v.Label + " answers again on a backup: publishing has resumed", Detail: degradedDetail(v)})
+		} else {
+			p.save(key, stateOK, &Event{Severity: SeverityRecovered, Title: v.Label + " is back: publishing has resumed"})
+		}
+	case v.State == StepDegraded:
 		p.warning(key, string(StepDegraded), v.Label+" is running on a backup", degradedDetail(v))
 	default:
-		p.recovered(key, v.Label+" is back on its first choice")
+		// Any other move to ok is shown on the tab, not emailed: degraded to
+		// ok, and a list that does not stop publishing coming back.
+		p.save(key, stateOK, nil)
 	}
 	for i, m := range v.Models {
 		if i == 0 {
@@ -182,10 +199,11 @@ func (p *planner) step(v StepView) {
 }
 
 // providerBroken: every model seen, in every list, is retired, or every one
-// is auth: the key or the base URL, not the models.
+// is auth: the key or the base URL, not the models. It takes 2 or more
+// distinct models: one model listed in several steps is still one model.
 func providerBroken(views []StepView) (bool, ModelState) {
 	var kind ModelState
-	seen := 0
+	seen := map[string]bool{}
 	for _, v := range views {
 		if v.State == StepOff {
 			continue
@@ -202,10 +220,10 @@ func providerBroken(views []StepView) (bool, ModelState) {
 			} else if kind != m.State {
 				return false, ""
 			}
-			seen++
+			seen[m.Model] = true
 		}
 	}
-	return seen >= 2, kind
+	return len(seen) >= 2, kind
 }
 
 func providerDetail(kind ModelState) string {
@@ -242,15 +260,27 @@ func downDetail(v StepView) string {
 	return "No model in the list answers:\n" + strings.Join(lines, "\n") + advice
 }
 
+// degradedDetail names the backup that answered the list's most recent call. A
+// backup that is merely not dead may never have been called: a 400 or a bad
+// reply from the first choice does not fall through to it. So without a call
+// answered by a working backup it lists them and does not claim one is running.
 func degradedDetail(v StepView) string {
 	running := ""
-	for _, m := range v.Models[1:] {
-		if !m.State.Dead() {
+	var backups []string
+	for i, m := range v.Models {
+		if i == 0 || m.State.Dead() {
+			continue
+		}
+		backups = append(backups, m.Model)
+		if m.Answering {
 			running = m.Model
-			break
 		}
 	}
-	return modelLine(v.Models[0]) + "\nRunning on " + running + ".\n\n" + Advice(v.Models[0].State)
+	line := "\nRunning on " + running + "."
+	if running == "" {
+		line = "\nBackups configured: " + strings.Join(backups, ", ") + "."
+	}
+	return modelLine(v.Models[0]) + line + "\n\n" + Advice(v.Models[0].State)
 }
 
 func backupDetail(v StepView, m ModelView) string {

@@ -67,7 +67,8 @@
         ("no working backup"), and says what to do about a retired, refused or failing model. A badge, a Review banner
         and a Settings link point to it.
       - One digest email per evaluation when a model dies, a list runs on a backup, or a list has nothing left; urgent
-        ones repeat daily and an alert is saved only after its email goes out. A provider-wide key or URL problem is
+        ones repeat daily, a warning is followed by 24 quiet hours, only urgent states email their recovery, and an
+        alert is saved only after its email goes out. A provider-wide key or URL problem is
         one email, not one per list. Send test alert proves the address and SMTP.
       - A drought alarm that does not depend on the cause: no article in 24 hours while 2 or more sources added
         stories is an urgent email.
