@@ -110,8 +110,23 @@ func TestReview_BannerWhilePublishingIsStopped(t *testing.T) {
 	app.SetModelHealth(&fakeModelHealth{snap: criticDown()})
 	session, _ := getSessionAndCSRF(loginAndGetSession(t, app))
 	body := doAdminGET(t, app, "/admin/dashboard", session).Body.String()
-	if !strings.Contains(body, "Publishing has stopped") || !strings.Contains(body, `href="/admin/models"`) {
-		t.Error("Review has no banner while publishing is stopped")
+	// The nav tab links to /admin/models on every page, so look for the
+	// banner's own markup.
+	const banner = `class="message error" role="alert">Publishing has stopped`
+	at := strings.Index(body, banner)
+	if at < 0 {
+		t.Fatal("Review has no banner while publishing is stopped")
+	}
+	// Below the page header, not squeezed into its flex row.
+	if tools := strings.Index(body, `id="kbd-help"`); tools < 0 || at < tools {
+		t.Error("the banner sits inside the page header")
+	}
+
+	app.SetModelHealth(&fakeModelHealth{snap: health.Snapshot{CheckEvery: time.Hour, LastCheck: oct20}})
+	body = doAdminGET(t, app, "/admin/dashboard", session).Body.String()
+	if strings.Contains(body, `class="message error" role="alert">Publishing has stopped`) ||
+		strings.Contains(body, "Model health alerts are not emailed") {
+		t.Error("Review shows the banner while models are healthy")
 	}
 }
 
