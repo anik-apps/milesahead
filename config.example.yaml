@@ -107,9 +107,20 @@ ai:
   # and vision keep the model's default. Every critic measurement above that
   # says "thinking OFF" was made with this. Default false.
   critic_disable_thinking: true
-  # Vision model for image scoring. The 90b variant this replaced times out on
-  # every call, so each candidate image burned the full 300s client timeout.
-  vision_model: "meta/llama-3.2-11b-vision-instruct"
+  # Vision models for image scoring, tried in order. The scorer downloads each
+  # thumbnail and sends it inline, with thinking off (see images.Scorer).
+  #
+  # Measured 2026-10-29 with `ab-models -vision-candidates`: each model scored
+  # 8 articles' own image against two other articles' images:
+  #   model                                   scored  avg time  own image first
+  #   nemotron-3.5-super-vl-120b-a12b         8/8     2.5s      6/8
+  #   llama-3.2-11b-vision-instruct           6/8     17s       0/6
+  # llama timed out (30s) on the other two, as on 16 of 134 production calls
+  # from 2026-10-26, and scored other articles' images as high as the right
+  # one. super-vl is also the first critic; a super-vl outage leaves llama
+  # here and lightning there. The 90b llama this list once held timed out on
+  # every call.
+  vision_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,meta/llama-3.2-11b-vision-instruct"
   # Seconds per model call. The primary takes 105-510s per article, so the
   # previous hardcoded 300s could have timed out a healthy-but-slow generation
   # and silently demoted it to the fallback.
@@ -122,22 +133,37 @@ ai:
   # capped at 30s (card-update detection at 120s, as its reply is a whole card
   # section), so only fast models belong here.
   #
-  # Deliberately not led by the critic: the side jobs used to reuse it, so the
-  # critic's retirement on 2026-09-28 took them all down with it. Enrichment
-  # itself survived only because this was already a chain -- kept two deep for
-  # the same reason as fallback_generator_model. The first critic is in both
-  # chains, but first in only one of them, so an overloaded critic backend
-  # costs enrichment a fallback, not its primary.
+  # Deliberately not led by the first critic: the side jobs used to reuse it,
+  # so the critic's retirement on 2026-09-28 took them all down with it. The
+  # first critic is in both chains, but first in only one of them, so an
+  # overloaded critic backend costs enrichment a fallback, not its primary.
   #
-  # Checked 2026-09-29 on short real prompts (tags, image scoring, card-update
-  # detection, Scout's Take): gpt-oss-20b 3-11s, all valid; nemotron-3-super
-  # 2-11s, all valid, and its Scout's Take was clean prose with no reasoning
-  # preamble. Rejected: gemma-4-31b-it (30s timeout on tags),
-  # deepseek-v4.1-flash (minutes). nemotron-3-super was retired 2026-10-20;
-  # its successor nemotron-3.5-super-vl-120b-a12b takes its place as the
-  # second model, after a 512-token check with thinking on (1-2s, clean JSON,
-  # 2026-10-22). Not yet measured on the real short prompts.
-  enrichment_model: "openai/gpt-oss-20b,nvidia/nemotron-3.5-super-vl-120b-a12b"
+  # Measured 2026-10-29 with `ab-models -enrichment-candidates`: the four
+  # enrichment calls (tags, Scout's Take, key details, image queries) on the
+  # 8 newest articles, through the production functions and budgets:
+  #   model                              thinking ON   thinking OFF  avg time (off)
+  #   nemotron-3.5-lightning-30b-a3b     0/32 ok       32/32 ok      0.3-3.6s
+  #   nemotron-3.5-super-vl-120b-a12b    9/32 ok       32/32 ok      0.3-1.7s
+  #   gpt-oss-20b                        25/32 ok      32/32 ok      5-10s
+  # With thinking on, both nemotron models spent the 512-1024 tokens reasoning
+  # and were cut off (finish_reason=length) -- so super-vl, this chain's
+  # backup since 2026-10-22, had been failing nearly every call it took.
+  # gpt-oss-20b's misses were 30s timeouts, retried until one call took 134s
+  # (it accepts enable_thinking=false and reasons anyway). lightning leads: as
+  # reliable as super-vl and not the first critic. super-vl's Scout's Take
+  # was the most concrete of the three, so it is next; gpt-oss-20b, the
+  # slowest, is last.
+  #
+  # Earlier: gemma-4-31b-it (30s timeout on tags) and deepseek-v4.1-flash
+  # (minutes) were rejected on 2026-09-29; nemotron-3-super was retired
+  # 2026-10-20.
+  enrichment_model: "nvidia/nemotron-3.5-lightning-30b-a3b,nvidia/nemotron-3.5-super-vl-120b-a12b,openai/gpt-oss-20b"
+  # Sends chat_template_kwargs {"enable_thinking": false} on every call made
+  # with enrichment_model; the critics, the generator and charts keep their
+  # own setting. Every enrichment measurement above that says "thinking OFF"
+  # was made with this. gpt-oss-20b accepts the field and reasons anyway.
+  # Default false.
+  enrichment_disable_thinking: true
   enrichment_interval: 15        # minutes
   enrichment_max_attempts: 3     # passes before an article is left alone
   # Bounds one pass. A pass has no limit of its own otherwise, and on a

@@ -52,6 +52,12 @@ func TestExampleConfigLoads(t *testing.T) {
 		t.Error("critic_disable_thinking must be true: the documented critic " +
 			"measurements were all taken with thinking off")
 	}
+	// With thinking on, both nemotron models in the enrichment chain ran out
+	// of tokens on nearly every real enrichment prompt.
+	if !cfg.AI.EnrichmentDisableThinking {
+		t.Error("enrichment_disable_thinking must be true: the documented " +
+			"enrichment measurements were taken with thinking off")
+	}
 	if cfg.AI.CriticThreshold <= 0 || cfg.AI.CriticThreshold > 100 {
 		t.Errorf("critic_threshold %d out of range", cfg.AI.CriticThreshold)
 	}
@@ -81,8 +87,8 @@ func TestExampleConfigLoads(t *testing.T) {
 	// (fast with thinking off) and enrichment's second model. What the rule protects is still enforced -- enrichment must not
 	// be LED by the primary critic, so when the critic's backend degrades,
 	// enrichment's first choice is unaffected and the side jobs only lose a
-	// fallback. (Enrichment requests also never carry the critic's
-	// thinking-off setting.)
+	// fallback. (Enrichment requests carry their own thinking setting,
+	// enrichment_disable_thinking, never the critic's.)
 	if enrich := ai.SplitModels(cfg.AI.EnrichmentModel); len(enrich) > 0 && len(critics) > 0 &&
 		enrich[0] == critics[0] {
 		t.Errorf("enrichment_model is led by the primary critic %q; short calls "+
@@ -166,6 +172,7 @@ func TestDeployConfigMirrorsCritic(t *testing.T) {
 		fmt.Sprintf("critic_model: %q", cfg.AI.CriticModel),
 		fmt.Sprintf("critic2_model: %q", cfg.AI.Critic2Model),
 		fmt.Sprintf("critic_disable_thinking: %v", cfg.AI.CriticDisableThinking),
+		fmt.Sprintf("enrichment_disable_thinking: %v", cfg.AI.EnrichmentDisableThinking),
 		fmt.Sprintf("story_dedup: %q", cfg.Scanner.StoryDedup),
 		// Infographics are set the same in both: changing one alone fails here.
 		fmt.Sprintf("enrichment_infographics: %q", cfg.AI.EnrichmentInfographics),

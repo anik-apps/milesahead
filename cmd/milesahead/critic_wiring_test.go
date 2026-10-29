@@ -62,6 +62,35 @@ func TestCriticWiring(t *testing.T) {
 	}
 }
 
+// TestEnrichmentWiring: enrichment_disable_thinking reaches the short calls'
+// requests and neither the generator's nor the critic's.
+func TestEnrichmentWiring(t *testing.T) {
+	var kwargs []bool
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]json.RawMessage
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		_, present := body["chat_template_kwargs"]
+		kwargs = append(kwargs, present)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"travel, points"},"finish_reason":"stop"}]}`))
+	}))
+	defer ts.Close()
+
+	for _, on := range []bool{false, true} {
+		kwargs = nil
+		cfg := &config.Config{AI: config.AIConfig{EnrichmentDisableThinking: on}}
+		hf := ai.NewHFClient("token", 0)
+		hf.BaseURL = ts.URL
+		for _, c := range []*ai.HFClient{newEnrichmentClient(cfg, hf), hf, newCriticClient(cfg, hf)} {
+			if _, err := c.Generate("m", "prompt", ai.TagsTokens); err != nil {
+				t.Fatalf("on=%v: Generate: %v", on, err)
+			}
+		}
+		if want := []bool{on, false, false}; !reflect.DeepEqual(kwargs, want) {
+			t.Errorf("on=%v: chat_template_kwargs present (enrichment, base, critic) = %v, want %v", on, kwargs, want)
+		}
+	}
+}
+
 // TestCriticWiring_ChainRetriesEachCriticOnce: with a fallback critic, a critic
 // that keeps failing is retried once, not max_retries times, before the next
 // one is tried. Each gateway timeout costs ~5 minutes in production.

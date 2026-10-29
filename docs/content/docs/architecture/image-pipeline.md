@@ -36,7 +36,7 @@ Each candidate receives a relevance score from 1-10. Candidates are sorted by sc
 
 ### Phase 2: Vision Model
 
-The vision model (`vision_model`, `meta/llama-3.2-11b-vision-instruct` by default) receives the actual image thumbnail along with the article title and summary. It scores each image on specificity:
+The vision model (`vision_model`: in production `nvidia/nemotron-3.5-super-vl-120b-a12b`, then `meta/llama-3.2-11b-vision-instruct`, the default) receives the actual image thumbnail along with the article title and summary. It scores each image on specificity:
 
 | Score | Meaning |
 |-------|---------|
@@ -47,17 +47,29 @@ The vision model (`vision_model`, `meta/llama-3.2-11b-vision-instruct` by defaul
 
 If all vision API calls fail, the pipeline falls back to the text-phase scores with no penalty.
 
-The vision model fetches each thumbnail itself. A sized Wikimedia thumbnail is
-often a size nobody has asked for, which Wikimedia renders on the first
-request -- usually in 0.2-3 s, sometimes 4-10 s, or with a 429 -- and a failed
-fetch costs the candidate a x0.6 penalty. So before any thumbnail is sent,
-the Wikimedia ones among the top 5 are requested once, two at a time
-(`Searcher.Warm`; Wikimedia's robot policy asks for a concurrency of at most
-2 against upload.wikimedia.org), and the vision model finds them rendered.
-Warming waits at most 15 s in all, with no retry: a render cut off then
-carries on at Wikimedia. The
-searcher is an argument of `Scorer.SetVisionModel`, so vision scoring cannot
-be switched on without it.
+The scorer downloads each thumbnail itself, with the app's User-Agent, and
+sends the image inline as a `data:` URI (`Scorer.inlineImage`). The provider
+used to fetch each URL itself, and Wikimedia refuses its fetcher: on
+2026-10-29 every Wikimedia thumbnail came back 403 from
+nemotron-3.5-super-vl and 500 from llama-3.2-11b-vision, and both were
+recorded against the vision model. A thumbnail the scorer cannot download is
+not sent at all; it takes the x0.6 penalty and no model is blamed. One over
+300 KB is sent by URL as before (thumbnails measured 13-83 KB; both models
+accepted 309 KB inline). Vision requests always ask for no thinking
+(`enable_thinking: false`): the reply is one line of JSON, and with thinking
+on nemotron-3.5-super-vl spent the 512 tokens reasoning and replied with
+nothing.
+
+A sized Wikimedia thumbnail is often a size nobody has asked for, which
+Wikimedia renders on the first request -- usually in 0.2-3 s, sometimes 4-10
+s, or with a 429 -- and a failed download costs the candidate a x0.6
+penalty. So before any thumbnail is downloaded, the Wikimedia ones among the
+top 5 are requested once, two at a time (`Searcher.Warm`; Wikimedia's robot
+policy asks for a concurrency of at most 2 against upload.wikimedia.org), and
+the download finds them rendered. Warming waits at most 15 s in all, with no
+retry: a render cut off then carries on at Wikimedia. The searcher is an
+argument of `Scorer.SetVisionModel`, so vision scoring cannot be switched on
+without it.
 
 ## Selection Process
 
@@ -298,8 +310,8 @@ a range ("7,000-24,000"), or a percentage beside a multiplier cannot be a bar.
 
 One call per article on the `ai.infographic_model` chain (the
 `enrichment_model` chain when unset), after the image and only once key details
-exist. Production puts a nemotron super model first and gpt-oss-20b second,
-the reverse of `enrichment_model`: when the model drew SVG, gpt-oss-20b timed
+exist. Production puts a nemotron super model first and gpt-oss-20b second:
+when the model drew SVG, gpt-oss-20b timed
 out at 120 seconds on 4 of 10 real articles, while nemotron-3-super answered
 every call that reached it. nemotron-3-super was retired on 2026-10-20; its
 successor, nemotron-3.5-super-vl, now leads, not yet measured on charts. It asks for up to 12,288 tokens, since a reasoning model spends

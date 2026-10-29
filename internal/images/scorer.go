@@ -2,10 +2,12 @@ package images
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"regexp"
 	"sort"
@@ -30,6 +32,9 @@ type Scorer struct {
 	visionModels []string
 	recorder     ai.Recorder // model health; nil records nothing
 	httpClient   *http.Client
+	// imageClient downloads the thumbnails sent to the vision model; see
+	// inlineImage.
+	imageClient *http.Client
 	// warmer, if set, is given the thumbnails about to go to the vision
 	// model before any of them is sent. See SetVisionModel.
 	warmer Warmer
@@ -55,22 +60,29 @@ type Warmer interface {
 // replies can take minutes.
 func NewScorer(textClient ai.HFClientInterface, textModels []string) *Scorer {
 	return &Scorer{
-		textClient: textClient,
-		textModels: textModels,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		textClient:  textClient,
+		textModels:  textModels,
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
+		imageClient: &http.Client{Timeout: renderTimeout},
 	}
+}
+
+// SetImageTransport routes the scorer's thumbnail downloads through rt. It
+// exists so tests can stand in for the image hosts without the network.
+func (s *Scorer) SetImageTransport(rt http.RoundTripper) {
+	s.imageClient.Transport = rt
 }
 
 // SetVisionModel enables vision-based scoring for the final selection. model
 // is one model or a comma-separated list, tried in order.
 //
 // warmer is handed the thumbnails Score is about to send, before any is sent
-// (the Searcher that found the candidates, in production). The vision
-// endpoint fetches each thumbnail itself, and for a sized Wikimedia URL it
-// was usually the first client to ask for that size: it met a slow render or
-// a 429, and the candidate took the x0.6 failure penalty however good the
-// image was. It is an argument here, not an option, so that vision scoring
-// cannot be switched on without it by accident; nil means no warming.
+// (the Searcher that found the candidates, in production). For a sized
+// Wikimedia URL the scorer's download is usually the first request for that
+// size, and it met a slow render or a 429 -- and the candidate took the x0.6
+// failure penalty however good the image was. It is an argument here, not an
+// option, so that vision scoring cannot be switched on without it by
+// accident; nil means no warming.
 func (s *Scorer) SetVisionModel(baseURL, token, model string, warmer Warmer) {
 	s.visionURL = baseURL
 	s.visionToken = token
@@ -175,6 +187,8 @@ type visionRequest struct {
 	Model     string          `json:"model"`
 	Messages  []visionMessage `json:"messages"`
 	MaxTokens int             `json:"max_tokens"`
+	// ChatTemplateKwargs carries enable_thinking=false; see visionCall.
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 }
 
 type visionMessage struct {
@@ -246,6 +260,54 @@ func truncateForLog(s string) string {
 // image's relevance. Observed with meta/llama-3.2-11b-vision-instruct.
 const visionMaxTokens = 512
 
+// maxInlineImage is the largest thumbnail sent to the vision model inline; a
+// larger one is sent by URL. Both vision models accepted a 309 KB image
+// inline (412 KB as base64) on 2026-10-29, and the thumbnails of the 40
+// newest articles were 13-83 KB.
+const maxInlineImage = 300 << 10
+
+// inlineImage downloads a thumbnail and returns it as a data URI, so the
+// vision model is sent the image itself rather than a URL to fetch.
+//
+// The provider used to fetch every thumbnail itself, and Wikimedia refuses
+// its fetcher: on 2026-10-29 each Wikimedia thumbnail came back 403 from
+// nemotron-3.5-super-vl and 500 from llama-3.2-11b-vision, while the same
+// files sent inline scored in 1-17s. Both statuses were recorded against the
+// model, and a 500 also moved the call off it, so a host refusing a fetch
+// read as the vision model failing. This download carries the searcher's
+// userAgent, which Wikimedia accepts.
+//
+// A thumbnail over maxInlineImage is returned as its URL. An error means the
+// thumbnail could not be downloaded, which a reader's browser would not
+// manage either.
+func (s *Scorer) inlineImage(rawURL string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := s.imageClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("status %d", resp.StatusCode)
+	}
+	mediaType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if err != nil || !strings.HasPrefix(mediaType, "image/") {
+		return "", fmt.Errorf("content type %q is not an image", resp.Header.Get("Content-Type"))
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxInlineImage+1))
+	if err != nil {
+		return "", err
+	}
+	if len(body) > maxInlineImage {
+		return rawURL, nil
+	}
+	return "data:" + mediaType + ";base64," + base64.StdEncoding.EncodeToString(body), nil
+}
+
 // visionScore sends actual images to a vision model for scoring.
 // If ALL vision calls fail, restores original text scores (no penalty).
 func (s *Scorer) visionScore(title, tldr string, candidates []ImageCandidate) []ImageCandidate {
@@ -279,11 +341,20 @@ Score this image 1-10 for how specifically it represents this topic.
 5-6: Generic but relevant category
 1-4: Wrong or irrelevant`, title, tldr)
 
+		image, err := s.inlineImage(c.Thumbnail)
+		if err != nil {
+			// Not the model's failure, so no model is asked or blamed.
+			slog.Warn("vision scoring skipped: thumbnail could not be downloaded",
+				"index", i, "url", c.Thumbnail, "error", err)
+			metrics.ImageScoringTotal.WithLabelValues("vision", "error").Inc()
+			candidates[i].Score = candidates[i].Score * 0.6
+			continue
+		}
 		contentParts := []interface{}{
 			map[string]string{"type": "text", "text": prompt},
 			map[string]interface{}{
 				"type":      "image_url",
-				"image_url": map[string]string{"url": c.Thumbnail},
+				"image_url": map[string]string{"url": image},
 			},
 		}
 		contentJSON, err := json.Marshal(contentParts)
@@ -332,10 +403,15 @@ func (s *Scorer) visionCall(model string, contentJSON []byte) (float64, string, 
 		s.recordVision(model, start, o, status, err)
 		return 0, "", o, err
 	}
+	// Thinking off: the reply is one line of JSON, and with thinking on
+	// nemotron-3.5-super-vl spent visionMaxTokens reasoning and returned an
+	// empty reply in 9 of 18 calls (2026-10-29). llama-3.2-11b-vision does
+	// not reason; it accepts the field.
 	reqBody, err := json.Marshal(visionRequest{
-		Model:     model,
-		Messages:  []visionMessage{{Role: "user", Content: json.RawMessage(contentJSON)}},
-		MaxTokens: visionMaxTokens,
+		Model:              model,
+		Messages:           []visionMessage{{Role: "user", Content: json.RawMessage(contentJSON)}},
+		MaxTokens:          visionMaxTokens,
+		ChatTemplateKwargs: map[string]any{"enable_thinking": false},
 	})
 	if err != nil {
 		return fail(ai.OutcomeError, 0, err)

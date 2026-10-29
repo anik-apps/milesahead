@@ -53,10 +53,11 @@ All settings live in a single `config.yaml` file. `config.example.yaml` document
 | `ai` | `fallback_generator_model` | Comma-separated chain tried when the generator fails or is retired |
 | `ai` | `critic_model` | Model, or comma-separated chain tried in order, for verification only (`nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3.5-lightning-30b-a3b`) |
 | `ai` | `critic_disable_thinking` | Send `enable_thinking: false` on critic requests only (default `false`; production `true`) |
+| `ai` | `enrichment_disable_thinking` | Send `enable_thinking: false` on every `enrichment_model` call (default `false`; production `true`). Vision requests always send it |
 | `ai` | `critic2_model` | Optional second critic; empty in production |
-| `ai` | `vision_model` | Image relevance scoring: a model, or a comma-separated list tried in order (default `meta/llama-3.2-11b-vision-instruct`) |
+| `ai` | `vision_model` | Image relevance scoring: a model, or a comma-separated list tried in order (default `meta/llama-3.2-11b-vision-instruct`; production `nvidia/nemotron-3.5-super-vl-120b-a12b,meta/llama-3.2-11b-vision-instruct`) |
 | `ai` | `request_timeout` | Seconds per generation or verification call (900 in production) |
-| `ai` | `enrichment_model` | Comma-separated chain of fast models for every short AI call: story dedup, enrichment, image text-scoring, newsletter pick, card-update detection (`openai/gpt-oss-20b,nvidia/nemotron-3.5-super-vl-120b-a12b`). Unset, the generator fallbacks then the critics are used |
+| `ai` | `enrichment_model` | Comma-separated chain of fast models for every short AI call: story dedup, enrichment, image text-scoring, newsletter pick, card-update detection (production: `nvidia/nemotron-3.5-lightning-30b-a3b,nvidia/nemotron-3.5-super-vl-120b-a12b,openai/gpt-oss-20b`). Unset, the generator fallbacks then the critics are used |
 | `ai` | `enrichment_interval` | Minutes between enrichment passes (default 15) |
 | `ai` | `enrichment_max_attempts` | Passes before an article is left alone (3) |
 | `ai` | `enrichment_max_duration` | Minutes one enrichment pass may run (10) |

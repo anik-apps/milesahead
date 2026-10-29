@@ -87,6 +87,10 @@ type AIConfig struct {
 	// reuse it, so a degraded critic backend took the enrichment down with it.
 	// Comma-separated; tried in order.
 	EnrichmentModel string `yaml:"enrichment_model"`
+	// EnrichmentDisableThinking sends chat_template_kwargs {"enable_thinking":
+	// false} on every call made with the enrichment_model chain. Off by
+	// default; see config.example.yaml for why production sets it.
+	EnrichmentDisableThinking bool `yaml:"enrichment_disable_thinking"`
 	// EnrichmentInterval is how often the reconciler runs, in minutes.
 	EnrichmentInterval int `yaml:"enrichment_interval"`
 	// EnrichmentMaxAttempts bounds passes per article before it is left alone.

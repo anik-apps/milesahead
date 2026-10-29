@@ -96,7 +96,13 @@ retired upstream in October 2026), tried in order when a critic is overloaded
 or gone; one reachable critic is enough to publish. `critic_disable_thinking:
 true` sends `chat_template_kwargs: {enable_thinking: false}` on critic requests
 only — with thinking on, the retired nemotron-3-super truncated or leaked its
-reasoning into the JSON. The
+reasoning into the JSON. `enrichment_disable_thinking: true` does the same for
+every short call on `enrichment_model` (nemotron-3.5-lightning, then
+nemotron-3.5-super-vl, then gpt-oss-20b): with thinking on, both nemotron
+models ran out of tokens on nearly every real enrichment prompt. Vision
+scoring (nemotron-3.5-super-vl, then Llama 3.2 Vision) always sends it, and
+downloads each thumbnail to send it inline, since Wikimedia refuses the
+provider's own fetcher. The
 `critic scored` log line names the model that scored. Which critic is
 answering, and whether the backup still works, is on the admin Models tab; the
 admin is emailed when one dies.

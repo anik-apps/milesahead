@@ -236,8 +236,8 @@ nodes:
       |---|---|
       | Generator | `nvidia/nemotron-3-ultra-550b-a55b`, then `openai/gpt-oss-20b`, `nvidia/nemotron-3.5-super-vl-120b-a12b` |
       | Critic (thinking off) | `nvidia/nemotron-3.5-super-vl-120b-a12b`, then `nvidia/nemotron-3.5-lightning-30b-a3b` |
-      | Short calls | `openai/gpt-oss-20b`, then `nvidia/nemotron-3.5-super-vl-120b-a12b` |
-      | Vision | `meta/llama-3.2-11b-vision-instruct` |
+      | Short calls | `nvidia/nemotron-3.5-lightning-30b-a3b`, then `nvidia/nemotron-3.5-super-vl-120b-a12b`, then `openai/gpt-oss-20b` |
+      | Vision | `nvidia/nemotron-3.5-super-vl-120b-a12b`, then `meta/llama-3.2-11b-vision-instruct` |
 
       The API key is the `NVIDIA_API_KEY` GitHub secret.
     docs:

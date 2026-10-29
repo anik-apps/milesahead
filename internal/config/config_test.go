@@ -238,6 +238,32 @@ func TestLoadConfig_CriticDisableThinking(t *testing.T) {
 	}
 }
 
+// enrichment_disable_thinking is opt-in, like critic_disable_thinking, and
+// independent of it.
+func TestLoadConfig_EnrichmentDisableThinking(t *testing.T) {
+	for _, tc := range []struct {
+		name, line string
+		want       bool
+	}{
+		{"absent", "", false},
+		{"true", "  enrichment_disable_thinking: true\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte("ai:\n  critic_disable_thinking: true\n"+tc.line), 0644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(path)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.AI.EnrichmentDisableThinking != tc.want {
+				t.Errorf("EnrichmentDisableThinking = %v, want %v", cfg.AI.EnrichmentDisableThinking, tc.want)
+			}
+		})
+	}
+}
+
 // scanner.story_dedup defaults to shadow, accepts the three modes in any case,
 // and rejects anything else rather than guessing.
 func TestLoadConfig_StoryDedup(t *testing.T) {

@@ -1,6 +1,8 @@
 package images
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -48,37 +50,31 @@ func (h *renderingHost) isRendered(rawURL string) bool {
 	return i >= 0 && h.rendered[rawURL[i:]]
 }
 
-// The vision model fetches each candidate's thumbnail itself. For a sized
-// Wikimedia URL it was usually the first client to ask for that size, so it
-// met Wikimedia rendering it -- a slow answer or a 429 -- and the candidate
-// took the x0.6 penalty however good the image was. Score now has the top
-// thumbnails requested before any is sent to the vision model.
+// The scorer downloads each candidate's thumbnail just before scoring it. For
+// a sized Wikimedia URL that was usually the first request for that size, so
+// it met Wikimedia rendering it -- a slow answer or a 429 -- and the
+// candidate took the x0.6 penalty however good the image was. Score now has
+// the top thumbnails requested before any is scored.
 func TestScore_WarmsThumbnailsBeforeVision(t *testing.T) {
 	host := &renderingHost{rendered: map[string]bool{}}
 	searcher := stubSearcher(t, host.ServeHTTP)
 
-	// The vision API fails to fetch a size Wikimedia has not rendered yet.
+	const wm = "https://upload.wikimedia.org/wikipedia/commons/thumb/"
+	candidates := []ImageCandidate{
+		{URL: wm + "6/6c/Lobby.jpg/1280px-Lobby.jpg", Thumbnail: wm + "6/6c/Lobby.jpg/500px-Lobby.jpg", Source: "wikimedia"},
+		{URL: wm + "7/7e/Gate.jpg/1280px-Gate.jpg", Thumbnail: wm + "7/7e/Gate.jpg/500px-Gate.jpg", Source: "wikimedia"},
+	}
+	thumbs := []string{candidates[0].Thumbnail, candidates[1].Thumbnail}
+
+	// By the first vision call, every thumbnail must have been rendered --
+	// the second one included, which the scorer has not downloaded yet.
 	var visionCalls int
 	vision := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		visionCalls++
-		body, _ := io.ReadAll(r.Body)
-		var req struct {
-			Messages []struct {
-				Content []struct {
-					ImageURL struct {
-						URL string `json:"url"`
-					} `json:"image_url"`
-				} `json:"content"`
-			} `json:"messages"`
-		}
-		if err := json.Unmarshal(body, &req); err != nil {
-			t.Errorf("vision request: %v", err)
-		}
-		image := req.Messages[0].Content[1].ImageURL.URL
-		if !host.isRendered(image) {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error":"could not fetch image: 429 Too Many Requests"}`))
-			return
+		for _, u := range thumbs {
+			if !host.isRendered(u) {
+				t.Errorf("vision call %d: %s not rendered yet", visionCalls, u)
+			}
 		}
 		w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\": 9, \"reason\": \"the lobby\"}"}}]}`))
 	}))
@@ -86,12 +82,8 @@ func TestScore_WarmsThumbnailsBeforeVision(t *testing.T) {
 
 	scorer := NewScorer(textScores{8, 7}, []string{"text"})
 	scorer.SetVisionModel(vision.URL, "token", "vision", searcher)
+	scorer.SetImageTransport(searcher.httpClient.Transport)
 
-	const wm = "https://upload.wikimedia.org/wikipedia/commons/thumb/"
-	candidates := []ImageCandidate{
-		{URL: wm + "6/6c/Lobby.jpg/1280px-Lobby.jpg", Thumbnail: wm + "6/6c/Lobby.jpg/500px-Lobby.jpg", Source: "wikimedia"},
-		{URL: wm + "7/7e/Gate.jpg/1280px-Gate.jpg", Thumbnail: wm + "7/7e/Gate.jpg/500px-Gate.jpg", Source: "wikimedia"},
-	}
 	scored, err := scorer.Score("A hotel lobby", "Lobby", candidates)
 	if err != nil {
 		t.Fatalf("Score: %v", err)
@@ -101,13 +93,159 @@ func TestScore_WarmsThumbnailsBeforeVision(t *testing.T) {
 	}
 	for _, c := range scored {
 		if c.Score != 9 {
-			t.Errorf("%s scored %v, want the vision score 9: its thumbnail was not rendered before the vision model asked",
-				c.Thumbnail, c.Score)
+			t.Errorf("%s scored %v, want the vision score 9", c.Thumbnail, c.Score)
 		}
 	}
 	// Only the thumbnails were requested, not the display images.
 	if host.isRendered(candidates[0].URL) {
 		t.Error("warming requested the display image too")
+	}
+}
+
+// imageHost answers every thumbnail download without the network: status,
+// Content-Type and body as given, and it records each request's User-Agent.
+type imageHost struct {
+	status int
+	ctype  string
+	body   []byte
+
+	mu     sync.Mutex
+	agents []string
+}
+
+func (h *imageHost) RoundTrip(r *http.Request) (*http.Response, error) {
+	h.mu.Lock()
+	h.agents = append(h.agents, r.Header.Get("User-Agent"))
+	h.mu.Unlock()
+	return &http.Response{StatusCode: h.status, Header: http.Header{"Content-Type": {h.ctype}},
+		Body: io.NopCloser(bytes.NewReader(h.body)), Request: r}, nil
+}
+
+func jpegHost() *imageHost {
+	return &imageHost{status: http.StatusOK, ctype: "image/jpeg", body: []byte("jpeg bytes")}
+}
+
+// visionRequests is a vision model that scores 9 and keeps each request body.
+func visionRequests(t *testing.T) (*httptest.Server, *[]visionRequest) {
+	var mu sync.Mutex
+	reqs := []visionRequest{}
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req visionRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("vision request: %v", err)
+		}
+		mu.Lock()
+		reqs = append(reqs, req)
+		mu.Unlock()
+		w.Write([]byte(`{"choices":[{"message":{"content":"{\"score\": 9, \"reason\": \"brand shown\"}"}}]}`))
+	}))
+	t.Cleanup(ts.Close)
+	return ts, &reqs
+}
+
+// imageSent is the image a vision request carried: a data URI or a URL.
+func imageSent(t *testing.T, req visionRequest) string {
+	t.Helper()
+	var parts []struct {
+		ImageURL struct {
+			URL string `json:"url"`
+		} `json:"image_url"`
+	}
+	if err := json.Unmarshal(req.Messages[0].Content, &parts); err != nil || len(parts) != 2 {
+		t.Fatalf("vision content %s: %v", req.Messages[0].Content, err)
+	}
+	return parts[1].ImageURL.URL
+}
+
+// The provider used to fetch each thumbnail by URL, and Wikimedia refuses its
+// fetcher (403 from one model, 500 from the other, each recorded against the
+// model). The scorer now downloads the thumbnail with its own User-Agent and
+// sends the bytes, and asks the model not to think first.
+func TestVisionScore_SendsTheThumbnailInlineWithThinkingOff(t *testing.T) {
+	ts, reqs := visionRequests(t)
+	host := jpegHost()
+	s := NewScorer(nil, nil)
+	s.SetVisionModel(ts.URL, "token", "vision", nil)
+	s.SetImageTransport(host)
+
+	s.visionScore("Title", "Summary", []ImageCandidate{{Thumbnail: "https://upload.wikimedia.org/t/500px-a.jpg", Score: 5}})
+
+	if len(*reqs) != 1 {
+		t.Fatalf("vision calls = %d, want 1", len(*reqs))
+	}
+	want := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(host.body)
+	if got := imageSent(t, (*reqs)[0]); got != want {
+		t.Errorf("image sent = %q, want %q", got, want)
+	}
+	if got := (*reqs)[0].ChatTemplateKwargs; !reflect.DeepEqual(got, map[string]any{"enable_thinking": false}) {
+		t.Errorf("chat_template_kwargs = %v, want enable_thinking false", got)
+	}
+	if !reflect.DeepEqual(host.agents, []string{userAgent}) {
+		t.Errorf("download User-Agents = %v, want [%s]", host.agents, userAgent)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// A thumbnail the scorer cannot download is not sent: no model is asked about
+// it or blamed for it, and it takes the failure penalty.
+func TestVisionScore_ThumbnailThatCannotBeDownloadedIsNotSent(t *testing.T) {
+	for _, refused := range []struct {
+		status int
+		ctype  string
+	}{
+		{http.StatusForbidden, "text/html"}, // Wikimedia without a User-Agent
+		{http.StatusOK, "text/html"},        // a page, not an image
+	} {
+		ts, reqs := visionRequests(t)
+		s := NewScorer(nil, nil)
+		s.SetVisionModel(ts.URL, "token", "vision", nil)
+		good := jpegHost()
+		s.SetImageTransport(roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Host == "refused.example" {
+				return &http.Response{StatusCode: refused.status, Header: http.Header{"Content-Type": {refused.ctype}},
+					Body: io.NopCloser(strings.NewReader("no")), Request: r}, nil
+			}
+			return good.RoundTrip(r)
+		}))
+		log := &visionLog{}
+		s.SetRecorder(log)
+
+		// The second candidate scores, so the penalty is not undone by the
+		// all-failed restore.
+		out := s.visionScore("Title", "Summary", []ImageCandidate{
+			{Thumbnail: "https://refused.example/x.jpg", Score: 5},
+			{Thumbnail: "https://ok.example/y.jpg", Score: 4},
+		})
+		if len(*reqs) != 1 || len(log.calls) != 1 {
+			t.Errorf("%d %s: %d vision calls, %d recorded; want 1 each (the downloadable one)",
+				refused.status, refused.ctype, len(*reqs), len(log.calls))
+		}
+		for _, c := range out {
+			if want := map[string]float64{"https://refused.example/x.jpg": 3, "https://ok.example/y.jpg": 9}[c.Thumbnail]; c.Score != want {
+				t.Errorf("%d %s: %s scored %v, want %v", refused.status, refused.ctype, c.Thumbnail, c.Score, want)
+			}
+		}
+	}
+}
+
+// A thumbnail too large to send inline is sent by URL, as before.
+func TestVisionScore_LargeThumbnailIsSentByURL(t *testing.T) {
+	ts, reqs := visionRequests(t)
+	s := NewScorer(nil, nil)
+	s.SetVisionModel(ts.URL, "token", "vision", nil)
+	s.SetImageTransport(&imageHost{status: http.StatusOK, ctype: "image/jpeg", body: make([]byte, maxInlineImage+1)})
+
+	const thumb = "https://images.example/big.jpg"
+	s.visionScore("Title", "Summary", []ImageCandidate{{Thumbnail: thumb, Score: 5}})
+
+	if len(*reqs) != 1 {
+		t.Fatalf("vision calls = %d, want 1", len(*reqs))
+	}
+	if got := imageSent(t, (*reqs)[0]); got != thumb {
+		t.Errorf("image sent = %.60q, want the URL %q", got, thumb)
 	}
 }
 
@@ -193,6 +331,7 @@ func TestVisionScore_MovesToTheNextModelWhenOneIsRetired(t *testing.T) {
 	ts, models := visionServer(t)
 	s := NewScorer(nil, nil)
 	s.SetVisionModel(ts.URL, "token", "dead-vision, live-vision", nil)
+	s.SetImageTransport(jpegHost())
 	log := &visionLog{}
 	s.SetRecorder(log)
 
@@ -219,6 +358,7 @@ func TestVisionScore_AllModelsGoneKeepsTextScores(t *testing.T) {
 	ts, _ := visionServer(t)
 	s := NewScorer(nil, nil)
 	s.SetVisionModel(ts.URL, "token", "dead-vision", nil)
+	s.SetImageTransport(jpegHost())
 	out := s.visionScore("Title", "Summary", []ImageCandidate{
 		{Thumbnail: "https://img.example/1.jpg", Score: 5},
 		{Thumbnail: "https://img.example/2.jpg", Score: 4},

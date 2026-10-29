@@ -184,10 +184,10 @@ func (h toHost) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 // Integration, production wiring: with vision scoring configured, the
-// thumbnail of a Wikimedia candidate is requested from Wikimedia before the
-// vision endpoint is asked to score it. Without the warm-up the vision
-// endpoint was the first client to ask for a new size, met a slow render or
-// a 429, and the candidate took the x0.6 penalty.
+// thumbnail of a Wikimedia candidate is warmed, then downloaded by the scorer,
+// then sent to the vision endpoint. Without the warm-up the download was the
+// first request for a new size, met a slow render or a 429, and the
+// candidate took the x0.6 penalty.
 func TestImageScoring_WarmsThumbnailsBeforeVision(t *testing.T) {
 	const thumb = "/wikipedia/commons/thumb/6/6c/Lobby.jpg/500px-Lobby.jpg"
 	var mu sync.Mutex
@@ -212,6 +212,7 @@ func TestImageScoring_WarmsThumbnailsBeforeVision(t *testing.T) {
 	cfg := &config.Config{AI: config.AIConfig{HFBaseURL: vision.URL, HFAPIToken: "token", EnrichmentModel: "text"}}
 	searcher, scorer := newImageScoring(cfg, scoreAll{}, "vision", enrichmentModels(cfg))
 	searcher.SetTransport(toHost{wikimedia.Listener.Addr().String()})
+	scorer.SetImageTransport(toHost{wikimedia.Listener.Addr().String()})
 
 	const wm = "https://upload.wikimedia.org"
 	if _, err := scorer.Score("A hotel lobby", "Lobby", []images.ImageCandidate{
@@ -221,7 +222,7 @@ func TestImageScoring_WarmsThumbnailsBeforeVision(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if got := strings.Join(events, ", "); got != fmt.Sprintf("wikimedia %s, vision", thumb) {
-		t.Errorf("requests: %s; want the thumbnail warmed, then the vision call", got)
+	if got := strings.Join(events, ", "); got != fmt.Sprintf("wikimedia %s, wikimedia %s, vision", thumb, thumb) {
+		t.Errorf("requests: %s; want the thumbnail warmed, downloaded, then the vision call", got)
 	}
 }

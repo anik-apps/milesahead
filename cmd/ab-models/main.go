@@ -16,6 +16,10 @@
 // Generation runs through ai.Generator, which fixes max_tokens at 4096 exactly
 // as production does -- that budget is part of what is being measured, since a
 // reasoning model can spend it on thinking and return no article at all.
+//
+// The short calls are measured on stored articles instead (see shortcalls.go):
+//
+//	ab-models -enrichment-candidates "a,b" -vision-candidates "c,d" -articles 8
 package main
 
 import (
@@ -57,11 +61,20 @@ func main() {
 	criticCands := flag.String("critic-candidates", "", "comma-separated critics to grade the same -topics articles with (JSON contract, adjusted score, latency), then exit")
 	full := flag.Bool("full", false, "run the complete Pipeline (generate+verify+revise) and dump whole articles to -out")
 	dumpPrompt := flag.String("dump-prompt", "", "write the exact generation prompt for the first topic here and exit")
+	enrichCands := flag.String("enrichment-candidates", "", "comma-separated models to run the real enrichment calls (tags, Scout's Take, key details, image queries) on the newest -articles articles, then exit")
+	visionCands := flag.String("vision-candidates", "", "comma-separated vision models to score each of the newest -articles articles' own image against two other articles' images, then exit")
+	articleCount := flag.Int("articles", 8, "number of stored articles for -enrichment-candidates and -vision-candidates")
+	enrichNoThinking := flag.Bool("enrichment-no-thinking", false, "send enable_thinking=false on enrichment calls (implied by enrichment_disable_thinking in the config)")
 	flag.Parse()
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		fatal("load config: %v", err)
+	}
+	if *enrichCands != "" || *visionCands != "" {
+		cfg.AI.EnrichmentDisableThinking = cfg.AI.EnrichmentDisableThinking || *enrichNoThinking
+		probeShortCalls(cfg, split(*enrichCands), split(*visionCands), *articleCount, *outPath)
+		return
 	}
 	cands := split(*generators)
 	if len(cands) == 0 {
@@ -82,10 +95,7 @@ func main() {
 	fmt.Printf("%d topics, %d candidates, critic=%s, threshold=%d\n\n",
 		len(topics), len(cands), critic, cfg.AI.CriticThreshold)
 
-	client := ai.NewHFClient(cfg.AI.HFAPIToken, cfg.AI.MaxRetries)
-	if cfg.AI.HFBaseURL != "" {
-		client.BaseURL = cfg.AI.HFBaseURL
-	}
+	client := newClient(cfg)
 
 	// Critics are measured with the request shape production sends them;
 	// generation keeps the plain client.
@@ -382,6 +392,16 @@ func loadTopics(dbPath string, days, want int) []topic {
 		}
 	}
 	return out
+}
+
+// newClient is the client production builds: the configured token, retries
+// and endpoint.
+func newClient(cfg *config.Config) *ai.HFClient {
+	client := ai.NewHFClient(cfg.AI.HFAPIToken, cfg.AI.MaxRetries)
+	if cfg.AI.HFBaseURL != "" {
+		client.BaseURL = cfg.AI.HFBaseURL
+	}
+	return client
 }
 
 func split(s string) []string {

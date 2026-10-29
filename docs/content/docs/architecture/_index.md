@@ -98,7 +98,7 @@ cooldown).
 |-------|-----------|
 | Language | Go 1.26, standard library `net/http` and `html/template` |
 | Database | SQLite in WAL mode via `modernc.org/sqlite` (pure Go), FTS5 for search |
-| AI models | NVIDIA API: `nvidia/nemotron-3-ultra-550b-a55b` writes (fallbacks `openai/gpt-oss-20b`, `nvidia/nemotron-3.5-super-vl-120b-a12b`); critic chain `nvidia/nemotron-3.5-super-vl-120b-a12b` then `nvidia/nemotron-3.5-lightning-30b-a3b`, thinking off; short calls on `openai/gpt-oss-20b` then `nvidia/nemotron-3.5-super-vl-120b-a12b`; vision `meta/llama-3.2-11b-vision-instruct` |
+| AI models | NVIDIA API: `nvidia/nemotron-3-ultra-550b-a55b` writes (fallbacks `openai/gpt-oss-20b`, `nvidia/nemotron-3.5-super-vl-120b-a12b`); critic chain `nvidia/nemotron-3.5-super-vl-120b-a12b` then `nvidia/nemotron-3.5-lightning-30b-a3b`, thinking off; short calls on `nvidia/nemotron-3.5-lightning-30b-a3b`, `nvidia/nemotron-3.5-super-vl-120b-a12b` then `openai/gpt-oss-20b`, thinking off; vision `nvidia/nemotron-3.5-super-vl-120b-a12b` then `meta/llama-3.2-11b-vision-instruct` |
 | Images | Unsplash, Pexels, Openverse and Wikimedia Commons APIs |
 | Feeds and scraping | `gofeed`, `goquery` |
 | Scheduling | `robfig/cron` v3 |
