@@ -215,6 +215,25 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       infographic chains. A test now fails when a known-retired model is in any chain
       of `config.example.yaml` or `deploy.yml`, and every model chain must match
       between the two.
+- [x] **Enrichment backup and vision scoring failing for the wrong reasons** (found
+      2026-10-29, when gpt-oss-20b, enrichment's primary, was timing out) — measured with
+      `ab-models -enrichment-candidates/-vision-candidates` on 8 real articles. With
+      thinking on, the enrichment backup nemotron-3.5-super-vl answered 9 of 32 real
+      enrichment calls and nemotron-3.5-lightning 0 of 32: both spent the 512-1024 tokens
+      reasoning and were cut off, unseen because the 512-token "OK" check passed.
+      `enrichment_disable_thinking` (production `true`) fixes it: 32/32 each, 0.3-3.6s.
+      Vision: the provider fetched each thumbnail by URL, and Wikimedia refuses its
+      fetcher, so every Wikimedia candidate failed with a 403 or 500 recorded against
+      the vision model. The scorer now downloads thumbnails and sends them inline, with
+      thinking off. `enrichment_model` is now lightning, super-vl, gpt-oss-20b;
+      `vision_model` is super-vl (8/8, 2.5s, own image ranked first 6/8), then llama
+      (6/8, 17s, 0/6). The health check probes each with the request shape it really sends.
+- [ ] **Image fetches have no SSRF guard** — the searcher's probes and the scorer's
+      thumbnail downloads GET whatever URL an image API returned, with no check that it
+      resolves to a public address. Candidate URLs come only from Unsplash, Pexels,
+      Openverse and Wikimedia responses, never from user input, so this is hardening.
+      *Fix:* one dialer `Control` hook shared by both clients that refuses loopback,
+      private and link-local addresses, which also covers redirects.
 - [x] **Alert when the startup preflight finds no reachable critic** — done by the **Model health** entry under
       Completed (in-app hourly checks, email alerts and a drought alarm) rather than the Grafana rule first proposed
       here. The 2026-09-28 retirement logged `ai preflight: no CRITIC is reachable` at ERROR on every startup

@@ -52,7 +52,7 @@ A model that has not been checked or called yet is `unknown`: shown as such, and
 **The check** is the same preflight that runs at boot. It runs 30 seconds after startup, then every `ai.health_check_interval` minutes. It probes each model once per preflight role, with that role's budget:
 
 - `generator`, `fallback` and `critic`: 4096 tokens, which gets the full request timeout. Critics are probed through the critic's client (thinking off).
-- `enrichment` and `vision`: 512 tokens, which gets 30 seconds.
+- `enrichment` and `vision`: 512 tokens, which gets 30 seconds. Each is probed the way its real calls are sent: enrichment through the enrichment client (thinking off with `enrichment_disable_thinking`), vision with thinking off.
 
 Probes run at the same time, so a round lasts as long as its slowest probe, which for a slow critic can be minutes. Each step takes the results of its own roles (the `generator` step takes `generator` and `fallback`), so a model in two lists with different roles can pass one check and fail the other. Infographic models are checked through the `enrichment` role: a slow chart model can fail its 30-second check while its real chart calls, which get 120 seconds, work.
 
@@ -134,7 +134,7 @@ It cannot lock itself on, since each scan tries again, and a false alarm from th
 
 ## Vision lists
 
-`vision_model` takes a comma-separated list. Within one image-scoring call, once a vision model fails with `retired`, `timeout` or `overloaded`, the rest of that call's images use the next model. When every vision model has failed, text scoring stands, as before. A 4xx about the image itself (a thumbnail the provider cannot fetch) is not counted against the model. A score that will not parse is a `bad_reply`.
+`vision_model` takes a comma-separated list. Within one image-scoring call, once a vision model fails with `retired`, `timeout` or `overloaded`, the rest of that call's images use the next model. When every vision model has failed, text scoring stands, as before. The scorer downloads each thumbnail and sends it inline, so a host that refuses the provider's fetcher (Wikimedia did, with a 403 or a 500 recorded against the model) no longer counts against the model; a thumbnail the scorer cannot download is not sent at all. A 4xx about the image itself (an oversized thumbnail, sent by URL, that the provider cannot fetch) is not counted against the model either. A score that will not parse is a `bad_reply`.
 
 ## What to do
 

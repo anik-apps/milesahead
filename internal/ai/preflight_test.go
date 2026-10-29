@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"reflect"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -133,6 +135,33 @@ func TestPreflight_CriticChain(t *testing.T) {
 	}
 	if got := preflightGauge(t, "critic"); got != 0 {
 		t.Errorf("reachable{role=\"critic\"} = %v, want 0", got)
+	}
+}
+
+// TestPreflight_EachRoleOnItsOwnClient: vision and enrichment models are
+// probed through the clients their real calls use (thinking off, in
+// production), and a role with no client of its own falls back to Default.
+func TestPreflight_EachRoleOnItsOwnClient(t *testing.T) {
+	base, vision, enrich := &budgetRecordingClient{}, &budgetRecordingClient{}, &budgetRecordingClient{}
+	PreflightAllWithClients(PreflightClients{Default: base, Vision: vision, Enrichment: enrich},
+		"gen", []string{"fb"}, []string{"critic"}, []string{"vis"}, []string{"enr"})
+
+	for client, want := range map[*budgetRecordingClient][]string{
+		base:   {"critic", "fb", "gen"},
+		vision: {"vis"},
+		enrich: {"enr"},
+	} {
+		var got []string
+		for m := range client.budget {
+			got = append(got, m)
+		}
+		sort.Strings(got)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("probed %v on one client; want %v", got, want)
+		}
+	}
+	if enrich.budget["enr"] != preflightMaxTokens || vision.budget["vis"] != preflightMaxTokens {
+		t.Errorf("budgets: enrichment %d, vision %d; want %d", enrich.budget["enr"], vision.budget["vis"], preflightMaxTokens)
 	}
 }
 

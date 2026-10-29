@@ -237,9 +237,10 @@ jobs:
             fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3.5-super-vl-120b-a12b"
             critic_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3.5-lightning-30b-a3b"
             critic_disable_thinking: true
-            vision_model: "meta/llama-3.2-11b-vision-instruct"
+            vision_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,meta/llama-3.2-11b-vision-instruct"
             request_timeout: 900
-            enrichment_model: "openai/gpt-oss-20b,nvidia/nemotron-3.5-super-vl-120b-a12b"
+            enrichment_model: "nvidia/nemotron-3.5-lightning-30b-a3b,nvidia/nemotron-3.5-super-vl-120b-a12b,openai/gpt-oss-20b"
+            enrichment_disable_thinking: true
             enrichment_interval: 15
             enrichment_max_attempts: 3
             enrichment_max_duration: 10

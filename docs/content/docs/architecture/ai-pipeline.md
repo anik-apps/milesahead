@@ -23,8 +23,8 @@ A cluster needs posts from at least two different sites; with fewer the pipeline
 | Generator | `generator_model` | `nvidia/nemotron-3-ultra-550b-a55b` | Article generation and revision |
 | Generator fallbacks | `fallback_generator_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3.5-super-vl-120b-a12b` | Tried in order when the generator fails or is retired |
 | Critic | `critic_model` | `nvidia/nemotron-3.5-super-vl-120b-a12b`, `nvidia/nemotron-3.5-lightning-30b-a3b` | Factual verification and scoring only; tried in order, thinking off |
-| Short-call chain | `enrichment_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3.5-super-vl-120b-a12b` | Story dedup, detail extraction, Scout's Take, tags, image queries, image text-scoring, newsletter pick, card-update detection |
-| Vision | `vision_model` | `meta/llama-3.2-11b-vision-instruct` | Image relevance scoring (Phase 2) |
+| Short-call chain | `enrichment_model` | `nvidia/nemotron-3.5-lightning-30b-a3b`, `nvidia/nemotron-3.5-super-vl-120b-a12b`, `openai/gpt-oss-20b`; thinking off | Story dedup, detail extraction, Scout's Take, tags, image queries, image text-scoring, newsletter pick, card-update detection |
+| Vision | `vision_model` | `nvidia/nemotron-3.5-super-vl-120b-a12b`, `meta/llama-3.2-11b-vision-instruct`; thinking off, images sent inline | Image relevance scoring (Phase 2) |
 
 All models are accessed through the NVIDIA API at `https://integrate.api.nvidia.com/v1`. `config.example.yaml` records why each was chosen, with the measurements behind each choice. A chain is tried left to right on a retryable error (429, 5xx, timeout) or a model that is gone (404, 410); a `model fallback succeeded` or `model failed, trying next in chain` line is logged.
 
@@ -38,7 +38,7 @@ The critic is a chain because it failed as a single model twice in two days: ret
 
 A critic error drops the article from the scan; a score below `critic_threshold` only saves it as a draft. A critic that answers with JSON that cannot be parsed is an error, not a reason to try the next critic.
 
-With `critic_disable_thinking: true`, critic requests (and only those) carry `chat_template_kwargs: {"enable_thinking": false}`. They go through a copy of the client (`HFClient.WithThinkingDisabled`); generation, enrichment and vision use the original and never send it, even though nemotron-3.5-super-vl is in their chains too. With thinking on, the retired nemotron-3-super truncated or leaked its reasoning and scored a real article 45 instead of 75.
+With `critic_disable_thinking: true`, critic requests carry `chat_template_kwargs: {"enable_thinking": false}`. They go through a copy of the client (`HFClient.WithThinkingDisabled`). With thinking on, the retired nemotron-3-super truncated or leaked its reasoning and scored a real article 45 instead of 75. `enrichment_disable_thinking: true` does the same for every call on the `enrichment_model` chain, through a second copy, and vision requests always send it; generation never does. With thinking on, on the real enrichment prompts (512-1024 tokens), nemotron-3.5-lightning answered 0 of 32 calls and nemotron-3.5-super-vl 9 of 32: both spent the budget reasoning and were cut off. With it off, both answered 32 of 32 in 0.3-3.6 s on average (2026-10-29). gpt-oss-20b accepts the field and reasons anyway.
 
 Measured on 2026-10-22 with `ab-models -critic-candidates`: every candidate graded the same 5 real articles from the production generator, thinking off, score after the pipeline's adjustment, threshold 75:
 

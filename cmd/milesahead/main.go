@@ -35,9 +35,9 @@ import (
 
 // newImageScoring builds the image searcher and scorer. With an endpoint for
 // vision scoring configured, the searcher warms the thumbnails the scorer is
-// about to send: Wikimedia renders a new size before the vision endpoint
-// fetches it, so a slow first render does not fail its scoring. textModels is
-// the chain for the text pre-filter; see enrichmentModels.
+// about to send: Wikimedia renders a new size before the scorer downloads it,
+// so a slow first render does not fail its scoring. textModels is the chain
+// for the text pre-filter; see enrichmentModels.
 func newImageScoring(cfg *config.Config, client ai.HFClientInterface, visionModel string, textModels []string) (*images.Searcher, *images.Scorer) {
 	searcher := images.NewSearcher(cfg.AI.UnsplashKey, cfg.AI.PexelsKey)
 	scorer := images.NewScorer(client, textModels)
@@ -71,8 +71,8 @@ func enrichmentModels(cfg *config.Config) []string { return health.EnrichmentMod
 
 // newCriticClient returns the client the critics call through. With
 // critic_disable_thinking set it is a copy of hfClient that asks for no
-// reasoning phase; the generator, enrichment, side jobs and vision scoring keep
-// using hfClient itself, so the setting cannot leak into them.
+// reasoning phase; the generator keeps using hfClient itself and the short
+// calls use newEnrichmentClient, so the setting cannot leak into them.
 //
 // With more than one critic, each retries at most once before the chain moves
 // on. A critic whose gateway times out takes ~5 minutes per attempt, so the
@@ -87,6 +87,21 @@ func newCriticClient(cfg *config.Config, hfClient *ai.HFClient) *ai.HFClient {
 		c = c.WithMaxRetries(criticChainRetries)
 	}
 	return c
+}
+
+// newEnrichmentClient returns the client every call on the enrichment chain
+// goes through (enrichment, image text-scoring, the newsletter pick,
+// card-update detection, clustering). With enrichment_disable_thinking set it
+// is a copy of hfClient that asks for no reasoning phase: the enrichment
+// calls get 512-1024 tokens, and on their real prompts nemotron-3.5-super-vl
+// and nemotron-3.5-lightning spent them thinking and were cut off at
+// max_tokens (2026-10-29). openai/gpt-oss-20b accepts the field and reasons
+// anyway.
+func newEnrichmentClient(cfg *config.Config, hfClient *ai.HFClient) *ai.HFClient {
+	if cfg.AI.EnrichmentDisableThinking {
+		return hfClient.WithThinkingDisabled()
+	}
+	return hfClient
 }
 
 // newInfographicClient returns the client the infographic call goes through:
@@ -319,6 +334,7 @@ func main() {
 	criticClient := newCriticClient(cfg, hfClient)
 	// The short-call chain; see enrichmentModels.
 	enrichModels := enrichmentModels(cfg)
+	enrichBase := newEnrichmentClient(cfg, hfClient)
 	// Was hardcoded to meta/llama-3.2-90b-vision-instruct, which now times out
 	// on every call (120s+, reproducible) -- so each image scored burned the
 	// client's full request timeout before failing. Configurable now, so the
@@ -329,13 +345,17 @@ func main() {
 	visionModel := strings.Join(visionModels, ",")
 	// Model health: every call made through a labelled client below, and a
 	// periodic check of every list, judged per step; see internal/health.
-	// hfClient and criticClient stay unlabelled: they are the check's probes.
-	// The worker starts after its alerting is set, below.
+	// hfClient, criticClient and enrichBase stay unlabelled: they are the
+	// check's probes. Vision is probed with thinking off, as the scorer's
+	// requests always are. The worker starts after its alerting is set, below.
 	worker := health.New(health.Options{
 		DB:    database,
 		Steps: health.Steps(cfg),
 		Check: func() []ai.PreflightResult {
-			results := ai.PreflightAllWithCriticClient(hfClient, criticClient, cfg.AI.GeneratorModel,
+			results := ai.PreflightAllWithClients(ai.PreflightClients{
+				Default: hfClient, Critic: criticClient,
+				Vision: hfClient.WithThinkingDisabled(), Enrichment: enrichBase,
+			}, cfg.AI.GeneratorModel,
 				ai.SplitModels(cfg.AI.FallbackGeneratorModel), criticModels(cfg),
 				visionModels, preflightEnrichmentModels(cfg, enrichModels))
 			logPreflight(results)
@@ -402,7 +422,7 @@ func main() {
 	go worker.Run(ctx)
 	// Every short call (image scoring, the newsletter pick, card-update
 	// detection, enrichment, clustering) goes through one labelled client.
-	enrichClient := hfClient.WithStep(health.StepEnrichment, worker)
+	enrichClient := enrichBase.WithStep(health.StepEnrichment, worker)
 	side := newAISideJobs(cfg, database, enrichClient, mailSender, visionModel, enrichModels)
 	side.imageScorer.SetRecorder(worker)
 

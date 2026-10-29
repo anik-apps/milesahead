@@ -11,7 +11,7 @@ import (
 
 // preflightMaxTokens bounds the probe response for models the app calls with
 // a short budget (vision, the enrichment chain). See the note on probe in
-// PreflightAllWithCriticClient: too small a budget makes reasoning models look dead.
+// PreflightAllWithClients: too small a budget makes reasoning models look dead.
 const preflightMaxTokens = 512
 
 // articleProbeTokens is the probe budget for models on the article path
@@ -67,13 +67,31 @@ func PreflightAll(client HFClientInterface, generator string, fallbacks, critics
 }
 
 // PreflightAllWithCriticClient is PreflightAll with the critics probed through
-// their own client -- the one the Critic really calls them with, which may
-// disable thinking (see HFClient.WithThinkingDisabled). A probe has to send the
-// request shape the role will send, or it can pass a model the real call fails.
+// their own client; see PreflightAllWithClients.
+func PreflightAllWithCriticClient(client, criticClient HFClientInterface, generator string,
+	fallbacks, critics, others, enrichment []string) []PreflightResult {
+	return PreflightAllWithClients(PreflightClients{Default: client, Critic: criticClient},
+		generator, fallbacks, critics, others, enrichment)
+}
+
+// PreflightClients are the clients each role's models are probed through: the
+// ones the role really calls them with, which may disable thinking (see
+// HFClient.WithThinkingDisabled). A probe has to send the request shape the
+// role will send, or it can pass a model the real call fails. A nil client is
+// Default.
+type PreflightClients struct {
+	Default    HFClientInterface // generator and fallbacks
+	Critic     HFClientInterface
+	Vision     HFClientInterface
+	Enrichment HFClientInterface
+}
+
+// PreflightAllWithClients is PreflightAll with each role probed through its
+// own client.
 //
 // critics is the whole critic chain; one reachable critic is enough for
 // PublishingViable, and the role="critic" gauge counts how many answered.
-func PreflightAllWithCriticClient(client, criticClient HFClientInterface, generator string,
+func PreflightAllWithClients(clients PreflightClients, generator string,
 	fallbacks, critics, others, enrichment []string) []PreflightResult {
 	type probe struct {
 		client      HFClientInterface
@@ -86,21 +104,25 @@ func PreflightAllWithCriticClient(client, criticClient HFClientInterface, genera
 			probes = append(probes, probe{c, model, role, maxTokens})
 		}
 	}
-	if criticClient == nil {
-		criticClient = client
+	client := clients.Default
+	or := func(c HFClientInterface) HFClientInterface {
+		if c == nil {
+			return client
+		}
+		return c
 	}
 	add(client, generator, "generator", articleProbeTokens)
 	for _, f := range fallbacks {
 		add(client, f, "fallback", articleProbeTokens)
 	}
 	for _, c := range critics {
-		add(criticClient, c, "critic", articleProbeTokens)
+		add(or(clients.Critic), c, "critic", articleProbeTokens)
 	}
 	for _, o := range others {
-		add(client, o, "vision", preflightMaxTokens)
+		add(or(clients.Vision), o, "vision", preflightMaxTokens)
 	}
 	for _, e := range enrichment {
-		add(client, e, "enrichment", preflightMaxTokens)
+		add(or(clients.Enrichment), e, "enrichment", preflightMaxTokens)
 	}
 
 	// Concurrently: the health check runs this every hour, and an article-path

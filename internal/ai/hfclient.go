@@ -141,8 +141,9 @@ func (c *HFClient) SetRequestTimeout(d time.Duration) {
 //
 // It is per client rather than per model because the same model can serve
 // several roles: nvidia/nemotron-3.5-super-vl-120b-a12b is at once the first
-// critic, an enrichment model and a generator fallback, and only the critic
-// call was measured with thinking off. With thinking on, its predecessor
+// critic, an enrichment model and a generator fallback, and each role was
+// measured on its own (critic_disable_thinking, enrichment_disable_thinking;
+// the generator keeps thinking on). With thinking on, its predecessor
 // nemotron-3-super (retired 2026-10-20) truncated or leaked its reasoning into
 // the critic's JSON and scored a real article 45; with it off it scored the
 // same article 75, and a clean one 95, in 2-28s. On deepseek-v4.1-flash the
