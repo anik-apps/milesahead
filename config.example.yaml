@@ -117,10 +117,23 @@ ai:
   #   llama-3.2-11b-vision-instruct           6/8     17s       0/6
   # llama timed out (30s) on the other two, as on 16 of 134 production calls
   # from 2026-10-26, and scored other articles' images as high as the right
-  # one. super-vl is also the first critic; a super-vl outage leaves llama
-  # here and lightning there. The 90b llama this list once held timed out on
-  # every call.
-  vision_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,meta/llama-3.2-11b-vision-instruct"
+  # one. The provider then retired it on 2026-10-30 (404 "function not
+  # found", though /v1/models still lists it), leaving vision with no backup.
+  #
+  # Re-measured 2026-11-04 for a new backup, same method; 4 of the 8 articles
+  # had a thumbnail that could no longer be downloaded, so both models saw
+  # the same 4 complete sets:
+  #   model                                   scored  avg time  own image first
+  #   nemotron-3.5-super-vl-120b-a12b         4/4     3.4s      1/4
+  #   nemotron-3-nano-omni-30b-a3b-reasoning  4/4     2.2s      1/4
+  #   llama-3.2-90b-vision-instruct           0/8     timed out (30s) on every call
+  #   gemma-3-12b-it, phi-3-vision-128k-instruct, kimi-k2.6,
+  #   cosmos-reason2-8b, vila                 retired (404)
+  # The four sets were overlapping airline stories, where another article's
+  # plane can fit as well as the own one; omni's reasons named the right
+  # airline and called a terminal photo "not the airline". super-vl is also
+  # the first critic; a super-vl outage leaves omni here and lightning there.
+  vision_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
   # Seconds per model call. The primary takes 105-510s per article, so the
   # previous hardcoded 300s could have timed out a healthy-but-slow generation
   # and silently demoted it to the fallback.
@@ -152,17 +165,31 @@ ai:
   # (it accepts enable_thinking=false and reasons anyway). lightning leads: as
   # reliable as super-vl and not the first critic. super-vl's Scout's Take
   # was the most concrete of the three, so it is next; gpt-oss-20b, the
-  # slowest, is last.
+  # slowest, was last.
+  #
+  # From 2026-10-31 gpt-oss-20b timed out on every enrichment call and every
+  # hourly check (103 in a row), and took 134s per call here on 2026-11-04;
+  # it still answers as a generator fallback, which allows 900s. Re-measured
+  # 2026-11-04 for its place, same method, thinking off:
+  #   model                                   ok      avg time per task
+  #   nemotron-3.5-lightning-30b-a3b          32/32   0.6-1.3s
+  #   nemotron-3-nano-omni-30b-a3b-reasoning  32/32   0.5-1.6s
+  #   deepseek-v4.1-flash                     32/32   10-36s (max 130s)
+  #   z-ai/glm-5.3-flash                      30/32   9-53s
+  #   minimaxai/minimax-m3.1-flash            30/32   7-41s
+  #   nemotron-3-super-120b-a12b, nemotron-nano-3-30b-a3b,
+  #   mistral-nemo-12b-instruct               retired (404)
+  # Only omni fits the 30s cap; its Scout's Takes were as concrete as
+  # lightning's (rates, spend, deadlines), so it replaces gpt-oss-20b.
   #
   # Earlier: gemma-4-31b-it (30s timeout on tags) and deepseek-v4.1-flash
   # (minutes) were rejected on 2026-09-29; nemotron-3-super was retired
   # 2026-10-20.
-  enrichment_model: "nvidia/nemotron-3.5-lightning-30b-a3b,nvidia/nemotron-3.5-super-vl-120b-a12b,openai/gpt-oss-20b"
+  enrichment_model: "nvidia/nemotron-3.5-lightning-30b-a3b,nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
   # Sends chat_template_kwargs {"enable_thinking": false} on every call made
   # with enrichment_model; the critics, the generator and charts keep their
   # own setting. Every enrichment measurement above that says "thinking OFF"
-  # was made with this. gpt-oss-20b accepts the field and reasons anyway.
-  # Default false.
+  # was made with this. Default false.
   enrichment_disable_thinking: true
   enrichment_interval: 15        # minutes
   enrichment_max_attempts: 3     # passes before an article is left alone
@@ -197,8 +224,25 @@ ai:
   # second in enrichment_model fall through to gpt-oss-20b here.
   # nemotron-3-super was retired 2026-10-20 and every chart has fallen through
   # to gpt-oss-20b since. Its successor nemotron-3.5-super-vl-120b-a12b leads
-  # now, unmeasured on charts; a chart it gets wrong goes to gpt-oss-20b.
-  infographic_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,openai/gpt-oss-20b"
+  # now.
+  #
+  # gpt-oss-20b then timed out at 120s on every chart from 2026-10-31, and on
+  # 2026-11-03 two articles got no chart when super-vl timed out too.
+  # Measured 2026-11-04 with `ab-models -infographic-candidates`: each model
+  # drew the 6 newest articles' charts alone, through the production prompt,
+  # client (120s, no retries, thinking on) and number checks; "ok" includes
+  # a model judging an article to have nothing to chart:
+  #   model                                   ok    avg time  max
+  #   nemotron-3.5-super-vl-120b-a12b         6/6   18s       33s
+  #   nemotron-3-nano-omni-30b-a3b-reasoning  6/6   22s       60s
+  #   minimaxai/minimax-m3.1-flash            6/6   50s       99s
+  #   z-ai/glm-5.3-flash                      4/6   53s       timed out twice
+  #   nemotron-3.5-lightning-30b-a3b          4/6   81s       timed out twice
+  #   deepseek-v4.1-flash                     1/6   106s      timed out 5 times
+  # omni's charts picked the same kind and figures as super-vl's, so it is
+  # the backup. minimax also works but is slower; it would add a third 120s
+  # wait to every pass in which both fail, so it is left out.
+  infographic_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
   hf_api_token: "${HF_API_TOKEN}"
   critic_threshold: 70
   max_retries: 3

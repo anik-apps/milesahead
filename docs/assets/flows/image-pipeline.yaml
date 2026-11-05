@@ -72,7 +72,7 @@ steps:
     code: internal/images/scorer.go · textScore
 
   - title: Score the top 5 by vision
-    desc: Wikimedia thumbnails warmed first (2 at a time, 15 s at most), then Llama 3.2 Vision looks at each one
+    desc: Wikimedia thumbnails warmed first (2 at a time, 15 s at most), then the vision model (nemotron-3.5-super-vl, else nemotron-3-nano-omni) looks at each one
     badge: a thumbnail that will not load scores ×0.6; if every call fails, the text scores stand
     code: internal/images/scorer.go · visionScore
 

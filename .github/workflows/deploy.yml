@@ -237,9 +237,9 @@ jobs:
             fallback_generator_model: "openai/gpt-oss-20b,nvidia/nemotron-3.5-super-vl-120b-a12b"
             critic_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3.5-lightning-30b-a3b"
             critic_disable_thinking: true
-            vision_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,meta/llama-3.2-11b-vision-instruct"
+            vision_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
             request_timeout: 900
-            enrichment_model: "nvidia/nemotron-3.5-lightning-30b-a3b,nvidia/nemotron-3.5-super-vl-120b-a12b,openai/gpt-oss-20b"
+            enrichment_model: "nvidia/nemotron-3.5-lightning-30b-a3b,nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
             enrichment_disable_thinking: true
             enrichment_interval: 15
             enrichment_max_attempts: 3
@@ -252,7 +252,7 @@ jobs:
             # 22-46s, where gpt-oss-20b timed out on 4 of 10. nemotron-3-super
             # was retired 2026-10-20; its successor takes its place. See
             # config.example.yaml.
-            infographic_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,openai/gpt-oss-20b"
+            infographic_model: "nvidia/nemotron-3.5-super-vl-120b-a12b,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
             critic2_model: ""
             hf_api_token: ${NVIDIA_API_KEY_Q}
             hf_base_url: "https://integrate.api.nvidia.com/v1"

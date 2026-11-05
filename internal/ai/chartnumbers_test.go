@@ -2,7 +2,10 @@ package ai
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/kumaranik/milesahead/internal/infographic"
 )
 
 func TestUnsupportedChartNumbers(t *testing.T) {
@@ -53,5 +56,35 @@ func TestUnsupportedValues_NoSmallNumberExemption(t *testing.T) {
 	}
 	if bad := UnsupportedValues([]string{"8", "10"}, src); len(bad) != 0 {
 		t.Errorf("stated bar values refused: %q", bad)
+	}
+}
+
+// CheckChartNumbers is what production refuses charts with: invented numbers
+// in a chart's words, and, for a comparison only, any unstated bar value --
+// small ones included.
+func TestCheckChartNumbers(t *testing.T) {
+	src := "Eight nights earn the bonus; 8 nights is the minimum. The fee is $95."
+	cases := []struct {
+		name    string
+		chart   infographic.Chart
+		wantErr string
+	}{
+		{"stated numbers pass", infographic.Chart{Kind: infographic.KindFigures, Headline: "$95 fee",
+			Rows: []infographic.Row{{Label: "Minimum stay", Value: "8 nights"}}}, ""},
+		{"invented number in the words", infographic.Chart{Kind: infographic.KindFigures, Headline: "$120 fee",
+			Rows: []infographic.Row{{Label: "Minimum stay", Value: "8 nights"}}}, "shows numbers"},
+		{"small unstated value outside a comparison is a tick", infographic.Chart{Kind: infographic.KindFigures,
+			Rows: []infographic.Row{{Label: "Stay", Value: "3"}}}, ""},
+		{"small unstated bar in a comparison", infographic.Chart{Kind: infographic.KindCompare,
+			Rows: []infographic.Row{{Label: "Bonus", Value: "8"}, {Label: "Base", Value: "3"}}}, "draws bars"},
+	}
+	for _, c := range cases {
+		err := CheckChartNumbers(c.chart, src)
+		switch {
+		case c.wantErr == "" && err != nil:
+			t.Errorf("%s: refused: %v", c.name, err)
+		case c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)):
+			t.Errorf("%s: err = %v, want one containing %q", c.name, err, c.wantErr)
+		}
 	}
 }

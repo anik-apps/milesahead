@@ -23,8 +23,8 @@ A cluster needs posts from at least two different sites; with fewer the pipeline
 | Generator | `generator_model` | `nvidia/nemotron-3-ultra-550b-a55b` | Article generation and revision |
 | Generator fallbacks | `fallback_generator_model` | `openai/gpt-oss-20b`, `nvidia/nemotron-3.5-super-vl-120b-a12b` | Tried in order when the generator fails or is retired |
 | Critic | `critic_model` | `nvidia/nemotron-3.5-super-vl-120b-a12b`, `nvidia/nemotron-3.5-lightning-30b-a3b` | Factual verification and scoring only; tried in order, thinking off |
-| Short-call chain | `enrichment_model` | `nvidia/nemotron-3.5-lightning-30b-a3b`, `nvidia/nemotron-3.5-super-vl-120b-a12b`, `openai/gpt-oss-20b`; thinking off | Story dedup, detail extraction, Scout's Take, tags, image queries, image text-scoring, newsletter pick, card-update detection |
-| Vision | `vision_model` | `nvidia/nemotron-3.5-super-vl-120b-a12b`, `meta/llama-3.2-11b-vision-instruct`; thinking off, images sent inline | Image relevance scoring (Phase 2) |
+| Short-call chain | `enrichment_model` | `nvidia/nemotron-3.5-lightning-30b-a3b`, `nvidia/nemotron-3.5-super-vl-120b-a12b`, `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`; thinking off | Story dedup, detail extraction, Scout's Take, tags, image queries, image text-scoring, newsletter pick, card-update detection |
+| Vision | `vision_model` | `nvidia/nemotron-3.5-super-vl-120b-a12b`, `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`; thinking off, images sent inline | Image relevance scoring (Phase 2) |
 
 All models are accessed through the NVIDIA API at `https://integrate.api.nvidia.com/v1`. `config.example.yaml` records why each was chosen, with the measurements behind each choice. A chain is tried left to right on a retryable error (429, 5xx, timeout) or a model that is gone (404, 410); a `model fallback succeeded` or `model failed, trying next in chain` line is logged.
 

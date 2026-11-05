@@ -17,7 +17,7 @@ One step per distinct model list. `health.Steps(cfg)` is the single definition, 
 | `critic` | `critic_model` | Verifying every article (thinking off) |
 | `enrichment` | `enrichment_model`; unset, the generator fallbacks then the critics | Scout's Take, key details, tags, image queries, image text-scoring, the newsletter pick, card-update detection, story dedup |
 | `infographic` | `infographic_model`; unset, the enrichment list | Charts |
-| `vision` | `vision_model`, a comma-separated list (default `meta/llama-3.2-11b-vision-instruct`) | Image scoring |
+| `vision` | `vision_model`, a comma-separated list (default `nvidia/nemotron-3.5-super-vl-120b-a12b`) | Image scoring |
 
 A step that is switched off is not checked and shows as "off": `infographic` when `ai.enrichment_infographics` is `off`, and `vision` when `ai.hf_base_url` is empty. `critic2_model` is not a step, because nothing calls it.
 

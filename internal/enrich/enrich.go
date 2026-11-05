@@ -573,29 +573,13 @@ func (s *Service) drawInfographic(u *db.EnrichmentUpdate, a db.ArticleNeedingEnr
 	// Scout's Take, and nothing revises them after this point, so they get
 	// the same guards: a chart naming a news site is refused, and so is one
 	// showing a figure the article does not state, which would be published
-	// as fact (see ai.UnsupportedChartNumbers). A refused chart goes to the
-	// next model in the chain, then to a later pass.
+	// as fact (see ai.CheckChartNumbers). A refused chart goes to the next
+	// model in the chain, then to a later pass.
 	accept := func(c infographic.Chart) error {
-		words := c.Text()
-		if ms := s.outletMatcher().DerivedTextMentions(words, a.Title); len(ms) > 0 {
+		if ms := s.outletMatcher().DerivedTextMentions(c.Text(), a.Title); len(ms) > 0 {
 			return fmt.Errorf("infographic names a news site (%s): %q", ms[0].Outlet, ms[0].Text)
 		}
-		sources := []string{a.Title, a.TLDR, details, ai.VisibleText(a.Content)}
-		if bad := ai.UnsupportedChartNumbers(words, sources...); len(bad) > 0 {
-			return fmt.Errorf("infographic shows numbers the article does not: %q", bad)
-		}
-		// A comparison's values become bar lengths, so even a small one
-		// must be stated.
-		if c.Kind == infographic.KindCompare {
-			values := make([]string, len(c.Rows))
-			for i, r := range c.Rows {
-				values[i] = r.Value
-			}
-			if bad := ai.UnsupportedValues(values, sources...); len(bad) > 0 {
-				return fmt.Errorf("infographic draws bars for numbers the article does not state: %q", bad)
-			}
-		}
-		return nil
+		return ai.CheckChartNumbers(c, a.Title, a.TLDR, details, ai.VisibleText(a.Content))
 	}
 	chart, err := ai.GenerateInfographic(client, s.infographicModels(), a.Title, a.TLDR, details, a.InfographicNote, accept)
 	if errors.Is(err, ai.ErrNoInfographic) {

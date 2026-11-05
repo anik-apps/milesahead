@@ -228,6 +228,18 @@ Found during the 2026-08-31 card-video review, ordered by severity.
       thinking off. `enrichment_model` is now lightning, super-vl, gpt-oss-20b;
       `vision_model` is super-vl (8/8, 2.5s, own image ranked first 6/8), then llama
       (6/8, 17s, 0/6). The health check probes each with the request shape it really sends.
+- [x] **Vision, enrichment and infographic backups dead** (found 2026-11-04 from the
+      model-health table and alert emails) — the provider retired
+      llama-3.2-11b-vision-instruct on 2026-10-30 (404, though `/v1/models` still lists
+      it), so vision had no backup; gpt-oss-20b timed out on every enrichment and chart
+      call from 2026-10-31, and on 2026-11-03 two articles got no chart when super-vl
+      timed out too. Of the vision candidates only nemotron-3-nano-omni-30b-a3b-reasoning
+      still answers (five others retired, llama-3.2-90b times out); it also answered
+      32/32 enrichment calls in 0.5-1.6s and drew 6/6 charts (`ab-models
+      -infographic-candidates`, new: production prompt, client and number checks, now
+      shared as `ai.CheckChartNumbers`). omni replaces both dead backups;
+      `health.DefaultVisionModel` moves off the retired llama to super-vl. gpt-oss-20b
+      stays a generator fallback, where its 900s budget still gets answers.
 - [ ] **Image fetches have no SSRF guard** — the searcher's probes and the scorer's
       thumbnail downloads GET whatever URL an image API returned, with no check that it
       resolves to a public address. Candidate URLs come only from Unsplash, Pexels,

@@ -13,7 +13,7 @@ A self-hosted content aggregation platform that scans miles and points websites,
 - **Image Pipeline** — 4-source search (Unsplash, Pexels, Openverse, Wikimedia) with vision model scoring
 - **Reference Pages** — 53 credit card guides across 6 categories with Scout persona verdicts. `/cards/` filters with one row of links (category chips and a "No annual fee" toggle; older `?fee=` band and `?issuer=` links still filter) and sorts from a menu on the results line (by category, name, lowest or highest fee); each card page opens with a summary (fee, welcome offer, best earning rates ranked by `rankEarnRates`, the verdict's first sentence, Apply and a Compare form) and ends with "Next steps"
 - **Card Comparison** — Side-by-side comparison of 2-3 cards (fee, welcome bonus, earning rates split into direct and travel-portal rows, credits, benefits, protections, rewards currency), every note shown under its value. A star marks the best value only when the cards' values are numbers in the same unit and the best isn't a top- or rotating-category rate. On phones each row's label sits above the values so all three cards fit
-- **Article Infographics** — Opt-in (`ai.enrichment_infographics`: `off`, the default; `preview`; `on`, production's setting since October 2026). Enrichment asks the `infographic_model` chain (nemotron-3.5-super-vl, then gpt-oss-20b; 120 s per model, no retries) to pick the key numbers as JSON (`internal/infographic`: a change, a comparison, figures or a timeline), and the site draws them as an "At a glance" panel under Key Details in its own type and colours. A comparison's bars must share one unit; the chart's words get the same outlet and "Source N" checks as Scout's Take, and every number in it must appear in the article. A chart that fails a check goes to the next model in the chain. Charts drawn are shown in the admin (review preview, and folded under each Published row) in any mode, with Remove chart and Redraw chart; article pages show them only in `on`
+- **Article Infographics** — Opt-in (`ai.enrichment_infographics`: `off`, the default; `preview`; `on`, production's setting since October 2026). Enrichment asks the `infographic_model` chain (nemotron-3.5-super-vl, then nemotron-3-nano-omni; 120 s per model, no retries) to pick the key numbers as JSON (`internal/infographic`: a change, a comparison, figures or a timeline), and the site draws them as an "At a glance" panel under Key Details in its own type and colours. A comparison's bars must share one unit; the chart's words get the same outlet and "Source N" checks as Scout's Take, and every number in it must appear in the article. A chart that fails a check goes to the next model in the chain. Charts drawn are shown in the admin (review preview, and folded under each Published row) in any mode, with Remove chart and Redraw chart; article pages show them only in `on`
 - **Card Infographics** — Designed infographics on card pages: a teaser in the card-art slot opens the full image in an in-page viewer
 - **Article Tags** — AI-generated tags from 8 categories; six of them are topic filters on the homepage, combinable with the article type
 - **Admin Dashboard** — Its own shell (`templates/admin/_layout.html`, `static/css/admin.css`, `static/js/admin.js`): a slim bar whose tabs show waiting work (articles to decide or review, vote alerts on published articles, card updates and flags, the newsletter's state, stale sources). The review queue is grouped into Needs a decision / Ready to review / Being rewritten, sorted within each group (newest first by default, or oldest first, or by critic score; `?sort=`); approve, reject, rewrite and new-image requests happen in the preview, which steps through the queue in that order ("Approve rev N & next", keyboard shortcuts, Undo after approving), or from each row's actions menu without opening it. Approve and reject post the revision on screen and are refused if a rewrite landed since. Also: Published (newest or oldest first) with a Many downvotes panel listing vote alerts until acknowledged (also emailed to `votes.alert_email` when set), and an actions menu per row for unpublish, with undo, or unpublish with a rewrite request, a card editor with inline flags and JSON checks, card updates as a word diff, source health, and the newsletter page saying when the issue goes out
@@ -31,7 +31,7 @@ A self-hosted content aggregation platform that scans miles and points websites,
 
 - **Language:** Go 1.26+
 - **Database:** SQLite (WAL mode)
-- **AI:** NVIDIA API (Nemotron 3 Ultra and 3.5 Super and Lightning, gpt-oss-20b, Llama 3.2 Vision)
+- **AI:** NVIDIA API (Nemotron 3 Ultra and 3.5 Super and Lightning, gpt-oss-20b, Nemotron 3 Nano Omni)
 - **Deployment:** OCI ARM VM, Caddy, systemd, GitHub Actions CI/CD
 - **Observability:** Grafana Cloud (Prometheus + Loki via Alloy)
 
@@ -98,9 +98,9 @@ true` sends `chat_template_kwargs: {enable_thinking: false}` on critic requests
 only — with thinking on, the retired nemotron-3-super truncated or leaked its
 reasoning into the JSON. `enrichment_disable_thinking: true` does the same for
 every short call on `enrichment_model` (nemotron-3.5-lightning, then
-nemotron-3.5-super-vl, then gpt-oss-20b): with thinking on, both nemotron
+nemotron-3.5-super-vl, then nemotron-3-nano-omni): with thinking on, both nemotron
 models ran out of tokens on nearly every real enrichment prompt. Vision
-scoring (nemotron-3.5-super-vl, then Llama 3.2 Vision) always sends it, and
+scoring (nemotron-3.5-super-vl, then nemotron-3-nano-omni) always sends it, and
 downloads each thumbnail to send it inline, since Wikimedia refuses the
 provider's own fetcher. The
 `critic scored` log line names the model that scored. Which critic is
