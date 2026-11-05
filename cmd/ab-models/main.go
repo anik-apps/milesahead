@@ -63,7 +63,8 @@ func main() {
 	dumpPrompt := flag.String("dump-prompt", "", "write the exact generation prompt for the first topic here and exit")
 	enrichCands := flag.String("enrichment-candidates", "", "comma-separated models to run the real enrichment calls (tags, Scout's Take, key details, image queries) on the newest -articles articles, then exit")
 	visionCands := flag.String("vision-candidates", "", "comma-separated vision models to score each of the newest -articles articles' own image against two other articles' images, then exit")
-	articleCount := flag.Int("articles", 8, "number of stored articles for -enrichment-candidates and -vision-candidates")
+	chartCands := flag.String("infographic-candidates", "", "comma-separated models to draw the newest -articles articles' infographics with production's prompt, client and number checks, then exit")
+	articleCount := flag.Int("articles", 8, "number of stored articles for -enrichment-candidates, -vision-candidates and -infographic-candidates")
 	enrichNoThinking := flag.Bool("enrichment-no-thinking", false, "send enable_thinking=false on enrichment calls (implied by enrichment_disable_thinking in the config)")
 	flag.Parse()
 
@@ -71,9 +72,9 @@ func main() {
 	if err != nil {
 		fatal("load config: %v", err)
 	}
-	if *enrichCands != "" || *visionCands != "" {
+	if *enrichCands != "" || *visionCands != "" || *chartCands != "" {
 		cfg.AI.EnrichmentDisableThinking = cfg.AI.EnrichmentDisableThinking || *enrichNoThinking
-		probeShortCalls(cfg, split(*enrichCands), split(*visionCands), *articleCount, *outPath)
+		probeShortCalls(cfg, split(*enrichCands), split(*visionCands), split(*chartCands), *articleCount, *outPath)
 		return
 	}
 	cands := split(*generators)

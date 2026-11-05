@@ -17,8 +17,10 @@ const (
 	StepVision      = "vision"
 )
 
-// DefaultVisionModel is used when vision_model is unset.
-const DefaultVisionModel = "meta/llama-3.2-11b-vision-instruct"
+// DefaultVisionModel is used when vision_model is unset. The previous
+// default, meta/llama-3.2-11b-vision-instruct, was retired by the provider on
+// 2026-10-30 (404 "function not found", though /v1/models still lists it).
+const DefaultVisionModel = "nvidia/nemotron-3.5-super-vl-120b-a12b"
 
 // Step is one model list and the jobs that use it.
 type Step struct {

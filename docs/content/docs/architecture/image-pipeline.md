@@ -36,7 +36,7 @@ Each candidate receives a relevance score from 1-10. Candidates are sorted by sc
 
 ### Phase 2: Vision Model
 
-The vision model (`vision_model`: in production `nvidia/nemotron-3.5-super-vl-120b-a12b`, then `meta/llama-3.2-11b-vision-instruct`, the default) receives the actual image thumbnail along with the article title and summary. It scores each image on specificity:
+The vision model (`vision_model`: in production `nvidia/nemotron-3.5-super-vl-120b-a12b`, the default, then `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`) receives the actual image thumbnail along with the article title and summary. It scores each image on specificity:
 
 | Score | Meaning |
 |-------|---------|
@@ -310,11 +310,11 @@ a range ("7,000-24,000"), or a percentage beside a multiplier cannot be a bar.
 
 One call per article on the `ai.infographic_model` chain (the
 `enrichment_model` chain when unset), after the image and only once key details
-exist. Production puts a nemotron super model first and gpt-oss-20b second:
-when the model drew SVG, gpt-oss-20b timed
-out at 120 seconds on 4 of 10 real articles, while nemotron-3-super answered
-every call that reached it. nemotron-3-super was retired on 2026-10-20; its
-successor, nemotron-3.5-super-vl, now leads, not yet measured on charts. It asks for up to 12,288 tokens, since a reasoning model spends
+exist. Production puts nemotron-3.5-super-vl first and nemotron-3-nano-omni
+second. gpt-oss-20b held second place until it began timing out at 120 seconds
+on every chart (2026-10-31). Measured on 6 real articles on 2026-11-04 with
+`ab-models -infographic-candidates`, super-vl and omni each drew all six (18s
+and 22s on average), and the slower candidates timed out. It asks for up to 12,288 tokens, since a reasoning model spends
 most of its budget before it answers and a reply cut off mid-reasoning has no
 chart in it. That is more than the 30-second short-call class allows, so it has
 its own client: 120 seconds per model (`ai.InfographicCallTimeout`) and no

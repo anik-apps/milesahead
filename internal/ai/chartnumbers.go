@@ -1,10 +1,13 @@
 package ai
 
 import (
+	"fmt"
 	"math"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/kumaranik/milesahead/internal/infographic"
 )
 
 // numberToken matches a number as articles and charts write it: an optional
@@ -69,6 +72,28 @@ const tickLimit = 10
 // the prompt forbids derived figures too.
 func UnsupportedChartNumbers(chart string, sources ...string) []string {
 	return unsupported(chart, true, sources...)
+}
+
+// CheckChartNumbers refuses a chart showing a number that sources (the
+// article's title, summary, key details and visible body) do not state: any
+// number in its words (UnsupportedChartNumbers), and, for a comparison, any
+// value it draws as a bar (UnsupportedValues).
+func CheckChartNumbers(c infographic.Chart, sources ...string) error {
+	if bad := UnsupportedChartNumbers(c.Text(), sources...); len(bad) > 0 {
+		return fmt.Errorf("infographic shows numbers the article does not: %q", bad)
+	}
+	// A comparison's values become bar lengths, so even a small one must be
+	// stated.
+	if c.Kind == infographic.KindCompare {
+		values := make([]string, len(c.Rows))
+		for i, r := range c.Rows {
+			values[i] = r.Value
+		}
+		if bad := UnsupportedValues(values, sources...); len(bad) > 0 {
+			return fmt.Errorf("infographic draws bars for numbers the article does not state: %q", bad)
+		}
+	}
+	return nil
 }
 
 // UnsupportedValues is UnsupportedChartNumbers for the values a chart draws

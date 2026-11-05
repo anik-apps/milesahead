@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -12,12 +13,13 @@ import (
 	"github.com/kumaranik/milesahead/internal/ai"
 	"github.com/kumaranik/milesahead/internal/config"
 	"github.com/kumaranik/milesahead/internal/images"
+	"github.com/kumaranik/milesahead/internal/infographic"
 )
 
 // storedArticle is a finished article the short calls are measured on.
 type storedArticle struct {
-	id                              int64
-	title, tldr, content, thumbnail string
+	id                                          int64
+	title, tldr, content, thumbnail, keyDetails string
 }
 
 // shortRun is one short call: which model, which task, how long, and what came
@@ -31,21 +33,23 @@ type shortRun struct {
 	Sample  string        `json:"sample,omitempty"`
 }
 
-// probeShortCalls measures candidates for the enrichment chain and the vision
-// list on the newest stored articles, through the same functions production
-// calls, with the same client, token budgets, timeouts and retries.
+// probeShortCalls measures candidates for the enrichment chain, the vision
+// list and the infographic chain on the newest stored articles, through the
+// same functions production calls, with the same client, token budgets,
+// timeouts and retries.
 //
 // The models take turns on each article rather than one model running its
 // whole batch first: the provider's latency swings by the hour, and turns
 // keep a slow spell from landing on one candidate only.
-func probeShortCalls(cfg *config.Config, enrich, vision []string, want int, outPath string) {
+func probeShortCalls(cfg *config.Config, enrich, vision, charts []string, want int, outPath string) {
 	articles := loadArticles(cfg.DB.Path, want)
 	if len(articles) == 0 {
 		fatal("no stored articles with a body, a TL;DR and an image")
 	}
-	client := newClient(cfg)
+	base := newClient(cfg)
+	client := base
 	if cfg.AI.EnrichmentDisableThinking {
-		client = client.WithThinkingDisabled()
+		client = base.WithThinkingDisabled()
 	}
 	var results []shortRun
 	if len(enrich) > 0 {
@@ -59,6 +63,12 @@ func probeShortCalls(cfg *config.Config, enrich, vision []string, want int, outP
 		}
 		fmt.Printf("\nvision: %d articles, candidates %s\n\n", len(articles), strings.Join(vision, ", "))
 		results = append(results, probeVision(cfg, vision, articles)...)
+	}
+	if len(charts) > 0 {
+		fmt.Printf("\ninfographic: %d articles, candidates %s\n\n", len(articles), strings.Join(charts, ", "))
+		// The client production draws charts with (newInfographicClient in
+		// cmd/milesahead): thinking left on, a two-minute bound, no retries.
+		results = append(results, probeInfographic(base.WithRequestTimeout(ai.InfographicCallTimeout).WithMaxRetries(0), charts, articles)...)
 	}
 	summarizeShort(results)
 	if outPath != "" {
@@ -113,6 +123,45 @@ func probeEnrichment(client *ai.HFClient, models []string, articles []storedArti
 				out = append(out, r)
 			}
 		}
+	}
+	return out
+}
+
+// probeInfographic has each model draw each article's chart alone, with
+// production's number checks (ai.CheckChartNumbers), so "ok" means the chart
+// would have been stored. A model judging the article to have nothing to
+// chart counts as ok: production stores that answer too. The outlet-name
+// check is left out; it needs the outlet list from the database and refuses
+// a chart for its wording, not its model.
+func probeInfographic(client *ai.HFClient, models []string, articles []storedArticle) []shortRun {
+	var out []shortRun
+	for i, a := range articles {
+		if a.keyDetails == "" || a.keyDetails == "[]" || a.keyDetails == "null" {
+			continue
+		}
+		fmt.Printf("[%d/%d] #%d %s\n", i+1, len(articles), a.id, trunc(a.title, 70))
+		accept := func(c infographic.Chart) error {
+			return ai.CheckChartNumbers(c, a.title, a.tldr, a.keyDetails, ai.VisibleText(a.content))
+		}
+		for _, m := range models {
+			r := shortRun{Model: m, Task: "infographic", Article: a.id}
+			start := time.Now()
+			chart, err := ai.GenerateInfographic(client, []string{m}, a.title, a.tldr, a.keyDetails, "", accept)
+			r.Latency = time.Since(start)
+			switch {
+			case errors.Is(err, ai.ErrNoInfographic):
+				r.Sample = "nothing to chart"
+			case err != nil:
+				r.Err = trunc(err.Error(), 160)
+			default:
+				r.Sample = trunc(chart, 90)
+			}
+			fmt.Printf("  %-42s %6.1fs  %s\n", m, r.Latency.Seconds(), resultText(r))
+			out = append(out, r)
+		}
+	}
+	if len(out) == 0 {
+		fatal("none of the %d newest articles has key details to chart; raise -articles", len(articles))
 	}
 	return out
 }
@@ -248,7 +297,7 @@ func loadArticles(dbPath string, want int) []storedArticle {
 	}
 	defer db.Close()
 	rows, err := db.Query(`
-		SELECT id, title, tldr, content, image_thumbnail FROM generated_articles
+		SELECT id, title, tldr, content, image_thumbnail, COALESCE(key_details, '') FROM generated_articles
 		WHERE content != '' AND tldr != '' AND image_thumbnail LIKE 'https://%'
 		ORDER BY id DESC LIMIT ?`, want)
 	if err != nil {
@@ -258,7 +307,7 @@ func loadArticles(dbPath string, want int) []storedArticle {
 	var out []storedArticle
 	for rows.Next() {
 		var a storedArticle
-		if err := rows.Scan(&a.id, &a.title, &a.tldr, &a.content, &a.thumbnail); err != nil {
+		if err := rows.Scan(&a.id, &a.title, &a.tldr, &a.content, &a.thumbnail, &a.keyDetails); err != nil {
 			fatal("scan: %v", err)
 		}
 		out = append(out, a)

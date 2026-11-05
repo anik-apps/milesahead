@@ -405,8 +405,8 @@ func (s *Scorer) visionCall(model string, contentJSON []byte) (float64, string, 
 	}
 	// Thinking off: the reply is one line of JSON, and with thinking on
 	// nemotron-3.5-super-vl spent visionMaxTokens reasoning and returned an
-	// empty reply in 9 of 18 calls (2026-10-29). llama-3.2-11b-vision does
-	// not reason; it accepts the field.
+	// empty reply in 9 of 18 calls (2026-10-29). nemotron-3-nano-omni, the
+	// backup, answered every image with it off in about a second (2026-11-04).
 	reqBody, err := json.Marshal(visionRequest{
 		Model:              model,
 		Messages:           []visionMessage{{Role: "user", Content: json.RawMessage(contentJSON)}},
